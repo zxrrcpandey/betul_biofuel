@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"sec_welcome\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Betul Bio Fuel Pvt. Ltd. - Ethanol Division</b></span>\",\"col\":12}},{\"id\":\"sec_numbers\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Plant Overview</b></span>\",\"col\":12}},{\"id\":\"card_inside_main\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Vehicles Inside - Main\",\"col\":3}},{\"id\":\"card_today_main\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Today - Main\",\"col\":3}},{\"id\":\"card_exited_main\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Exited Today - Main\",\"col\":3}},{\"id\":\"card_active_main\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Unloading - Main\",\"col\":3}}]",
+ "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Betul Bio Fuel Pvt. Ltd. - Ethanol Division</b></span>\",\"col\":12}},{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Vehicles Inside - Main\",\"col\":3}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Today - Main\",\"col\":3}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Exited Today - Main\",\"col\":3}},{\"id\":\"nc4\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Unloading - Main\",\"col\":3}},{\"id\":\"h2\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Gate Entry Operations</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"BBF Token\",\"col\":3}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"BBF Gate Entry\",\"col\":3}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"BBF Weighbridge Log\",\"col\":3}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"BBF Unloading Entry\",\"col\":3}},{\"id\":\"h3\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Reports</b></span>\",\"col\":12}},{\"id\":\"s5\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Tracker - Main\",\"col\":4}},{\"id\":\"s6\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Turnaround Report - Main\",\"col\":4}},{\"id\":\"s7\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"BBF Settings - Main\",\"col\":4}}]",
  "creation": "2026-03-07 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -12,7 +12,6 @@
  "label": "Trustbit Ethanol",
  "links": [
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "Gate Entry Operations",
@@ -22,119 +21,97 @@
    "type": "Card Break"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "BBF Token",
-   "link_count": 0,
    "link_to": "BBF Token",
    "link_type": "DocType",
    "onboard": 1,
    "type": "Link"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "BBF Gate Entry",
-   "link_count": 0,
    "link_to": "BBF Gate Entry",
    "link_type": "DocType",
    "onboard": 1,
    "type": "Link"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "BBF Weighbridge Log",
-   "link_count": 0,
    "link_to": "BBF Weighbridge Log",
    "link_type": "DocType",
    "onboard": 1,
    "type": "Link"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "BBF Unloading Entry",
-   "link_count": 0,
    "link_to": "BBF Unloading Entry",
    "link_type": "DocType",
    "onboard": 1,
    "type": "Link"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "Master Data",
-   "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "BBF Transport Master",
-   "link_count": 0,
    "link_to": "BBF Transport Master",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "BBF Vehicle Master",
-   "link_count": 0,
    "link_to": "BBF Vehicle Master",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "Settings & Reports",
-   "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "BBF Settings",
-   "link_count": 0,
    "link_to": "BBF Settings",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 1,
    "label": "BBF Live Vehicle Tracker",
-   "link_count": 0,
    "link_to": "BBF Live Vehicle Tracker",
    "link_type": "Report",
    "onboard": 1,
    "type": "Link"
   },
   {
-   "dependencies": "",
    "hidden": 0,
    "is_query_report": 1,
    "label": "BBF Vehicle Turnaround Report",
-   "link_count": 0,
    "link_to": "BBF Vehicle Turnaround Report",
    "link_type": "Report",
    "onboard": 1,
@@ -147,50 +124,21 @@
  "name": "Trustbit Ethanol",
  "number_cards": [
   {
-   "color": "Blue",
-   "document_type": "BBF Token",
-   "filters_json": "[[\"BBF Token\",\"status\",\"!=\",\"Exited\"]]",
-   "function": "Count",
-   "label": "Vehicles Inside - Main",
-   "number_card_name": "Vehicles Inside - Main",
-   "show_percentage_stats": 0,
-   "stats_time_interval": "Daily"
+   "number_card_name": "Vehicles Inside - Main"
   },
   {
-   "color": "Grey",
-   "document_type": "BBF Token",
-   "filters_json": "[[\"BBF Token\",\"entry_date\",\"=\",\"Today\"]]",
-   "function": "Count",
-   "label": "Total Today - Main",
-   "number_card_name": "Total Today - Main",
-   "show_percentage_stats": 0,
-   "stats_time_interval": "Daily"
+   "number_card_name": "Total Today - Main"
   },
   {
-   "color": "Green",
-   "document_type": "BBF Token",
-   "filters_json": "[[\"BBF Token\",\"status\",\"=\",\"Exited\"],[\"BBF Token\",\"entry_date\",\"=\",\"Today\"]]",
-   "function": "Count",
-   "label": "Exited Today - Main",
-   "number_card_name": "Exited Today - Main",
-   "show_percentage_stats": 0,
-   "stats_time_interval": "Daily"
+   "number_card_name": "Exited Today - Main"
   },
   {
-   "color": "Orange",
-   "document_type": "BBF Unloading Entry",
-   "filters_json": "[[\"BBF Unloading Entry\",\"status\",\"=\",\"Unloading\"]]",
-   "function": "Count",
-   "label": "Active Unloading - Main",
-   "number_card_name": "Active Unloading - Main",
-   "show_percentage_stats": 0,
-   "stats_time_interval": "Daily"
+   "number_card_name": "Active Unloading - Main"
   }
  ],
  "owner": "Administrator",
  "parent_page": "",
  "public": 1,
- "restrict_to_domain": "",
  "roles": [
   {"role": "System Manager"},
   {"role": "G1 Security"},
@@ -201,6 +149,46 @@
   {"role": "CTO"}
  ],
  "sequence_id": 0,
- "shortcuts": [],
+ "shortcuts": [
+  {
+   "doc_view": "List",
+   "label": "BBF Token",
+   "link_to": "BBF Token",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "BBF Gate Entry",
+   "link_to": "BBF Gate Entry",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "BBF Weighbridge Log",
+   "link_to": "BBF Weighbridge Log",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "BBF Unloading Entry",
+   "link_to": "BBF Unloading Entry",
+   "type": "DocType"
+  },
+  {
+   "label": "Live Tracker - Main",
+   "link_to": "BBF Live Vehicle Tracker",
+   "type": "Report"
+  },
+  {
+   "label": "Turnaround Report - Main",
+   "link_to": "BBF Vehicle Turnaround Report",
+   "type": "Report"
+  },
+  {
+   "label": "BBF Settings - Main",
+   "link_to": "BBF Settings",
+   "type": "DocType"
+  }
+ ],
  "title": "Trustbit Ethanol"
 }
