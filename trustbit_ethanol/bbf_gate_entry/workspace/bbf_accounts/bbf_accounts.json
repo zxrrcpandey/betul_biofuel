@@ -1,0 +1,224 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"sec_numbers\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Overview</b></span>\",\"col\":12}},{\"id\":\"card_grn_today\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"GRN Created Today\",\"col\":4}},{\"id\":\"card_pending_quality\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Pending Quality\",\"col\":4}},{\"id\":\"card_tare_done\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Tare Weighed Today\",\"col\":4}},{\"id\":\"sec_shortcuts\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Access</b></span>\",\"col\":12}},{\"id\":\"shortcut_tokens\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"All Tokens - Accts\",\"col\":3}},{\"id\":\"shortcut_ge\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gate Entries - Accts\",\"col\":3}},{\"id\":\"shortcut_wb\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Weighbridge Logs - Accts\",\"col\":3}},{\"id\":\"shortcut_settings_accts\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Settings - Accts\",\"col\":3}}]",
+ "creation": "2026-03-07 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "accounting",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "BBF Accounts",
+ "links": [
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Operations",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Token",
+   "link_count": 0,
+   "link_to": "BBF Token",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Gate Entry",
+   "link_count": 0,
+   "link_to": "BBF Gate Entry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Weighbridge Log",
+   "link_count": 0,
+   "link_to": "BBF Weighbridge Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Unloading Entry",
+   "link_count": 0,
+   "link_to": "BBF Unloading Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Master Data",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Transport Master",
+   "link_count": 0,
+   "link_to": "BBF Transport Master",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Vehicle Master",
+   "link_count": 0,
+   "link_to": "BBF Vehicle Master",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Settings",
+   "link_count": 0,
+   "link_to": "BBF Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 0,
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "BBF Live Vehicle Tracker",
+   "link_count": 0,
+   "link_to": "BBF Live Vehicle Tracker",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "BBF Vehicle Turnaround Report",
+   "link_count": 0,
+   "link_to": "BBF Vehicle Turnaround Report",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-03-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "BBF Accounts",
+ "number_cards": [
+  {
+   "color": "Green",
+   "document_type": "BBF Token",
+   "filters_json": "[[\"BBF Token\",\"status\",\"=\",\"GRN Created\"],[\"BBF Token\",\"entry_date\",\"=\",\"Today\"]]",
+   "function": "Count",
+   "label": "GRN Created Today",
+   "number_card_name": "GRN Created Today",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  },
+  {
+   "color": "Orange",
+   "document_type": "BBF Token",
+   "filters_json": "[[\"BBF Token\",\"status\",\"=\",\"Tare Weighed\"]]",
+   "function": "Count",
+   "label": "Pending Quality",
+   "number_card_name": "Pending Quality",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  },
+  {
+   "color": "Blue",
+   "document_type": "BBF Weighbridge Log",
+   "filters_json": "[[\"BBF Weighbridge Log\",\"status\",\"in\",[\"Tare Recorded\",\"Completed\"]],[\"BBF Weighbridge Log\",\"creation\",\"Timespan\",\"today\"]]",
+   "function": "Count",
+   "label": "Tare Weighed Today",
+   "number_card_name": "Tare Weighed Today",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "restrict_to_domain": "",
+ "roles": [
+  {"role": "Accounts Manager"},
+  {"role": "System Manager"}
+ ],
+ "sequence_id": 6,
+ "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "All Tokens - Accts",
+   "link_to": "BBF Token",
+   "shortcut_name": "All Tokens - Accts",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Gate Entries - Accts",
+   "link_to": "BBF Gate Entry",
+   "shortcut_name": "Gate Entries - Accts",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Weighbridge Logs - Accts",
+   "link_to": "BBF Weighbridge Log",
+   "shortcut_name": "Weighbridge Logs - Accts",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "",
+   "label": "Settings - Accts",
+   "link_to": "BBF Settings",
+   "shortcut_name": "Settings - Accts",
+   "type": "DocType"
+  }
+ ],
+ "title": "BBF Accounts"
+}

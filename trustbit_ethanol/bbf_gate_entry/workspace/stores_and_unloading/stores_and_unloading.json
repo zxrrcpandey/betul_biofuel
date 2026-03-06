@@ -1,0 +1,121 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"sec_shortcuts\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Actions</b></span>\",\"col\":12}},{\"id\":\"shortcut_new_ul\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Unloading Entry\",\"col\":4}},{\"id\":\"shortcut_active\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Active Unloading\",\"col\":4}},{\"id\":\"shortcut_completed_ul\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Completed Unloading\",\"col\":4}},{\"id\":\"sec_numbers\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Overview</b></span>\",\"col\":12}},{\"id\":\"card_pending_ul\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Pending Unloading\",\"col\":4}},{\"id\":\"card_active_ul\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Currently Unloading\",\"col\":4}},{\"id\":\"card_done_ul\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Completed Unloading Today\",\"col\":4}}]",
+ "creation": "2026-03-07 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "stock",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Stores and Unloading",
+ "links": [
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Unloading Operations",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Unloading Entry",
+   "link_count": 0,
+   "link_to": "BBF Unloading Entry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Token",
+   "link_count": 0,
+   "link_to": "BBF Token",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-03-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "Stores and Unloading",
+ "number_cards": [
+  {
+   "color": "Red",
+   "document_type": "BBF Unloading Entry",
+   "filters_json": "[[\"BBF Unloading Entry\",\"status\",\"=\",\"Pending\"]]",
+   "function": "Count",
+   "label": "Pending Unloading",
+   "number_card_name": "Pending Unloading",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  },
+  {
+   "color": "Blue",
+   "document_type": "BBF Unloading Entry",
+   "filters_json": "[[\"BBF Unloading Entry\",\"status\",\"=\",\"Unloading\"]]",
+   "function": "Count",
+   "label": "Currently Unloading",
+   "number_card_name": "Currently Unloading",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  },
+  {
+   "color": "Green",
+   "document_type": "BBF Unloading Entry",
+   "filters_json": "[[\"BBF Unloading Entry\",\"status\",\"=\",\"Completed\"],[\"BBF Unloading Entry\",\"creation\",\"Timespan\",\"today\"]]",
+   "function": "Count",
+   "label": "Completed Unloading Today",
+   "number_card_name": "Completed Unloading Today",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "restrict_to_domain": "",
+ "roles": [
+  {"role": "Stores User"},
+  {"role": "System Manager"}
+ ],
+ "sequence_id": 4,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "New",
+   "label": "New Unloading Entry",
+   "link_to": "BBF Unloading Entry",
+   "shortcut_name": "New Unloading Entry",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Active Unloading",
+   "link_to": "BBF Unloading Entry",
+   "shortcut_name": "Active Unloading",
+   "stats_filter": "[[\"BBF Unloading Entry\",\"status\",\"=\",\"Unloading\"]]",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Completed Unloading",
+   "link_to": "BBF Unloading Entry",
+   "shortcut_name": "Completed Unloading",
+   "stats_filter": "[[\"BBF Unloading Entry\",\"status\",\"=\",\"Completed\"]]",
+   "type": "DocType"
+  }
+ ],
+ "title": "Stores and Unloading"
+}

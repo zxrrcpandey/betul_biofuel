@@ -1,0 +1,224 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"sec_numbers\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Plant Overview</b></span>\",\"col\":12}},{\"id\":\"card_inside\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Vehicles Inside - Mgmt\",\"col\":3}},{\"id\":\"card_today_mgmt\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Today - Mgmt\",\"col\":3}},{\"id\":\"card_sla\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"SLA Breaches\",\"col\":3}},{\"id\":\"card_exited\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Exited Today\",\"col\":3}},{\"id\":\"sec_shortcuts\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Access</b></span>\",\"col\":12}},{\"id\":\"shortcut_live\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Tracker\",\"col\":4}},{\"id\":\"shortcut_turnaround\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Turnaround Report\",\"col\":4}},{\"id\":\"shortcut_settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"BBF Settings\",\"col\":4}}]",
+ "creation": "2026-03-07 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "dashboard",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Management Dashboard",
+ "links": [
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "All DocTypes",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Token",
+   "link_count": 0,
+   "link_to": "BBF Token",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Gate Entry",
+   "link_count": 0,
+   "link_to": "BBF Gate Entry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Weighbridge Log",
+   "link_count": 0,
+   "link_to": "BBF Weighbridge Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Unloading Entry",
+   "link_count": 0,
+   "link_to": "BBF Unloading Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Master Data",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Transport Master",
+   "link_count": 0,
+   "link_to": "BBF Transport Master",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Vehicle Master",
+   "link_count": 0,
+   "link_to": "BBF Vehicle Master",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Settings",
+   "link_count": 0,
+   "link_to": "BBF Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 0,
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "BBF Live Vehicle Tracker",
+   "link_count": 0,
+   "link_to": "BBF Live Vehicle Tracker",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "BBF Vehicle Turnaround Report",
+   "link_count": 0,
+   "link_to": "BBF Vehicle Turnaround Report",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-03-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "Management Dashboard",
+ "number_cards": [
+  {
+   "color": "Blue",
+   "document_type": "BBF Token",
+   "filters_json": "[[\"BBF Token\",\"status\",\"!=\",\"Exited\"]]",
+   "function": "Count",
+   "label": "Vehicles Inside - Mgmt",
+   "number_card_name": "Vehicles Inside - Mgmt",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  },
+  {
+   "color": "Grey",
+   "document_type": "BBF Token",
+   "filters_json": "[[\"BBF Token\",\"entry_date\",\"=\",\"Today\"]]",
+   "function": "Count",
+   "label": "Total Today - Mgmt",
+   "number_card_name": "Total Today - Mgmt",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  },
+  {
+   "color": "Red",
+   "document_type": "BBF Token",
+   "filters_json": "[[\"BBF Token\",\"status\",\"not in\",[\"Exited\",\"Token Generated\"]],[\"BBF Token\",\"modified\",\"Timespan\",\"last 30 minutes\"]]",
+   "function": "Count",
+   "label": "SLA Breaches",
+   "number_card_name": "SLA Breaches",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  },
+  {
+   "color": "Green",
+   "document_type": "BBF Token",
+   "filters_json": "[[\"BBF Token\",\"status\",\"=\",\"Exited\"],[\"BBF Token\",\"entry_date\",\"=\",\"Today\"]]",
+   "function": "Count",
+   "label": "Exited Today",
+   "number_card_name": "Exited Today",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "restrict_to_domain": "",
+ "roles": [
+  {"role": "CTO"},
+  {"role": "System Manager"}
+ ],
+ "sequence_id": 5,
+ "shortcuts": [
+  {
+   "color": "Red",
+   "label": "Live Tracker",
+   "link_to": "BBF Live Vehicle Tracker",
+   "shortcut_name": "Live Tracker",
+   "type": "Report"
+  },
+  {
+   "color": "Blue",
+   "label": "Turnaround Report",
+   "link_to": "BBF Vehicle Turnaround Report",
+   "shortcut_name": "Turnaround Report",
+   "type": "Report"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "",
+   "label": "BBF Settings",
+   "link_to": "BBF Settings",
+   "shortcut_name": "BBF Settings",
+   "type": "DocType"
+  }
+ ],
+ "title": "Management Dashboard"
+}

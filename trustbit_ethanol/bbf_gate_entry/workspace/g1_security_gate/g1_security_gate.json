@@ -1,0 +1,110 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"sec_shortcuts\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Actions</b></span>\",\"col\":12}},{\"id\":\"shortcut_new_token\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Token\",\"col\":4}},{\"id\":\"shortcut_today_tokens\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Today's Tokens\",\"col\":4}},{\"id\":\"shortcut_pending_exit\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Pending Exit\",\"col\":4}},{\"id\":\"sec_numbers\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Overview</b></span>\",\"col\":12}},{\"id\":\"card_vehicles_inside\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Vehicles Inside Plant\",\"col\":4}},{\"id\":\"card_vehicles_today\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Vehicles Today\",\"col\":4}},{\"id\":\"card_pending_exit\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Pending Exit\",\"col\":4}}]",
+ "creation": "2026-03-07 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "security",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "G1 Security Gate",
+ "links": [
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Token Management",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "BBF Token",
+   "link_count": 0,
+   "link_to": "BBF Token",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-03-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "G1 Security Gate",
+ "number_cards": [
+  {
+   "color": "Blue",
+   "document_type": "BBF Token",
+   "filters_json": "[[\"BBF Token\",\"status\",\"!=\",\"Exited\"]]",
+   "function": "Count",
+   "label": "Vehicles Inside Plant",
+   "number_card_name": "Vehicles Inside Plant",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  },
+  {
+   "color": "Green",
+   "document_type": "BBF Token",
+   "filters_json": "[[\"BBF Token\",\"entry_date\",\"=\",\"Today\"]]",
+   "function": "Count",
+   "label": "Vehicles Today",
+   "number_card_name": "Vehicles Today",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  },
+  {
+   "color": "Orange",
+   "document_type": "BBF Token",
+   "filters_json": "[[\"BBF Token\",\"status\",\"in\",[\"GRN Created\",\"Quality Done\",\"Tare Weighed\"]]]",
+   "function": "Count",
+   "label": "Pending Exit",
+   "number_card_name": "Pending Exit",
+   "show_percentage_stats": 0,
+   "stats_time_interval": "Daily"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "restrict_to_domain": "",
+ "roles": [
+  {"role": "G1 Security"},
+  {"role": "System Manager"}
+ ],
+ "sequence_id": 1,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "New",
+   "label": "New Token",
+   "link_to": "BBF Token",
+   "shortcut_name": "New Token",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Today's Tokens",
+   "link_to": "BBF Token",
+   "shortcut_name": "Today's Tokens",
+   "stats_filter": "[[\"BBF Token\",\"entry_date\",\"=\",\"Today\"]]",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Pending Exit",
+   "link_to": "BBF Token",
+   "shortcut_name": "Pending Exit",
+   "stats_filter": "[[\"BBF Token\",\"status\",\"in\",[\"GRN Created\",\"Quality Done\",\"Tare Weighed\"]]]",
+   "type": "DocType"
+  }
+ ],
+ "title": "G1 Security Gate"
+}
