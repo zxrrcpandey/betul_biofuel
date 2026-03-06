@@ -1,0 +1,314 @@
+{
+ "actions": [],
+ "autoname": "field:token_number",
+ "creation": "2026-03-07 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "token_number",
+  "barcode",
+  "status",
+  "column_break_main",
+  "entry_date",
+  "entry_time",
+  "purpose",
+  "vehicle_section",
+  "vehicle_number",
+  "vehicle_type",
+  "column_break_vehicle",
+  "driver_name",
+  "driver_mobile",
+  "timestamps_section",
+  "g1_entry_time",
+  "g2_link_time",
+  "wb_gross_time",
+  "unload_start_time",
+  "unload_end_time",
+  "column_break_ts",
+  "wb_tare_time",
+  "quality_time",
+  "grn_time",
+  "g1_exit_time",
+  "turnaround_section",
+  "g1_to_g2_minutes",
+  "g2_to_wb_minutes",
+  "wb_to_unload_minutes",
+  "unloading_duration_minutes",
+  "column_break_ta",
+  "unload_to_tare_minutes",
+  "tare_to_quality_minutes",
+  "quality_to_grn_minutes",
+  "total_turnaround_minutes",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "token_number",
+   "fieldtype": "Data",
+   "label": "Token Number",
+   "read_only": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "barcode",
+   "fieldtype": "Barcode",
+   "label": "Barcode",
+   "options": "token_number"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Token Generated\nPO Linked\nGross Weighed\nUnloading\nTare Weighed\nQuality Done\nGRN Created\nExited",
+   "default": "Token Generated",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "entry_date",
+   "fieldtype": "Date",
+   "label": "Entry Date",
+   "default": "Today",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "entry_time",
+   "fieldtype": "Time",
+   "label": "Entry Time",
+   "default": "Now",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Select",
+   "label": "Purpose",
+   "options": "\nRaw Material\nNon-Raw Material\nVisitor\nService\nOther",
+   "reqd": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "vehicle_section",
+   "fieldtype": "Section Break",
+   "label": "Vehicle Details",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "vehicle_number",
+   "fieldtype": "Data",
+   "label": "Vehicle Number",
+   "reqd": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "vehicle_type",
+   "fieldtype": "Select",
+   "label": "Vehicle Type",
+   "options": "\nTruck\nFour Wheeler\nTwo Wheeler\nThree Wheeler\nTanker\nOther",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_vehicle",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Driver Name",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "driver_mobile",
+   "fieldtype": "Data",
+   "label": "Driver Mobile",
+   "options": "Phone",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "timestamps_section",
+   "fieldtype": "Section Break",
+   "label": "Turnaround Timestamps"
+  },
+  {
+   "fieldname": "g1_entry_time",
+   "fieldtype": "Datetime",
+   "label": "G1 Entry Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "g2_link_time",
+   "fieldtype": "Datetime",
+   "label": "G2 Link Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wb_gross_time",
+   "fieldtype": "Datetime",
+   "label": "Weighbridge Gross Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unload_start_time",
+   "fieldtype": "Datetime",
+   "label": "Unloading Start Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unload_end_time",
+   "fieldtype": "Datetime",
+   "label": "Unloading End Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "wb_tare_time",
+   "fieldtype": "Datetime",
+   "label": "Weighbridge Tare Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "quality_time",
+   "fieldtype": "Datetime",
+   "label": "Quality Inspection Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "grn_time",
+   "fieldtype": "Datetime",
+   "label": "GRN Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "g1_exit_time",
+   "fieldtype": "Datetime",
+   "label": "G1 Exit Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "turnaround_section",
+   "fieldtype": "Section Break",
+   "label": "Turnaround Summary"
+  },
+  {
+   "fieldname": "g1_to_g2_minutes",
+   "fieldtype": "Float",
+   "label": "G1 to G2 (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "g2_to_wb_minutes",
+   "fieldtype": "Float",
+   "label": "G2 to Weighbridge (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "wb_to_unload_minutes",
+   "fieldtype": "Float",
+   "label": "Weighbridge to Unloading (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "unloading_duration_minutes",
+   "fieldtype": "Float",
+   "label": "Unloading Duration (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "column_break_ta",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "unload_to_tare_minutes",
+   "fieldtype": "Float",
+   "label": "Unloading to Tare (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "tare_to_quality_minutes",
+   "fieldtype": "Float",
+   "label": "Tare to Quality (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "quality_to_grn_minutes",
+   "fieldtype": "Float",
+   "label": "Quality to GRN (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "total_turnaround_minutes",
+   "fieldtype": "Float",
+   "label": "Total Turnaround (min)",
+   "read_only": 1,
+   "precision": "1",
+   "bold": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "BBF Token",
+   "read_only": 1,
+   "no_copy": 1,
+   "hidden": 1
+  }
+ ],
+ "links": [
+  {
+   "link_doctype": "BBF Gate Entry",
+   "link_fieldname": "token_number"
+  },
+  {
+   "link_doctype": "BBF Weighbridge Log",
+   "link_fieldname": "token_number"
+  },
+  {
+   "link_doctype": "BBF Unloading Entry",
+   "link_fieldname": "token_number"
+  }
+ ],
+ "modified": "2026-03-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "BBF Token",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "System Manager",
+   "permlevel": 1
+  }
+ ],
+ "search_fields": "token_number, status, entry_date",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "token_number",
+ "track_changes": 1
+}

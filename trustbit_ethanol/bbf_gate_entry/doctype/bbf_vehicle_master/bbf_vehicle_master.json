@@ -1,0 +1,121 @@
+{
+ "actions": [],
+ "autoname": "field:vehicle_number",
+ "creation": "2026-03-07 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "vehicle_number",
+  "vehicle_type",
+  "column_break_1",
+  "transporter",
+  "owner_name",
+  "capacity_section",
+  "capacity_kg",
+  "trip_log_section",
+  "total_trips",
+  "avg_turnaround_minutes",
+  "column_break_2",
+  "last_visit_date"
+ ],
+ "fields": [
+  {
+   "fieldname": "vehicle_number",
+   "fieldtype": "Data",
+   "label": "Vehicle Number",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "vehicle_type",
+   "fieldtype": "Select",
+   "label": "Vehicle Type",
+   "options": "\nTruck\nFour Wheeler\nTwo Wheeler\nThree Wheeler\nTanker\nOther",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "transporter",
+   "fieldtype": "Link",
+   "label": "Transporter",
+   "options": "BBF Transport Master"
+  },
+  {
+   "fieldname": "owner_name",
+   "fieldtype": "Data",
+   "label": "Owner Name"
+  },
+  {
+   "fieldname": "capacity_section",
+   "fieldtype": "Section Break",
+   "label": "Capacity"
+  },
+  {
+   "fieldname": "capacity_kg",
+   "fieldtype": "Float",
+   "label": "Capacity (KG)"
+  },
+  {
+   "fieldname": "trip_log_section",
+   "fieldtype": "Section Break",
+   "label": "Trip Log"
+  },
+  {
+   "fieldname": "total_trips",
+   "fieldtype": "Int",
+   "label": "Total Trips",
+   "read_only": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "avg_turnaround_minutes",
+   "fieldtype": "Float",
+   "label": "Avg Turnaround (Minutes)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_visit_date",
+   "fieldtype": "Date",
+   "label": "Last Visit Date",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-03-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "BBF Vehicle Master",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  }
+ ],
+ "search_fields": "vehicle_number, vehicle_type",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "title_field": "vehicle_number",
+ "track_changes": 1
+}

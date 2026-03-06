@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "creation": "2026-03-07 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "sla_section",
+  "sla_threshold_minutes",
+  "escalation_email",
+  "token_section",
+  "token_suffix_digits",
+  "default_shift_start",
+  "default_shift_end"
+ ],
+ "fields": [
+  {
+   "fieldname": "sla_section",
+   "fieldtype": "Section Break",
+   "label": "SLA Configuration"
+  },
+  {
+   "fieldname": "sla_threshold_minutes",
+   "fieldtype": "Int",
+   "label": "SLA Threshold (Minutes)",
+   "default": "30",
+   "description": "Alert will be sent if a token is stuck at any stage for more than this many minutes"
+  },
+  {
+   "fieldname": "escalation_email",
+   "fieldtype": "Data",
+   "label": "Escalation Email",
+   "options": "Email",
+   "description": "Email address to send SLA breach alerts to (CTO/Plant Head)"
+  },
+  {
+   "fieldname": "token_section",
+   "fieldtype": "Section Break",
+   "label": "Token Configuration"
+  },
+  {
+   "fieldname": "token_suffix_digits",
+   "fieldtype": "Int",
+   "label": "Token Suffix Digits",
+   "default": "4",
+   "description": "Number of random digits in token suffix (4 = 1000-9999, 5 = 10000-99999)"
+  },
+  {
+   "fieldname": "default_shift_start",
+   "fieldtype": "Time",
+   "label": "Default Shift Start",
+   "default": "08:00:00"
+  },
+  {
+   "fieldname": "default_shift_end",
+   "fieldtype": "Time",
+   "label": "Default Shift End",
+   "default": "20:00:00"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-03-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "BBF Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}
