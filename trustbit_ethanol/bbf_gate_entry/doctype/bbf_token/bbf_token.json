@@ -27,17 +27,19 @@
   "column_break_ts",
   "wb_tare_time",
   "quality_time",
+  "grading_time",
   "grn_time",
   "g1_exit_time",
   "turnaround_section",
   "g1_to_g2_minutes",
   "g2_to_wb_minutes",
-  "wb_to_unload_minutes",
+  "wb_to_quality_minutes",
+  "quality_to_grading_minutes",
+  "grading_to_unload_minutes",
   "unloading_duration_minutes",
   "column_break_ta",
   "unload_to_tare_minutes",
-  "tare_to_quality_minutes",
-  "quality_to_grn_minutes",
+  "tare_to_grn_minutes",
   "total_turnaround_minutes",
   "amended_from"
  ],
@@ -62,7 +64,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Token Generated\nPO Linked\nGross Weighed\nUnloading\nTare Weighed\nQuality Done\nGRN Created\nExited",
+   "options": "Token Generated\nPO Linked\nGross Weighed\nQuality Done\nGraded\nUnloading\nTare Weighed\nGRN Created\nExited",
    "default": "Token Generated",
    "in_list_view": 1,
    "in_standard_filter": 1,
@@ -187,6 +189,12 @@
    "read_only": 1
   },
   {
+   "fieldname": "grading_time",
+   "fieldtype": "Datetime",
+   "label": "Grading/Deduction Time",
+   "read_only": 1
+  },
+  {
    "fieldname": "grn_time",
    "fieldtype": "Datetime",
    "label": "GRN Time",
@@ -218,9 +226,23 @@
    "precision": "1"
   },
   {
-   "fieldname": "wb_to_unload_minutes",
+   "fieldname": "wb_to_quality_minutes",
    "fieldtype": "Float",
-   "label": "Weighbridge to Unloading (min)",
+   "label": "Weighbridge to Quality (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "quality_to_grading_minutes",
+   "fieldtype": "Float",
+   "label": "Quality to Grading (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "grading_to_unload_minutes",
+   "fieldtype": "Float",
+   "label": "Grading to Unloading (min)",
    "read_only": 1,
    "precision": "1"
   },
@@ -243,16 +265,9 @@
    "precision": "1"
   },
   {
-   "fieldname": "tare_to_quality_minutes",
+   "fieldname": "tare_to_grn_minutes",
    "fieldtype": "Float",
-   "label": "Tare to Quality (min)",
-   "read_only": 1,
-   "precision": "1"
-  },
-  {
-   "fieldname": "quality_to_grn_minutes",
-   "fieldtype": "Float",
-   "label": "Quality to GRN (min)",
+   "label": "Tare to GRN (min)",
    "read_only": 1,
    "precision": "1"
   },
@@ -285,6 +300,14 @@
   },
   {
    "link_doctype": "BBF Unloading Entry",
+   "link_fieldname": "token_number"
+  },
+  {
+   "link_doctype": "BBF Quality Inspection",
+   "link_fieldname": "token_number"
+  },
+  {
+   "link_doctype": "BBF Deduction Sheet",
    "link_fieldname": "token_number"
   }
  ],

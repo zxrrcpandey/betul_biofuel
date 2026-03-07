@@ -59,6 +59,30 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Quality & Deductions",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "BBF Quality Inspection",
+   "link_to": "BBF Quality Inspection",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "BBF Deduction Sheet",
+   "link_to": "BBF Deduction Sheet",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Master Data",
    "link_type": "DocType",
    "onboard": 0,

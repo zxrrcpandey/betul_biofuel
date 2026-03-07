@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "creation": "2026-03-08 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "deduction_type",
+  "description",
+  "base_value",
+  "rate",
+  "rate_type",
+  "calculated_amount",
+  "actual_amount",
+  "is_overridden",
+  "override_reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "deduction_type",
+   "fieldtype": "Data",
+   "label": "Deduction Type",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "label": "Description",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "base_value",
+   "fieldtype": "Float",
+   "label": "Base Value",
+   "precision": "2",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Float",
+   "label": "Rate",
+   "precision": "4",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "rate_type",
+   "fieldtype": "Select",
+   "label": "Rate Type",
+   "options": "\nPercentage\nPer Bag\nPer MT\nPer Qtl\nFixed",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "calculated_amount",
+   "fieldtype": "Currency",
+   "label": "Calculated Amt",
+   "read_only": 1,
+   "precision": "2",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "actual_amount",
+   "fieldtype": "Currency",
+   "label": "Actual Amt",
+   "precision": "2",
+   "in_list_view": 1,
+   "columns": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "is_overridden",
+   "fieldtype": "Check",
+   "label": "Overridden",
+   "read_only": 1
+  },
+  {
+   "fieldname": "override_reason",
+   "fieldtype": "Data",
+   "label": "Override Reason",
+   "depends_on": "eval:doc.is_overridden",
+   "mandatory_depends_on": "eval:doc.is_overridden"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-03-08 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "BBF Deduction Line",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

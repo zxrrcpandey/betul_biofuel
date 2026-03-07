@@ -34,11 +34,12 @@ class BBFToken(Document):
 	def calculate_turnaround(self):
 		self.g1_to_g2_minutes = self._diff_minutes(self.g1_entry_time, self.g2_link_time)
 		self.g2_to_wb_minutes = self._diff_minutes(self.g2_link_time, self.wb_gross_time)
-		self.wb_to_unload_minutes = self._diff_minutes(self.wb_gross_time, self.unload_start_time)
+		self.wb_to_quality_minutes = self._diff_minutes(self.wb_gross_time, self.quality_time)
+		self.quality_to_grading_minutes = self._diff_minutes(self.quality_time, self.grading_time)
+		self.grading_to_unload_minutes = self._diff_minutes(self.grading_time, self.unload_start_time)
 		self.unloading_duration_minutes = self._diff_minutes(self.unload_start_time, self.unload_end_time)
 		self.unload_to_tare_minutes = self._diff_minutes(self.unload_end_time, self.wb_tare_time)
-		self.tare_to_quality_minutes = self._diff_minutes(self.wb_tare_time, self.quality_time)
-		self.quality_to_grn_minutes = self._diff_minutes(self.quality_time, self.grn_time)
+		self.tare_to_grn_minutes = self._diff_minutes(self.wb_tare_time, self.grn_time)
 		self.total_turnaround_minutes = self._diff_minutes(self.g1_entry_time, self.g1_exit_time)
 
 	@staticmethod
