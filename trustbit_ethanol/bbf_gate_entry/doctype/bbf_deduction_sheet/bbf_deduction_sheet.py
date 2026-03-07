@@ -186,8 +186,9 @@ class BBFDeductionSheet(Document):
 		self.status = "Approved"
 		self.save(ignore_permissions=True)
 
-		# Update token status
+		# Update token status and grading timestamp
 		token = frappe.get_doc("BBF Token", self.token_number)
+		token.grading_time = now_datetime()
 		token.status = "Graded"
 		token.save(ignore_permissions=True)
 
