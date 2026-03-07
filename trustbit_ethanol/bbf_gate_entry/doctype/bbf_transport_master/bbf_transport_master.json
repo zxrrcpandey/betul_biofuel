@@ -24,6 +24,8 @@
   "accounting_section",
   "supplier_link",
   "default_payment_terms",
+  "vehicles_section",
+  "vehicles",
   "performance_section",
   "total_trips",
   "avg_turnaround_minutes",
@@ -136,6 +138,17 @@
    "fieldtype": "Link",
    "label": "Default Payment Terms",
    "options": "Payment Terms Template"
+  },
+  {
+   "fieldname": "vehicles_section",
+   "fieldtype": "Section Break",
+   "label": "Vehicles"
+  },
+  {
+   "fieldname": "vehicles",
+   "fieldtype": "Table",
+   "label": "Vehicles",
+   "options": "BBF Transporter Vehicle"
   },
   {
    "fieldname": "performance_section",

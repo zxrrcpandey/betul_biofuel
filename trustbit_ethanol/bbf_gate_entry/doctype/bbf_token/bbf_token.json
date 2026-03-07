@@ -55,7 +55,8 @@
    "fieldname": "barcode",
    "fieldtype": "Barcode",
    "label": "Barcode",
-   "options": "token_number"
+   "options": "token_number",
+   "read_only": 1
   },
   {
    "fieldname": "status",
@@ -103,17 +104,19 @@
   },
   {
    "fieldname": "vehicle_number",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "label": "Vehicle Number",
+   "options": "BBF Vehicle Master",
    "reqd": 1,
    "permlevel": 1
   },
   {
    "fieldname": "vehicle_type",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "label": "Vehicle Type",
-   "options": "\nTruck\nFour Wheeler\nTwo Wheeler\nThree Wheeler\nTanker\nOther",
-   "reqd": 1
+   "fetch_from": "vehicle_number.vehicle_type",
+   "read_only": 1,
+   "permlevel": 1
   },
   {
    "fieldname": "column_break_vehicle",
@@ -303,6 +306,50 @@
    "read": 1,
    "write": 1,
    "role": "System Manager",
+   "permlevel": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "G1 Security",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "G1 Security",
+   "permlevel": 1
+  },
+  {
+   "read": 1,
+   "role": "G2 Gate Operator",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "role": "Weighbridge Operator",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "role": "Stores User",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "CTO",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "role": "CTO",
    "permlevel": 1
   }
  ],

@@ -231,6 +231,36 @@
    "write": 1,
    "role": "System Manager",
    "permlevel": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "submit": 1,
+   "role": "G2 Gate Operator",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "role": "G1 Security"
+  },
+  {
+   "read": 1,
+   "role": "Weighbridge Operator"
+  },
+  {
+   "read": 1,
+   "role": "Stores User"
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "CTO",
+   "permlevel": 0
   }
  ],
  "is_submittable": 1,

@@ -59,7 +59,6 @@
    "doc_view": "List",
    "label": "Todays Tokens",
    "link_to": "BBF Token",
-   "stats_filter": "[[\"BBF Token\",\"entry_date\",\"=\",\"Today\"]]",
    "type": "DocType"
   },
   {

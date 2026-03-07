@@ -11,7 +11,6 @@ class BBFToken(Document):
 		self.entry_date = getdate()
 		self.entry_time = nowtime()
 		self.status = "Token Generated"
-		self._auto_create_vehicle_master()
 
 	def generate_token_number(self):
 		date_part = getdate().strftime("%y%m%d")
@@ -28,15 +27,6 @@ class BBFToken(Document):
 				return
 
 		frappe.throw("Could not generate unique token number. Please try again.")
-
-	def _auto_create_vehicle_master(self):
-		if self.vehicle_number and not frappe.db.exists("BBF Vehicle Master", self.vehicle_number):
-			vehicle = frappe.get_doc({
-				"doctype": "BBF Vehicle Master",
-				"vehicle_number": self.vehicle_number,
-				"vehicle_type": self.vehicle_type
-			})
-			vehicle.insert(ignore_permissions=True)
 
 	def validate(self):
 		self.calculate_turnaround()

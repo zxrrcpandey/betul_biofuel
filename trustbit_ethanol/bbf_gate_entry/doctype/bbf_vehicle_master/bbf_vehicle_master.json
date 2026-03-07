@@ -97,6 +97,7 @@
  "name": "BBF Vehicle Master",
  "naming_rule": "By fieldname",
  "owner": "Administrator",
+ "quick_entry": 1,
  "permissions": [
   {
    "create": 1,
@@ -111,6 +112,12 @@
    "read": 1,
    "write": 1,
    "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "G1 Security"
   }
  ],
  "search_fields": "vehicle_number, vehicle_type",

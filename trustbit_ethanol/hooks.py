@@ -14,6 +14,11 @@ app_license = "mit"
 # app_include_css = "/assets/trustbit_ethanol/css/trustbit_ethanol.css"
 # app_include_js = "/assets/trustbit_ethanol/js/trustbit_ethanol.js"
 
+# Module-workspace mapping for correct breadcrumbs
+module_app_map = {
+	"BBF Gate Entry": "trustbit_ethanol"
+}
+
 # Fixtures for roles
 fixtures = [
 	{

@@ -136,6 +136,24 @@
    "read": 1,
    "write": 1,
    "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Stores User"
+  },
+  {
+   "read": 1,
+   "role": "Weighbridge Operator"
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "read": 1,
+   "role": "CTO"
   }
  ],
  "search_fields": "token_number, status",
