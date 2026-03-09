@@ -702,95 +702,151 @@
 .bbf-variant-grid {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
-	margin-bottom: 16px;
+	gap: 16px;
+	margin-bottom: 20px;
 }
 
 .bbf-variant-row-card {
 	border: 1.5px solid var(--border-color, #e2e8f0);
-	border-radius: 10px;
+	border-radius: 12px;
 	overflow: hidden;
-	transition: border-color 0.2s ease;
+	transition: all 0.25s ease;
+	background: var(--card-bg, #fff);
+	box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .bbf-variant-row-card:hover {
-	border-color: #a0aec0;
+	border-color: #90cdf4;
+	box-shadow: 0 2px 8px rgba(49,130,206,0.08);
 }
 
 .bbf-variant-row-header {
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding: 10px 16px;
-	background: var(--subtle-fg, #f7fafc);
+	padding: 12px 18px;
+	background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
 	border-bottom: 1px solid var(--border-color, #e2e8f0);
 }
 
 .bbf-variant-row-num {
-	font-size: 12px;
-	font-weight: 700;
-	color: var(--text-muted, #a0aec0);
-	min-width: 24px;
+	font-size: 13px;
+	font-weight: 800;
+	color: #4a5568;
+	background: #fff;
+	border: 1.5px solid #e2e8f0;
+	border-radius: 50%;
+	width: 28px;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
 }
 
 .bbf-variant-row-code-badge {
-	font-size: 14px;
+	font-size: 13px;
 	font-weight: 700;
 	font-family: "SF Mono", "Fira Code", "Consolas", monospace;
 	color: #22543d;
 	background: #f0fff4;
-	border: 1px solid #9ae6b4;
+	border: 1.5px solid #9ae6b4;
 	border-radius: 6px;
-	padding: 2px 10px;
-	letter-spacing: 0.5px;
+	padding: 4px 12px;
+	letter-spacing: 1px;
+	min-width: 48px;
+	text-align: center;
 }
 
 .bbf-variant-row-remove {
 	margin-left: auto;
 	background: none;
-	border: none;
+	border: 1.5px solid transparent;
 	color: var(--text-muted, #a0aec0);
 	cursor: pointer;
-	padding: 4px;
-	border-radius: 4px;
+	padding: 6px;
+	border-radius: 6px;
 	transition: all 0.2s;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .bbf-variant-row-remove:hover {
 	color: #e53e3e;
 	background: #fff5f5;
+	border-color: #feb2b2;
 }
 
 .bbf-variant-row-body {
-	padding: 14px 16px;
+	padding: 18px 18px 16px;
 }
 
-.bbf-vrow-fields-top {
-	display: flex;
-	gap: 12px;
-	margin-bottom: 10px;
+.bbf-vrow-fields-grid {
+	display: grid;
+	grid-template-columns: 1.8fr 1fr 1fr 1fr;
+	gap: 14px;
+	align-items: start;
 }
 
-.bbf-vrow-field {
-	flex: 1;
-}
+.bbf-vrow-field {}
 
-.bbf-vrow-field.bbf-vrow-link {
-	flex: 1.5;
+.bbf-vrow-field .bbf-label-sm {
+	margin-bottom: 5px;
 }
 
 .bbf-label-sm {
 	display: block;
-	font-size: 10px;
-	font-weight: 600;
-	color: var(--text-muted, #a0aec0);
-	margin-bottom: 4px;
+	font-size: 10.5px;
+	font-weight: 700;
+	color: var(--text-muted, #718096);
+	margin-bottom: 5px;
 	text-transform: uppercase;
-	letter-spacing: 0.3px;
+	letter-spacing: 0.5px;
 }
 
 .bbf-vrow-desc {
-	margin-top: 4px;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--border-color, #edf2f7);
+}
+
+.bbf-vrow-desc .bbf-label-sm {
+	margin-bottom: 6px;
+}
+
+/* Compact inputs inside variant rows */
+.bbf-variant-row-card .frappe-control {
+	margin-bottom: 0 !important;
+}
+.bbf-variant-row-card .frappe-control .form-group {
+	margin-bottom: 0 !important;
+}
+.bbf-variant-row-card .frappe-control .control-label {
+	display: none !important;
+}
+.bbf-variant-row-card .frappe-control input[type="text"],
+.bbf-variant-row-card .frappe-control .link-field .input-with-feedback,
+.bbf-variant-row-card .frappe-control select {
+	border-radius: 8px !important;
+	border: 1.5px solid var(--border-color, #e2e8f0) !important;
+	padding: 8px 10px !important;
+	font-size: 13px !important;
+	height: auto !important;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+.bbf-variant-row-card .frappe-control input:focus,
+.bbf-variant-row-card .frappe-control .link-field .input-with-feedback:focus {
+	border-color: #3182ce !important;
+	box-shadow: 0 0 0 3px rgba(49,130,206,0.1) !important;
+}
+.bbf-variant-row-card .frappe-control textarea {
+	border-radius: 8px !important;
+	border: 1.5px solid var(--border-color, #e2e8f0) !important;
+	padding: 8px 10px !important;
+	font-size: 13px !important;
+	min-height: 48px;
+	resize: vertical;
 }
 
 /* Add Variant Button */
@@ -800,21 +856,23 @@
 	justify-content: center;
 	gap: 8px;
 	width: 100%;
-	padding: 12px;
-	border: 2px dashed var(--border-color, #cbd5e0);
-	border-radius: 10px;
+	padding: 14px;
+	border: 2px dashed #cbd5e0;
+	border-radius: 12px;
 	background: transparent;
 	color: var(--text-muted, #718096);
 	font-size: 14px;
 	font-weight: 600;
 	cursor: pointer;
-	transition: all 0.2s ease;
+	transition: all 0.25s ease;
 }
 
 .bbf-btn-add-variant:hover {
 	border-color: #3182ce;
 	color: #3182ce;
 	background: #ebf8ff;
+	transform: translateY(-1px);
+	box-shadow: 0 2px 8px rgba(49,130,206,0.1);
 }
 
 /* ── Info Box ── */
@@ -941,9 +999,9 @@
 	.bbf-step-line {
 		display: none;
 	}
-	.bbf-vrow-fields-top {
-		flex-direction: column;
-		gap: 8px;
+	.bbf-vrow-fields-grid {
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
 	}
 	.bbf-review-variants-table th:nth-child(n+3),
 	.bbf-review-variants-table td:nth-child(n+3) {

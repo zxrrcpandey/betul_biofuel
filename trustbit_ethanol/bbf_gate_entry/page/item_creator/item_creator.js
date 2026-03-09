@@ -318,27 +318,31 @@ class BBFItemCreator {
 		this.variant_rows.push(row);
 
 		const is_brand = this.state.variant_source === "Brand";
+		const link_label = is_brand ? "Brand" : "Custom Variant";
 		const $row = $(`
 			<div class="bbf-variant-row-card" data-row-id="${idx}">
 				<div class="bbf-variant-row-header">
-					<span class="bbf-variant-row-num">#${this.variant_rows.length}</span>
+					<span class="bbf-variant-row-num">${this.variant_rows.length}</span>
 					<span class="bbf-variant-row-code-badge" id="bbf-vrow-code-${idx}">---</span>
 					<button class="bbf-variant-row-remove" data-row-id="${idx}" title="Remove variant">
 						<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
 					</button>
 				</div>
 				<div class="bbf-variant-row-body">
-					<div class="bbf-vrow-fields-top">
-						<div class="bbf-vrow-field bbf-vrow-link" id="bbf-vrow-link-${idx}"></div>
-						<div class="bbf-vrow-field bbf-vrow-val">
+					<div class="bbf-vrow-fields-grid">
+						<div class="bbf-vrow-field">
+							<label class="bbf-label-sm">${link_label} <span style="color:#e53e3e">*</span></label>
+							<div id="bbf-vrow-link-${idx}"></div>
+						</div>
+						<div class="bbf-vrow-field">
 							<label class="bbf-label-sm">Valuation Rate</label>
 							<div id="bbf-vrow-valuation-${idx}"></div>
 						</div>
-						<div class="bbf-vrow-field bbf-vrow-sell">
+						<div class="bbf-vrow-field">
 							<label class="bbf-label-sm">Selling Rate</label>
 							<div id="bbf-vrow-selling-${idx}"></div>
 						</div>
-						<div class="bbf-vrow-field bbf-vrow-qty">
+						<div class="bbf-vrow-field">
 							<label class="bbf-label-sm">Opening Stock</label>
 							<div id="bbf-vrow-stock-${idx}"></div>
 						</div>
@@ -469,7 +473,7 @@ class BBFItemCreator {
 
 	_renumber_variant_rows() {
 		this.$page.find(".bbf-variant-row-card").each(function (i) {
-			$(this).find(".bbf-variant-row-num").text(`#${i + 1}`);
+			$(this).find(".bbf-variant-row-num").text(i + 1);
 		});
 	}
 
