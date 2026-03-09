@@ -38,6 +38,7 @@ class BBFItemCreator {
 			variant_code: "",
 			item_name: "",
 			stock_uom: "Kg",
+			gst_hsn_code: "",
 			description: "",
 		};
 
@@ -161,6 +162,16 @@ class BBFItemCreator {
 		this.uom_field.set_value("Kg");
 		on_link_value(this.uom_field, (val) => {
 			me.state.stock_uom = val || "Kg";
+		});
+
+		// HSN/SAC Code
+		this.hsn_field = frappe.ui.form.make_control({
+			df: { fieldtype: "Link", options: "GST HSN Code", placeholder: "Search HSN/SAC code..." },
+			parent: this.$page.find("#bbf-hsn-field"),
+			render_input: true,
+		});
+		on_link_value(this.hsn_field, (val) => {
+			me.state.gst_hsn_code = val;
 		});
 
 		// Description
@@ -499,6 +510,10 @@ class BBFItemCreator {
 				frappe.show_alert({ message: "Please select Stock UOM", indicator: "orange" });
 				return false;
 			}
+			if (!this.state.gst_hsn_code) {
+				frappe.show_alert({ message: "Please select HSN/SAC Code (required for GST)", indicator: "orange" });
+				return false;
+			}
 		}
 
 		return true;
@@ -519,6 +534,7 @@ class BBFItemCreator {
 		this.$page.find("#bbf-review-serial").text(s.serial_number || "Auto-assigned");
 		this.$page.find("#bbf-review-name").text(s.item_name || full_code);
 		this.$page.find("#bbf-review-uom").text(s.stock_uom);
+		this.$page.find("#bbf-review-hsn").text(s.gst_hsn_code || "-");
 
 		if (s.has_variant) {
 			const variant_label = s.variant_source === "Brand"
@@ -546,6 +562,7 @@ class BBFItemCreator {
 		s.item_group = me.category_field.get_value() || s.item_group;
 		s.stock_uom = me.uom_field.get_value() || s.stock_uom || "Kg";
 		s.item_name = me.item_name_field.get_value() || s.item_name;
+		s.gst_hsn_code = me.hsn_field.get_value() || s.gst_hsn_code;
 		s.description = me.desc_field.get_value() || s.description;
 		if (s.has_variant) {
 			if (s.variant_source === "Brand") {
@@ -582,6 +599,7 @@ class BBFItemCreator {
 					variant_code: s.variant_code,
 					item_name: s.item_name,
 					stock_uom: s.stock_uom,
+					gst_hsn_code: s.gst_hsn_code,
 					description: s.description,
 				},
 			},
@@ -654,7 +672,7 @@ class BBFItemCreator {
 			serial_number: "",
 			has_variant: false, variant_source: "Brand",
 			brand: "", brand_code: "", variant: "", variant_code: "",
-			item_name: "", stock_uom: "Kg", description: "",
+			item_name: "", stock_uom: "Kg", gst_hsn_code: "", description: "",
 		};
 
 		// Reset fields
@@ -664,6 +682,7 @@ class BBFItemCreator {
 		this.variant_field.set_value("");
 		this.item_name_field.set_value("");
 		this.uom_field.set_value("Kg");
+		this.hsn_field.set_value("");
 		this.desc_field.set_value("");
 
 		// Reset UI

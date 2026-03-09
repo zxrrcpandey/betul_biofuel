@@ -164,14 +164,18 @@ class BBFItemCreator(Document):
 
 	def _create_standalone_item(self):
 		"""Create a standalone item (no variant)."""
-		item = frappe.get_doc({
+		item_data = {
 			"doctype": "Item",
 			"item_code": self.generated_item_code,
 			"item_name": self.item_name or self.generated_item_code,
 			"item_group": self.item_group,
 			"stock_uom": self.stock_uom,
 			"description": self.description or self.item_name or self.generated_item_code,
-		})
+		}
+		if self.gst_hsn_code:
+			item_data["gst_hsn_code"] = self.gst_hsn_code
+
+		item = frappe.get_doc(item_data)
 		item.insert(ignore_permissions=True)
 
 		return {
@@ -201,7 +205,7 @@ class BBFItemCreator(Document):
 
 		# Step 1: Create or reuse template item
 		if not frappe.db.exists("Item", template_code):
-			template = frappe.get_doc({
+			template_data = {
 				"doctype": "Item",
 				"item_code": template_code,
 				"item_name": self.item_name or template_code,
@@ -211,7 +215,11 @@ class BBFItemCreator(Document):
 				"has_variants": 1,
 				"variant_based_on": "Item Attribute",
 				"attributes": [{"attribute": attr_name}],
-			})
+			}
+			if self.gst_hsn_code:
+				template_data["gst_hsn_code"] = self.gst_hsn_code
+
+			template = frappe.get_doc(template_data)
 			template.insert(ignore_permissions=True)
 			template_msg = f"Template <b>{template_code}</b> created. "
 		else:
@@ -234,7 +242,7 @@ class BBFItemCreator(Document):
 			template_msg = f"Using existing template <b>{template_code}</b>. "
 
 		# Step 2: Create variant item
-		variant_item = frappe.get_doc({
+		variant_data = {
 			"doctype": "Item",
 			"item_code": self.generated_item_code,
 			"item_name": (self.item_name or template_code) + sep + variant_code_value,
@@ -247,7 +255,11 @@ class BBFItemCreator(Document):
 				"attribute": attr_name,
 				"attribute_value": variant_code_value,
 			}],
-		})
+		}
+		if self.gst_hsn_code:
+			variant_data["gst_hsn_code"] = self.gst_hsn_code
+
+		variant_item = frappe.get_doc(variant_data)
 
 		# Set brand if variant source is Brand
 		if self.variant_source == "Brand" and self.brand:

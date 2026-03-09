@@ -28,6 +28,7 @@
   "generated_item_code",
   "details_section",
   "item_name",
+  "gst_hsn_code",
   "column_break_details",
   "stock_uom",
   "description_section",
@@ -192,6 +193,14 @@
    "fieldtype": "Data",
    "label": "Item Name",
    "description": "Optional human-readable name. If empty, Item Code will be used as name"
+  },
+  {
+   "fieldname": "gst_hsn_code",
+   "fieldtype": "Link",
+   "label": "HSN/SAC Code",
+   "options": "GST HSN Code",
+   "reqd": 1,
+   "description": "GST HSN/SAC code (minimum 6 digits)"
   },
   {
    "fieldname": "column_break_details",
