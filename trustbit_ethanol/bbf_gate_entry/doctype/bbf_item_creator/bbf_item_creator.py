@@ -10,8 +10,10 @@ class BBFItemCreator(Document):
 		self._build_item_code()
 
 	def _fetch_codes(self):
-		"""Fetch company and category codes based on selected code type."""
-		if self.company:
+		"""Fetch company and category codes based on selected code type.
+		Skips fetch if codes are already set (e.g. passed from the custom page).
+		"""
+		if self.company and not self.company_code:
 			if self.company_code_type == "Numerical":
 				self.company_code = frappe.db.get_value(
 					"Company", self.company, "company_num_code"
@@ -21,7 +23,7 @@ class BBFItemCreator(Document):
 					"Company", self.company, "company_code"
 				) or ""
 
-		if self.item_group:
+		if self.item_group and not self.category_code:
 			if self.category_code_type == "Numerical":
 				self.category_code = frappe.db.get_value(
 					"Item Group", self.item_group, "category_num_code"
@@ -33,11 +35,11 @@ class BBFItemCreator(Document):
 
 		# Fetch variant codes
 		if self.has_variant:
-			if self.variant_source == "Brand" and self.brand:
+			if self.variant_source == "Brand" and self.brand and not self.brand_code:
 				self.brand_code = frappe.db.get_value(
 					"Brand", self.brand, "brand_code"
 				) or ""
-			elif self.variant_source == "Custom Variant" and self.variant:
+			elif self.variant_source == "Custom Variant" and self.variant and not self.variant_code:
 				self.variant_code = frappe.db.get_value(
 					"BBF Variant", self.variant, "variant_code"
 				) or ""
