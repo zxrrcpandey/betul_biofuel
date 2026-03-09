@@ -16,7 +16,7 @@ frappe.query_reports["BBF Vehicle Turnaround Report"] = {
 			fieldname: "status",
 			label: __("Status"),
 			fieldtype: "Select",
-			options: "\nToken Generated\nPO Linked\nGross Weighed\nUnloading\nTare Weighed\nQuality Done\nGRN Created\nExited"
+			options: "\nToken Generated\nPO Linked\nGross Weighed\nQuality Done\nGraded\nUnloading\nTare Weighed\nGRN Created\nExited"
 		}
 	],
 	formatter: function (value, row, column, data) {

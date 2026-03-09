@@ -34,8 +34,9 @@ def check_sla_breaches():
 		"BBF Token",
 		filters={"status": ["not in", ["Exited", "Token Generated"]]},
 		fields=["name", "token_number", "status", "g1_entry_time", "g2_link_time",
-				"wb_gross_time", "unload_start_time", "unload_end_time",
-				"wb_tare_time", "quality_time", "grn_time"]
+				"wb_gross_time", "quality_time", "grading_time",
+				"unload_start_time", "unload_end_time",
+				"wb_tare_time", "grn_time"]
 	)
 
 	breaches = []
@@ -62,9 +63,10 @@ def _get_last_timestamp(token):
 	timestamp_map = {
 		"PO Linked": token.g2_link_time,
 		"Gross Weighed": token.wb_gross_time,
+		"Quality Done": token.quality_time,
+		"Graded": token.grading_time,
 		"Unloading": token.unload_start_time,
 		"Tare Weighed": token.wb_tare_time,
-		"Quality Done": token.quality_time,
 		"GRN Created": token.grn_time,
 	}
 	return timestamp_map.get(token.status)

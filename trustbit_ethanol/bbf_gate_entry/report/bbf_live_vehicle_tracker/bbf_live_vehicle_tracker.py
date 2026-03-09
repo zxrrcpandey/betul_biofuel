@@ -16,10 +16,11 @@ def get_columns():
 		{"fieldname": "g1_entry_time", "label": "G1 Entry", "fieldtype": "Datetime", "width": 160},
 		{"fieldname": "g2_link_time", "label": "G2 Link", "fieldtype": "Datetime", "width": 160},
 		{"fieldname": "wb_gross_time", "label": "Gross Weight", "fieldtype": "Datetime", "width": 160},
+		{"fieldname": "quality_time", "label": "Quality", "fieldtype": "Datetime", "width": 160},
+		{"fieldname": "grading_time", "label": "Grading", "fieldtype": "Datetime", "width": 160},
 		{"fieldname": "unload_start_time", "label": "Unload Start", "fieldtype": "Datetime", "width": 160},
 		{"fieldname": "unload_end_time", "label": "Unload End", "fieldtype": "Datetime", "width": 160},
 		{"fieldname": "wb_tare_time", "label": "Tare Weight", "fieldtype": "Datetime", "width": 160},
-		{"fieldname": "quality_time", "label": "Quality", "fieldtype": "Datetime", "width": 160},
 		{"fieldname": "grn_time", "label": "GRN", "fieldtype": "Datetime", "width": 160},
 		{"fieldname": "indicator", "label": "Alert", "fieldtype": "Data", "width": 80},
 	]
@@ -31,8 +32,9 @@ def get_data():
 		filters={"status": ["!=", "Exited"]},
 		fields=[
 			"token_number", "status", "g1_entry_time", "g2_link_time",
-			"wb_gross_time", "unload_start_time", "unload_end_time",
-			"wb_tare_time", "quality_time", "grn_time"
+			"wb_gross_time", "quality_time", "grading_time",
+			"unload_start_time", "unload_end_time",
+			"wb_tare_time", "grn_time"
 		],
 		order_by="creation asc"
 	)
@@ -62,9 +64,10 @@ def _get_last_timestamp(token):
 		"Token Generated": token.get("g1_entry_time"),
 		"PO Linked": token.get("g2_link_time"),
 		"Gross Weighed": token.get("wb_gross_time"),
+		"Quality Done": token.get("quality_time"),
+		"Graded": token.get("grading_time"),
 		"Unloading": token.get("unload_start_time"),
 		"Tare Weighed": token.get("wb_tare_time"),
-		"Quality Done": token.get("quality_time"),
 		"GRN Created": token.get("grn_time"),
 	}
 	return timestamp_map.get(token.get("status"))

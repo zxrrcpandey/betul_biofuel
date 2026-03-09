@@ -29,6 +29,7 @@
   "unload_end_time",
   "wb_tare_time",
   "grn_time",
+  "purchase_receipt",
   "g1_exit_time",
   "turnaround_section",
   "g1_to_g2_minutes",
@@ -201,6 +202,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "purchase_receipt",
+   "fieldtype": "Link",
+   "label": "Purchase Receipt (GRN)",
+   "options": "Purchase Receipt",
+   "read_only": 1
+  },
+  {
    "fieldname": "g1_exit_time",
    "fieldtype": "Datetime",
    "label": "G1 Exit Time",
@@ -309,6 +317,10 @@
   {
    "link_doctype": "BBF Deduction Sheet",
    "link_fieldname": "token_number"
+  },
+  {
+   "link_doctype": "Purchase Receipt",
+   "link_fieldname": "bbf_token"
   }
  ],
  "modified": "2026-03-07 00:00:00",

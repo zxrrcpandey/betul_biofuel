@@ -19,7 +19,7 @@ module_app_map = {
 	"BBF Gate Entry": "trustbit_ethanol"
 }
 
-# Fixtures for roles
+# Fixtures for roles and custom fields
 fixtures = [
 	{
 		"doctype": "Role",
@@ -31,7 +31,19 @@ fixtures = [
 			"Quality Inspector",
 			"CTO"
 		]]]
+	},
+	{
+		"doctype": "Custom Field",
+		"filters": [["name", "in", [
+			"Purchase Receipt-bbf_token",
+			"Purchase Receipt-bbf_gate_entry"
+		]]]
 	}
+]
+
+# Setup custom fields on Purchase Receipt for GRN integration
+after_migrate = [
+	"trustbit_ethanol.bbf_gate_entry.setup.create_custom_fields"
 ]
 
 # Scheduled Tasks

@@ -10,7 +10,12 @@
   "token_section",
   "token_suffix_digits",
   "default_shift_start",
-  "default_shift_end"
+  "default_shift_end",
+  "grn_section",
+  "default_warehouse",
+  "default_accepted_warehouse",
+  "column_break_grn",
+  "auto_submit_grn"
  ],
  "fields": [
   {
@@ -55,6 +60,36 @@
    "fieldtype": "Time",
    "label": "Default Shift End",
    "default": "20:00:00"
+  },
+  {
+   "fieldname": "grn_section",
+   "fieldtype": "Section Break",
+   "label": "GRN (Purchase Receipt) Configuration"
+  },
+  {
+   "fieldname": "default_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Warehouse",
+   "options": "Warehouse",
+   "description": "Target warehouse for Purchase Receipt items (e.g. Raw Material Store)"
+  },
+  {
+   "fieldname": "default_accepted_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Accepted Warehouse",
+   "options": "Warehouse",
+   "description": "Accepted warehouse for Purchase Receipt (if different from default)"
+  },
+  {
+   "fieldname": "column_break_grn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "auto_submit_grn",
+   "fieldtype": "Check",
+   "label": "Auto-Submit GRN",
+   "default": "0",
+   "description": "If checked, Purchase Receipt will be auto-submitted after creation"
   }
  ],
  "issingle": 1,

@@ -14,6 +14,33 @@ frappe.ui.form.on("BBF Token", {
 			}).addClass("btn-primary-dark");
 		}
 
+		// Create GRN button - shown when Tare Weighed and no PR yet
+		if (frm.doc.status === "Tare Weighed" && !frm.doc.purchase_receipt) {
+			frm.add_custom_button(__("Create GRN"), function () {
+				frappe.confirm(
+					__("Create Purchase Receipt (GRN) for this token?<br><br>This will generate a Purchase Receipt against the linked Purchase Order with the net weight from the Weighbridge."),
+					function () {
+						frm.call("create_grn").then((r) => {
+							frm.reload_doc();
+							if (r.message && r.message.purchase_receipt) {
+								frappe.show_alert({
+									message: __("GRN {0} created successfully", [r.message.purchase_receipt]),
+									indicator: "green"
+								});
+							}
+						});
+					}
+				);
+			}).addClass("btn-primary");
+		}
+
+		// View GRN button - shown when GRN exists
+		if (frm.doc.purchase_receipt) {
+			frm.add_custom_button(__("View GRN"), function () {
+				frappe.set_route("Form", "Purchase Receipt", frm.doc.purchase_receipt);
+			}, __("Actions"));
+		}
+
 		if (frm.doc.status && frm.doc.status !== "Exited" && frm.doc.status !== "Token Generated") {
 			frm.add_custom_button(__("Mark Exit"), function () {
 				frappe.confirm(
@@ -34,6 +61,8 @@ frappe.ui.form.on("BBF Token", {
 		// Color-code status
 		if (frm.doc.status === "Exited") {
 			frm.page.set_indicator(__("Exited"), "green");
+		} else if (frm.doc.status === "GRN Created") {
+			frm.page.set_indicator(__("GRN Created"), "green");
 		} else if (frm.doc.status === "Token Generated") {
 			frm.page.set_indicator(__("Token Generated"), "blue");
 		} else {
