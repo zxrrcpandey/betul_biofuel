@@ -94,7 +94,7 @@
 		<!-- Step 2: Variant -->
 		<div class="bbf-step-content" data-step="2">
 			<h3 class="bbf-section-title">Variant Configuration</h3>
-			<p class="bbf-section-desc">Optionally add a variant code to differentiate items within the same category.</p>
+			<p class="bbf-section-desc">Enable variants to create multiple items (e.g. by brand) under one template code.</p>
 
 			<div class="bbf-variant-toggle">
 				<label class="bbf-switch">
@@ -105,6 +105,7 @@
 			</div>
 
 			<div class="bbf-variant-options" style="display:none;">
+				<!-- Variant Source Tabs -->
 				<div class="bbf-source-tabs">
 					<button class="bbf-source-tab active" data-source="Brand">
 						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v2l-2 6H4L2 5V3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="5.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/><circle cx="10.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/></svg>
@@ -116,31 +117,16 @@
 					</button>
 				</div>
 
-				<div class="bbf-source-panel active" data-source="Brand">
-					<div class="bbf-form-row">
-						<div class="bbf-form-group">
-							<label class="bbf-label">Brand <span class="bbf-req">*</span></label>
-							<div class="bbf-field" id="bbf-brand-field"></div>
-						</div>
-						<div class="bbf-form-group bbf-form-code">
-							<label class="bbf-label">Brand Code</label>
-							<div class="bbf-code-badge bbf-variant-badge" id="bbf-brand-code">---</div>
-						</div>
-					</div>
+				<!-- Variant Rows Container -->
+				<div class="bbf-variant-grid" id="bbf-variant-grid">
+					<!-- Variant rows will be added dynamically by JS -->
 				</div>
 
-				<div class="bbf-source-panel" data-source="Custom Variant">
-					<div class="bbf-form-row">
-						<div class="bbf-form-group">
-							<label class="bbf-label">Custom Variant <span class="bbf-req">*</span></label>
-							<div class="bbf-field" id="bbf-variant-field"></div>
-						</div>
-						<div class="bbf-form-group bbf-form-code">
-							<label class="bbf-label">Variant Code</label>
-							<div class="bbf-code-badge bbf-variant-badge" id="bbf-variant-code">---</div>
-						</div>
-					</div>
-				</div>
+				<!-- Add Variant Button -->
+				<button class="btn bbf-btn-add-variant" id="bbf-add-variant">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+					Add Variant
+				</button>
 			</div>
 		</div>
 
@@ -186,7 +172,7 @@
 		<!-- Step 4: Stock & Valuation -->
 		<div class="bbf-step-content" data-step="4">
 			<h3 class="bbf-section-title">Stock & Valuation</h3>
-			<p class="bbf-section-desc">Configure stock tracking, valuation rate, and opening balances.</p>
+			<p class="bbf-section-desc" id="bbf-step4-desc">Configure stock tracking, valuation rate, and opening balances.</p>
 
 			<div class="bbf-form-row">
 				<div class="bbf-form-group">
@@ -201,7 +187,8 @@
 				</div>
 			</div>
 
-			<div class="bbf-stock-fields">
+			<!-- Standalone stock fields (hidden when variant mode) -->
+			<div class="bbf-stock-fields bbf-standalone-stock">
 				<div class="bbf-form-row">
 					<div class="bbf-form-group">
 						<label class="bbf-label">Valuation Rate</label>
@@ -209,17 +196,37 @@
 						<span class="bbf-hint">Rate at which item is valued in stock.</span>
 					</div>
 					<div class="bbf-form-group">
-						<label class="bbf-label">Opening Stock</label>
-						<div class="bbf-field" id="bbf-opening-stock-field"></div>
-						<span class="bbf-hint">Initial stock quantity (optional).</span>
+						<label class="bbf-label">Standard Selling Rate</label>
+						<div class="bbf-field" id="bbf-standard-rate-field"></div>
+						<span class="bbf-hint">Default selling price.</span>
 					</div>
 				</div>
 
 				<div class="bbf-form-row">
 					<div class="bbf-form-group">
+						<label class="bbf-label">Opening Stock</label>
+						<div class="bbf-field" id="bbf-opening-stock-field"></div>
+						<span class="bbf-hint">Initial stock quantity (optional).</span>
+					</div>
+					<div class="bbf-form-group">
 						<label class="bbf-label">Opening Warehouse</label>
 						<div class="bbf-field" id="bbf-opening-warehouse-field"></div>
 						<span class="bbf-hint">Required if opening stock is set.</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Variant mode: only opening warehouse (per-variant fields are on Step 2) -->
+			<div class="bbf-stock-fields bbf-variant-stock" style="display:none;">
+				<div class="bbf-info-box">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3m0 2.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+					<span>Valuation Rate, Opening Stock, Standard Selling Rate, and Description are set <b>per variant</b> in Step 2.</span>
+				</div>
+				<div class="bbf-form-row" style="margin-top:16px;">
+					<div class="bbf-form-group">
+						<label class="bbf-label">Opening Warehouse</label>
+						<div class="bbf-field" id="bbf-opening-warehouse-variant-field"></div>
+						<span class="bbf-hint">Warehouse for opening stock (shared across all variants).</span>
 					</div>
 				</div>
 			</div>
@@ -249,10 +256,6 @@
 						<span class="bbf-review-label">Serial</span>
 						<span class="bbf-review-value" id="bbf-review-serial">-</span>
 					</div>
-					<div class="bbf-review-item bbf-review-variant-row" style="display:none;">
-						<span class="bbf-review-label">Variant</span>
-						<span class="bbf-review-value" id="bbf-review-variant">-</span>
-					</div>
 					<div class="bbf-review-item">
 						<span class="bbf-review-label">Item Name</span>
 						<span class="bbf-review-value" id="bbf-review-name">-</span>
@@ -273,9 +276,14 @@
 						<span class="bbf-review-label">Maintain Stock</span>
 						<span class="bbf-review-value" id="bbf-review-maintain-stock">-</span>
 					</div>
-					<div class="bbf-review-item">
+					<!-- Standalone-only fields -->
+					<div class="bbf-review-item bbf-review-standalone-row">
 						<span class="bbf-review-label">Valuation Rate</span>
 						<span class="bbf-review-value" id="bbf-review-valuation">-</span>
+					</div>
+					<div class="bbf-review-item bbf-review-standalone-row">
+						<span class="bbf-review-label">Selling Rate</span>
+						<span class="bbf-review-value" id="bbf-review-selling-rate">-</span>
 					</div>
 					<div class="bbf-review-item bbf-review-opening-row" style="display:none;">
 						<span class="bbf-review-label">Opening Stock</span>
@@ -283,9 +291,26 @@
 					</div>
 				</div>
 
+				<!-- Multi-variant review table -->
+				<div class="bbf-review-variants" id="bbf-review-variants" style="display:none;">
+					<div class="bbf-review-variants-title">Variants to Create</div>
+					<table class="bbf-review-variants-table">
+						<thead>
+							<tr>
+								<th>Code</th>
+								<th>Brand / Variant</th>
+								<th>Valuation</th>
+								<th>Selling Rate</th>
+								<th>Opening Qty</th>
+							</tr>
+						</thead>
+						<tbody id="bbf-review-variants-body"></tbody>
+					</table>
+				</div>
+
 				<div class="bbf-review-note" id="bbf-review-note" style="display:none;">
 					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3m0 2.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-					<span>This will create a <b>Template Item</b> + <b>Variant Item</b> in ERPNext.</span>
+					<span id="bbf-review-note-text">This will create a <b>Template Item</b> + <b>Variant Items</b> in ERPNext.</span>
 				</div>
 			</div>
 		</div>
@@ -315,11 +340,12 @@
 			<div class="bbf-success-icon">
 				<svg width="64" height="64" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="#38a169" stroke-width="3"/><path d="M20 33l8 8 16-18" stroke="#38a169" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
 			</div>
-			<h2 class="bbf-success-title">Item Created Successfully!</h2>
+			<h2 class="bbf-success-title" id="bbf-success-title">Item Created Successfully!</h2>
 			<div class="bbf-success-code" id="bbf-success-code">BBF-GRN-001</div>
 			<div class="bbf-success-template" id="bbf-success-template" style="display:none;">
 				Template: <a id="bbf-success-template-link" href="#">BBF-GRN-001</a>
 			</div>
+			<div class="bbf-success-variant-list" id="bbf-success-variant-list" style="display:none;"></div>
 			<div class="bbf-success-actions">
 				<button class="btn btn-primary" id="bbf-view-item">View Item</button>
 				<button class="btn btn-default" id="bbf-create-another">Create Another</button>

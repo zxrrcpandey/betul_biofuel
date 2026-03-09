@@ -24,6 +24,8 @@
   "column_break_variant",
   "variant",
   "variant_code",
+  "variants_section",
+  "variants",
   "preview_section",
   "generated_item_code",
   "details_section",
@@ -35,6 +37,7 @@
   "stock_section",
   "maintain_stock",
   "valuation_rate",
+  "standard_rate",
   "column_break_stock",
   "opening_stock",
   "opening_warehouse",
@@ -177,6 +180,20 @@
    "depends_on": "eval:doc.has_variant && doc.variant_source=='Custom Variant'"
   },
   {
+   "fieldname": "variants_section",
+   "fieldtype": "Section Break",
+   "label": "Variant Items",
+   "depends_on": "eval:doc.has_variant",
+   "description": "Add multiple variant items to create in one go"
+  },
+  {
+   "fieldname": "variants",
+   "fieldtype": "Table",
+   "label": "Variants",
+   "options": "BBF Item Creator Variant",
+   "depends_on": "eval:doc.has_variant"
+  },
+  {
    "fieldname": "preview_section",
    "fieldtype": "Section Break",
    "label": "Generated Item Code"
@@ -230,7 +247,8 @@
   {
    "fieldname": "stock_section",
    "fieldtype": "Section Break",
-   "label": "Stock & Valuation"
+   "label": "Stock & Valuation",
+   "description": "For standalone items. Variant items have per-variant stock settings."
   },
   {
    "fieldname": "maintain_stock",
@@ -242,7 +260,15 @@
    "fieldname": "valuation_rate",
    "fieldtype": "Currency",
    "label": "Valuation Rate",
+   "depends_on": "eval:!doc.has_variant",
    "description": "Rate at which this item is valued in stock"
+  },
+  {
+   "fieldname": "standard_rate",
+   "fieldtype": "Currency",
+   "label": "Standard Selling Rate",
+   "depends_on": "eval:!doc.has_variant",
+   "description": "Default selling rate for this item"
   },
   {
    "fieldname": "column_break_stock",

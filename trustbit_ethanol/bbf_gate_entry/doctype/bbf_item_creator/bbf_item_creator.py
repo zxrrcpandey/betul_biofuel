@@ -33,8 +33,8 @@ class BBFItemCreator(Document):
 					"Item Group", self.item_group, "category_code"
 				) or ""
 
-		# Fetch variant codes
-		if self.has_variant:
+		# Fetch variant codes for single-variant fields (backward compat)
+		if self.has_variant and not self.variants:
 			if self.variant_source == "Brand" and self.brand and not self.brand_code:
 				self.brand_code = frappe.db.get_value(
 					"Brand", self.brand, "brand_code"
@@ -78,22 +78,25 @@ class BBFItemCreator(Document):
 		self.serial_number = str(next_serial).zfill(digits)
 
 	def _build_item_code(self):
-		"""Build the generated item code from all parts."""
+		"""Build the generated item code from all parts (base code without variant)."""
 		if not self.company_code or not self.category_code or not self.serial_number:
 			return
 
 		settings = frappe.get_single("BBF Item Code Settings")
 		sep = settings.default_separator or "-"
 
+		# For multi-variant, generated_item_code is the TEMPLATE code (no variant suffix)
+		# For standalone, it's the full code
+		# For single-variant (backward compat), it includes variant
 		parts = [self.company_code, self.category_code, self.serial_number]
 
-		if self.has_variant:
+		if self.has_variant and not self.variants:
+			# Single-variant backward compat
 			v_code = ""
 			if self.variant_source == "Brand" and self.brand_code:
 				v_code = self.brand_code
 			elif self.variant_source == "Custom Variant" and self.variant_code:
 				v_code = self.variant_code
-
 			if v_code:
 				parts.append(v_code)
 
@@ -113,7 +116,17 @@ class BBFItemCreator(Document):
 				f"and set the <b>{'category_num_code' if self.category_code_type == 'Numerical' else 'category_code'}</b> field."
 			)
 
-		if self.has_variant:
+		if self.has_variant and self.variants:
+			# Multi-variant validation
+			for i, row in enumerate(self.variants):
+				v_code = row.brand_code or row.variant_code
+				if not v_code:
+					frappe.throw(
+						f"Row {i+1}: Variant code is missing. "
+						"Please select a Brand or Custom Variant with a valid code."
+					)
+		elif self.has_variant:
+			# Single-variant backward compat
 			if self.variant_source == "Brand" and not self.brand:
 				frappe.throw("Please select a Brand or uncheck 'Has Variant'")
 			if self.variant_source == "Brand" and self.brand and not self.brand_code:
@@ -127,23 +140,18 @@ class BBFItemCreator(Document):
 
 	@frappe.whitelist()
 	def create_item(self):
-		"""Create an Item in ERPNext from the generated item code."""
-		# Idempotency guard
+		"""Create Item(s) in ERPNext from the generated item code."""
 		if self.item_created:
 			frappe.throw(
-				f"Item <b>{self.item_created}</b> already created from this record."
+				f"Item(s) already created from this record: <b>{self.item_created}</b>"
 			)
 
 		if not self.generated_item_code:
 			frappe.throw("Generated Item Code is empty. Please save the form first.")
 
-		# Check if item code already exists
-		if frappe.db.exists("Item", self.generated_item_code):
-			frappe.throw(
-				f"Item with code <b>{self.generated_item_code}</b> already exists in ERPNext."
-			)
-
-		if self.has_variant:
+		if self.has_variant and self.variants:
+			result = self._create_multi_variant_items()
+		elif self.has_variant:
 			result = self._create_variant_item()
 		else:
 			result = self._create_standalone_item()
@@ -177,6 +185,8 @@ class BBFItemCreator(Document):
 			data["gst_hsn_code"] = self.gst_hsn_code
 		if self.valuation_rate:
 			data["valuation_rate"] = self.valuation_rate
+		if self.standard_rate:
+			data["standard_rate"] = self.standard_rate
 		if self.maintain_stock and self.opening_stock:
 			data["opening_stock"] = self.opening_stock
 		if self.maintain_stock and self.opening_warehouse:
@@ -275,6 +285,126 @@ class BBFItemCreator(Document):
 			"item_code": variant_item.name,
 			"template_code": template_code,
 			"message": template_msg + f"Variant <b>{self.generated_item_code}</b> created successfully."
+		}
+
+	def _create_multi_variant_items(self):
+		"""Create a template item + multiple variant items from the variants child table."""
+		settings = frappe.get_single("BBF Item Code Settings")
+		sep = settings.default_separator or "-"
+
+		# Template code = company-category-serial
+		template_code = sep.join([self.company_code, self.category_code, self.serial_number])
+
+		# Check if template already exists
+		if frappe.db.exists("Item", template_code):
+			existing = frappe.get_doc("Item", template_code)
+			if not existing.has_variants:
+				frappe.throw(
+					f"Item <b>{template_code}</b> already exists but is not a template item."
+				)
+
+		# Collect all variant codes first, ensure attributes exist
+		variant_codes = []
+		for row in self.variants:
+			v_code = row.brand_code or row.variant_code
+			if not v_code:
+				frappe.throw(f"Row {row.idx}: Variant code is missing.")
+			variant_codes.append(v_code)
+
+		# Ensure all variant attribute values exist
+		attr_name = None
+		for v_code in variant_codes:
+			attr_name = _ensure_variant_attribute(v_code)
+
+		# Step 1: Create template item if it doesn't exist
+		template_msg = ""
+		if not frappe.db.exists("Item", template_code):
+			template_data = {
+				"doctype": "Item",
+				"item_code": template_code,
+				"item_name": self.item_name or template_code,
+				"item_group": self.item_group,
+				"stock_uom": self.stock_uom,
+				"description": self.item_name or template_code,
+				"is_stock_item": self.maintain_stock,
+				"has_variants": 1,
+				"variant_based_on": "Item Attribute",
+				"attributes": [{"attribute": attr_name}],
+			}
+			if self.gst_hsn_code:
+				template_data["gst_hsn_code"] = self.gst_hsn_code
+			if self.item_tax_template:
+				template_data["taxes"] = [{"item_tax_template": self.item_tax_template}]
+
+			template = frappe.get_doc(template_data)
+			template.insert(ignore_permissions=True)
+			template_msg = f"Template <b>{template_code}</b> created.<br>"
+		else:
+			template = frappe.get_doc("Item", template_code)
+			# Add attribute if missing
+			if attr_name and not any(r.attribute == attr_name for r in template.attributes):
+				template.append("attributes", {"attribute": attr_name})
+				template.save(ignore_permissions=True)
+			template_msg = f"Using existing template <b>{template_code}</b>.<br>"
+
+		# Step 2: Create variant items
+		created_items = []
+		for row in self.variants:
+			v_code = row.brand_code or row.variant_code
+			variant_item_code = sep.join([template_code, v_code])
+
+			# Skip if already exists
+			if frappe.db.exists("Item", variant_item_code):
+				template_msg += f"Variant <b>{variant_item_code}</b> already exists (skipped).<br>"
+				created_items.append(variant_item_code)
+				continue
+
+			variant_name = (self.item_name or template_code) + sep + v_code
+
+			variant_data = {
+				"doctype": "Item",
+				"item_code": variant_item_code,
+				"item_name": variant_name,
+				"item_group": self.item_group,
+				"stock_uom": self.stock_uom,
+				"description": row.description or variant_name,
+				"is_stock_item": self.maintain_stock,
+				"variant_of": template_code,
+				"variant_based_on": "Item Attribute",
+				"attributes": [{
+					"attribute": attr_name,
+					"attribute_value": v_code,
+				}],
+			}
+
+			if self.gst_hsn_code:
+				variant_data["gst_hsn_code"] = self.gst_hsn_code
+			if row.valuation_rate:
+				variant_data["valuation_rate"] = row.valuation_rate
+			if row.standard_rate:
+				variant_data["standard_rate"] = row.standard_rate
+			if self.maintain_stock and row.opening_stock:
+				variant_data["opening_stock"] = row.opening_stock
+			if self.maintain_stock and self.opening_warehouse:
+				variant_data["opening_warehouse"] = self.opening_warehouse
+			if self.item_tax_template:
+				variant_data["taxes"] = [{"item_tax_template": self.item_tax_template}]
+
+			variant_item = frappe.get_doc(variant_data)
+
+			# Set brand if present
+			if row.brand:
+				variant_item.brand = row.brand
+
+			variant_item.insert(ignore_permissions=True)
+			created_items.append(variant_item.name)
+			template_msg += f"Variant <b>{variant_item_code}</b> created.<br>"
+
+		return {
+			"item_code": ", ".join(created_items),
+			"template_code": template_code,
+			"variant_items": created_items,
+			"message": template_msg + f"<br><b>{len(created_items)}</b> variant(s) created successfully."
 		}
 
 

@@ -698,6 +698,215 @@
 	color: #dd6b20;
 }
 
+/* ── Variant Row Cards ── */
+.bbf-variant-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.bbf-variant-row-card {
+	border: 1.5px solid var(--border-color, #e2e8f0);
+	border-radius: 10px;
+	overflow: hidden;
+	transition: border-color 0.2s ease;
+}
+
+.bbf-variant-row-card:hover {
+	border-color: #a0aec0;
+}
+
+.bbf-variant-row-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 16px;
+	background: var(--subtle-fg, #f7fafc);
+	border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.bbf-variant-row-num {
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--text-muted, #a0aec0);
+	min-width: 24px;
+}
+
+.bbf-variant-row-code-badge {
+	font-size: 14px;
+	font-weight: 700;
+	font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+	color: #22543d;
+	background: #f0fff4;
+	border: 1px solid #9ae6b4;
+	border-radius: 6px;
+	padding: 2px 10px;
+	letter-spacing: 0.5px;
+}
+
+.bbf-variant-row-remove {
+	margin-left: auto;
+	background: none;
+	border: none;
+	color: var(--text-muted, #a0aec0);
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+	transition: all 0.2s;
+}
+
+.bbf-variant-row-remove:hover {
+	color: #e53e3e;
+	background: #fff5f5;
+}
+
+.bbf-variant-row-body {
+	padding: 14px 16px;
+}
+
+.bbf-vrow-fields-top {
+	display: flex;
+	gap: 12px;
+	margin-bottom: 10px;
+}
+
+.bbf-vrow-field {
+	flex: 1;
+}
+
+.bbf-vrow-field.bbf-vrow-link {
+	flex: 1.5;
+}
+
+.bbf-label-sm {
+	display: block;
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--text-muted, #a0aec0);
+	margin-bottom: 4px;
+	text-transform: uppercase;
+	letter-spacing: 0.3px;
+}
+
+.bbf-vrow-desc {
+	margin-top: 4px;
+}
+
+/* Add Variant Button */
+.bbf-btn-add-variant {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	width: 100%;
+	padding: 12px;
+	border: 2px dashed var(--border-color, #cbd5e0);
+	border-radius: 10px;
+	background: transparent;
+	color: var(--text-muted, #718096);
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.bbf-btn-add-variant:hover {
+	border-color: #3182ce;
+	color: #3182ce;
+	background: #ebf8ff;
+}
+
+/* ── Info Box ── */
+.bbf-info-box {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 14px 18px;
+	background: #ebf8ff;
+	border: 1px solid #bee3f8;
+	border-radius: 8px;
+	color: #2b6cb0;
+	font-size: 13px;
+}
+
+.bbf-info-box svg {
+	flex-shrink: 0;
+	color: #3182ce;
+}
+
+/* ── Review Variants Table ── */
+.bbf-review-variants {
+	border-top: 1px solid var(--border-color, #e2e8f0);
+	padding: 16px 28px;
+}
+
+.bbf-review-variants-title {
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--text-muted, #a0aec0);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	margin-bottom: 12px;
+}
+
+.bbf-review-variants-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.bbf-review-variants-table th {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted, #a0aec0);
+	text-transform: uppercase;
+	letter-spacing: 0.3px;
+	padding: 8px 12px;
+	border-bottom: 2px solid var(--border-color, #e2e8f0);
+	text-align: left;
+}
+
+.bbf-review-variants-table td {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text-color, #2d3748);
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--border-color, #f0f0f0);
+}
+
+.bbf-review-variants-table td code {
+	font-size: 12px;
+	font-weight: 700;
+	color: #2a4a7f;
+	background: #ebf4ff;
+	padding: 2px 8px;
+	border-radius: 4px;
+}
+
+/* ── Success Variant List ── */
+.bbf-success-variant-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 12px;
+	margin-bottom: 16px;
+}
+
+.bbf-success-variant-item {
+	font-size: 14px;
+	font-weight: 600;
+	font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+}
+
+.bbf-success-variant-item a {
+	color: #3182ce;
+	text-decoration: none;
+}
+
+.bbf-success-variant-item a:hover {
+	text-decoration: underline;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
 	.bbf-form-row {
@@ -730,6 +939,14 @@
 		gap: 4px;
 	}
 	.bbf-step-line {
+		display: none;
+	}
+	.bbf-vrow-fields-top {
+		flex-direction: column;
+		gap: 8px;
+	}
+	.bbf-review-variants-table th:nth-child(n+3),
+	.bbf-review-variants-table td:nth-child(n+3) {
 		display: none;
 	}
 }
