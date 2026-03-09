@@ -22,12 +22,12 @@
 			<div class="bbf-step-line"></div>
 			<div class="bbf-step" data-step="2">
 				<div class="bbf-step-circle">2</div>
-				<div class="bbf-step-label">Variant</div>
+				<div class="bbf-step-label">Item Details</div>
 			</div>
 			<div class="bbf-step-line"></div>
 			<div class="bbf-step" data-step="3">
 				<div class="bbf-step-circle">3</div>
-				<div class="bbf-step-label">Item Details</div>
+				<div class="bbf-step-label">Variant</div>
 			</div>
 			<div class="bbf-step-line"></div>
 			<div class="bbf-step" data-step="4">
@@ -91,47 +91,8 @@
 			</div>
 		</div>
 
-		<!-- Step 2: Variant -->
+		<!-- Step 2: Item Details -->
 		<div class="bbf-step-content" data-step="2">
-			<h3 class="bbf-section-title">Variant Configuration</h3>
-			<p class="bbf-section-desc">Enable variants to create multiple items (e.g. by brand) under one template code.</p>
-
-			<div class="bbf-variant-toggle">
-				<label class="bbf-switch">
-					<input type="checkbox" id="bbf-has-variant">
-					<span class="bbf-slider"></span>
-				</label>
-				<span class="bbf-switch-label">Enable Variant</span>
-			</div>
-
-			<div class="bbf-variant-options" style="display:none;">
-				<!-- Variant Source Tabs -->
-				<div class="bbf-source-tabs">
-					<button class="bbf-source-tab active" data-source="Brand">
-						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v2l-2 6H4L2 5V3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="5.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/><circle cx="10.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/></svg>
-						Brand
-					</button>
-					<button class="bbf-source-tab" data-source="Custom Variant">
-						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-						Custom Variant
-					</button>
-				</div>
-
-				<!-- Variant Rows Container -->
-				<div class="bbf-variant-grid" id="bbf-variant-grid">
-					<!-- Variant rows will be added dynamically by JS -->
-				</div>
-
-				<!-- Add Variant Button -->
-				<button class="btn bbf-btn-add-variant" id="bbf-add-variant">
-					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-					Add Variant
-				</button>
-			</div>
-		</div>
-
-		<!-- Step 3: Item Details -->
-		<div class="bbf-step-content" data-step="3">
 			<h3 class="bbf-section-title">Item Details</h3>
 			<p class="bbf-section-desc">Provide item identity, GST classification, and tax details.</p>
 
@@ -166,6 +127,45 @@
 					<div class="bbf-field" id="bbf-description-field"></div>
 					<span class="bbf-hint">Optional item description.</span>
 				</div>
+			</div>
+		</div>
+
+		<!-- Step 3: Variant -->
+		<div class="bbf-step-content" data-step="3">
+			<h3 class="bbf-section-title">Variant Configuration</h3>
+			<p class="bbf-section-desc">Enable variants to create multiple items (e.g. by brand) under one template code.</p>
+
+			<div class="bbf-variant-toggle">
+				<label class="bbf-switch">
+					<input type="checkbox" id="bbf-has-variant">
+					<span class="bbf-slider"></span>
+				</label>
+				<span class="bbf-switch-label">Enable Variant</span>
+			</div>
+
+			<div class="bbf-variant-options" style="display:none;">
+				<!-- Variant Source Tabs -->
+				<div class="bbf-source-tabs">
+					<button class="bbf-source-tab active" data-source="Brand">
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v2l-2 6H4L2 5V3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="5.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/><circle cx="10.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/></svg>
+						Brand
+					</button>
+					<button class="bbf-source-tab" data-source="Custom Variant">
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+						Custom Variant
+					</button>
+				</div>
+
+				<!-- Variant Rows Container -->
+				<div class="bbf-variant-grid" id="bbf-variant-grid">
+					<!-- Variant rows will be added dynamically by JS -->
+				</div>
+
+				<!-- Add Variant Button -->
+				<button class="btn bbf-btn-add-variant" id="bbf-add-variant">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+					Add Variant
+				</button>
 			</div>
 		</div>
 
@@ -220,7 +220,7 @@
 			<div class="bbf-stock-fields bbf-variant-stock" style="display:none;">
 				<div class="bbf-info-box">
 					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3m0 2.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-					<span>Valuation Rate, Opening Stock, Standard Selling Rate, and Description are set <b>per variant</b> in Step 2.</span>
+					<span>Valuation Rate, Opening Stock, Standard Selling Rate, and Description are set <b>per variant</b> in Step 3.</span>
 				</div>
 				<div class="bbf-form-row" style="margin-top:16px;">
 					<div class="bbf-form-group">

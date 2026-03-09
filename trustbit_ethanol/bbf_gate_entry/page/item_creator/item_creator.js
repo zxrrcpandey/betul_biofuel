@@ -727,7 +727,18 @@ class BBFItemCreator {
 			}
 		}
 
-		if (step === 2 && this.state.has_variant) {
+		if (step === 2) {
+			if (!this.state.stock_uom) {
+				frappe.show_alert({ message: "Please select Stock UOM", indicator: "orange" });
+				return false;
+			}
+			if (!this.state.gst_hsn_code) {
+				frappe.show_alert({ message: "Please select HSN/SAC Code (required for GST)", indicator: "orange" });
+				return false;
+			}
+		}
+
+		if (step === 3 && this.state.has_variant) {
 			if (this.variant_rows.length === 0) {
 				frappe.show_alert({ message: "Please add at least one variant", indicator: "orange" });
 				return false;
@@ -742,17 +753,6 @@ class BBFItemCreator {
 					});
 					return false;
 				}
-			}
-		}
-
-		if (step === 3) {
-			if (!this.state.stock_uom) {
-				frappe.show_alert({ message: "Please select Stock UOM", indicator: "orange" });
-				return false;
-			}
-			if (!this.state.gst_hsn_code) {
-				frappe.show_alert({ message: "Please select HSN/SAC Code (required for GST)", indicator: "orange" });
-				return false;
 			}
 		}
 
