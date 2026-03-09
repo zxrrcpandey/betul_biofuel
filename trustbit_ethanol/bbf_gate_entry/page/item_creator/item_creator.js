@@ -50,87 +50,63 @@ class BBFItemCreator {
 	_setup_fields() {
 		const me = this;
 
-		// Helper to bind Link field value changes properly
-		function bind_link_change(control, callback) {
-			let _last_val = "";
-			// Frappe Link fields need awesomplete-selectcomplete for proper detection
-			control.$input.on("awesomplete-selectcomplete", () => {
-				setTimeout(() => {
-					_last_val = control.get_value();
-					callback(_last_val);
-				}, 0);
-			});
+		// Helper: Monkey-patch a Link control to call back on EVERY value change.
+		// Frappe Link fields validate asynchronously, so standard events are unreliable.
+		// This patches set_formatted_input which is called AFTER validation succeeds.
+		function on_link_value(control, callback) {
+			const orig = control.set_formatted_input.bind(control);
+			control.set_formatted_input = function (value) {
+				orig(value);
+				setTimeout(() => callback(control.get_value()), 0);
+			};
+			// Also catch programmatic set_value and manual clear
 			control.$input.on("change", () => {
-				setTimeout(() => {
-					const v = control.get_value();
-					if (v !== _last_val) {
-						_last_val = v;
-						callback(v);
-					}
-				}, 0);
-			});
-			// Catch clear via blur — only fire if value actually changed
-			control.$input.on("blur", () => {
-				setTimeout(() => {
-					const v = control.get_value();
-					if (v !== _last_val) {
-						_last_val = v;
-						callback(v);
-					}
-				}, 200);
+				setTimeout(() => callback(control.get_value()), 100);
 			});
 		}
 
 		// Company
 		this.company_field = frappe.ui.form.make_control({
-			df: {
-				fieldtype: "Link",
-				options: "Company",
-				placeholder: "Select Company...",
-				change: () => {
-					me.state.company = me.company_field.get_value();
-					me._fetch_company_code();
-				},
-			},
+			df: { fieldtype: "Link", options: "Company", placeholder: "Select Company..." },
 			parent: this.$page.find("#bbf-company-field"),
 			render_input: true,
 		});
-		bind_link_change(this.company_field, (val) => {
+		on_link_value(this.company_field, (val) => {
 			me.state.company = val;
 			me._fetch_company_code();
 		});
 
 		// Item Group
 		this.category_field = frappe.ui.form.make_control({
-			df: {
-				fieldtype: "Link",
-				options: "Item Group",
-				placeholder: "Select Item Group...",
-				change: () => {
-					me.state.item_group = me.category_field.get_value();
-					me._fetch_category_code();
-				},
-			},
+			df: { fieldtype: "Link", options: "Item Group", placeholder: "Select Item Group..." },
 			parent: this.$page.find("#bbf-category-field"),
 			render_input: true,
 		});
-		bind_link_change(this.category_field, (val) => {
+		on_link_value(this.category_field, (val) => {
 			me.state.item_group = val;
 			me._fetch_category_code();
 		});
 
 		// Brand
 		this.brand_field = frappe.ui.form.make_control({
-			df: {
-				fieldtype: "Link",
-				options: "Brand",
-				placeholder: "Select Brand...",
-				change: () => me._on_brand_change(),
-			},
+			df: { fieldtype: "Link", options: "Brand", placeholder: "Select Brand..." },
 			parent: this.$page.find("#bbf-brand-field"),
 			render_input: true,
 		});
-		bind_link_change(this.brand_field, () => me._on_brand_change());
+		on_link_value(this.brand_field, (val) => {
+			me.state.brand = val;
+			if (val) {
+				frappe.db.get_value("Brand", val, "brand_code", (r) => {
+					me.state.brand_code = r ? r.brand_code || "" : "";
+					me._update_badge("#bbf-brand-code", me.state.brand_code);
+					me._update_preview();
+				});
+			} else {
+				me.state.brand_code = "";
+				me._update_badge("#bbf-brand-code", "");
+				me._update_preview();
+			}
+		});
 
 		// Custom Variant
 		this.variant_field = frappe.ui.form.make_control({
@@ -139,89 +115,55 @@ class BBFItemCreator {
 				options: "BBF Variant",
 				placeholder: "Select Variant...",
 				get_query: () => ({ filters: { enabled: 1 } }),
-				change: () => me._on_variant_change(),
 			},
 			parent: this.$page.find("#bbf-variant-field"),
 			render_input: true,
 		});
-		bind_link_change(this.variant_field, () => me._on_variant_change());
+		on_link_value(this.variant_field, (val) => {
+			me.state.variant = val;
+			if (val) {
+				frappe.db.get_value("BBF Variant", val, "variant_code", (r) => {
+					me.state.variant_code = r ? r.variant_code || "" : "";
+					me._update_badge("#bbf-variant-code", me.state.variant_code);
+					me._update_preview();
+				});
+			} else {
+				me.state.variant_code = "";
+				me._update_badge("#bbf-variant-code", "");
+				me._update_preview();
+			}
+		});
 
 		// Item Name
 		this.item_name_field = frappe.ui.form.make_control({
-			df: {
-				fieldtype: "Data",
-				placeholder: "e.g. Broken Rice Grade A",
-				change: () => {
-					me.state.item_name = me.item_name_field.get_value();
-				},
-			},
+			df: { fieldtype: "Data", placeholder: "e.g. Broken Rice Grade A" },
 			parent: this.$page.find("#bbf-item-name-field"),
 			render_input: true,
+		});
+		this.item_name_field.$input.on("input change", () => {
+			me.state.item_name = me.item_name_field.get_value();
 		});
 
 		// Stock UOM
 		this.uom_field = frappe.ui.form.make_control({
-			df: {
-				fieldtype: "Link",
-				options: "UOM",
-				placeholder: "Select UOM...",
-				default: "Kg",
-				change: () => {
-					me.state.stock_uom = me.uom_field.get_value();
-				},
-			},
+			df: { fieldtype: "Link", options: "UOM", placeholder: "Select UOM..." },
 			parent: this.$page.find("#bbf-uom-field"),
 			render_input: true,
 		});
 		this.uom_field.set_value("Kg");
-		bind_link_change(this.uom_field, (val) => {
-			me.state.stock_uom = val;
+		on_link_value(this.uom_field, (val) => {
+			me.state.stock_uom = val || "Kg";
 		});
 
 		// Description
 		this.desc_field = frappe.ui.form.make_control({
-			df: {
-				fieldtype: "Small Text",
-				placeholder: "Optional description...",
-				change: () => {
-					me.state.description = me.desc_field.get_value();
-				},
-			},
+			df: { fieldtype: "Small Text", placeholder: "Optional description..." },
 			parent: this.$page.find("#bbf-description-field"),
 			render_input: true,
 		});
-	}
-
-	_on_brand_change() {
-		const val = this.brand_field.get_value();
-		this.state.brand = val;
-		if (val) {
-			frappe.db.get_value("Brand", val, "brand_code", (r) => {
-				this.state.brand_code = r ? r.brand_code || "" : "";
-				this._update_badge("#bbf-brand-code", this.state.brand_code);
-				this._update_preview();
-			});
-		} else {
-			this.state.brand_code = "";
-			this._update_badge("#bbf-brand-code", "");
-			this._update_preview();
-		}
-	}
-
-	_on_variant_change() {
-		const val = this.variant_field.get_value();
-		this.state.variant = val;
-		if (val) {
-			frappe.db.get_value("BBF Variant", val, "variant_code", (r) => {
-				this.state.variant_code = r ? r.variant_code || "" : "";
-				this._update_badge("#bbf-variant-code", this.state.variant_code);
-				this._update_preview();
-			});
-		} else {
-			this.state.variant_code = "";
-			this._update_badge("#bbf-variant-code", "");
-			this._update_preview();
-		}
+		this.desc_field.$input.on("input change", () => {
+			me.state.description = me.desc_field.get_value();
+		});
 	}
 
 	// ── Bind Events ──
