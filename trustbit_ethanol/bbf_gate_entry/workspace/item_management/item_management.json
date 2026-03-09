@@ -20,10 +20,18 @@
   },
   {
    "hidden": 0,
-   "label": "BBF Item Creator",
+   "label": "Create New Item",
+   "link_to": "item-creator",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "BBF Item Creator (List)",
    "link_to": "BBF Item Creator",
    "link_type": "DocType",
-   "onboard": 1,
+   "onboard": 0,
    "type": "Link"
   },
   {
@@ -67,9 +75,9 @@
  "shortcuts": [
   {
    "color": "Green",
-   "label": "New Item Creator",
-   "link_to": "BBF Item Creator",
-   "type": "DocType"
+   "label": "Create New Item",
+   "link_to": "item-creator",
+   "type": "Page"
   },
   {
    "label": "Item Code Settings",

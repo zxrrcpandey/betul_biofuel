@@ -1,0 +1,21 @@
+{
+ "content": null,
+ "creation": "2026-03-09 00:00:00",
+ "doctype": "Page",
+ "icon": "tool",
+ "idx": 0,
+ "modified": "2026-03-09 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "item-creator",
+ "owner": "Administrator",
+ "page_name": "item-creator",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "CTO"},
+  {"role": "Stores User"}
+ ],
+ "standard": "Yes",
+ "system_page": 0,
+ "title": "Item Creator"
+}

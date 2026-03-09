@@ -1,0 +1,256 @@
+<div class="bbf-item-creator-page">
+
+	<!-- Live Preview Bar -->
+	<div class="bbf-preview-bar">
+		<div class="bbf-preview-inner">
+			<div class="bbf-preview-label">Generated Item Code</div>
+			<div class="bbf-preview-code" id="bbf-live-code">
+				<span class="bbf-code-placeholder">Select Company & Category to begin</span>
+			</div>
+		</div>
+	</div>
+
+	<!-- Main Card -->
+	<div class="bbf-card">
+
+		<!-- Steps Indicator -->
+		<div class="bbf-steps">
+			<div class="bbf-step active" data-step="1">
+				<div class="bbf-step-circle">1</div>
+				<div class="bbf-step-label">Company & Category</div>
+			</div>
+			<div class="bbf-step-line"></div>
+			<div class="bbf-step" data-step="2">
+				<div class="bbf-step-circle">2</div>
+				<div class="bbf-step-label">Variant</div>
+			</div>
+			<div class="bbf-step-line"></div>
+			<div class="bbf-step" data-step="3">
+				<div class="bbf-step-circle">3</div>
+				<div class="bbf-step-label">Item Details</div>
+			</div>
+			<div class="bbf-step-line"></div>
+			<div class="bbf-step" data-step="4">
+				<div class="bbf-step-circle">4</div>
+				<div class="bbf-step-label">Review & Create</div>
+			</div>
+		</div>
+
+		<!-- Step 1: Company & Category -->
+		<div class="bbf-step-content active" data-step="1">
+			<h3 class="bbf-section-title">Select Company & Category</h3>
+			<p class="bbf-section-desc">Choose the company and item group to build the base item code.</p>
+
+			<div class="bbf-form-row">
+				<div class="bbf-form-group">
+					<label class="bbf-label">Company <span class="bbf-req">*</span></label>
+					<div class="bbf-field" id="bbf-company-field"></div>
+				</div>
+				<div class="bbf-form-group bbf-form-sm">
+					<label class="bbf-label">Code Type</label>
+					<div class="bbf-toggle-wrap">
+						<button class="bbf-toggle-btn active" data-target="company" data-value="Character">ABC</button>
+						<button class="bbf-toggle-btn" data-target="company" data-value="Numerical">123</button>
+					</div>
+				</div>
+				<div class="bbf-form-group bbf-form-code">
+					<label class="bbf-label">Code</label>
+					<div class="bbf-code-badge" id="bbf-company-code">---</div>
+				</div>
+			</div>
+
+			<div class="bbf-form-row">
+				<div class="bbf-form-group">
+					<label class="bbf-label">Item Group / Category <span class="bbf-req">*</span></label>
+					<div class="bbf-field" id="bbf-category-field"></div>
+				</div>
+				<div class="bbf-form-group bbf-form-sm">
+					<label class="bbf-label">Code Type</label>
+					<div class="bbf-toggle-wrap">
+						<button class="bbf-toggle-btn active" data-target="category" data-value="Character">ABC</button>
+						<button class="bbf-toggle-btn" data-target="category" data-value="Numerical">123</button>
+					</div>
+				</div>
+				<div class="bbf-form-group bbf-form-code">
+					<label class="bbf-label">Code</label>
+					<div class="bbf-code-badge" id="bbf-category-code">---</div>
+				</div>
+			</div>
+
+			<div class="bbf-form-row">
+				<div class="bbf-form-group bbf-form-code">
+					<label class="bbf-label">Serial Number</label>
+					<div class="bbf-code-badge bbf-serial" id="bbf-serial-code">---</div>
+					<span class="bbf-hint">Auto-assigned on save</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Step 2: Variant -->
+		<div class="bbf-step-content" data-step="2">
+			<h3 class="bbf-section-title">Variant Configuration</h3>
+			<p class="bbf-section-desc">Optionally add a variant code to differentiate items within the same category.</p>
+
+			<div class="bbf-variant-toggle">
+				<label class="bbf-switch">
+					<input type="checkbox" id="bbf-has-variant">
+					<span class="bbf-slider"></span>
+				</label>
+				<span class="bbf-switch-label">Enable Variant</span>
+			</div>
+
+			<div class="bbf-variant-options" style="display:none;">
+				<div class="bbf-source-tabs">
+					<button class="bbf-source-tab active" data-source="Brand">
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v2l-2 6H4L2 5V3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="5.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/><circle cx="10.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/></svg>
+						Brand
+					</button>
+					<button class="bbf-source-tab" data-source="Custom Variant">
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+						Custom Variant
+					</button>
+				</div>
+
+				<div class="bbf-source-panel active" data-source="Brand">
+					<div class="bbf-form-row">
+						<div class="bbf-form-group">
+							<label class="bbf-label">Brand <span class="bbf-req">*</span></label>
+							<div class="bbf-field" id="bbf-brand-field"></div>
+						</div>
+						<div class="bbf-form-group bbf-form-code">
+							<label class="bbf-label">Brand Code</label>
+							<div class="bbf-code-badge bbf-variant-badge" id="bbf-brand-code">---</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="bbf-source-panel" data-source="Custom Variant">
+					<div class="bbf-form-row">
+						<div class="bbf-form-group">
+							<label class="bbf-label">Custom Variant <span class="bbf-req">*</span></label>
+							<div class="bbf-field" id="bbf-variant-field"></div>
+						</div>
+						<div class="bbf-form-group bbf-form-code">
+							<label class="bbf-label">Variant Code</label>
+							<div class="bbf-code-badge bbf-variant-badge" id="bbf-variant-code">---</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Step 3: Item Details -->
+		<div class="bbf-step-content" data-step="3">
+			<h3 class="bbf-section-title">Item Details</h3>
+			<p class="bbf-section-desc">Provide item information that will be used when creating the ERPNext Item.</p>
+
+			<div class="bbf-form-row">
+				<div class="bbf-form-group">
+					<label class="bbf-label">Item Name</label>
+					<div class="bbf-field" id="bbf-item-name-field"></div>
+					<span class="bbf-hint">Optional. If empty, item code will be used as name.</span>
+				</div>
+				<div class="bbf-form-group">
+					<label class="bbf-label">Stock UOM <span class="bbf-req">*</span></label>
+					<div class="bbf-field" id="bbf-uom-field"></div>
+				</div>
+			</div>
+
+			<div class="bbf-form-row">
+				<div class="bbf-form-group bbf-full">
+					<label class="bbf-label">Description</label>
+					<div class="bbf-field" id="bbf-description-field"></div>
+					<span class="bbf-hint">Optional item description.</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Step 4: Review & Create -->
+		<div class="bbf-step-content" data-step="4">
+			<h3 class="bbf-section-title">Review & Create</h3>
+			<p class="bbf-section-desc">Verify all details before creating the item in ERPNext.</p>
+
+			<div class="bbf-review-card">
+				<div class="bbf-review-header">
+					<div class="bbf-review-code" id="bbf-review-code">---</div>
+					<div class="bbf-review-type" id="bbf-review-type">Standalone Item</div>
+				</div>
+
+				<div class="bbf-review-grid">
+					<div class="bbf-review-item">
+						<span class="bbf-review-label">Company</span>
+						<span class="bbf-review-value" id="bbf-review-company">-</span>
+					</div>
+					<div class="bbf-review-item">
+						<span class="bbf-review-label">Item Group</span>
+						<span class="bbf-review-value" id="bbf-review-category">-</span>
+					</div>
+					<div class="bbf-review-item">
+						<span class="bbf-review-label">Serial</span>
+						<span class="bbf-review-value" id="bbf-review-serial">-</span>
+					</div>
+					<div class="bbf-review-item bbf-review-variant-row" style="display:none;">
+						<span class="bbf-review-label">Variant</span>
+						<span class="bbf-review-value" id="bbf-review-variant">-</span>
+					</div>
+					<div class="bbf-review-item">
+						<span class="bbf-review-label">Item Name</span>
+						<span class="bbf-review-value" id="bbf-review-name">-</span>
+					</div>
+					<div class="bbf-review-item">
+						<span class="bbf-review-label">Stock UOM</span>
+						<span class="bbf-review-value" id="bbf-review-uom">-</span>
+					</div>
+				</div>
+
+				<div class="bbf-review-note" id="bbf-review-note" style="display:none;">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3m0 2.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+					<span>This will create a <b>Template Item</b> + <b>Variant Item</b> in ERPNext.</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Navigation Buttons -->
+		<div class="bbf-nav-buttons">
+			<button class="btn bbf-btn-back" id="bbf-btn-back" style="display:none;">
+				<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				Back
+			</button>
+			<div class="bbf-nav-spacer"></div>
+			<button class="btn btn-primary bbf-btn-next" id="bbf-btn-next">
+				Next
+				<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+			</button>
+			<button class="btn btn-primary bbf-btn-create" id="bbf-btn-create" style="display:none;">
+				<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 4L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				Create Item
+			</button>
+		</div>
+
+	</div>
+
+	<!-- Success State (hidden initially) -->
+	<div class="bbf-success" id="bbf-success" style="display:none;">
+		<div class="bbf-success-card">
+			<div class="bbf-success-icon">
+				<svg width="64" height="64" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="#38a169" stroke-width="3"/><path d="M20 33l8 8 16-18" stroke="#38a169" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+			</div>
+			<h2 class="bbf-success-title">Item Created Successfully!</h2>
+			<div class="bbf-success-code" id="bbf-success-code">BBF-GRN-001</div>
+			<div class="bbf-success-template" id="bbf-success-template" style="display:none;">
+				Template: <a id="bbf-success-template-link" href="#">BBF-GRN-001</a>
+			</div>
+			<div class="bbf-success-actions">
+				<button class="btn btn-primary" id="bbf-view-item">View Item</button>
+				<button class="btn btn-default" id="bbf-create-another">Create Another</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Recent Items -->
+	<div class="bbf-recent" id="bbf-recent">
+		<h4 class="bbf-recent-title">Recent Items</h4>
+		<div class="bbf-recent-list" id="bbf-recent-list"></div>
+	</div>
+
+</div>
