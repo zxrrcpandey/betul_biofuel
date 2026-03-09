@@ -41,6 +41,7 @@ def _setup_purchase_receipt_permissions():
 	existing = frappe.db.exists("DocPerm", {
 		"parent": "Purchase Receipt",
 		"role": "Accounts User",
+		"permlevel": 0,
 		"create": 1
 	})
 	if not existing:

@@ -15,7 +15,7 @@ class BBFToken(Document):
 	def generate_token_number(self):
 		date_part = getdate().strftime("%y%m%d")
 		settings = frappe.get_single("BBF Settings")
-		digits = settings.token_suffix_digits or 4
+		digits = max(int(settings.token_suffix_digits or 4), 2)
 		min_val = 10 ** (digits - 1)
 		max_val = (10 ** digits) - 1
 
@@ -46,7 +46,7 @@ class BBFToken(Document):
 	def _diff_minutes(start, end):
 		if start and end:
 			diff = time_diff_in_seconds(end, start)
-			return round(diff / 60, 1)
+			return max(round(diff / 60, 1), 0)
 		return 0
 
 	@frappe.whitelist()
@@ -70,8 +70,10 @@ class BBFToken(Document):
 		if not gate_entry.purchase_order:
 			frappe.throw("No Purchase Order linked in the Gate Entry")
 
-		# Get PO details
+		# Get PO details and validate it's submitted
 		po = frappe.get_doc("Purchase Order", gate_entry.purchase_order)
+		if po.docstatus != 1:
+			frappe.throw(f"Purchase Order {po.name} is not submitted")
 
 		# Get weighbridge net weight
 		wb_log = frappe.db.get_value(
@@ -122,18 +124,20 @@ class BBFToken(Document):
 				proportion = flt(ge_item.ordered_qty) / total_ordered if total_ordered else 1
 				received_qty = net_weight * proportion
 
-			# Get rate from deduction sheet or PO
-			item_rate = 0
-			if deduction_sheet and deduction_sheet.item_rate:
-				item_rate = flt(deduction_sheet.item_rate)
+			# Get rate: per-item from PO, fallback to deduction sheet rate
+			po_item = frappe.db.get_value(
+				"Purchase Order Item",
+				{"parent": po.name, "item_code": ge_item.item_code},
+				["name", "rate"],
+				as_dict=True
+			)
+
+			if po_item:
+				item_rate = flt(po_item.rate)
+				po_item_name = po_item.name
 			else:
-				# Get rate from PO
-				po_item_rate = frappe.db.get_value(
-					"Purchase Order Item",
-					{"parent": po.name, "item_code": ge_item.item_code},
-					"rate"
-				)
-				item_rate = flt(po_item_rate)
+				item_rate = flt(deduction_sheet.item_rate) if deduction_sheet and deduction_sheet.item_rate else 0
+				po_item_name = None
 
 			pr_item = {
 				"item_code": ge_item.item_code,
@@ -144,11 +148,7 @@ class BBFToken(Document):
 				"rate": item_rate,
 				"warehouse": accepted_warehouse or warehouse,
 				"purchase_order": po.name,
-				"purchase_order_item": frappe.db.get_value(
-					"Purchase Order Item",
-					{"parent": po.name, "item_code": ge_item.item_code},
-					"name"
-				),
+				"purchase_order_item": po_item_name,
 			}
 			pr_items.append(pr_item)
 
@@ -193,8 +193,12 @@ class BBFToken(Document):
 
 	@frappe.whitelist()
 	def mark_exit(self):
+		# Prevent double-exit
+		if self.status == "Exited":
+			frappe.throw("This token is already marked as exited")
+
 		# Raw material tokens can only exit after GRN Created
-		if self.purpose == "Raw Material" and self.status not in ("GRN Created", "Exited"):
+		if self.purpose == "Raw Material" and self.status != "GRN Created":
 			frappe.throw("Raw Material tokens can only be marked as exited after GRN is created")
 
 		self.g1_exit_time = now_datetime()
@@ -212,7 +216,8 @@ class BBFToken(Document):
 		vehicle.last_visit_date = getdate()
 
 		if self.total_turnaround_minutes:
-			prev_total = (vehicle.avg_turnaround_minutes or 0) * max((vehicle.total_trips - 1), 1)
+			prev_trips = max(vehicle.total_trips - 1, 0)
+			prev_total = (vehicle.avg_turnaround_minutes or 0) * prev_trips
 			vehicle.avg_turnaround_minutes = round(
 				(prev_total + self.total_turnaround_minutes) / vehicle.total_trips, 1
 			)
@@ -231,7 +236,8 @@ class BBFToken(Document):
 		transporter.last_trip_date = getdate()
 
 		if self.total_turnaround_minutes:
-			prev_total = (transporter.avg_turnaround_minutes or 0) * max((transporter.total_trips - 1), 1)
+			prev_trips = max(transporter.total_trips - 1, 0)
+			prev_total = (transporter.avg_turnaround_minutes or 0) * prev_trips
 			transporter.avg_turnaround_minutes = round(
 				(prev_total + self.total_turnaround_minutes) / transporter.total_trips, 1
 			)

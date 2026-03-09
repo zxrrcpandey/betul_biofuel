@@ -125,9 +125,14 @@ frappe.ui.form.on("BBF Quality Inspection", {
 		calculate_coal_variances(frm);
 	},
 
+	before_save(frm) {
+		// Track if this is a first-time save (new doc)
+		frm._was_new = frm.is_new();
+	},
+
 	after_save(frm) {
-		// Open a new blank form after saving (for rapid inspections)
-		if (frm.doc.status === "Pending" || frm.doc.status === "In Progress") {
+		// Open a new blank form only after first save of a new doc (rapid inspections)
+		if (frm._was_new && (frm.doc.status === "Pending" || frm.doc.status === "In Progress")) {
 			frappe.set_route("Form", "BBF Quality Inspection", "new");
 		}
 	}

@@ -57,6 +57,10 @@ class BBFQualityInspection(Document):
 
 	@frappe.whitelist()
 	def complete_inspection(self):
+		# Idempotency: already completed
+		if self.status in ("Completed", "Rejected"):
+			return {"status": self.status}
+
 		if not self.decision:
 			frappe.throw("Please set a Decision (Accept/Reject/Hold) before completing")
 		if not self.grade:

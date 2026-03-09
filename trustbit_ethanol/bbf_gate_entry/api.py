@@ -11,7 +11,10 @@ def get_purchase_orders(po_id=None, po_date=None, tentative_qty=None):
 	if po_date:
 		filters["transaction_date"] = po_date
 	if tentative_qty:
-		tentative_qty = float(tentative_qty)
+		try:
+			tentative_qty = float(tentative_qty)
+		except (ValueError, TypeError):
+			tentative_qty = 0
 		if tentative_qty > 0:
 			filters["total_qty"] = ["between", [tentative_qty * 0.8, tentative_qty * 1.2]]
 

@@ -24,12 +24,11 @@ frappe.ui.form.on("BBF Gate Entry", {
 	},
 
 	setup(frm) {
-		// Filter token_number to only show active tokens (not Exited, not already linked)
+		// Filter token_number to only show tokens at "Token Generated" stage (any purpose)
 		frm.set_query("token_number", function () {
 			return {
 				filters: {
-					status: ["in", ["Token Generated"]],
-					purpose: "Raw Material"
+					status: ["in", ["Token Generated"]]
 				}
 			};
 		});
@@ -85,16 +84,17 @@ frappe.ui.form.on("BBF Gate Entry", {
 						]
 					});
 
+					let esc = (v) => $("<span>").text(v).html();
 					let html = '<table class="table table-bordered">';
 					html += "<thead><tr><th>PO</th><th>Supplier</th><th>Date</th><th>Total Qty</th><th>Received %</th><th>Action</th></tr></thead><tbody>";
 					r.message.forEach(po => {
 						html += `<tr>
-							<td>${po.name}</td>
-							<td>${po.supplier_name || ""}</td>
-							<td>${po.transaction_date || ""}</td>
-							<td>${po.total_qty || ""}</td>
-							<td>${po.per_received || 0}%</td>
-							<td><button class="btn btn-xs btn-primary select-po" data-po="${po.name}">Select</button></td>
+							<td>${esc(po.name)}</td>
+							<td>${esc(po.supplier_name || "")}</td>
+							<td>${esc(po.transaction_date || "")}</td>
+							<td>${esc(po.total_qty || "")}</td>
+							<td>${esc(po.per_received || 0)}%</td>
+							<td><button class="btn btn-xs btn-primary select-po" data-po="${esc(po.name)}">Select</button></td>
 						</tr>`;
 					});
 					html += "</tbody></table>";

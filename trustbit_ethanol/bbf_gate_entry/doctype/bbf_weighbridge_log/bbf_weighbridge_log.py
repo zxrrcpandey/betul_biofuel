@@ -43,7 +43,10 @@ class BBFWeighbridgeLog(Document):
 
 	def calculate_net_weight(self):
 		if self.gross_weight and self.tare_weight:
-			self.net_weight = self.gross_weight - self.tare_weight
+			net = self.gross_weight - self.tare_weight
+			if net < 0:
+				frappe.throw(f"Net weight cannot be negative ({net} KG). Tare weight ({self.tare_weight}) exceeds gross weight ({self.gross_weight}).")
+			self.net_weight = net
 			self._calculate_weight_difference()
 
 	def _calculate_weight_difference(self):
@@ -96,6 +99,3 @@ class BBFWeighbridgeLog(Document):
 			token.wb_tare_time = now_datetime()
 			token.status = "Tare Weighed"
 			token.save(ignore_permissions=True)
-
-			net = self.gross_weight - self.tare_weight
-			self.db_set("net_weight", net)

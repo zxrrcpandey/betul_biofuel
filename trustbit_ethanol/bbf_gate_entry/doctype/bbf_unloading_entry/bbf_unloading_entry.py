@@ -51,6 +51,10 @@ class BBFUnloadingEntry(Document):
 
 	@frappe.whitelist()
 	def start_unloading(self):
+		# Idempotency: already started
+		if self.status in ("Unloading", "Completed"):
+			return
+
 		self.unloading_start = now_datetime()
 		self.status = "Unloading"
 		self.save(ignore_permissions=True)
@@ -62,6 +66,10 @@ class BBFUnloadingEntry(Document):
 
 	@frappe.whitelist()
 	def end_unloading(self):
+		# Idempotency: already completed
+		if self.status == "Completed":
+			return
+
 		if not self.unloading_start:
 			frappe.throw("Unloading has not been started yet")
 

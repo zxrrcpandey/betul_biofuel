@@ -19,7 +19,11 @@ class BBFGateEntry(Document):
 		if not self.token_number:
 			return
 		token_status = frappe.db.get_value("BBF Token", self.token_number, "status")
-		if token_status and token_status != "Token Generated":
+		# Allow "PO Linked" when amending a gate entry (token was already advanced)
+		allowed = ["Token Generated"]
+		if self.amended_from:
+			allowed.append("PO Linked")
+		if token_status and token_status not in allowed:
 			frappe.throw(f"Token {self.token_number} is already at stage '{token_status}'. Only tokens with status 'Token Generated' can be linked to a Gate Entry.")
 
 	def validate_po_remaining_qty(self):

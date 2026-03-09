@@ -71,6 +71,11 @@ class BBFDeductionSheet(Document):
 	@frappe.whitelist()
 	def calculate_deductions(self):
 		"""Auto-populate deduction lines based on item category."""
+		if not flt(self.invoice_qty):
+			frappe.throw("Please enter Invoice Qty before calculating deductions")
+		if not flt(self.item_rate):
+			frappe.throw("Please enter Item Rate before calculating deductions")
+
 		self.deductions = []
 
 		if self.item_category == "Grain":
@@ -90,15 +95,15 @@ class BBFDeductionSheet(Document):
 		net_wt = flt(self.net_weight)
 		mrn = flt(self.mrn_amount)
 
-		# 1. Unloading Deduction (Net Weight x Rate per bag)
+		# 1. Unloading Deduction (Net Weight x Rate per KG)
 		unloading_amt = flt(net_wt) * flt(self.unloading_rate_per_bag)
 		if flt(self.unloading_rate_per_bag):
 			self.append("deductions", {
 				"deduction_type": "Unloading",
-				"description": f"Net Wt ({net_wt}) x Rs {self.unloading_rate_per_bag}/bag",
+				"description": f"Net Wt ({net_wt} KG) x Rs {self.unloading_rate_per_bag}/KG",
 				"base_value": net_wt,
 				"rate": flt(self.unloading_rate_per_bag),
-				"rate_type": "Per Bag",
+				"rate_type": "Per KG",
 				"calculated_amount": unloading_amt,
 				"actual_amount": unloading_amt
 			})
@@ -180,6 +185,10 @@ class BBFDeductionSheet(Document):
 
 	@frappe.whitelist()
 	def approve_deductions(self):
+		# Idempotency: already approved
+		if self.status == "Approved":
+			return {"status": "Approved", "net_payable": self.net_payable}
+
 		if not self.deductions:
 			frappe.throw("Please calculate deductions first")
 		if not self.decision:
