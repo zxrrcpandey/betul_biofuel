@@ -100,13 +100,15 @@ class BBFItemCreator(Document):
 	def validate(self):
 		if not self.company_code:
 			frappe.throw(
-				"Company Code not found. Please set <b>company_code</b> "
-				"(or <b>company_num_code</b>) on the Company master."
+				f"Company Code not found for <b>{self.company}</b>.<br>"
+				f"Go to <a href='/app/company/{self.company}'>Company → {self.company}</a> "
+				f"and set the <b>{'company_num_code' if self.company_code_type == 'Numerical' else 'company_code'}</b> field."
 			)
 		if not self.category_code:
 			frappe.throw(
-				"Category Code not found. Please set <b>category_code</b> "
-				"(or <b>category_num_code</b>) on the Item Group master."
+				f"Category Code not found for <b>{self.item_group}</b>.<br>"
+				f"Go to <a href='/app/item-group/{self.item_group}'>Item Group → {self.item_group}</a> "
+				f"and set the <b>{'category_num_code' if self.category_code_type == 'Numerical' else 'category_code'}</b> field."
 			)
 
 		if self.has_variant:
@@ -114,8 +116,9 @@ class BBFItemCreator(Document):
 				frappe.throw("Please select a Brand or uncheck 'Has Variant'")
 			if self.variant_source == "Brand" and self.brand and not self.brand_code:
 				frappe.throw(
-					f"Brand Code not found for <b>{self.brand}</b>. "
-					"Please set <b>brand_code</b> on the Brand master."
+					f"Brand Code not found for <b>{self.brand}</b>.<br>"
+					f"Go to <a href='/app/brand/{self.brand}'>Brand → {self.brand}</a> "
+					"and set the <b>brand_code</b> field."
 				)
 			if self.variant_source == "Custom Variant" and not self.variant:
 				frappe.throw("Please select a Custom Variant or uncheck 'Has Variant'")

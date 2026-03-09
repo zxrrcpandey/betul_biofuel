@@ -99,7 +99,15 @@ class BBFItemCreator {
 				frappe.db.get_value("Brand", val, "brand_code", (r) => {
 					me.state.brand_code = r ? r.brand_code || "" : "";
 					me._update_badge("#bbf-brand-code", me.state.brand_code);
-					me._update_preview();
+					if (!me.state.brand_code) {
+						me._prompt_set_code("Brand", val, "brand_code", (code) => {
+							me.state.brand_code = code;
+							me._update_badge("#bbf-brand-code", code);
+							me._update_preview();
+						});
+					} else {
+						me._update_preview();
+					}
 				});
 			} else {
 				me.state.brand_code = "";
@@ -242,7 +250,15 @@ class BBFItemCreator {
 		frappe.db.get_value("Company", this.state.company, field, (r) => {
 			this.state.company_code = r ? r[field] || "" : "";
 			this._update_badge("#bbf-company-code", this.state.company_code);
-			this._fetch_serial_preview();
+			if (!this.state.company_code) {
+				this._prompt_set_code("Company", this.state.company, field, (code) => {
+					this.state.company_code = code;
+					this._update_badge("#bbf-company-code", code);
+					this._fetch_serial_preview();
+				});
+			} else {
+				this._fetch_serial_preview();
+			}
 		});
 	}
 
@@ -258,8 +274,74 @@ class BBFItemCreator {
 		frappe.db.get_value("Item Group", this.state.item_group, field, (r) => {
 			this.state.category_code = r ? r[field] || "" : "";
 			this._update_badge("#bbf-category-code", this.state.category_code);
-			this._fetch_serial_preview();
+			if (!this.state.category_code) {
+				this._prompt_set_code("Item Group", this.state.item_group, field, (code) => {
+					this.state.category_code = code;
+					this._update_badge("#bbf-category-code", code);
+					this._fetch_serial_preview();
+				});
+			} else {
+				this._fetch_serial_preview();
+			}
 		});
+	}
+
+	// ── Prompt to set missing code directly ──
+	_prompt_set_code(doctype, name, fieldname, callback) {
+		const is_num = fieldname.includes("num");
+		const label = is_num ? "Numerical Code (e.g. 01)" : "Character Code (e.g. BBF)";
+
+		const d = new frappe.ui.Dialog({
+			title: `Set ${doctype} Code`,
+			fields: [
+				{
+					fieldtype: "HTML",
+					options: `<div style="margin-bottom:12px;padding:12px 16px;background:#ebf8ff;border-radius:8px;border:1px solid #bee3f8;color:#2b6cb0;font-size:13px;">
+						<b>${name}</b> does not have a <b>${fieldname.replace(/_/g, " ")}</b> set.
+						Enter one below to continue.
+					</div>`,
+				},
+				{
+					fieldname: "code_value",
+					fieldtype: "Data",
+					label: label,
+					reqd: 1,
+					description: is_num
+						? "2-3 digit number (e.g. 01, 02)"
+						: "2-3 letter uppercase code (e.g. BBF, RM, GRN)",
+				},
+			],
+			primary_action_label: "Save Code",
+			primary_action(values) {
+				let code = values.code_value.trim().toUpperCase();
+				if (!is_num && !/^[A-Z0-9]{1,5}$/.test(code)) {
+					frappe.msgprint("Code must be 1-5 alphanumeric characters.");
+					return;
+				}
+				if (is_num && !/^[0-9]{1,5}$/.test(code)) {
+					frappe.msgprint("Numerical code must be 1-5 digits.");
+					return;
+				}
+
+				frappe.call({
+					method: "frappe.client.set_value",
+					args: { doctype: doctype, name: name, fieldname: fieldname, value: code },
+					callback(r) {
+						if (r.message) {
+							d.hide();
+							frappe.show_alert({
+								message: `${doctype} code set to <b>${code}</b>`,
+								indicator: "green",
+							});
+							callback(code);
+						}
+					},
+				});
+			},
+		});
+		d.show();
+		// Focus the input
+		setTimeout(() => d.fields_dict.code_value.$input.focus(), 200);
 	}
 
 	_fetch_serial_preview() {
