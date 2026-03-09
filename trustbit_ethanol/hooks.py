@@ -36,12 +36,17 @@ fixtures = [
 		"doctype": "Custom Field",
 		"filters": [["name", "in", [
 			"Purchase Receipt-bbf_token",
-			"Purchase Receipt-bbf_gate_entry"
+			"Purchase Receipt-bbf_gate_entry",
+			"Company-company_code",
+			"Company-company_num_code",
+			"Item Group-category_code",
+			"Item Group-category_num_code",
+			"Brand-brand_code"
 		]]]
 	}
 ]
 
-# Setup custom fields on Purchase Receipt for GRN integration
+# Setup custom fields on Purchase Receipt, Company, Item Group, Brand
 after_migrate = [
 	"trustbit_ethanol.bbf_gate_entry.setup.create_custom_fields"
 ]

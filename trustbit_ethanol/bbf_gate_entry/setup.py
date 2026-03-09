@@ -3,7 +3,7 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 
 def create_custom_fields():
-	"""Create custom fields on Purchase Receipt for BBF GRN integration."""
+	"""Create custom fields on Purchase Receipt, Company, Item Group, and Brand."""
 	custom_fields = {
 		"Purchase Receipt": [
 			{
@@ -28,7 +28,48 @@ def create_custom_fields():
 				"print_hide": 1,
 				"description": "Linked BBF Gate Entry (auto-set when GRN is created from BBF Gate Entry system)"
 			},
-		]
+		],
+		"Company": [
+			{
+				"fieldname": "company_code",
+				"fieldtype": "Data",
+				"label": "Company Code (ABC)",
+				"insert_after": "company_name",
+				"description": "3-letter character code for item coding (e.g., BBF, TBT)"
+			},
+			{
+				"fieldname": "company_num_code",
+				"fieldtype": "Data",
+				"label": "Company Code (123)",
+				"insert_after": "company_code",
+				"description": "2-digit numerical code for item coding (e.g., 01, 02)"
+			},
+		],
+		"Item Group": [
+			{
+				"fieldname": "category_code",
+				"fieldtype": "Data",
+				"label": "Category Code (ABC)",
+				"insert_after": "item_group_name",
+				"description": "3-letter character code for item coding (e.g., GRN, COL)"
+			},
+			{
+				"fieldname": "category_num_code",
+				"fieldtype": "Data",
+				"label": "Category Code (123)",
+				"insert_after": "category_code",
+				"description": "2-digit numerical code for item coding (e.g., 01, 02)"
+			},
+		],
+		"Brand": [
+			{
+				"fieldname": "brand_code",
+				"fieldtype": "Data",
+				"label": "Brand Code",
+				"insert_after": "brand",
+				"description": "3-letter code for item coding (e.g., CAR, ADM, MCL)"
+			},
+		],
 	}
 
 	_create_custom_fields(custom_fields)
