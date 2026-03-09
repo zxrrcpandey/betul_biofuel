@@ -157,8 +157,13 @@ class BBFItemCreator(Document):
 			result = self._create_standalone_item()
 
 		# Update this record
-		self.item_created = result["item_code"]
-		self.template_item = result.get("template_code", "")
+		if result.get("template_code"):
+			# Multi-variant: store template in item_created (Link field can only hold one value)
+			self.item_created = result["template_code"]
+			self.template_item = result["template_code"]
+		else:
+			self.item_created = result["item_code"]
+			self.template_item = ""
 		self.status = "Created"
 		self.save(ignore_permissions=True)
 
