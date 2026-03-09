@@ -393,6 +393,10 @@
    "read": 1,
    "write": 1,
    "role": "CTO"
+  },
+  {
+   "read": 1,
+   "role": "Quality Inspector"
   }
  ],
  "search_fields": "token_number, item_category, status",

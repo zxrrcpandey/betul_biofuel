@@ -11,6 +11,39 @@ frappe.ui.form.on("BBF Gate Entry", {
 				});
 			});
 		}
+
+		// Lock fields after submit
+		if (frm.doc.docstatus === 1) {
+			frm.set_df_property("token_number", "read_only", 1);
+			frm.set_df_property("purchase_order", "read_only", 1);
+			frm.set_df_property("material_flow", "read_only", 1);
+			frm.set_df_property("transporter", "read_only", 1);
+			frm.set_df_property("lr_number", "read_only", 1);
+			frm.set_df_property("lr_date", "read_only", 1);
+		}
+	},
+
+	setup(frm) {
+		// Filter token_number to only show active tokens (not Exited, not already linked)
+		frm.set_query("token_number", function () {
+			return {
+				filters: {
+					status: ["in", ["Token Generated"]],
+					purpose: "Raw Material"
+				}
+			};
+		});
+
+		// Filter purchase_order to only show open POs with remaining qty
+		frm.set_query("purchase_order", function () {
+			return {
+				filters: {
+					docstatus: 1,
+					status: ["not in", ["Closed", "Cancelled", "Completed"]],
+					per_received: ["<", 100]
+				}
+			};
+		});
 	},
 
 	token_number(frm) {
@@ -53,13 +86,14 @@ frappe.ui.form.on("BBF Gate Entry", {
 					});
 
 					let html = '<table class="table table-bordered">';
-					html += "<thead><tr><th>PO</th><th>Supplier</th><th>Date</th><th>Total Qty</th><th>Action</th></tr></thead><tbody>";
+					html += "<thead><tr><th>PO</th><th>Supplier</th><th>Date</th><th>Total Qty</th><th>Received %</th><th>Action</th></tr></thead><tbody>";
 					r.message.forEach(po => {
 						html += `<tr>
 							<td>${po.name}</td>
 							<td>${po.supplier_name || ""}</td>
 							<td>${po.transaction_date || ""}</td>
 							<td>${po.total_qty || ""}</td>
+							<td>${po.per_received || 0}%</td>
 							<td><button class="btn btn-xs btn-primary select-po" data-po="${po.name}">Select</button></td>
 						</tr>`;
 					});

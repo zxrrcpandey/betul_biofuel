@@ -5,7 +5,15 @@ from frappe.utils import now_datetime, time_diff_in_seconds
 
 class BBFUnloadingEntry(Document):
 	def before_insert(self):
+		self.validate_token_status()
 		self.auto_fetch_from_gate_entry()
+
+	def validate_token_status(self):
+		if not self.token_number:
+			return
+		token_status = frappe.db.get_value("BBF Token", self.token_number, "status")
+		if token_status not in ("Graded", "Quality Done"):
+			frappe.throw(f"Token {self.token_number} is at stage '{token_status}'. Unloading can only start after Quality Inspection and Grading are complete.")
 
 	def auto_fetch_from_gate_entry(self):
 		if not self.token_number:
@@ -20,16 +28,18 @@ class BBFUnloadingEntry(Document):
 		if gate_entry:
 			self.gate_entry = gate_entry.name
 
+			# Fetch all items (removed limit=1)
 			items = frappe.db.get_all(
 				"BBF Gate Entry Item",
 				filters={"parent": gate_entry.name},
-				fields=["item_code", "item_name", "ordered_qty"],
-				limit=1
+				fields=["item_code", "item_name", "ordered_qty"]
 			)
 			if items:
+				# For display, show first item (unloading entry has single item fields)
 				self.item_code = items[0].item_code
 				self.item_name = items[0].item_name
-				self.expected_qty = items[0].ordered_qty
+				# Sum all ordered quantities for expected_qty
+				self.expected_qty = sum(i.ordered_qty or 0 for i in items)
 
 		wb_log = frappe.db.get_value(
 			"BBF Weighbridge Log",

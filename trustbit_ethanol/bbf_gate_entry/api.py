@@ -4,7 +4,7 @@ from frappe.utils import now_datetime, time_diff_in_seconds, getdate
 
 @frappe.whitelist()
 def get_purchase_orders(po_id=None, po_date=None, tentative_qty=None):
-	filters = {"docstatus": 1, "status": ["not in", ["Closed", "Cancelled"]]}
+	filters = {"docstatus": 1, "status": ["not in", ["Closed", "Cancelled", "Completed"]], "per_received": ["<", 100]}
 
 	if po_id:
 		filters["name"] = ["like", f"%{po_id}%"]
@@ -18,7 +18,7 @@ def get_purchase_orders(po_id=None, po_date=None, tentative_qty=None):
 	return frappe.get_all(
 		"Purchase Order",
 		filters=filters,
-		fields=["name", "supplier", "supplier_name", "transaction_date", "total_qty", "grand_total"],
+		fields=["name", "supplier", "supplier_name", "transaction_date", "total_qty", "grand_total", "per_received"],
 		order_by="transaction_date desc",
 		limit=20
 	)

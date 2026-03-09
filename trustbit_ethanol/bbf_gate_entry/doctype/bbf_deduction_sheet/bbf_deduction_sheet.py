@@ -131,12 +131,13 @@ class BBFDeductionSheet(Document):
 				"actual_amount": impurity_amt
 			})
 
-		# 4. Brokerage (Net Weight x Rate per MT)
-		brokerage_amt = flt(net_wt) * flt(self.brokerage_rate_per_mt)
+		# 4. Brokerage (Net Weight in KG / 1000 to get MT, then x Rate per MT)
+		net_wt_mt = flt(net_wt) / 1000  # Convert KG to Metric Tons
+		brokerage_amt = net_wt_mt * flt(self.brokerage_rate_per_mt)
 		if flt(self.brokerage_rate_per_mt):
 			self.append("deductions", {
 				"deduction_type": "Brokerage",
-				"description": f"Net Wt ({net_wt}) x Rs {self.brokerage_rate_per_mt}/MT",
+				"description": f"Net Wt ({net_wt} KG = {round(net_wt_mt, 3)} MT) x Rs {self.brokerage_rate_per_mt}/MT",
 				"base_value": net_wt,
 				"rate": flt(self.brokerage_rate_per_mt),
 				"rate_type": "Per MT",
@@ -163,9 +164,10 @@ class BBFDeductionSheet(Document):
 			})
 
 		# Moisture Deduction: if Actual Moisture > PO Moisture
+		# Deduction = (excess moisture% / 100) * invoice_value
 		if flt(self.qi_actual_moisture) and flt(self.qi_po_moisture) and flt(self.qi_actual_moisture) > flt(self.qi_po_moisture):
 			moisture_excess = flt(self.qi_actual_moisture) - flt(self.qi_po_moisture)
-			moisture_debit = moisture_excess * invoice_qty * item_rate
+			moisture_debit = (moisture_excess / 100) * invoice_qty * item_rate
 			self.append("deductions", {
 				"deduction_type": "Moisture Excess",
 				"description": f"PO Moisture: {self.qi_po_moisture}, Actual: {self.qi_actual_moisture}, Excess: {moisture_excess}",

@@ -15,8 +15,12 @@
  "roles": [
   {"role": "System Manager"},
   {"role": "Accounts Manager"},
+  {"role": "Accounts User"},
   {"role": "CTO"},
   {"role": "G1 Security"},
-  {"role": "G2 Gate Operator"}
+  {"role": "G2 Gate Operator"},
+  {"role": "Weighbridge Operator"},
+  {"role": "Stores User"},
+  {"role": "Quality Inspector"}
  ]
 }

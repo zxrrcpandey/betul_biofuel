@@ -1,17 +1,33 @@
 import frappe
 from frappe.model.document import Document
-from frappe.utils import now_datetime
+from frappe.utils import now_datetime, flt
 
 
 class BBFGateEntry(Document):
 	def validate(self):
 		self.set_route()
+		self.validate_token_status()
+		self.validate_po_remaining_qty()
 
 	def set_route(self):
 		if self.material_flow == "Raw Material":
 			self.route_to = "Weighbridge"
 		elif self.material_flow == "Non-Raw Material":
 			self.route_to = "Stores/Department"
+
+	def validate_token_status(self):
+		if not self.token_number:
+			return
+		token_status = frappe.db.get_value("BBF Token", self.token_number, "status")
+		if token_status and token_status != "Token Generated":
+			frappe.throw(f"Token {self.token_number} is already at stage '{token_status}'. Only tokens with status 'Token Generated' can be linked to a Gate Entry.")
+
+	def validate_po_remaining_qty(self):
+		if not self.purchase_order:
+			return
+		po = frappe.get_doc("Purchase Order", self.purchase_order)
+		if po.per_received >= 100:
+			frappe.throw(f"Purchase Order {self.purchase_order} is already 100% received. Please select a different PO.")
 
 	def on_submit(self):
 		self.update_token_status()

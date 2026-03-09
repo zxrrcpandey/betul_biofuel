@@ -6,6 +6,7 @@ from frappe.utils import now_datetime
 class BBFWeighbridgeLog(Document):
 	def before_insert(self):
 		self.auto_fetch_from_gate_entry()
+		self.validate_token_status()
 
 	def auto_fetch_from_gate_entry(self):
 		if not self.token_number:
@@ -21,6 +22,13 @@ class BBFWeighbridgeLog(Document):
 			self.gate_entry = gate_entry.name
 			self.purchase_order = gate_entry.purchase_order
 			self.material_flow = gate_entry.material_flow
+
+	def validate_token_status(self):
+		if not self.token_number:
+			return
+		token_status = frappe.db.get_value("BBF Token", self.token_number, "status")
+		if token_status not in ("PO Linked",):
+			frappe.throw(f"Token {self.token_number} is at stage '{token_status}'. Only tokens with status 'PO Linked' can be weighed.")
 
 	def validate(self):
 		self.set_operators()
@@ -59,8 +67,8 @@ class BBFWeighbridgeLog(Document):
 	def update_status(self):
 		if self.tare_weight and self.gross_weight:
 			self.status = "Completed"
-		elif self.unloading_complete and not self.tare_weight:
-			self.status = "Awaiting Unloading"
+		elif self.unloading_complete and self.gross_weight and not self.tare_weight:
+			self.status = "Awaiting Tare Weight"
 		elif self.gross_weight and not self.tare_weight:
 			self.status = "Awaiting Unloading"
 		else:
@@ -79,8 +87,6 @@ class BBFWeighbridgeLog(Document):
 			token.status = "Gross Weighed"
 			token.save(ignore_permissions=True)
 
-			self._notify_stores_gross_recorded()
-
 	def on_update(self):
 		if self.has_value_changed("tare_weight") and self.tare_weight:
 			self.db_set("tare_weight_time", now_datetime())
@@ -93,23 +99,3 @@ class BBFWeighbridgeLog(Document):
 
 			net = self.gross_weight - self.tare_weight
 			self.db_set("net_weight", net)
-
-	def _notify_stores_gross_recorded(self):
-		item_name = ""
-		if self.gate_entry:
-			items = frappe.db.get_all(
-				"BBF Gate Entry Item",
-				filters={"parent": self.gate_entry},
-				fields=["item_name"],
-				limit=1
-			)
-			if items:
-				item_name = items[0].item_name
-
-		frappe.publish_realtime(
-			"msgprint",
-			{
-				"message": f"Token {self.token_number} | {item_name} | Gross: {self.gross_weight} KG | Ready for unloading",
-				"title": "Gross Weight Recorded"
-			}
-		)

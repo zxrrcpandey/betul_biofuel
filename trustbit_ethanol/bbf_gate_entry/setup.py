@@ -32,3 +32,34 @@ def create_custom_fields():
 	}
 
 	_create_custom_fields(custom_fields)
+	_setup_purchase_receipt_permissions()
+
+
+def _setup_purchase_receipt_permissions():
+	"""Ensure Accounts User role has create permission on Purchase Receipt."""
+	# Check if Accounts User already has create permission
+	existing = frappe.db.exists("DocPerm", {
+		"parent": "Purchase Receipt",
+		"role": "Accounts User",
+		"create": 1
+	})
+	if not existing:
+		# Add create permission for Accounts User on Purchase Receipt
+		pr_doc = frappe.get_doc("DocType", "Purchase Receipt")
+		has_accounts_user = False
+		for perm in pr_doc.permissions:
+			if perm.role == "Accounts User" and perm.permlevel == 0:
+				perm.create = 1
+				has_accounts_user = True
+				break
+		if not has_accounts_user:
+			pr_doc.append("permissions", {
+				"role": "Accounts User",
+				"permlevel": 0,
+				"read": 1,
+				"write": 1,
+				"create": 1,
+				"submit": 1
+			})
+		pr_doc.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Purchase Receipt")

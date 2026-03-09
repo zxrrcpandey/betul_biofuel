@@ -193,6 +193,10 @@ class BBFToken(Document):
 
 	@frappe.whitelist()
 	def mark_exit(self):
+		# Raw material tokens can only exit after GRN Created
+		if self.purpose == "Raw Material" and self.status not in ("GRN Created", "Exited"):
+			frappe.throw("Raw Material tokens can only be marked as exited after GRN is created")
+
 		self.g1_exit_time = now_datetime()
 		self.status = "Exited"
 		self.save(ignore_permissions=True)
@@ -216,13 +220,13 @@ class BBFToken(Document):
 		vehicle.save(ignore_permissions=True)
 
 	def _update_transport_master(self):
-		gate_entry = frappe.db.get_value(
+		transporter_name = frappe.db.get_value(
 			"BBF Gate Entry", {"token_number": self.name}, "transporter"
 		)
-		if not gate_entry:
+		if not transporter_name or not frappe.db.exists("BBF Transport Master", transporter_name):
 			return
 
-		transporter = frappe.get_doc("BBF Transport Master", gate_entry)
+		transporter = frappe.get_doc("BBF Transport Master", transporter_name)
 		transporter.total_trips = (transporter.total_trips or 0) + 1
 		transporter.last_trip_date = getdate()
 

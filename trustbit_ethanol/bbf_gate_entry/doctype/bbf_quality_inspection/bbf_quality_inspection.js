@@ -11,8 +11,23 @@ frappe.ui.form.on("BBF Quality Inspection", {
 			frm.page.set_indicator(__("Pending"), "blue");
 		}
 
-		// Complete Inspection button
-		if (!frm.is_new() && frm.doc.status === "Pending" || frm.doc.status === "In Progress") {
+		// Lock all fields after completion/rejection
+		if (frm.doc.status === "Completed" || frm.doc.status === "Rejected") {
+			frm.set_df_property("item_category", "read_only", 1);
+			frm.set_df_property("moisture_percent", "read_only", 1);
+			frm.set_df_property("impurity_percent", "read_only", 1);
+			frm.set_df_property("foreign_matter_percent", "read_only", 1);
+			frm.set_df_property("starch_content", "read_only", 1);
+			frm.set_df_property("actual_gcv", "read_only", 1);
+			frm.set_df_property("actual_moisture_percent", "read_only", 1);
+			frm.set_df_property("grade", "read_only", 1);
+			frm.set_df_property("decision", "read_only", 1);
+			frm.set_df_property("hold_reason", "read_only", 1);
+			frm.set_df_property("remarks", "read_only", 1);
+		}
+
+		// Complete Inspection button - fix operator precedence with parentheses
+		if (!frm.is_new() && (frm.doc.status === "Pending" || frm.doc.status === "In Progress")) {
 			frm.add_custom_button(__("Complete Inspection"), function () {
 				if (!frm.doc.grade) {
 					frappe.msgprint(__("Please set a Grade first"));
@@ -48,6 +63,53 @@ frappe.ui.form.on("BBF Quality Inspection", {
 		}
 	},
 
+	setup(frm) {
+		// Only show tokens at Gross Weighed stage (ready for QC)
+		frm.set_query("token_number", function () {
+			return {
+				filters: {
+					status: ["in", ["Gross Weighed"]],
+					purpose: "Raw Material"
+				}
+			};
+		});
+	},
+
+	token_number(frm) {
+		if (frm.doc.token_number) {
+			// Auto-fetch item_category from the item's item_group
+			frappe.db.get_value("BBF Gate Entry",
+				{ token_number: frm.doc.token_number, docstatus: 1 },
+				["name", "purchase_order"]
+			).then(r => {
+				if (r.message && r.message.name) {
+					// Fetch items from gate entry
+					frappe.db.get_list("BBF Gate Entry Item", {
+						filters: { parent: r.message.name },
+						fields: ["item_code", "item_name"],
+						limit: 1
+					}).then(items => {
+						if (items && items.length) {
+							frm.set_value("item_code", items[0].item_code);
+							frm.set_value("item_name", items[0].item_name);
+							// Try to auto-detect item_category from item_group
+							frappe.db.get_value("Item", items[0].item_code, "item_group").then(ig => {
+								if (ig.message && ig.message.item_group) {
+									let group = ig.message.item_group.toLowerCase();
+									if (group.includes("grain") || group.includes("maize") || group.includes("rice") || group.includes("corn")) {
+										frm.set_value("item_category", "Grain");
+									} else if (group.includes("coal")) {
+										frm.set_value("item_category", "Coal");
+									}
+								}
+							});
+						}
+					});
+				}
+			});
+		}
+	},
+
 	item_category(frm) {
 		// When category changes and status is Pending, mark as In Progress
 		if (frm.doc.status === "Pending" && frm.doc.item_category) {
@@ -61,6 +123,13 @@ frappe.ui.form.on("BBF Quality Inspection", {
 
 	actual_moisture_percent(frm) {
 		calculate_coal_variances(frm);
+	},
+
+	after_save(frm) {
+		// Open a new blank form after saving (for rapid inspections)
+		if (frm.doc.status === "Pending" || frm.doc.status === "In Progress") {
+			frappe.set_route("Form", "BBF Quality Inspection", "new");
+		}
 	}
 });
 

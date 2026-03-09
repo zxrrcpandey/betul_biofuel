@@ -286,6 +286,12 @@
   {
    "read": 1,
    "role": "CTO"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Quality Inspector"
   }
  ],
  "search_fields": "token_number, item_category, decision",

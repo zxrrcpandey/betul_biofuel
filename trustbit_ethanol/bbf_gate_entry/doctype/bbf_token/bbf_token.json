@@ -18,6 +18,7 @@
   "column_break_vehicle",
   "driver_name",
   "driver_mobile",
+  "driver_license_number",
   "timestamps_section",
   "g1_entry_time",
   "g2_link_time",
@@ -97,7 +98,8 @@
    "label": "Purpose",
    "options": "\nRaw Material\nNon-Raw Material\nVisitor\nService\nOther",
    "reqd": 1,
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "vehicle_section",
@@ -136,6 +138,12 @@
    "fieldtype": "Data",
    "label": "Driver Mobile",
    "options": "Phone",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "driver_license_number",
+   "fieldtype": "Data",
+   "label": "Driver License Number",
    "permlevel": 1
   },
   {
@@ -386,6 +394,11 @@
    "read": 1,
    "role": "CTO",
    "permlevel": 1
+  },
+  {
+   "read": 1,
+   "role": "Quality Inspector",
+   "permlevel": 0
   }
  ],
  "search_fields": "token_number, status, entry_date",

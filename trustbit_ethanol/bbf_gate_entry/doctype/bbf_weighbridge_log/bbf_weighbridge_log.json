@@ -11,6 +11,7 @@
   "purchase_order",
   "column_break_main",
   "material_flow",
+  "rst_number",
   "status",
   "gross_section",
   "gross_weight",
@@ -76,10 +77,16 @@
    "read_only": 1
   },
   {
+   "fieldname": "rst_number",
+   "fieldtype": "Data",
+   "label": "RST Number",
+   "description": "Weighbridge RST slip number"
+  },
+  {
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Gross Recorded\nAwaiting Unloading\nTare Recorded\nCompleted",
+   "options": "Gross Recorded\nAwaiting Unloading\nAwaiting Tare Weight\nCompleted",
    "default": "Gross Recorded",
    "in_list_view": 1,
    "in_standard_filter": 1,

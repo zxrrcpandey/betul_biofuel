@@ -29,6 +29,12 @@ frappe.ui.form.on("BBF Unloading Entry", {
 					);
 				}, __("Actions"));
 			}
+
+			// Lock fields after unloading starts
+			if (frm.doc.status !== "Pending") {
+				frm.set_df_property("token_number", "read_only", 1);
+				frm.set_df_property("warehouse", "read_only", 1);
+			}
 		}
 
 		// Color-code
@@ -36,6 +42,18 @@ frappe.ui.form.on("BBF Unloading Entry", {
 		if (frm.doc.status) {
 			frm.page.set_indicator(__(frm.doc.status), color[frm.doc.status] || "grey");
 		}
+	},
+
+	setup(frm) {
+		// Only show tokens at Graded or Quality Done stage
+		frm.set_query("token_number", function () {
+			return {
+				filters: {
+					status: ["in", ["Graded", "Quality Done"]],
+					purpose: "Raw Material"
+				}
+			};
+		});
 	},
 
 	token_number(frm) {

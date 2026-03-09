@@ -8,6 +8,13 @@ frappe.ui.form.on("BBF Token", {
 			frm.set_df_property("barcode", "hidden", 0);
 			frm.set_df_property("token_number", "hidden", 0);
 
+			// Lock fields after token is saved (prevent editing)
+			frm.set_df_property("purpose", "read_only", 1);
+			frm.set_df_property("vehicle_number", "read_only", 1);
+			frm.set_df_property("driver_name", "read_only", 1);
+			frm.set_df_property("driver_mobile", "read_only", 1);
+			frm.set_df_property("driver_license_number", "read_only", 1);
+
 			// Add Print Token button
 			frm.add_custom_button(__("Print Token"), function () {
 				frm.print_doc();
@@ -41,7 +48,22 @@ frappe.ui.form.on("BBF Token", {
 			}, __("Actions"));
 		}
 
-		if (frm.doc.status && frm.doc.status !== "Exited" && frm.doc.status !== "Token Generated") {
+		// Mark Exit button logic:
+		// - Raw Material tokens: only after GRN Created
+		// - Visitor/Non-Raw Material/Service/Other: any stage after Token Generated
+		// - Not shown for Weighbridge Operator role
+		let show_mark_exit = false;
+		if (frm.doc.status && frm.doc.status !== "Exited") {
+			let is_raw_material = frm.doc.purpose === "Raw Material";
+			if (is_raw_material) {
+				show_mark_exit = frm.doc.status === "GRN Created";
+			} else if (frm.doc.status !== "Token Generated" || frm.doc.purpose) {
+				// Non-RM: can exit at any stage including Token Generated
+				show_mark_exit = true;
+			}
+		}
+
+		if (show_mark_exit && !frappe.user.has_role("Weighbridge Operator")) {
 			frm.add_custom_button(__("Mark Exit"), function () {
 				frappe.confirm(
 					__("Are you sure you want to mark this vehicle as exited?"),

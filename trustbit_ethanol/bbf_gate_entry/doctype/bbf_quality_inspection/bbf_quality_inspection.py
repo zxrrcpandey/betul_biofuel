@@ -6,7 +6,15 @@ from frappe.utils import now_datetime
 class BBFQualityInspection(Document):
 	def before_insert(self):
 		self.inspector = frappe.session.user
+		self.validate_token_status()
 		self.auto_fetch_references()
+
+	def validate_token_status(self):
+		if not self.token_number:
+			return
+		token_status = frappe.db.get_value("BBF Token", self.token_number, "status")
+		if token_status not in ("Gross Weighed",):
+			frappe.throw(f"Token {self.token_number} is at stage '{token_status}'. Quality Inspection can only be created for tokens with status 'Gross Weighed'.")
 
 	def auto_fetch_references(self):
 		if not self.token_number:
