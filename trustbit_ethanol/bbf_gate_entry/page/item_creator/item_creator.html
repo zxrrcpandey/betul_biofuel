@@ -162,6 +162,41 @@
 					<div class="bbf-field" id="bbf-hsn-field"></div>
 					<span class="bbf-hint">GST HSN/SAC code (minimum 6 digits). Required for India Compliance.</span>
 				</div>
+				<div class="bbf-form-group">
+					<label class="bbf-label">Item Tax Template</label>
+					<div class="bbf-field" id="bbf-tax-template-field"></div>
+					<span class="bbf-hint">e.g. GST-18%</span>
+				</div>
+			</div>
+
+			<div class="bbf-form-row">
+				<div class="bbf-form-group bbf-form-sm">
+					<label class="bbf-label">Maintain Stock</label>
+					<div class="bbf-variant-toggle" style="margin-top:4px;">
+						<label class="bbf-switch">
+							<input type="checkbox" id="bbf-maintain-stock" checked>
+							<span class="bbf-slider"></span>
+						</label>
+					</div>
+				</div>
+				<div class="bbf-form-group">
+					<label class="bbf-label">Valuation Rate</label>
+					<div class="bbf-field" id="bbf-valuation-rate-field"></div>
+					<span class="bbf-hint">Rate at which item is valued in stock.</span>
+				</div>
+			</div>
+
+			<div class="bbf-form-row bbf-stock-fields">
+				<div class="bbf-form-group">
+					<label class="bbf-label">Opening Stock</label>
+					<div class="bbf-field" id="bbf-opening-stock-field"></div>
+					<span class="bbf-hint">Initial stock quantity (optional).</span>
+				</div>
+				<div class="bbf-form-group">
+					<label class="bbf-label">Opening Warehouse</label>
+					<div class="bbf-field" id="bbf-opening-warehouse-field"></div>
+					<span class="bbf-hint">Required if opening stock is set.</span>
+				</div>
 			</div>
 
 			<div class="bbf-form-row">
@@ -212,6 +247,22 @@
 					<div class="bbf-review-item">
 						<span class="bbf-review-label">HSN/SAC</span>
 						<span class="bbf-review-value" id="bbf-review-hsn">-</span>
+					</div>
+					<div class="bbf-review-item">
+						<span class="bbf-review-label">Tax Template</span>
+						<span class="bbf-review-value" id="bbf-review-tax">-</span>
+					</div>
+					<div class="bbf-review-item">
+						<span class="bbf-review-label">Maintain Stock</span>
+						<span class="bbf-review-value" id="bbf-review-maintain-stock">-</span>
+					</div>
+					<div class="bbf-review-item">
+						<span class="bbf-review-label">Valuation Rate</span>
+						<span class="bbf-review-value" id="bbf-review-valuation">-</span>
+					</div>
+					<div class="bbf-review-item bbf-review-opening-row" style="display:none;">
+						<span class="bbf-review-label">Opening Stock</span>
+						<span class="bbf-review-value" id="bbf-review-opening">-</span>
 					</div>
 				</div>
 

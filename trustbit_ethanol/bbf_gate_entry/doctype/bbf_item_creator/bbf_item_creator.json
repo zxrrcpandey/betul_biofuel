@@ -31,6 +31,13 @@
   "gst_hsn_code",
   "column_break_details",
   "stock_uom",
+  "item_tax_template",
+  "stock_section",
+  "maintain_stock",
+  "valuation_rate",
+  "column_break_stock",
+  "opening_stock",
+  "opening_warehouse",
   "description_section",
   "description",
   "result_section",
@@ -213,6 +220,48 @@
    "options": "UOM",
    "reqd": 1,
    "default": "Kg"
+  },
+  {
+   "fieldname": "item_tax_template",
+   "fieldtype": "Link",
+   "label": "Item Tax Template",
+   "options": "Item Tax Template"
+  },
+  {
+   "fieldname": "stock_section",
+   "fieldtype": "Section Break",
+   "label": "Stock & Valuation"
+  },
+  {
+   "fieldname": "maintain_stock",
+   "fieldtype": "Check",
+   "label": "Maintain Stock",
+   "default": "1"
+  },
+  {
+   "fieldname": "valuation_rate",
+   "fieldtype": "Currency",
+   "label": "Valuation Rate",
+   "description": "Rate at which this item is valued in stock"
+  },
+  {
+   "fieldname": "column_break_stock",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "opening_stock",
+   "fieldtype": "Float",
+   "label": "Opening Stock",
+   "depends_on": "eval:doc.maintain_stock",
+   "description": "Initial stock quantity"
+  },
+  {
+   "fieldname": "opening_warehouse",
+   "fieldtype": "Link",
+   "label": "Opening Warehouse",
+   "options": "Warehouse",
+   "depends_on": "eval:doc.maintain_stock && doc.opening_stock",
+   "description": "Warehouse for opening stock"
   },
   {
    "fieldname": "description_section",

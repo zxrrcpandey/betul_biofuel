@@ -39,6 +39,11 @@ class BBFItemCreator {
 			item_name: "",
 			stock_uom: "Kg",
 			gst_hsn_code: "",
+			item_tax_template: "",
+			maintain_stock: 1,
+			valuation_rate: 0,
+			opening_stock: 0,
+			opening_warehouse: "",
 			description: "",
 		};
 
@@ -174,6 +179,56 @@ class BBFItemCreator {
 			me.state.gst_hsn_code = val;
 		});
 
+		// Item Tax Template
+		this.tax_template_field = frappe.ui.form.make_control({
+			df: {
+				fieldtype: "Link",
+				options: "Item Tax Template",
+				placeholder: "Select tax template...",
+				get_query: () => ({ filters: { company: me.state.company || undefined } }),
+			},
+			parent: this.$page.find("#bbf-tax-template-field"),
+			render_input: true,
+		});
+		on_link_value(this.tax_template_field, (val) => {
+			me.state.item_tax_template = val;
+		});
+
+		// Valuation Rate
+		this.valuation_rate_field = frappe.ui.form.make_control({
+			df: { fieldtype: "Currency", placeholder: "0.00" },
+			parent: this.$page.find("#bbf-valuation-rate-field"),
+			render_input: true,
+		});
+		this.valuation_rate_field.$input.on("change", () => {
+			me.state.valuation_rate = flt(me.valuation_rate_field.get_value());
+		});
+
+		// Opening Stock
+		this.opening_stock_field = frappe.ui.form.make_control({
+			df: { fieldtype: "Float", placeholder: "0" },
+			parent: this.$page.find("#bbf-opening-stock-field"),
+			render_input: true,
+		});
+		this.opening_stock_field.$input.on("change", () => {
+			me.state.opening_stock = flt(me.opening_stock_field.get_value());
+		});
+
+		// Opening Warehouse
+		this.opening_warehouse_field = frappe.ui.form.make_control({
+			df: {
+				fieldtype: "Link",
+				options: "Warehouse",
+				placeholder: "Select warehouse...",
+				get_query: () => ({ filters: { company: me.state.company || undefined } }),
+			},
+			parent: this.$page.find("#bbf-opening-warehouse-field"),
+			render_input: true,
+		});
+		on_link_value(this.opening_warehouse_field, (val) => {
+			me.state.opening_warehouse = val;
+		});
+
 		// Description
 		this.desc_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Small Text", placeholder: "Optional description..." },
@@ -226,6 +281,12 @@ class BBFItemCreator {
 			me.$page.find(`.bbf-source-panel[data-source="${source}"]`).addClass("active");
 
 			me._update_preview();
+		});
+
+		// Maintain Stock toggle
+		this.$page.find("#bbf-maintain-stock").on("change", function () {
+			me.state.maintain_stock = $(this).is(":checked") ? 1 : 0;
+			me.$page.find(".bbf-stock-fields").toggle(me.state.maintain_stock === 1);
 		});
 
 		// Navigation
@@ -514,6 +575,10 @@ class BBFItemCreator {
 				frappe.show_alert({ message: "Please select HSN/SAC Code (required for GST)", indicator: "orange" });
 				return false;
 			}
+			if (this.state.maintain_stock && flt(this.state.opening_stock) > 0 && !this.state.opening_warehouse) {
+				frappe.show_alert({ message: "Please select Opening Warehouse for the opening stock", indicator: "orange" });
+				return false;
+			}
 		}
 
 		return true;
@@ -535,6 +600,18 @@ class BBFItemCreator {
 		this.$page.find("#bbf-review-name").text(s.item_name || full_code);
 		this.$page.find("#bbf-review-uom").text(s.stock_uom);
 		this.$page.find("#bbf-review-hsn").text(s.gst_hsn_code || "-");
+		this.$page.find("#bbf-review-tax").text(s.item_tax_template || "-");
+		this.$page.find("#bbf-review-maintain-stock").text(s.maintain_stock ? "Yes" : "No");
+		this.$page.find("#bbf-review-valuation").text(s.valuation_rate ? format_currency(s.valuation_rate) : "-");
+
+		if (s.maintain_stock && flt(s.opening_stock) > 0) {
+			this.$page.find("#bbf-review-opening").text(
+				s.opening_stock + " @ " + (s.opening_warehouse || "-")
+			);
+			this.$page.find(".bbf-review-opening-row").show();
+		} else {
+			this.$page.find(".bbf-review-opening-row").hide();
+		}
 
 		if (s.has_variant) {
 			const variant_label = s.variant_source === "Brand"
@@ -563,6 +640,10 @@ class BBFItemCreator {
 		s.stock_uom = me.uom_field.get_value() || s.stock_uom || "Kg";
 		s.item_name = me.item_name_field.get_value() || s.item_name;
 		s.gst_hsn_code = me.hsn_field.get_value() || s.gst_hsn_code;
+		s.item_tax_template = me.tax_template_field.get_value() || s.item_tax_template;
+		s.valuation_rate = flt(me.valuation_rate_field.get_value()) || s.valuation_rate;
+		s.opening_stock = flt(me.opening_stock_field.get_value()) || s.opening_stock;
+		s.opening_warehouse = me.opening_warehouse_field.get_value() || s.opening_warehouse;
 		s.description = me.desc_field.get_value() || s.description;
 		if (s.has_variant) {
 			if (s.variant_source === "Brand") {
@@ -600,6 +681,11 @@ class BBFItemCreator {
 					item_name: s.item_name,
 					stock_uom: s.stock_uom,
 					gst_hsn_code: s.gst_hsn_code,
+					item_tax_template: s.item_tax_template,
+					maintain_stock: s.maintain_stock,
+					valuation_rate: s.valuation_rate,
+					opening_stock: s.opening_stock,
+					opening_warehouse: s.opening_warehouse,
 					description: s.description,
 				},
 			},
@@ -672,7 +758,9 @@ class BBFItemCreator {
 			serial_number: "",
 			has_variant: false, variant_source: "Brand",
 			brand: "", brand_code: "", variant: "", variant_code: "",
-			item_name: "", stock_uom: "Kg", gst_hsn_code: "", description: "",
+			item_name: "", stock_uom: "Kg", gst_hsn_code: "", item_tax_template: "",
+			maintain_stock: 1, valuation_rate: 0, opening_stock: 0, opening_warehouse: "",
+			description: "",
 		};
 
 		// Reset fields
@@ -683,11 +771,17 @@ class BBFItemCreator {
 		this.item_name_field.set_value("");
 		this.uom_field.set_value("Kg");
 		this.hsn_field.set_value("");
+		this.tax_template_field.set_value("");
+		this.valuation_rate_field.set_value("");
+		this.opening_stock_field.set_value("");
+		this.opening_warehouse_field.set_value("");
 		this.desc_field.set_value("");
 
 		// Reset UI
 		this.$page.find("#bbf-has-variant").prop("checked", false);
+		this.$page.find("#bbf-maintain-stock").prop("checked", true);
 		this.$page.find(".bbf-variant-options").hide();
+		this.$page.find(".bbf-stock-fields").show();
 		this.$page.find(".bbf-toggle-btn[data-value='Character']").addClass("active")
 			.siblings().removeClass("active");
 		this.$page.find(".bbf-code-badge").text("---");

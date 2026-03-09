@@ -162,18 +162,32 @@ class BBFItemCreator(Document):
 
 		return result
 
-	def _create_standalone_item(self):
-		"""Create a standalone item (no variant)."""
-		item_data = {
+	def _get_common_item_fields(self, item_code, item_name=None):
+		"""Return dict of common Item fields used across standalone and variant creation."""
+		data = {
 			"doctype": "Item",
-			"item_code": self.generated_item_code,
-			"item_name": self.item_name or self.generated_item_code,
+			"item_code": item_code,
+			"item_name": item_name or self.item_name or item_code,
 			"item_group": self.item_group,
 			"stock_uom": self.stock_uom,
-			"description": self.description or self.item_name or self.generated_item_code,
+			"description": self.description or self.item_name or item_code,
+			"is_stock_item": self.maintain_stock,
 		}
 		if self.gst_hsn_code:
-			item_data["gst_hsn_code"] = self.gst_hsn_code
+			data["gst_hsn_code"] = self.gst_hsn_code
+		if self.valuation_rate:
+			data["valuation_rate"] = self.valuation_rate
+		if self.maintain_stock and self.opening_stock:
+			data["opening_stock"] = self.opening_stock
+		if self.maintain_stock and self.opening_warehouse:
+			data["opening_warehouse"] = self.opening_warehouse
+		if self.item_tax_template:
+			data["taxes"] = [{"item_tax_template": self.item_tax_template}]
+		return data
+
+	def _create_standalone_item(self):
+		"""Create a standalone item (no variant)."""
+		item_data = self._get_common_item_fields(self.generated_item_code)
 
 		item = frappe.get_doc(item_data)
 		item.insert(ignore_permissions=True)
@@ -205,19 +219,15 @@ class BBFItemCreator(Document):
 
 		# Step 1: Create or reuse template item
 		if not frappe.db.exists("Item", template_code):
-			template_data = {
-				"doctype": "Item",
-				"item_code": template_code,
-				"item_name": self.item_name or template_code,
-				"item_group": self.item_group,
-				"stock_uom": self.stock_uom,
-				"description": self.description or self.item_name or template_code,
+			template_data = self._get_common_item_fields(template_code)
+			# Template items don't hold stock directly; remove opening stock
+			template_data.pop("opening_stock", None)
+			template_data.pop("opening_warehouse", None)
+			template_data.update({
 				"has_variants": 1,
 				"variant_based_on": "Item Attribute",
 				"attributes": [{"attribute": attr_name}],
-			}
-			if self.gst_hsn_code:
-				template_data["gst_hsn_code"] = self.gst_hsn_code
+			})
 
 			template = frappe.get_doc(template_data)
 			template.insert(ignore_permissions=True)
@@ -242,22 +252,16 @@ class BBFItemCreator(Document):
 			template_msg = f"Using existing template <b>{template_code}</b>. "
 
 		# Step 2: Create variant item
-		variant_data = {
-			"doctype": "Item",
-			"item_code": self.generated_item_code,
-			"item_name": (self.item_name or template_code) + sep + variant_code_value,
-			"item_group": self.item_group,
-			"stock_uom": self.stock_uom,
-			"description": self.description or self.item_name or self.generated_item_code,
+		variant_name = (self.item_name or template_code) + sep + variant_code_value
+		variant_data = self._get_common_item_fields(self.generated_item_code, variant_name)
+		variant_data.update({
 			"variant_of": template_code,
 			"variant_based_on": "Item Attribute",
 			"attributes": [{
 				"attribute": attr_name,
 				"attribute_value": variant_code_value,
 			}],
-		}
-		if self.gst_hsn_code:
-			variant_data["gst_hsn_code"] = self.gst_hsn_code
+		})
 
 		variant_item = frappe.get_doc(variant_data)
 
