@@ -296,8 +296,16 @@ class BBFItemCreator {
 		const is_variant = this.state.has_variant;
 		const has_stock = this.state.maintain_stock;
 
-		this.$page.find(".bbf-standalone-stock").toggle(!is_variant && has_stock);
-		this.$page.find(".bbf-variant-stock").toggle(is_variant && has_stock);
+		if (!is_variant && has_stock) {
+			this.$page.find(".bbf-standalone-stock").show();
+			this.$page.find(".bbf-variant-stock").hide();
+		} else if (is_variant && has_stock) {
+			this.$page.find(".bbf-standalone-stock").hide();
+			this.$page.find(".bbf-variant-stock").show();
+		} else {
+			this.$page.find(".bbf-standalone-stock").hide();
+			this.$page.find(".bbf-variant-stock").hide();
+		}
 	}
 
 	// ── Variant Row Management ──
@@ -676,9 +684,9 @@ class BBFItemCreator {
 		this.$page.find("#bbf-btn-next").toggle(step < this.total_steps);
 		this.$page.find("#bbf-btn-create").toggle(step === this.total_steps);
 
-		// Step 4: toggle stock/variant mode
+		// Step 4: toggle stock/variant mode (use setTimeout to ensure DOM is visible first)
 		if (step === 4) {
-			this._toggle_stock_mode();
+			setTimeout(() => this._toggle_stock_mode(), 0);
 		}
 
 		// Populate review if on step 5
