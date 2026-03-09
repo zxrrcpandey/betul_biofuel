@@ -52,16 +52,32 @@ class BBFItemCreator {
 
 		// Helper to bind Link field value changes properly
 		function bind_link_change(control, callback) {
-			// Frappe Link fields need awesomplete-selectcomplete + blur for proper detection
+			let _last_val = "";
+			// Frappe Link fields need awesomplete-selectcomplete for proper detection
 			control.$input.on("awesomplete-selectcomplete", () => {
-				setTimeout(() => callback(control.get_value()), 0);
+				setTimeout(() => {
+					_last_val = control.get_value();
+					callback(_last_val);
+				}, 0);
 			});
 			control.$input.on("change", () => {
-				setTimeout(() => callback(control.get_value()), 0);
+				setTimeout(() => {
+					const v = control.get_value();
+					if (v !== _last_val) {
+						_last_val = v;
+						callback(v);
+					}
+				}, 0);
 			});
-			// Also catch clear via blur (when user deletes text and clicks away)
+			// Catch clear via blur — only fire if value actually changed
 			control.$input.on("blur", () => {
-				setTimeout(() => callback(control.get_value()), 200);
+				setTimeout(() => {
+					const v = control.get_value();
+					if (v !== _last_val) {
+						_last_val = v;
+						callback(v);
+					}
+				}, 200);
 			});
 		}
 
@@ -498,7 +514,28 @@ class BBFItemCreator {
 	// ── Create Item ──
 	_create_item() {
 		const me = this;
+		const s = me.state;
 		const $btn = this.$page.find("#bbf-btn-create");
+
+		// Re-read field values to be safe (blur events may have lagged)
+		s.company = me.company_field.get_value() || s.company;
+		s.item_group = me.category_field.get_value() || s.item_group;
+		s.stock_uom = me.uom_field.get_value() || s.stock_uom || "Kg";
+		s.item_name = me.item_name_field.get_value() || s.item_name;
+		s.description = me.desc_field.get_value() || s.description;
+		if (s.has_variant) {
+			if (s.variant_source === "Brand") {
+				s.brand = me.brand_field.get_value() || s.brand;
+			} else {
+				s.variant = me.variant_field.get_value() || s.variant;
+			}
+		}
+
+		if (!s.company || !s.item_group) {
+			frappe.show_alert({ message: "Company or Item Group is missing. Please go back and select.", indicator: "red" });
+			return;
+		}
+
 		$btn.prop("disabled", true).text("Creating...");
 
 		// First create the BBF Item Creator doc, then call create_item on it
@@ -507,17 +544,17 @@ class BBFItemCreator {
 			args: {
 				doc: {
 					doctype: "BBF Item Creator",
-					company: me.state.company,
-					company_code_type: me.state.company_code_type,
-					item_group: me.state.item_group,
-					category_code_type: me.state.category_code_type,
-					has_variant: me.state.has_variant ? 1 : 0,
-					variant_source: me.state.variant_source,
-					brand: me.state.brand,
-					variant: me.state.variant,
-					item_name: me.state.item_name,
-					stock_uom: me.state.stock_uom,
-					description: me.state.description,
+					company: s.company,
+					company_code_type: s.company_code_type,
+					item_group: s.item_group,
+					category_code_type: s.category_code_type,
+					has_variant: s.has_variant ? 1 : 0,
+					variant_source: s.variant_source,
+					brand: s.brand,
+					variant: s.variant,
+					item_name: s.item_name,
+					stock_uom: s.stock_uom,
+					description: s.description,
 				},
 			},
 			callback(r) {
