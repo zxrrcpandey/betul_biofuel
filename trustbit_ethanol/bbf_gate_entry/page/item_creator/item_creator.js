@@ -19,7 +19,7 @@ class BBFItemCreator {
 		this.page = page;
 		this.$page = $(page.body);
 		this.current_step = 1;
-		this.total_steps = 4;
+		this.total_steps = 5;
 
 		// State
 		this.state = {
@@ -513,8 +513,8 @@ class BBFItemCreator {
 		this.$page.find("#bbf-btn-next").toggle(step < this.total_steps);
 		this.$page.find("#bbf-btn-create").toggle(step === this.total_steps);
 
-		// Populate review if on step 4
-		if (step === 4) {
+		// Populate review if on step 5
+		if (step === 5) {
 			this._populate_review();
 		}
 	}
@@ -575,6 +575,9 @@ class BBFItemCreator {
 				frappe.show_alert({ message: "Please select HSN/SAC Code (required for GST)", indicator: "orange" });
 				return false;
 			}
+		}
+
+		if (step === 4) {
 			if (this.state.maintain_stock && flt(this.state.opening_stock) > 0 && !this.state.opening_warehouse) {
 				frappe.show_alert({ message: "Please select Opening Warehouse for the opening stock", indicator: "orange" });
 				return false;

@@ -32,6 +32,11 @@
 			<div class="bbf-step-line"></div>
 			<div class="bbf-step" data-step="4">
 				<div class="bbf-step-circle">4</div>
+				<div class="bbf-step-label">Stock & Valuation</div>
+			</div>
+			<div class="bbf-step-line"></div>
+			<div class="bbf-step" data-step="5">
+				<div class="bbf-step-circle">5</div>
 				<div class="bbf-step-label">Review & Create</div>
 			</div>
 		</div>
@@ -142,7 +147,7 @@
 		<!-- Step 3: Item Details -->
 		<div class="bbf-step-content" data-step="3">
 			<h3 class="bbf-section-title">Item Details</h3>
-			<p class="bbf-section-desc">Provide item information that will be used when creating the ERPNext Item.</p>
+			<p class="bbf-section-desc">Provide item identity, GST classification, and tax details.</p>
 
 			<div class="bbf-form-row">
 				<div class="bbf-form-group">
@@ -160,42 +165,12 @@
 				<div class="bbf-form-group">
 					<label class="bbf-label">HSN/SAC Code <span class="bbf-req">*</span></label>
 					<div class="bbf-field" id="bbf-hsn-field"></div>
-					<span class="bbf-hint">GST HSN/SAC code (minimum 6 digits). Required for India Compliance.</span>
+					<span class="bbf-hint">GST HSN/SAC code (minimum 6 digits).</span>
 				</div>
 				<div class="bbf-form-group">
 					<label class="bbf-label">Item Tax Template</label>
 					<div class="bbf-field" id="bbf-tax-template-field"></div>
 					<span class="bbf-hint">e.g. GST-18%</span>
-				</div>
-			</div>
-
-			<div class="bbf-form-row">
-				<div class="bbf-form-group bbf-form-sm">
-					<label class="bbf-label">Maintain Stock</label>
-					<div class="bbf-variant-toggle" style="margin-top:4px;">
-						<label class="bbf-switch">
-							<input type="checkbox" id="bbf-maintain-stock" checked>
-							<span class="bbf-slider"></span>
-						</label>
-					</div>
-				</div>
-				<div class="bbf-form-group">
-					<label class="bbf-label">Valuation Rate</label>
-					<div class="bbf-field" id="bbf-valuation-rate-field"></div>
-					<span class="bbf-hint">Rate at which item is valued in stock.</span>
-				</div>
-			</div>
-
-			<div class="bbf-form-row bbf-stock-fields">
-				<div class="bbf-form-group">
-					<label class="bbf-label">Opening Stock</label>
-					<div class="bbf-field" id="bbf-opening-stock-field"></div>
-					<span class="bbf-hint">Initial stock quantity (optional).</span>
-				</div>
-				<div class="bbf-form-group">
-					<label class="bbf-label">Opening Warehouse</label>
-					<div class="bbf-field" id="bbf-opening-warehouse-field"></div>
-					<span class="bbf-hint">Required if opening stock is set.</span>
 				</div>
 			</div>
 
@@ -208,8 +183,50 @@
 			</div>
 		</div>
 
-		<!-- Step 4: Review & Create -->
+		<!-- Step 4: Stock & Valuation -->
 		<div class="bbf-step-content" data-step="4">
+			<h3 class="bbf-section-title">Stock & Valuation</h3>
+			<p class="bbf-section-desc">Configure stock tracking, valuation rate, and opening balances.</p>
+
+			<div class="bbf-form-row">
+				<div class="bbf-form-group">
+					<label class="bbf-label">Maintain Stock</label>
+					<div class="bbf-variant-toggle" style="margin-top:4px;">
+						<label class="bbf-switch">
+							<input type="checkbox" id="bbf-maintain-stock" checked>
+							<span class="bbf-slider"></span>
+						</label>
+						<span class="bbf-switch-label">Track this item in stock / inventory</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="bbf-stock-fields">
+				<div class="bbf-form-row">
+					<div class="bbf-form-group">
+						<label class="bbf-label">Valuation Rate</label>
+						<div class="bbf-field" id="bbf-valuation-rate-field"></div>
+						<span class="bbf-hint">Rate at which item is valued in stock.</span>
+					</div>
+					<div class="bbf-form-group">
+						<label class="bbf-label">Opening Stock</label>
+						<div class="bbf-field" id="bbf-opening-stock-field"></div>
+						<span class="bbf-hint">Initial stock quantity (optional).</span>
+					</div>
+				</div>
+
+				<div class="bbf-form-row">
+					<div class="bbf-form-group">
+						<label class="bbf-label">Opening Warehouse</label>
+						<div class="bbf-field" id="bbf-opening-warehouse-field"></div>
+						<span class="bbf-hint">Required if opening stock is set.</span>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Step 5: Review & Create -->
+		<div class="bbf-step-content" data-step="5">
 			<h3 class="bbf-section-title">Review & Create</h3>
 			<p class="bbf-section-desc">Verify all details before creating the item in ERPNext.</p>
 
