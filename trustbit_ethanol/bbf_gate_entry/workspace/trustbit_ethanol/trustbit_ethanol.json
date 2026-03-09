@@ -109,6 +109,38 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Item Management",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "BBF Item Creator",
+   "link_to": "BBF Item Creator",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "BBF Item Code Settings",
+   "link_to": "BBF Item Code Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "BBF Variant",
+   "link_to": "BBF Variant",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Settings & Reports",
    "link_type": "DocType",
    "onboard": 0,

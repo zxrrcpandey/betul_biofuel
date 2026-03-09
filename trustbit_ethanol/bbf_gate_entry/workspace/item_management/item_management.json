@@ -1,0 +1,86 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Item Code Builder</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Item Creator\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Item Code Settings\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Custom Variants\",\"col\":4}}]",
+ "creation": "2026-03-09 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "tool",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Item Management",
+ "links": [
+  {
+   "hidden": 0,
+   "label": "Item Creator",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "BBF Item Creator",
+   "link_to": "BBF Item Creator",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "Settings & Masters",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "BBF Item Code Settings",
+   "link_to": "BBF Item Code Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "BBF Variant",
+   "link_to": "BBF Variant",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-03-09 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "Item Management",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "Trustbit Ethanol",
+ "public": 1,
+ "roles": [
+  {"role": "CTO"},
+  {"role": "Stores User"},
+  {"role": "System Manager"}
+ ],
+ "sequence_id": 8,
+ "shortcuts": [
+  {
+   "color": "Green",
+   "label": "New Item Creator",
+   "link_to": "BBF Item Creator",
+   "type": "DocType"
+  },
+  {
+   "label": "Item Code Settings",
+   "link_to": "BBF Item Code Settings",
+   "type": "DocType"
+  },
+  {
+   "label": "Custom Variants",
+   "link_to": "BBF Variant",
+   "type": "DocType"
+  }
+ ],
+ "title": "Item Management"
+}
