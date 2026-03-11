@@ -45,12 +45,10 @@ function _render_mr_status(frm, ctx) {
 
 
 function _hide_standard_submit(frm, ctx) {
-	var status = ctx.status || "Draft";
-	// When doc is in approval flow (not plain Draft), hide standard Submit button & intro message
-	if (status && status !== "Draft") {
-		// Hide the standard "Submit" primary button
+	// When approval system is enabled, ALWAYS hide standard Submit button & intro banner
+	// Users must use "Submit for Approval" instead of the standard Frappe Submit
+	if (frm.doc.docstatus === 0) {
 		frm.page.clear_primary_action();
-		// Hide "Submit this document to confirm" intro message
 		frm.dashboard.clear_headline();
 		$(frm.wrapper).find('.form-message.blue').hide();
 	}

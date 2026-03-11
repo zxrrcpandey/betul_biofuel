@@ -40,10 +40,12 @@ function _load_approval_context(frm) {
 // ── Hide Standard Submit ─────────────────────────────────────────────
 
 function _hide_po_standard_submit(frm, ctx) {
-	var status = ctx.status || "Draft";
-	// When doc is in approval flow (not plain Draft), hide standard Submit button & intro message
-	if (status && status !== "Draft") {
+	// When approval system is enabled, ALWAYS hide standard Submit button & intro banner
+	// Users must use "Submit for Approval" instead of the standard Frappe Submit
+	if (frm.doc.docstatus === 0) {
+		// Hide the standard "Submit" primary button
 		frm.page.clear_primary_action();
+		// Hide "Submit this document to confirm" intro message
 		frm.dashboard.clear_headline();
 		$(frm.wrapper).find('.form-message.blue').hide();
 	}
@@ -167,6 +169,8 @@ function _render_amount_info(frm, ctx) {
 	var amount_str = format_currency(frm.doc.grand_total || 0);
 	var msg = amount_str + " — Requires " + frappe.utils.escape_html(max_role) + " approval (Level " + ctx.required_level + ")";
 
+	// Clear any existing headline before setting to avoid duplicates
+	frm.dashboard.clear_headline();
 	frm.dashboard.set_headline_alert(
 		'<span style="font-size:13px;">' + msg + "</span>"
 	);
