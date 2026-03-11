@@ -22,6 +22,7 @@ function _load_mr_context(frm) {
 			var ctx = r.message;
 
 			_render_mr_status(frm, ctx);
+			_hide_standard_submit(frm, ctx);
 			_render_mr_buttons(frm, ctx);
 		}
 	});
@@ -40,6 +41,19 @@ function _render_mr_status(frm, ctx) {
 
 	// Override the standard Frappe indicator (replaces "Draft" badge)
 	frm.page.set_indicator(status, color);
+}
+
+
+function _hide_standard_submit(frm, ctx) {
+	var status = ctx.status || "Draft";
+	// When doc is in approval flow (not plain Draft), hide standard Submit button & intro message
+	if (status && status !== "Draft") {
+		// Hide the standard "Submit" primary button
+		frm.page.clear_primary_action();
+		// Hide "Submit this document to confirm" intro message
+		frm.dashboard.clear_headline();
+		$(frm.wrapper).find('.form-message.blue').hide();
+	}
 }
 
 

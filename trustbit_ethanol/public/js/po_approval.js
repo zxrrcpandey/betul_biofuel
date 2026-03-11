@@ -26,6 +26,7 @@ function _load_approval_context(frm) {
 			if (!ctx.approval_enabled) return;
 
 			_override_po_indicator(frm, ctx);
+			_hide_po_standard_submit(frm, ctx);
 			_render_stepper(frm, ctx);
 			_render_amount_info(frm, ctx);
 			_render_buttons(frm, ctx);
@@ -33,6 +34,19 @@ function _load_approval_context(frm) {
 			_render_timeline(frm);
 		}
 	});
+}
+
+
+// ── Hide Standard Submit ─────────────────────────────────────────────
+
+function _hide_po_standard_submit(frm, ctx) {
+	var status = ctx.status || "Draft";
+	// When doc is in approval flow (not plain Draft), hide standard Submit button & intro message
+	if (status && status !== "Draft") {
+		frm.page.clear_primary_action();
+		frm.dashboard.clear_headline();
+		$(frm.wrapper).find('.form-message.blue').hide();
+	}
 }
 
 
