@@ -331,6 +331,7 @@ def create_custom_fields():
 
 	_create_custom_fields(custom_fields)
 	_setup_purchase_receipt_permissions()
+	_create_approval_roles()
 	_setup_purchase_order_permissions()
 	_seed_default_approval_limits()
 
@@ -362,6 +363,17 @@ def _setup_purchase_receipt_permissions():
 			})
 		pr_doc.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Purchase Receipt")
+
+
+def _create_approval_roles():
+	"""Create approval roles if they don't exist."""
+	for role_name in ["Department Head", "General Manager", "CEO", "MD"]:
+		if not frappe.db.exists("Role", role_name):
+			role = frappe.new_doc("Role")
+			role.role_name = role_name
+			role.desk_access = 1
+			role.insert(ignore_permissions=True)
+	frappe.db.commit()
 
 
 def _setup_purchase_order_permissions():
