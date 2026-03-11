@@ -25,6 +25,7 @@ function _load_approval_context(frm) {
 			var ctx = r.message;
 			if (!ctx.approval_enabled) return;
 
+			_override_po_indicator(frm, ctx);
 			_render_stepper(frm, ctx);
 			_render_amount_info(frm, ctx);
 			_render_buttons(frm, ctx);
@@ -32,6 +33,23 @@ function _load_approval_context(frm) {
 			_render_timeline(frm);
 		}
 	});
+}
+
+
+// ── Page Indicator Override ──────────────────────────────────────────
+
+function _override_po_indicator(frm, ctx) {
+	var status = ctx.status || "Draft";
+	if (!status || status === "Draft") return;
+
+	var color = "blue";
+	if (status === "Approved") color = "green";
+	else if (status === "Rejected") color = "red";
+	else if (status === "Revised") color = "orange";
+	else if (status.startsWith("Pending")) color = "yellow";
+
+	// Override the standard Frappe indicator (replaces "Draft" badge)
+	frm.page.set_indicator(status, color);
 }
 
 

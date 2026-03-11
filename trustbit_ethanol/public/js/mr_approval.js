@@ -38,11 +38,8 @@ function _render_mr_status(frm, ctx) {
 	else if (status === "Revised") color = "orange";
 	else if (status === "Pending Department Head") color = "yellow";
 
-	frm.dashboard.set_headline_alert(
-		'<span class="indicator-pill ' + color + '">' +
-			frappe.utils.escape_html(status) +
-		"</span>"
-	);
+	// Override the standard Frappe indicator (replaces "Draft" badge)
+	frm.page.set_indicator(status, color);
 }
 
 
