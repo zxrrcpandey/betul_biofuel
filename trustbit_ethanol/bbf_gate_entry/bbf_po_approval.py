@@ -42,17 +42,30 @@ def submit_for_approval(doctype, docname):
 			frappe.throw(_("This PO is already in the approval chain (status: {0})").format(status))
 
 		required_level = _get_required_level(flt(doc.grand_total))
-		first_level = _get_level_info(1)
-		if not first_level:
-			frappe.throw(_("No active approval level 1 found in BBF Approval Limit"))
 
-		next_state = f"Pending {first_level['role_label'] or first_level['role']}"
+		# Determine the first approval level — skip the submitter's own level
+		submitter_info = _get_user_approval_role(frappe.session.user)
+		if submitter_info and submitter_info["level"] >= 1:
+			# Submitter has an approval role — send to next level above theirs
+			target_level = _get_next_level(submitter_info["level"])
+			if not target_level:
+				# Submitter is at or above the highest level — they can approve their own
+				# For safety, send to their own level (another user with same role can approve)
+				target_level = _get_level_info(submitter_info["level"])
+		else:
+			# Regular user (no approval role) — send to Level 1 (Department Head)
+			target_level = _get_level_info(1)
+
+		if not target_level:
+			frappe.throw(_("No active approval level found in BBF Approval Limit"))
+
+		next_state = f"Pending {target_level['role_label'] or target_level['role']}"
 		_log_approval_action(doc, "Submitted", "Draft", next_state,
 			po_amount=flt(doc.grand_total))
 
 		doc.db_set({
 			"bbf_approval_status": next_state,
-			"bbf_current_level": first_level["level"],
+			"bbf_current_level": target_level["level"],
 			"bbf_required_level": required_level,
 			"bbf_submitted_by": frappe.session.user,
 			"bbf_amount_at_submission": flt(doc.grand_total),
@@ -60,8 +73,8 @@ def submit_for_approval(doctype, docname):
 		}, update_modified=True)
 
 		_send_approval_notification(doc, "pending_approval",
-			_get_role_users(first_level["role"]),
-			extra={"next_role": first_level["role_label"] or first_level["role"]})
+			_get_role_users(target_level["role"]),
+			extra={"next_role": target_level["role_label"] or target_level["role"]})
 
 		return {"status": "ok", "next_state": next_state}
 
@@ -313,26 +326,42 @@ def resubmit_document(doctype, docname, mode="restart"):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _submit_mr_for_approval(doc):
-	"""Submit MR for Department Head approval."""
+	"""Submit MR for approval — skips to next level if submitter has an approval role."""
 	status = doc.bbf_mr_status
 	if status and status not in ("", "Draft"):
 		frappe.throw(_("This MR is already in the approval chain (status: {0})").format(status))
 
-	_log_mr_action(doc, "Submitted", "Draft", "Pending Department Head")
+	# Determine target: if submitter is Dept Head or above, skip to next level
+	submitter_info = _get_user_approval_role(frappe.session.user)
+	if submitter_info and submitter_info["level"] >= 1:
+		target_level = _get_next_level(submitter_info["level"])
+		if target_level:
+			target_role = target_level["role"]
+			target_label = target_level["role_label"] or target_role
+		else:
+			# Submitter is at highest level — send to their own level for peer approval
+			target_role = submitter_info["role"]
+			target_label = submitter_info["role_label"] or target_role
+	else:
+		target_role = "Department Head"
+		target_label = "Department Head"
+
+	next_state = f"Pending {target_label}"
+	_log_mr_action(doc, "Submitted", "Draft", next_state)
 
 	doc.db_set({
-		"bbf_mr_status": "Pending Department Head",
+		"bbf_mr_status": next_state,
 	}, update_modified=True)
 
 	_send_approval_notification(doc, "mr_pending",
-		_get_role_users("Department Head"),
-		extra={"next_role": "Department Head"})
+		_get_role_users(target_role),
+		extra={"next_role": target_label})
 
 
 def _approve_mr(doc, comment=""):
 	"""Approve MR — Dept Head or any higher approval role."""
-	if doc.bbf_mr_status != "Pending Department Head":
-		frappe.throw(_("This MR is not pending Department Head approval"))
+	if not (doc.bbf_mr_status or "").startswith("Pending"):
+		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.bbf_mr_status))
 
 	if not frappe.has_permission("Material Request", "write", doc.name):
 		frappe.throw(_("You don't have permission to approve this MR"))
@@ -342,7 +371,8 @@ def _approve_mr(doc, comment=""):
 		frappe.throw(_("You don't have an approval role to approve Material Requests"))
 
 	role_display = user_info["role_label"] or user_info["role"]
-	_log_mr_action(doc, "Final Approved", "Pending Department Head", "Approved", comment=comment)
+	current_state = doc.bbf_mr_status
+	_log_mr_action(doc, "Final Approved", current_state, "Approved", comment=comment)
 
 	doc.db_set({
 		"bbf_mr_status": "Approved",
@@ -363,15 +393,16 @@ def _approve_mr(doc, comment=""):
 
 def _revise_mr(doc, reason, comment=""):
 	"""Revise MR — send back to creator."""
-	if doc.bbf_mr_status != "Pending Department Head":
-		frappe.throw(_("This MR is not pending Department Head approval"))
+	if not (doc.bbf_mr_status or "").startswith("Pending"):
+		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.bbf_mr_status))
 
 	user_info = _get_user_approval_role(frappe.session.user)
 	if not user_info or user_info["level"] < 1:
 		frappe.throw(_("You don't have an approval role to revise Material Requests"))
 
 	role_display = user_info["role_label"] or user_info["role"]
-	_log_mr_action(doc, "Revised", "Pending Department Head", "Revised", comment=comment or reason)
+	current_state = doc.bbf_mr_status
+	_log_mr_action(doc, "Revised", current_state, "Revised", comment=comment or reason)
 
 	doc.db_set({
 		"bbf_mr_status": "Revised",
@@ -386,15 +417,16 @@ def _revise_mr(doc, reason, comment=""):
 
 def _reject_mr(doc, reason, comment=""):
 	"""Reject MR."""
-	if doc.bbf_mr_status != "Pending Department Head":
-		frappe.throw(_("This MR is not pending Department Head approval"))
+	if not (doc.bbf_mr_status or "").startswith("Pending"):
+		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.bbf_mr_status))
 
 	user_info = _get_user_approval_role(frappe.session.user)
 	if not user_info or user_info["level"] < 1:
 		frappe.throw(_("You don't have an approval role to reject Material Requests"))
 
 	role_display = user_info["role_label"] or user_info["role"]
-	_log_mr_action(doc, "Rejected", "Pending Department Head", "Rejected", comment=comment or reason)
+	current_state = doc.bbf_mr_status
+	_log_mr_action(doc, "Rejected", current_state, "Rejected", comment=comment or reason)
 
 	doc.db_set({
 		"bbf_mr_status": "Rejected",
@@ -412,20 +444,35 @@ def _reject_mr(doc, reason, comment=""):
 
 
 def _resubmit_mr(doc):
-	"""Resubmit a revised MR."""
+	"""Resubmit a revised MR — skips to next level if submitter has an approval role."""
 	if doc.bbf_mr_status != "Revised":
 		frappe.throw(_("Only revised MRs can be resubmitted"))
 
-	_log_mr_action(doc, "Resubmitted", "Revised", "Pending Department Head")
+	# Same skip logic as initial submission
+	submitter_info = _get_user_approval_role(frappe.session.user)
+	if submitter_info and submitter_info["level"] >= 1:
+		target_level = _get_next_level(submitter_info["level"])
+		if target_level:
+			target_role = target_level["role"]
+			target_label = target_level["role_label"] or target_role
+		else:
+			target_role = submitter_info["role"]
+			target_label = submitter_info["role_label"] or target_role
+	else:
+		target_role = "Department Head"
+		target_label = "Department Head"
+
+	next_state = f"Pending {target_label}"
+	_log_mr_action(doc, "Resubmitted", "Revised", next_state)
 
 	doc.db_set({
-		"bbf_mr_status": "Pending Department Head",
+		"bbf_mr_status": next_state,
 		"bbf_mr_revision_reason": "",
 	}, update_modified=True)
 
 	_send_approval_notification(doc, "mr_pending",
-		_get_role_users("Department Head"),
-		extra={"next_role": "Department Head", "resubmitted": True})
+		_get_role_users(target_role),
+		extra={"next_role": target_label, "resubmitted": True})
 
 	return {"status": "resubmitted"}
 
@@ -811,18 +858,19 @@ def _get_po_approval_context(doc, user_info, settings):
 def _get_mr_approval_context(doc, user_info, settings):
 	"""Build approval context for MR form JS."""
 	status = doc.bbf_mr_status or ""
-	# Any approval role (Dept Head or above) can act on MRs
+	is_pending = status.startswith("Pending")
+	# Any approval role (Dept Head or above) can act on pending MRs
 	has_approval_role = user_info and user_info["level"] >= 1
 
 	return {
 		"approval_enabled": True,
 		"status": status,
 		"can_submit_for_approval": (doc.docstatus == 0 and status in ("", "Draft")),
-		"can_approve": (status == "Pending Department Head" and has_approval_role),
-		"can_revise": (status == "Pending Department Head" and has_approval_role),
-		"can_reject": (status == "Pending Department Head" and has_approval_role),
+		"can_approve": (is_pending and has_approval_role),
+		"can_revise": (is_pending and has_approval_role),
+		"can_reject": (is_pending and has_approval_role),
 		"can_resubmit": (status == "Revised"),
-		"is_pending": (status == "Pending Department Head"),
+		"is_pending": is_pending,
 	}
 
 

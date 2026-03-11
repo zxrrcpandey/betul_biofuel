@@ -37,7 +37,7 @@ function _render_mr_status(frm, ctx) {
 	if (status === "Approved") color = "green";
 	else if (status === "Rejected") color = "red";
 	else if (status === "Revised") color = "orange";
-	else if (status === "Pending Department Head") color = "yellow";
+	else if (status.startsWith("Pending")) color = "yellow";
 
 	// Override the standard Frappe indicator (replaces "Draft" badge)
 	frm.page.set_indicator(status, color);
