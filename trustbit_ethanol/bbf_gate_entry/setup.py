@@ -337,32 +337,33 @@ def create_custom_fields():
 
 
 def _setup_purchase_receipt_permissions():
-	"""Ensure Accounts User role has create permission on Purchase Receipt."""
+	"""Ensure Accounts User role has create permission on Purchase Receipt.
+
+	Uses direct DocPerm insert/update to avoid saving the DocType (requires developer mode).
+	"""
 	existing = frappe.db.exists("DocPerm", {
 		"parent": "Purchase Receipt",
 		"role": "Accounts User",
 		"permlevel": 0,
-		"create": 1
 	})
-	if not existing:
-		pr_doc = frappe.get_doc("DocType", "Purchase Receipt")
-		has_accounts_user = False
-		for perm in pr_doc.permissions:
-			if perm.role == "Accounts User" and perm.permlevel == 0:
-				perm.create = 1
-				has_accounts_user = True
-				break
-		if not has_accounts_user:
-			pr_doc.append("permissions", {
-				"role": "Accounts User",
-				"permlevel": 0,
-				"read": 1,
-				"write": 1,
-				"create": 1,
-				"submit": 1
-			})
-		pr_doc.save(ignore_permissions=True)
-		frappe.clear_cache(doctype="Purchase Receipt")
+	if existing:
+		# Update existing permission to add create
+		frappe.db.set_value("DocPerm", existing, "create", 1, update_modified=False)
+	else:
+		frappe.get_doc({
+			"doctype": "DocPerm",
+			"parent": "Purchase Receipt",
+			"parenttype": "DocType",
+			"parentfield": "permissions",
+			"role": "Accounts User",
+			"permlevel": 0,
+			"read": 1,
+			"write": 1,
+			"create": 1,
+			"submit": 1,
+		}).insert(ignore_permissions=True)
+
+	frappe.clear_cache(doctype="Purchase Receipt")
 
 
 def _create_approval_roles():
@@ -377,18 +378,24 @@ def _create_approval_roles():
 
 
 def _setup_purchase_order_permissions():
-	"""Ensure approval roles have read+write on Purchase Order (no submit — controller handles that)."""
+	"""Ensure approval roles have read+write on Purchase Order (no submit — controller handles that).
+
+	Uses direct DocPerm insert to avoid saving the DocType (which requires developer mode).
+	"""
 	approval_roles = ["Department Head", "General Manager", "CEO", "MD"]
-	po_doc = frappe.get_doc("DocType", "Purchase Order")
-	changed = False
 
 	for role in approval_roles:
-		has_role = any(
-			p.role == role and p.permlevel == 0
-			for p in po_doc.permissions
-		)
-		if not has_role:
-			po_doc.append("permissions", {
+		existing = frappe.db.exists("DocPerm", {
+			"parent": "Purchase Order",
+			"role": role,
+			"permlevel": 0
+		})
+		if not existing:
+			frappe.get_doc({
+				"doctype": "DocPerm",
+				"parent": "Purchase Order",
+				"parenttype": "DocType",
+				"parentfield": "permissions",
 				"role": role,
 				"permlevel": 0,
 				"read": 1,
@@ -397,12 +404,9 @@ def _setup_purchase_order_permissions():
 				"submit": 0,
 				"cancel": 0,
 				"amend": 0,
-			})
-			changed = True
+			}).insert(ignore_permissions=True)
 
-	if changed:
-		po_doc.save(ignore_permissions=True)
-		frappe.clear_cache(doctype="Purchase Order")
+	frappe.clear_cache(doctype="Purchase Order")
 
 
 def _seed_default_approval_limits():
