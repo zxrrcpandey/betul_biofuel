@@ -15,7 +15,17 @@
   "default_warehouse",
   "default_accepted_warehouse",
   "column_break_grn",
-  "auto_submit_grn"
+  "auto_submit_grn",
+  "approval_section",
+  "enable_po_approval",
+  "enable_mr_approval",
+  "column_break_approval",
+  "enable_fast_track",
+  "approval_sla_section",
+  "approval_sla_hours",
+  "approval_sla_email",
+  "column_break_approval_sla",
+  "approval_escalation_enabled"
  ],
  "fields": [
   {
@@ -90,11 +100,71 @@
    "label": "Auto-Submit GRN",
    "default": "0",
    "description": "If checked, Purchase Receipt will be auto-submitted after creation"
+  },
+  {
+   "fieldname": "approval_section",
+   "fieldtype": "Section Break",
+   "label": "PO / MR Approval Configuration"
+  },
+  {
+   "fieldname": "enable_po_approval",
+   "fieldtype": "Check",
+   "label": "Enable PO Approval",
+   "default": "1",
+   "description": "Master switch \u2014 if unchecked, Purchase Orders submit directly without approval chain"
+  },
+  {
+   "fieldname": "enable_mr_approval",
+   "fieldtype": "Check",
+   "label": "Enable MR Approval",
+   "default": "1",
+   "description": "Master switch for Material Request approval workflow"
+  },
+  {
+   "fieldname": "column_break_approval",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "enable_fast_track",
+   "fieldtype": "Check",
+   "label": "Enable Fast-Track Routing",
+   "default": "1",
+   "description": "When enabled, POs below a role's limit are final-approved at that level. When disabled, ALL POs go through the full chain (useful during audits)."
+  },
+  {
+   "fieldname": "approval_sla_section",
+   "fieldtype": "Section Break",
+   "label": "Approval SLA"
+  },
+  {
+   "fieldname": "approval_sla_hours",
+   "fieldtype": "Int",
+   "label": "Approval SLA (Hours)",
+   "default": "24",
+   "description": "Alert if a PO is stuck at any approval level longer than this"
+  },
+  {
+   "fieldname": "approval_sla_email",
+   "fieldtype": "Data",
+   "label": "Approval SLA Alert Email",
+   "options": "Email",
+   "description": "Email for stuck-approval alerts (typically CTO)"
+  },
+  {
+   "fieldname": "column_break_approval_sla",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approval_escalation_enabled",
+   "fieldtype": "Check",
+   "label": "Auto-Escalate Stuck POs",
+   "default": "0",
+   "description": "Auto-forward POs to next approval level after SLA breach"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-03-07 00:00:00",
+ "modified": "2026-03-11 00:00:00",
  "modified_by": "Administrator",
  "module": "BBF Gate Entry",
  "name": "BBF Settings",

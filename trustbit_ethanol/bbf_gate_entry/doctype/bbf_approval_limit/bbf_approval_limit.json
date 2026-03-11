@@ -1,0 +1,174 @@
+{
+ "actions": [],
+ "autoname": "field:role",
+ "creation": "2026-03-11 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "role",
+  "role_label",
+  "column_break_1",
+  "approval_level",
+  "is_active",
+  "limits_section",
+  "approval_limit",
+  "can_final_approve",
+  "column_break_2",
+  "can_revise",
+  "revise_to_levels",
+  "notification_section",
+  "notify_on_pending",
+  "column_break_3",
+  "notify_on_approval",
+  "info_section",
+  "description"
+ ],
+ "fields": [
+  {
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "label": "Role",
+   "options": "Role",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "role_label",
+   "fieldtype": "Data",
+   "label": "Role Label",
+   "description": "Display label for this approval role (e.g., Department Head)",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approval_level",
+   "fieldtype": "Int",
+   "label": "Approval Level",
+   "reqd": 1,
+   "in_list_view": 1,
+   "bold": 1,
+   "description": "Hierarchy order: 1 = lowest, higher = more authority"
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active",
+   "default": "1"
+  },
+  {
+   "fieldname": "limits_section",
+   "fieldtype": "Section Break",
+   "label": "Approval Limits"
+  },
+  {
+   "fieldname": "approval_limit",
+   "fieldtype": "Currency",
+   "label": "Approval Limit",
+   "in_list_view": 1,
+   "description": "Maximum PO amount this role can final-approve. 0 = Unlimited (highest authority)"
+  },
+  {
+   "fieldname": "can_final_approve",
+   "fieldtype": "Check",
+   "label": "Can Final Approve",
+   "default": "1",
+   "description": "If checked, this role can give final approval (within their limit)"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "can_revise",
+   "fieldtype": "Check",
+   "label": "Can Revise",
+   "default": "1",
+   "description": "If checked, can send POs back for revision"
+  },
+  {
+   "fieldname": "revise_to_levels",
+   "fieldtype": "Data",
+   "label": "Revise To Levels",
+   "description": "Comma-separated level numbers this role can revise to. E.g., '1,2'. Empty = can revise to any lower level."
+  },
+  {
+   "fieldname": "notification_section",
+   "fieldtype": "Section Break",
+   "label": "Notification Settings"
+  },
+  {
+   "fieldname": "notify_on_pending",
+   "fieldtype": "Check",
+   "label": "Notify on Pending",
+   "default": "1",
+   "description": "Send notification when a PO arrives at this level for approval"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "notify_on_approval",
+   "fieldtype": "Check",
+   "label": "Notify on Approval",
+   "default": "1",
+   "description": "Send notification when someone at this level approves a PO"
+  },
+  {
+   "fieldname": "info_section",
+   "fieldtype": "Section Break",
+   "label": "Info",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-03-11 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "BBF Approval Limit",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "CTO"
+  },
+  {
+   "read": 1,
+   "role": "CEO"
+  },
+  {
+   "read": 1,
+   "role": "General Manager"
+  },
+  {
+   "read": 1,
+   "role": "MD"
+  }
+ ],
+ "sort_field": "approval_level",
+ "sort_order": "ASC",
+ "track_changes": 1
+}

@@ -1,0 +1,131 @@
+{
+ "actions": [],
+ "creation": "2026-03-11 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "action",
+  "from_state",
+  "to_state",
+  "column_break_1",
+  "action_by",
+  "action_by_name",
+  "action_by_role",
+  "column_break_2",
+  "action_date",
+  "po_amount",
+  "section_break_details",
+  "comment",
+  "column_break_3",
+  "revision_target",
+  "resubmit_mode"
+ ],
+ "fields": [
+  {
+   "fieldname": "action",
+   "fieldtype": "Select",
+   "label": "Action",
+   "options": "Submitted\nForwarded\nApproved\nFinal Approved\nRevised\nRejected\nResubmitted",
+   "in_list_view": 1,
+   "read_only": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "from_state",
+   "fieldtype": "Data",
+   "label": "From State",
+   "read_only": 1
+  },
+  {
+   "fieldname": "to_state",
+   "fieldtype": "Data",
+   "label": "To State",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "action_by",
+   "fieldtype": "Link",
+   "label": "Action By",
+   "options": "User",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "action_by_name",
+   "fieldtype": "Data",
+   "label": "Action By Name",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "action_by_role",
+   "fieldtype": "Data",
+   "label": "Action By Role",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "action_date",
+   "fieldtype": "Datetime",
+   "label": "Action Date",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "po_amount",
+   "fieldtype": "Currency",
+   "label": "PO Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_details",
+   "fieldtype": "Section Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "comment",
+   "fieldtype": "Small Text",
+   "label": "Comment",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "revision_target",
+   "fieldtype": "Data",
+   "label": "Revision Target",
+   "read_only": 1,
+   "depends_on": "eval:doc.action=='Revised'"
+  },
+  {
+   "fieldname": "resubmit_mode",
+   "fieldtype": "Data",
+   "label": "Resubmit Mode",
+   "read_only": 1,
+   "depends_on": "eval:doc.action=='Resubmitted'"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-03-11 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "BBF Approval Log",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
+}
