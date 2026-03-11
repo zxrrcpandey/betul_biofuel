@@ -83,9 +83,9 @@ def approve_document(doctype, docname, comment=""):
 		frappe.throw(_("You don't have an approval role configured in BBF Approval Limit"))
 
 	current_level = cint(doc.bbf_current_level)
-	if user_info["level"] != current_level:
+	if user_info["level"] < current_level:
 		frappe.throw(
-			_("This PO is at Level {0} ({1}), but your role is Level {2} ({3})").format(
+			_("This PO is at Level {0} ({1}), but your role is Level {2} ({3}). Only Level {0} or above can approve.").format(
 				current_level, doc.bbf_approval_status,
 				user_info["level"], user_info["role"]
 			)
@@ -178,8 +178,8 @@ def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 		frappe.throw(_("You don't have an approval role configured"))
 
 	current_level = cint(doc.bbf_current_level)
-	if user_info["level"] != current_level:
-		frappe.throw(_("You cannot revise this PO — it is not at your approval level"))
+	if user_info["level"] < current_level:
+		frappe.throw(_("You cannot revise this PO — your level is below the current approval level"))
 
 	if not user_info.get("can_revise"):
 		frappe.throw(_("Your approval role does not have revision permission"))
@@ -228,8 +228,8 @@ def reject_document(doctype, docname, reason, comment=""):
 		frappe.throw(_("You don't have an approval role configured"))
 
 	current_level = cint(doc.bbf_current_level)
-	if user_info["level"] != current_level:
-		frappe.throw(_("You cannot reject this PO — it is not at your approval level"))
+	if user_info["level"] < current_level:
+		frappe.throw(_("You cannot reject this PO — your level is below the current approval level"))
 
 	current_state = doc.bbf_approval_status
 	role_display = user_info["role_label"] or user_info["role"]
@@ -330,17 +330,18 @@ def _submit_mr_for_approval(doc):
 
 
 def _approve_mr(doc, comment=""):
-	"""Approve MR — single level, Dept Head only."""
+	"""Approve MR — Dept Head or any higher approval role."""
 	if doc.bbf_mr_status != "Pending Department Head":
 		frappe.throw(_("This MR is not pending Department Head approval"))
 
 	if not frappe.has_permission("Material Request", "write", doc.name):
 		frappe.throw(_("You don't have permission to approve this MR"))
 
-	user_roles = frappe.get_roles(frappe.session.user)
-	if "Department Head" not in user_roles:
-		frappe.throw(_("Only Department Head can approve Material Requests"))
+	user_info = _get_user_approval_role(frappe.session.user)
+	if not user_info or user_info["level"] < 1:
+		frappe.throw(_("You don't have an approval role to approve Material Requests"))
 
+	role_display = user_info["role_label"] or user_info["role"]
 	_log_mr_action(doc, "Final Approved", "Pending Department Head", "Approved", comment=comment)
 
 	doc.db_set({
@@ -355,7 +356,7 @@ def _approve_mr(doc, comment=""):
 
 	# Notify owner
 	_send_approval_notification(doc, "mr_approved", [doc.owner],
-		extra={"approved_by": "Department Head"})
+		extra={"approved_by": role_display})
 
 	return {"status": "approved", "message": f"MR {doc.name} has been approved and submitted"}
 
@@ -365,10 +366,11 @@ def _revise_mr(doc, reason, comment=""):
 	if doc.bbf_mr_status != "Pending Department Head":
 		frappe.throw(_("This MR is not pending Department Head approval"))
 
-	user_roles = frappe.get_roles(frappe.session.user)
-	if "Department Head" not in user_roles:
-		frappe.throw(_("Only Department Head can revise Material Requests"))
+	user_info = _get_user_approval_role(frappe.session.user)
+	if not user_info or user_info["level"] < 1:
+		frappe.throw(_("You don't have an approval role to revise Material Requests"))
 
+	role_display = user_info["role_label"] or user_info["role"]
 	_log_mr_action(doc, "Revised", "Pending Department Head", "Revised", comment=comment or reason)
 
 	doc.db_set({
@@ -377,7 +379,7 @@ def _revise_mr(doc, reason, comment=""):
 	}, update_modified=True)
 
 	_send_approval_notification(doc, "mr_revised", [doc.owner],
-		extra={"revised_by": "Department Head", "reason": reason})
+		extra={"revised_by": role_display, "reason": reason})
 
 	return {"status": "revised"}
 
@@ -387,10 +389,11 @@ def _reject_mr(doc, reason, comment=""):
 	if doc.bbf_mr_status != "Pending Department Head":
 		frappe.throw(_("This MR is not pending Department Head approval"))
 
-	user_roles = frappe.get_roles(frappe.session.user)
-	if "Department Head" not in user_roles:
-		frappe.throw(_("Only Department Head can reject Material Requests"))
+	user_info = _get_user_approval_role(frappe.session.user)
+	if not user_info or user_info["level"] < 1:
+		frappe.throw(_("You don't have an approval role to reject Material Requests"))
 
+	role_display = user_info["role_label"] or user_info["role"]
 	_log_mr_action(doc, "Rejected", "Pending Department Head", "Rejected", comment=comment or reason)
 
 	doc.db_set({
@@ -403,7 +406,7 @@ def _reject_mr(doc, reason, comment=""):
 		doc.cancel()
 
 	_send_approval_notification(doc, "mr_rejected", [doc.owner],
-		extra={"rejected_by": "Department Head", "reason": reason})
+		extra={"rejected_by": role_display, "reason": reason})
 
 	return {"status": "rejected"}
 
@@ -785,7 +788,7 @@ def _get_po_approval_context(doc, user_info, settings):
 		"approval_chain": _build_approval_chain(doc, required_level or _get_required_level(po_amount)),
 	}
 
-	if user_info and is_pending and user_info["level"] == current_level:
+	if user_info and is_pending and user_info["level"] >= current_level:
 		ctx["user_approval_role"] = user_info["role_label"] or user_info["role"]
 		ctx["user_approval_level"] = user_info["level"]
 		ctx["can_approve"] = True
@@ -808,15 +811,16 @@ def _get_po_approval_context(doc, user_info, settings):
 def _get_mr_approval_context(doc, user_info, settings):
 	"""Build approval context for MR form JS."""
 	status = doc.bbf_mr_status or ""
-	is_dept_head = user_info and user_info["role"] == "Department Head"
+	# Any approval role (Dept Head or above) can act on MRs
+	has_approval_role = user_info and user_info["level"] >= 1
 
 	return {
 		"approval_enabled": True,
 		"status": status,
 		"can_submit_for_approval": (doc.docstatus == 0 and status in ("", "Draft")),
-		"can_approve": (status == "Pending Department Head" and is_dept_head),
-		"can_revise": (status == "Pending Department Head" and is_dept_head),
-		"can_reject": (status == "Pending Department Head" and is_dept_head),
+		"can_approve": (status == "Pending Department Head" and has_approval_role),
+		"can_revise": (status == "Pending Department Head" and has_approval_role),
+		"can_reject": (status == "Pending Department Head" and has_approval_role),
 		"can_resubmit": (status == "Revised"),
 		"is_pending": (status == "Pending Department Head"),
 	}
