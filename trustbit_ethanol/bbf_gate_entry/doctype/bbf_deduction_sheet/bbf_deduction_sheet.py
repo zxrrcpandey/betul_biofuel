@@ -199,8 +199,9 @@ class BBFDeductionSheet(Document):
 
 		# Update token status and grading timestamp
 		token = frappe.get_doc("BBF Token", self.token_number)
-		token.grading_time = now_datetime()
-		token.status = "Graded"
-		token.save(ignore_permissions=True)
+		token.db_set({
+			"grading_time": now_datetime(),
+			"status": "Graded"
+		})
 
 		return {"status": "Approved", "net_payable": self.net_payable}

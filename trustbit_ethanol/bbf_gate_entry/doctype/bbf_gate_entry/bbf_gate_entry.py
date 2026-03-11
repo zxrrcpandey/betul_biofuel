@@ -39,9 +39,10 @@ class BBFGateEntry(Document):
 
 	def update_token_status(self):
 		token = frappe.get_doc("BBF Token", self.token_number)
-		token.g2_link_time = now_datetime()
-		token.status = "PO Linked"
-		token.save(ignore_permissions=True)
+		token.db_set({
+			"g2_link_time": now_datetime(),
+			"status": "PO Linked"
+		})
 
 	def set_gate_entry_status(self):
 		if self.material_flow == "Raw Material":

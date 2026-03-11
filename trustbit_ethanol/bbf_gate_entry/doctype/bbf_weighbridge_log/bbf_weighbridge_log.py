@@ -86,9 +86,10 @@ class BBFWeighbridgeLog(Document):
 			self.db_set("gross_weight_time", self.gross_weight_time)
 
 			token = frappe.get_doc("BBF Token", self.token_number)
-			token.wb_gross_time = now_datetime()
-			token.status = "Gross Weighed"
-			token.save(ignore_permissions=True)
+			token.db_set({
+				"wb_gross_time": now_datetime(),
+				"status": "Gross Weighed"
+			})
 
 	def on_update(self):
 		if self.has_value_changed("tare_weight") and self.tare_weight:
@@ -96,6 +97,7 @@ class BBFWeighbridgeLog(Document):
 			self.db_set("tare_operator", frappe.session.user)
 
 			token = frappe.get_doc("BBF Token", self.token_number)
-			token.wb_tare_time = now_datetime()
-			token.status = "Tare Weighed"
-			token.save(ignore_permissions=True)
+			token.db_set({
+				"wb_tare_time": now_datetime(),
+				"status": "Tare Weighed"
+			})

@@ -71,8 +71,9 @@ class BBFQualityInspection(Document):
 
 		# Update token status
 		token = frappe.get_doc("BBF Token", self.token_number)
-		token.quality_time = now_datetime()
-		token.status = "Quality Done"
-		token.save(ignore_permissions=True)
+		token.db_set({
+			"quality_time": now_datetime(),
+			"status": "Quality Done"
+		})
 
 		return {"status": self.status}

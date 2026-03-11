@@ -60,9 +60,10 @@ class BBFUnloadingEntry(Document):
 		self.save(ignore_permissions=True)
 
 		token = frappe.get_doc("BBF Token", self.token_number)
-		token.unload_start_time = now_datetime()
-		token.status = "Unloading"
-		token.save(ignore_permissions=True)
+		token.db_set({
+			"unload_start_time": now_datetime(),
+			"status": "Unloading"
+		})
 
 	@frappe.whitelist()
 	def end_unloading(self):
@@ -81,8 +82,7 @@ class BBFUnloadingEntry(Document):
 		self.save(ignore_permissions=True)
 
 		token = frappe.get_doc("BBF Token", self.token_number)
-		token.unload_end_time = now_datetime()
-		token.save(ignore_permissions=True)
+		token.db_set("unload_end_time", now_datetime())
 
 		# Enable tare weight on weighbridge log
 		wb_log = frappe.db.get_value(

@@ -177,11 +177,12 @@ class BBFToken(Document):
 		if settings.auto_submit_grn:
 			pr.submit()
 
-		# Update token
-		self.grn_time = now_datetime()
-		self.status = "GRN Created"
-		self.purchase_receipt = pr.name
-		self.save(ignore_permissions=True)
+		# Update token (use db_set to skip mandatory field validation)
+		self.db_set({
+			"grn_time": now_datetime(),
+			"status": "GRN Created",
+			"purchase_receipt": pr.name
+		})
 
 		frappe.msgprint(
 			f"Purchase Receipt <b>{pr.name}</b> created successfully",
@@ -203,7 +204,10 @@ class BBFToken(Document):
 
 		self.g1_exit_time = now_datetime()
 		self.status = "Exited"
-		self.save(ignore_permissions=True)
+		self.db_set({
+			"g1_exit_time": self.g1_exit_time,
+			"status": "Exited"
+		})
 		self._update_vehicle_master()
 		self._update_transport_master()
 
