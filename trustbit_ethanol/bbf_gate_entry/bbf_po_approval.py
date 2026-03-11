@@ -96,7 +96,7 @@ def approve_document(doctype, docname, comment=""):
 
 	po_amount = flt(doc.grand_total)
 	settings = frappe.get_single("BBF Settings")
-	user_limit = flt(user_info["limit"])
+	user_limit = flt(user_info["amt_limit"])
 	can_final = user_info["can_final_approve"]
 
 	# Determine: final approve or forward?
@@ -484,7 +484,7 @@ def _get_user_approval_role(user):
 		"role": highest.role,
 		"role_label": highest.role_label or highest.role,
 		"level": highest.approval_level,
-		"limit": flt(highest.approval_limit),
+		"amt_limit": flt(highest.approval_limit),
 		"can_final_approve": highest.can_final_approve,
 		"can_revise": highest.can_revise,
 		"revise_to_levels": highest.revise_to_levels,
@@ -495,7 +495,7 @@ def _get_next_level(current_level):
 	"""Get the next active approval level above current."""
 	result = frappe.get_all("BBF Approval Limit",
 		filters={"is_active": 1, "approval_level": [">", current_level]},
-		fields=["role", "role_label", "approval_level as level", "approval_limit as limit",
+		fields=["role", "role_label", "approval_level as level", "approval_limit as amt_limit",
 				"can_final_approve"],
 		order_by="approval_level asc",
 		limit=1)
@@ -506,7 +506,7 @@ def _get_level_info(level):
 	"""Get approval limit info for a specific level."""
 	result = frappe.get_all("BBF Approval Limit",
 		filters={"is_active": 1, "approval_level": level},
-		fields=["role", "role_label", "approval_level as level", "approval_limit as limit",
+		fields=["role", "role_label", "approval_level as level", "approval_limit as amt_limit",
 				"can_final_approve", "can_revise", "revise_to_levels"],
 		limit=1)
 	return result[0] if result else None
@@ -791,7 +791,7 @@ def _get_po_approval_context(doc, user_info, settings):
 		ctx["can_approve"] = True
 		ctx["can_reject"] = True
 
-		user_limit = flt(user_info["limit"])
+		user_limit = flt(user_info["amt_limit"])
 		if user_info["can_final_approve"]:
 			if settings.enable_fast_track:
 				ctx["can_final_approve"] = (user_limit == 0 or po_amount <= user_limit)
