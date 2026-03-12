@@ -1,0 +1,526 @@
+/* ═══════════════════════════════════════════════
+   BBF Bulk Item Import — Custom Page Styles
+   ═══════════════════════════════════════════════ */
+
+.bbf-bulk-import-page {
+	max-width: 960px;
+	margin: 0 auto;
+	padding: 0 20px 40px;
+	font-family: var(--font-stack, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+
+/* ── Header Bar ── */
+.bbf-bulk-header {
+	background: linear-gradient(135deg, #1a365d 0%, #2a4a7f 100%);
+	border-radius: 12px;
+	padding: 24px 28px;
+	margin-bottom: 24px;
+	box-shadow: 0 4px 20px rgba(26, 54, 93, 0.25);
+}
+
+.bbf-bulk-header-inner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.bbf-bulk-header-title {
+	font-size: 22px;
+	font-weight: 700;
+	color: #fff;
+	letter-spacing: 0.5px;
+}
+
+.bbf-bulk-header-desc {
+	font-size: 13px;
+	color: rgba(255,255,255,0.7);
+	margin-top: 4px;
+}
+
+.bbf-btn-template {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 20px;
+	font-size: 13px;
+	font-weight: 600;
+	border: 1.5px solid rgba(255,255,255,0.3);
+	border-radius: 8px;
+	background: rgba(255,255,255,0.1);
+	color: #fff;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	white-space: nowrap;
+}
+
+.bbf-btn-template:hover {
+	background: rgba(255,255,255,0.2);
+	border-color: rgba(255,255,255,0.5);
+	color: #fff;
+}
+
+/* ── Card ── */
+.bbf-card {
+	background: var(--card-bg, #fff);
+	border: 1px solid var(--border-color, #e2e8f0);
+	border-radius: 12px;
+	padding: 28px;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+/* ── Upload Zone ── */
+.bbf-upload-zone {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 48px 32px;
+	border: 2px dashed #cbd5e0;
+	border-radius: 12px;
+	background: var(--subtle-fg, #f7fafc);
+	cursor: pointer;
+	transition: all 0.25s ease;
+	color: #a0aec0;
+	text-align: center;
+}
+
+.bbf-upload-zone:hover,
+.bbf-upload-zone.dragover {
+	border-color: #3182ce;
+	background: #ebf8ff;
+	color: #3182ce;
+}
+
+.bbf-upload-zone svg {
+	margin-bottom: 16px;
+}
+
+.bbf-upload-text {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 8px;
+}
+
+.bbf-upload-text strong {
+	font-size: 16px;
+	color: var(--text-color, #4a5568);
+}
+
+.bbf-upload-text span {
+	font-size: 13px;
+	color: var(--text-muted, #a0aec0);
+}
+
+.bbf-upload-hint {
+	font-size: 11px;
+	color: var(--text-muted, #a0aec0);
+}
+
+/* ── File Badge ── */
+.bbf-upload-info {
+	margin-top: 16px;
+}
+
+.bbf-file-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 16px;
+	background: #ebf8ff;
+	border: 1.5px solid #bee3f8;
+	border-radius: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	color: #2b6cb0;
+}
+
+.bbf-file-rows-badge {
+	font-size: 11px;
+	font-weight: 700;
+	background: #3182ce;
+	color: #fff;
+	padding: 2px 8px;
+	border-radius: 10px;
+}
+
+.bbf-file-remove {
+	background: none;
+	border: none;
+	color: #e53e3e;
+	font-size: 18px;
+	font-weight: 700;
+	cursor: pointer;
+	padding: 0 4px;
+	line-height: 1;
+	transition: color 0.2s;
+}
+
+.bbf-file-remove:hover {
+	color: #c53030;
+}
+
+/* ── Validation Summary ── */
+.bbf-validation-summary {
+	display: flex;
+	gap: 16px;
+	margin-bottom: 24px;
+}
+
+.bbf-summary-item {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 16px;
+	border-radius: 10px;
+	border: 1.5px solid;
+}
+
+.bbf-summary-total {
+	background: #ebf8ff;
+	border-color: #bee3f8;
+}
+
+.bbf-summary-valid {
+	background: #f0fff4;
+	border-color: #9ae6b4;
+}
+
+.bbf-summary-error {
+	background: #fff5f5;
+	border-color: #feb2b2;
+}
+
+.bbf-summary-num {
+	font-size: 28px;
+	font-weight: 800;
+	line-height: 1;
+}
+
+.bbf-summary-total .bbf-summary-num { color: #2b6cb0; }
+.bbf-summary-valid .bbf-summary-num { color: #38a169; }
+.bbf-summary-error .bbf-summary-num { color: #e53e3e; }
+
+.bbf-summary-label {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--text-muted, #718096);
+	margin-top: 4px;
+}
+
+/* ── Preview Table ── */
+.bbf-preview-table-wrap {
+	overflow-x: auto;
+	margin-bottom: 20px;
+	border: 1px solid var(--border-color, #e2e8f0);
+	border-radius: 8px;
+}
+
+.bbf-preview-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.bbf-preview-table th {
+	background: #2c3e50;
+	color: #fff;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	padding: 10px 12px;
+	text-align: left;
+	white-space: nowrap;
+	position: sticky;
+	top: 0;
+}
+
+.bbf-preview-table td {
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--border-color, #f0f0f0);
+	color: var(--text-color, #2d3748);
+	vertical-align: top;
+}
+
+.bbf-preview-table tr:nth-child(even) {
+	background: #f8f9fa;
+}
+
+.bbf-preview-table tr.bbf-row-error {
+	background: #fff5f5;
+}
+
+.bbf-preview-table tr.bbf-row-error td {
+	border-bottom-color: #feb2b2;
+}
+
+.bbf-col-status {
+	width: 40px;
+	text-align: center !important;
+}
+
+.bbf-status-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.bbf-status-ok {
+	background: #f0fff4;
+	color: #38a169;
+	border: 1.5px solid #9ae6b4;
+}
+
+.bbf-status-err {
+	background: #fff5f5;
+	color: #e53e3e;
+	border: 1.5px solid #feb2b2;
+}
+
+.bbf-code-preview {
+	font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+	font-size: 12px;
+	font-weight: 700;
+	color: #2a4a7f;
+	background: #ebf4ff;
+	padding: 2px 8px;
+	border-radius: 4px;
+	white-space: nowrap;
+}
+
+.bbf-variant-badge {
+	display: inline-block;
+	font-size: 10px;
+	font-weight: 700;
+	background: #f0fff4;
+	color: #22543d;
+	border: 1px solid #9ae6b4;
+	border-radius: 4px;
+	padding: 1px 6px;
+	margin: 1px 2px;
+}
+
+.bbf-error-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+
+.bbf-error-list li {
+	font-size: 11px;
+	color: #e53e3e;
+	padding: 1px 0;
+}
+
+.bbf-error-list li:before {
+	content: "\2022 ";
+}
+
+/* ── Action Buttons ── */
+.bbf-preview-actions {
+	display: flex;
+	align-items: center;
+	padding-top: 20px;
+	border-top: 1px solid var(--border-color, #e2e8f0);
+}
+
+.bbf-nav-spacer {
+	flex: 1;
+}
+
+.bbf-btn-back {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 10px 20px;
+	font-size: 14px;
+	font-weight: 600;
+	border: 1.5px solid var(--border-color, #e2e8f0);
+	border-radius: 8px;
+	background: var(--card-bg, #fff);
+	color: var(--text-color, #4a5568);
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.bbf-btn-back:hover {
+	background: #f7fafc;
+	border-color: #a0aec0;
+}
+
+.bbf-btn-create {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 10px 24px;
+	font-size: 14px;
+	font-weight: 600;
+	border: none;
+	border-radius: 8px;
+	color: #fff;
+	background: linear-gradient(135deg, #38a169, #2f855a);
+	cursor: pointer;
+	transition: all 0.2s ease;
+	box-shadow: 0 2px 8px rgba(56,161,105,0.3);
+}
+
+.bbf-btn-create:hover:not(:disabled) {
+	transform: translateY(-1px);
+	box-shadow: 0 4px 14px rgba(56,161,105,0.35);
+	color: #fff;
+}
+
+.bbf-btn-create:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	box-shadow: none;
+}
+
+/* ── Progress Overlay ── */
+.bbf-progress-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0,0,0,0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1050;
+}
+
+.bbf-progress-card {
+	background: #fff;
+	border-radius: 12px;
+	padding: 40px 48px;
+	text-align: center;
+	min-width: 360px;
+	box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+.bbf-progress-title {
+	font-size: 18px;
+	font-weight: 700;
+	color: var(--text-color, #2d3748);
+	margin-bottom: 20px;
+}
+
+.bbf-progress-bar-wrap {
+	height: 10px;
+	background: #e2e8f0;
+	border-radius: 10px;
+	overflow: hidden;
+	margin-bottom: 12px;
+}
+
+.bbf-progress-bar {
+	height: 100%;
+	background: linear-gradient(90deg, #38a169, #68d391);
+	border-radius: 10px;
+	transition: width 0.3s ease;
+}
+
+.bbf-progress-text {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-muted, #718096);
+}
+
+/* ── Results Summary ── */
+.bbf-results-summary {
+	display: flex;
+	gap: 20px;
+	margin-bottom: 24px;
+	justify-content: center;
+}
+
+.bbf-result-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 24px 40px;
+	border-radius: 12px;
+	border: 2px solid;
+}
+
+.bbf-result-success {
+	background: #f0fff4;
+	border-color: #9ae6b4;
+	color: #38a169;
+}
+
+.bbf-result-fail {
+	background: #fff5f5;
+	border-color: #feb2b2;
+	color: #e53e3e;
+}
+
+.bbf-result-num {
+	font-size: 36px;
+	font-weight: 800;
+	line-height: 1;
+}
+
+.bbf-result-label {
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+/* Results table status badges */
+.bbf-badge-success {
+	display: inline-block;
+	font-size: 11px;
+	font-weight: 700;
+	background: #f0fff4;
+	color: #38a169;
+	border: 1px solid #9ae6b4;
+	border-radius: 10px;
+	padding: 2px 10px;
+}
+
+.bbf-badge-fail {
+	display: inline-block;
+	font-size: 11px;
+	font-weight: 700;
+	background: #fff5f5;
+	color: #e53e3e;
+	border: 1px solid #feb2b2;
+	border-radius: 10px;
+	padding: 2px 10px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+	.bbf-bulk-header-inner {
+		flex-direction: column;
+		text-align: center;
+	}
+	.bbf-validation-summary {
+		flex-direction: column;
+	}
+	.bbf-results-summary {
+		flex-direction: column;
+		align-items: center;
+	}
+	.bbf-preview-actions {
+		flex-direction: column;
+		gap: 12px;
+	}
+	.bbf-nav-spacer {
+		display: none;
+	}
+}

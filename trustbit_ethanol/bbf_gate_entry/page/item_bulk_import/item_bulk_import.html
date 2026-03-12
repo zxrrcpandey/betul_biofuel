@@ -1,0 +1,153 @@
+<div class="bbf-bulk-import-page">
+
+	<!-- Header Bar -->
+	<div class="bbf-bulk-header">
+		<div class="bbf-bulk-header-inner">
+			<div>
+				<div class="bbf-bulk-header-title">Bulk Item Import</div>
+				<div class="bbf-bulk-header-desc">Upload a CSV file to create multiple items at once</div>
+			</div>
+			<button class="btn bbf-btn-template" id="bbf-download-template">
+				<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				Download Template
+			</button>
+		</div>
+	</div>
+
+	<!-- Phase 1: Upload Zone -->
+	<div class="bbf-phase" id="bbf-phase-upload">
+		<div class="bbf-card">
+			<div class="bbf-upload-zone" id="bbf-upload-zone">
+				<svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+					<rect x="6" y="10" width="36" height="28" rx="4" stroke="currentColor" stroke-width="2"/>
+					<path d="M24 18v12m0-12l-4 4m4-4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+				<div class="bbf-upload-text">
+					<strong>Drop your CSV file here</strong>
+					<span>or click to browse</span>
+				</div>
+				<div class="bbf-upload-hint">Accepts .csv files only. Max 500 rows.</div>
+				<input type="file" id="bbf-file-input" accept=".csv" style="display:none;">
+			</div>
+
+			<div class="bbf-upload-info" id="bbf-upload-info" style="display:none;">
+				<div class="bbf-file-badge">
+					<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 2h8l4 4v12a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.5"/><path d="M12 2v4h4" stroke="currentColor" stroke-width="1.5"/></svg>
+					<span id="bbf-file-name">file.csv</span>
+					<span id="bbf-file-rows" class="bbf-file-rows-badge">0 rows</span>
+					<button class="bbf-file-remove" id="bbf-file-remove" title="Remove file">&times;</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Phase 2: Preview & Validate -->
+	<div class="bbf-phase" id="bbf-phase-preview" style="display:none;">
+		<div class="bbf-card">
+			<!-- Validation Summary -->
+			<div class="bbf-validation-summary" id="bbf-validation-summary">
+				<div class="bbf-summary-item bbf-summary-total">
+					<span class="bbf-summary-num" id="bbf-total-count">0</span>
+					<span class="bbf-summary-label">Total Rows</span>
+				</div>
+				<div class="bbf-summary-item bbf-summary-valid">
+					<span class="bbf-summary-num" id="bbf-valid-count">0</span>
+					<span class="bbf-summary-label">Valid</span>
+				</div>
+				<div class="bbf-summary-item bbf-summary-error">
+					<span class="bbf-summary-num" id="bbf-error-count">0</span>
+					<span class="bbf-summary-label">Errors</span>
+				</div>
+			</div>
+
+			<!-- Preview Table -->
+			<div class="bbf-preview-table-wrap">
+				<table class="bbf-preview-table" id="bbf-preview-table">
+					<thead>
+						<tr>
+							<th class="bbf-col-status">#</th>
+							<th>Preview Code</th>
+							<th>Item Name</th>
+							<th>Company</th>
+							<th>Item Group</th>
+							<th>UOM</th>
+							<th>HSN</th>
+							<th>Variant</th>
+							<th>Errors</th>
+						</tr>
+					</thead>
+					<tbody id="bbf-preview-body"></tbody>
+				</table>
+			</div>
+
+			<!-- Action Buttons -->
+			<div class="bbf-preview-actions">
+				<button class="btn bbf-btn-back" id="bbf-btn-back-upload">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+					Back
+				</button>
+				<div class="bbf-nav-spacer"></div>
+				<button class="btn bbf-btn-create" id="bbf-btn-create-all" disabled>
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 4L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+					Create All Items (<span id="bbf-create-count">0</span>)
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Progress Overlay -->
+	<div class="bbf-progress-overlay" id="bbf-progress-overlay" style="display:none;">
+		<div class="bbf-progress-card">
+			<div class="bbf-progress-title">Creating Items...</div>
+			<div class="bbf-progress-bar-wrap">
+				<div class="bbf-progress-bar" id="bbf-progress-bar" style="width:0%"></div>
+			</div>
+			<div class="bbf-progress-text" id="bbf-progress-text">0 / 0</div>
+		</div>
+	</div>
+
+	<!-- Phase 3: Results -->
+	<div class="bbf-phase" id="bbf-phase-results" style="display:none;">
+		<div class="bbf-card">
+			<!-- Results Summary -->
+			<div class="bbf-results-summary">
+				<div class="bbf-result-card bbf-result-success">
+					<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/><path d="M10 16l4 4 8-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+					<span class="bbf-result-num" id="bbf-result-success">0</span>
+					<span class="bbf-result-label">Created</span>
+				</div>
+				<div class="bbf-result-card bbf-result-fail">
+					<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/><path d="M11 11l10 10m0-10L11 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+					<span class="bbf-result-num" id="bbf-result-fail">0</span>
+					<span class="bbf-result-label">Failed</span>
+				</div>
+			</div>
+
+			<!-- Results Table -->
+			<div class="bbf-preview-table-wrap">
+				<table class="bbf-preview-table" id="bbf-results-table">
+					<thead>
+						<tr>
+							<th class="bbf-col-status">#</th>
+							<th>Status</th>
+							<th>Item Code</th>
+							<th>Item Name</th>
+							<th>Variants</th>
+							<th>Details</th>
+						</tr>
+					</thead>
+					<tbody id="bbf-results-body"></tbody>
+				</table>
+			</div>
+
+			<!-- Actions -->
+			<div class="bbf-preview-actions">
+				<button class="btn bbf-btn-create" id="bbf-btn-import-another">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+					Import Another Batch
+				</button>
+			</div>
+		</div>
+	</div>
+
+</div>
