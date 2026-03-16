@@ -62,22 +62,29 @@ function _render_mr_buttons(frm, ctx) {
 	// Submit for Approval
 	if (ctx.can_submit_for_approval) {
 		frm.add_custom_button(__("Submit for Approval"), function () {
-			frappe.confirm(
-				__("Submit this Material Request for Department Head approval?"),
-				function () {
-					frappe.call({
-						method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.submit_for_approval",
-						args: { doctype: "Material Request", docname: frm.doc.name },
-						callback: function () {
-							frm.reload_doc();
-							frappe.show_alert({ message: __("MR submitted for approval"), indicator: "blue" });
-						},
-						error: function () {
-							frappe.show_alert({ message: __("Failed to submit MR for approval. Please try again."), indicator: "red" });
+			frappe.call({
+				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.get_submit_target",
+				args: { doctype: "Material Request" },
+				callback: function (r) {
+					var target = (r.message && r.message.target_label) || __("the next approver");
+					frappe.confirm(
+						__("Submit this Material Request for {0} approval?", [target]),
+						function () {
+							frappe.call({
+								method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.submit_for_approval",
+								args: { doctype: "Material Request", docname: frm.doc.name },
+								callback: function () {
+									frm.reload_doc();
+									frappe.show_alert({ message: __("MR submitted for approval"), indicator: "blue" });
+								},
+								error: function () {
+									frappe.show_alert({ message: __("Failed to submit MR for approval. Please try again."), indicator: "red" });
+								}
+							});
 						}
-					});
+					);
 				}
-			);
+			});
 		}, __("Approval"));
 		frm.change_custom_button_type(__("Submit for Approval"), __("Approval"), "primary");
 	}
@@ -203,7 +210,7 @@ function _render_mr_buttons(frm, ctx) {
 	if (ctx.can_resubmit) {
 		frm.add_custom_button(__("Resubmit for Approval"), function () {
 			frappe.confirm(
-				__("Resubmit this Material Request for Department Head approval?"),
+				__("Resubmit this Material Request for approval?"),
 				function () {
 					frappe.call({
 						method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.resubmit_document",

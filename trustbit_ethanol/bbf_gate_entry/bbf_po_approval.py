@@ -30,6 +30,23 @@ def get_approval_context(doctype, docname):
 
 
 @frappe.whitelist()
+def get_submit_target(doctype):
+	"""Return the target approval level for the current user (for confirm dialog)."""
+	submitter_info = _get_user_approval_role(frappe.session.user)
+	if submitter_info and submitter_info["level"] >= 1:
+		target_level = _get_next_level(submitter_info["level"])
+		if target_level:
+			return {"target_label": target_level["role_label"] or target_level["role"]}
+		else:
+			return {"target_label": submitter_info["role_label"] or submitter_info["role"]}
+	else:
+		level_1 = _get_level_info(1)
+		if level_1:
+			return {"target_label": level_1["role_label"] or level_1["role"]}
+		return {"target_label": "Department Head"}
+
+
+@frappe.whitelist()
 def submit_for_approval(doctype, docname):
 	"""Submit a Draft PO/MR into the approval chain."""
 	doc = frappe.get_doc(doctype, docname, for_update=True)
@@ -79,8 +96,8 @@ def submit_for_approval(doctype, docname):
 		return {"status": "ok", "next_state": next_state}
 
 	elif doctype == "Material Request":
-		_submit_mr_for_approval(doc)
-		return {"status": "ok", "next_state": "Pending Department Head"}
+		next_state = _submit_mr_for_approval(doc)
+		return {"status": "ok", "next_state": next_state}
 
 
 @frappe.whitelist()
@@ -90,6 +107,9 @@ def approve_document(doctype, docname, comment=""):
 
 	if doctype == "Material Request":
 		return _approve_mr(doc, comment)
+
+	_validate_po_is_pending(doc)
+	_validate_not_self_approving(doc)
 
 	user_info = _get_user_approval_role(frappe.session.user)
 	if not user_info:
@@ -186,6 +206,8 @@ def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 	if doctype == "Material Request":
 		return _revise_mr(doc, reason, comment)
 
+	_validate_po_is_pending(doc)
+
 	user_info = _get_user_approval_role(frappe.session.user)
 	if not user_info:
 		frappe.throw(_("You don't have an approval role configured"))
@@ -236,6 +258,8 @@ def reject_document(doctype, docname, reason, comment=""):
 	if doctype == "Material Request":
 		return _reject_mr(doc, reason, comment)
 
+	_validate_po_is_pending(doc)
+
 	user_info = _get_user_approval_role(frappe.session.user)
 	if not user_info:
 		frappe.throw(_("You don't have an approval role configured"))
@@ -281,6 +305,8 @@ def resubmit_document(doctype, docname, mode="restart"):
 
 	if doc.bbf_approval_status != "Revised":
 		frappe.throw(_("Only revised POs can be resubmitted"))
+
+	_validate_resubmit_permission(doc)
 
 	# Recalculate required level (amount may have changed during revision)
 	po_amount = flt(doc.grand_total)
@@ -357,6 +383,8 @@ def _submit_mr_for_approval(doc):
 		_get_role_users(target_role),
 		extra={"next_role": target_label})
 
+	return next_state
+
 
 def _approve_mr(doc, comment=""):
 	"""Approve MR — Dept Head or any higher approval role."""
@@ -369,6 +397,10 @@ def _approve_mr(doc, comment=""):
 	user_info = _get_user_approval_role(frappe.session.user)
 	if not user_info or user_info["level"] < 1:
 		frappe.throw(_("You don't have an approval role to approve Material Requests"))
+
+	# Prevent self-approval: creator cannot approve their own MR
+	if doc.owner == frappe.session.user:
+		frappe.throw(_("You cannot approve a Material Request that you created. A different approver must act on this MR."))
 
 	role_display = user_info["role_label"] or user_info["role"]
 	current_state = doc.bbf_mr_status
@@ -447,6 +479,9 @@ def _resubmit_mr(doc):
 	"""Resubmit a revised MR — skips to next level if submitter has an approval role."""
 	if doc.bbf_mr_status != "Revised":
 		frappe.throw(_("Only revised MRs can be resubmitted"))
+
+	if frappe.session.user not in (doc.owner, "Administrator"):
+		frappe.throw(_("Only the MR creator can resubmit after revision"))
 
 	# Same skip logic as initial submission
 	submitter_info = _get_user_approval_role(frappe.session.user)
@@ -585,6 +620,38 @@ def _find_reviser_level(doc):
 # ═══════════════════════════════════════════════════════════════════════
 #  VALIDATION
 # ═══════════════════════════════════════════════════════════════════════
+
+def _validate_po_is_pending(doc):
+	"""Ensure PO is in a Pending state before allowing approve/revise/reject."""
+	status = doc.bbf_approval_status or ""
+	if not status.startswith("Pending"):
+		frappe.throw(
+			_("This PO is not pending approval (current status: {0}). "
+			  "Only POs with 'Pending' status can be acted upon.").format(status or "Draft")
+		)
+
+
+def _validate_not_self_approving(doc):
+	"""Prevent the same user who submitted from approving their own PO."""
+	if doc.bbf_submitted_by and doc.bbf_submitted_by == frappe.session.user:
+		frappe.throw(
+			_("You cannot approve a PO that you submitted for approval. "
+			  "A different approver must act on this PO.")
+		)
+
+
+def _validate_resubmit_permission(doc):
+	"""Only the original submitter or PO owner can resubmit after revision."""
+	allowed_users = {doc.owner}
+	if doc.bbf_submitted_by:
+		allowed_users.add(doc.bbf_submitted_by)
+	allowed_users.add("Administrator")
+
+	if frappe.session.user not in allowed_users:
+		frappe.throw(
+			_("Only the PO creator or original submitter can resubmit after revision.")
+		)
+
 
 def _validate_po_submittable(doc):
 	"""Validate PO is in a state that can be submitted for approval."""
@@ -833,7 +900,7 @@ def _get_po_approval_context(doc, user_info, settings):
 		"can_final_approve": False,
 		"can_revise": False,
 		"can_reject": False,
-		"can_resubmit": (status == "Revised"),
+		"can_resubmit": (status == "Revised" and frappe.session.user in (doc.owner, doc.bbf_submitted_by or "", "Administrator")),
 		"is_pending": is_pending,
 		"user_approval_role": None,
 		"user_approval_level": 0,
@@ -841,10 +908,12 @@ def _get_po_approval_context(doc, user_info, settings):
 		"approval_chain": _build_approval_chain(doc, required_level or _get_required_level(po_amount)),
 	}
 
+	is_self_submitted = (doc.bbf_submitted_by and doc.bbf_submitted_by == frappe.session.user)
+
 	if user_info and is_pending and user_info["level"] >= current_level:
 		ctx["user_approval_role"] = user_info["role_label"] or user_info["role"]
 		ctx["user_approval_level"] = user_info["level"]
-		ctx["can_approve"] = True
+		ctx["can_approve"] = not is_self_submitted
 		ctx["can_reject"] = True
 
 		user_limit = flt(user_info["amt_limit"])
@@ -868,14 +937,17 @@ def _get_mr_approval_context(doc, user_info, settings):
 	# Any approval role (Dept Head or above) can act on pending MRs
 	has_approval_role = user_info and user_info["level"] >= 1
 
+	# Prevent self-approval: if current user submitted the MR, they can't approve it
+	is_self_submitted = (is_pending and doc.owner == frappe.session.user)
+
 	return {
 		"approval_enabled": True,
 		"status": status,
 		"can_submit_for_approval": (doc.docstatus == 0 and status in ("", "Draft")),
-		"can_approve": (is_pending and has_approval_role),
+		"can_approve": (is_pending and has_approval_role and not is_self_submitted),
 		"can_revise": (is_pending and has_approval_role),
 		"can_reject": (is_pending and has_approval_role),
-		"can_resubmit": (status == "Revised"),
+		"can_resubmit": (status == "Revised" and frappe.session.user in (doc.owner, "Administrator")),
 		"is_pending": is_pending,
 	}
 

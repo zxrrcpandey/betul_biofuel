@@ -41,9 +41,8 @@ def create_custom_fields():
 			},
 			{
 				"fieldname": "bbf_approval_status",
-				"fieldtype": "Select",
+				"fieldtype": "Data",
 				"label": "Approval Status",
-				"options": "\nDraft\nPending Department Head\nPending GM\nPending CEO\nPending MD\nApproved\nRevised\nRejected",
 				"insert_after": "bbf_approval_section",
 				"read_only": 1,
 				"no_copy": 1,

@@ -186,10 +186,18 @@ function _render_buttons(frm, ctx) {
 	// Submit for Approval
 	if (ctx.can_submit_for_approval) {
 		frm.add_custom_button(__("Submit for Approval"), function () {
-			frappe.confirm(
-				__("Submit this PO for approval? It will be sent to {0}.", [__("Department Head")]),
-				function () { _call_action(frm, "submit_for_approval", {}); }
-			);
+			// Determine target level dynamically based on submitter's role
+			frappe.call({
+				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.get_submit_target",
+				args: { doctype: "Purchase Order" },
+				callback: function (r) {
+					var target = (r.message && r.message.target_label) || __("the next approver");
+					frappe.confirm(
+						__("Submit this PO for approval? It will be sent to {0}.", [target]),
+						function () { _call_action(frm, "submit_for_approval", {}); }
+					);
+				}
+			});
 		}, __("Approval"));
 		frm.change_custom_button_type(__("Submit for Approval"), __("Approval"), "primary");
 	}
@@ -217,7 +225,7 @@ function _render_buttons(frm, ctx) {
 	// Revise
 	if (ctx.can_revise) {
 		frm.add_custom_button(__("Revise"), function () {
-			_show_revise_dialog(frm, ctx);
+			_show_revise_dialog(frm);
 		}, __("Approval"));
 	}
 
@@ -258,40 +266,23 @@ function _show_comment_dialog(frm, title, callback) {
 }
 
 
-function _show_revise_dialog(frm, ctx) {
-	var fields = [
-		{
-			fieldname: "reason",
-			fieldtype: "Small Text",
-			label: __("Revision Reason"),
-			reqd: 1,
-		}
-	];
-
-	// Add revise-to dropdown if options exist
-	if (ctx.revise_to_options && ctx.revise_to_options.length > 0) {
-		var options = ctx.revise_to_options.map(function (o) {
-			return o.label;
-		});
-		fields.push({
-			fieldname: "revise_to",
-			fieldtype: "Select",
-			label: __("Send Back To"),
-			options: options,
-			default: options[0],
-		});
-	}
-
-	fields.push({
-		fieldname: "comment",
-		fieldtype: "Small Text",
-		label: __("Additional Comment"),
-	});
-
+function _show_revise_dialog(frm) {
 	var d = new frappe.ui.Dialog({
 		title: __("Revise Purchase Order"),
-		fields: fields,
-		primary_action_label: __("Send Back"),
+		fields: [
+			{
+				fieldname: "reason",
+				fieldtype: "Small Text",
+				label: __("Revision Reason"),
+				reqd: 1,
+			},
+			{
+				fieldname: "comment",
+				fieldtype: "Small Text",
+				label: __("Additional Comment"),
+			}
+		],
+		primary_action_label: __("Send Back for Revision"),
 		primary_action: function (values) {
 			if (!values.reason) {
 				frappe.throw(__("Revision reason is mandatory"));
@@ -299,23 +290,12 @@ function _show_revise_dialog(frm, ctx) {
 			}
 			d.hide();
 
-			var revise_to_level = null;
-			if (values.revise_to && ctx.revise_to_options) {
-				for (var i = 0; i < ctx.revise_to_options.length; i++) {
-					if (ctx.revise_to_options[i].label === values.revise_to) {
-						revise_to_level = ctx.revise_to_options[i].level;
-						break;
-					}
-				}
-			}
-
 			frappe.call({
 				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.revise_document",
 				args: {
 					doctype: "Purchase Order",
 					docname: frm.doc.name,
 					reason: values.reason,
-					revise_to_level: revise_to_level,
 					comment: values.comment || "",
 				},
 				callback: function () {
