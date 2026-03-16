@@ -84,7 +84,7 @@ frappe.ui.form.on("BBF Gate Entry", {
 						]
 					});
 
-					let esc = (v) => $("<span>").text(v).html();
+					let esc = frappe.utils.escape_html;
 					let html = '<table class="table table-bordered">';
 					html += "<thead><tr><th>PO</th><th>Supplier</th><th>Date</th><th>Total Qty</th><th>Received %</th><th>Action</th></tr></thead><tbody>";
 					r.message.forEach(po => {
@@ -94,12 +94,15 @@ frappe.ui.form.on("BBF Gate Entry", {
 							<td>${esc(po.transaction_date || "")}</td>
 							<td>${esc(po.total_qty || "")}</td>
 							<td>${esc(po.per_received || 0)}%</td>
-							<td><button class="btn btn-xs btn-primary select-po" data-po="${esc(po.name)}">Select</button></td>
+							<td><button class="btn btn-xs btn-primary select-po">Select</button></td>
 						</tr>`;
 					});
 					html += "</tbody></table>";
 
 					d.fields_dict.po_list.$wrapper.html(html);
+					d.fields_dict.po_list.$wrapper.find(".select-po").each(function (i) {
+						$(this).data("po", r.message[i].name);
+					});
 					d.fields_dict.po_list.$wrapper.find(".select-po").on("click", function () {
 						frm.set_value("purchase_order", $(this).data("po"));
 						d.hide();

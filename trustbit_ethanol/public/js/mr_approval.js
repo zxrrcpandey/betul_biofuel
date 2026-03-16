@@ -24,6 +24,9 @@ function _load_mr_context(frm) {
 			_render_mr_status(frm, ctx);
 			_hide_standard_submit(frm, ctx);
 			_render_mr_buttons(frm, ctx);
+		},
+		error() {
+			console.error("Failed to load MR approval context for", frm.doc.name);
 		}
 	});
 }
@@ -68,6 +71,9 @@ function _render_mr_buttons(frm, ctx) {
 						callback: function () {
 							frm.reload_doc();
 							frappe.show_alert({ message: __("MR submitted for approval"), indicator: "blue" });
+						},
+						error: function () {
+							frappe.show_alert({ message: __("Failed to submit MR for approval. Please try again."), indicator: "red" });
 						}
 					});
 				}
@@ -95,6 +101,9 @@ function _render_mr_buttons(frm, ctx) {
 						callback: function () {
 							frm.reload_doc();
 							frappe.show_alert({ message: __("MR approved!"), indicator: "green" });
+						},
+						error: function () {
+							frappe.show_alert({ message: __("Failed to approve MR. Please try again."), indicator: "red" });
 						}
 					});
 				}
@@ -140,6 +149,9 @@ function _render_mr_buttons(frm, ctx) {
 						callback: function () {
 							frm.reload_doc();
 							frappe.show_alert({ message: __("MR sent back for revision"), indicator: "orange" });
+						},
+						error: function () {
+							frappe.show_alert({ message: __("Failed to revise MR. Please try again."), indicator: "red" });
 						}
 					});
 				}
@@ -176,6 +188,9 @@ function _render_mr_buttons(frm, ctx) {
 						callback: function () {
 							frm.reload_doc();
 							frappe.show_alert({ message: __("MR rejected"), indicator: "red" });
+						},
+						error: function () {
+							frappe.show_alert({ message: __("Failed to reject MR. Please try again."), indicator: "red" });
 						}
 					});
 				}
@@ -196,6 +211,9 @@ function _render_mr_buttons(frm, ctx) {
 						callback: function () {
 							frm.reload_doc();
 							frappe.show_alert({ message: __("MR resubmitted"), indicator: "blue" });
+						},
+						error: function () {
+							frappe.show_alert({ message: __("Failed to resubmit MR. Please try again."), indicator: "red" });
 						}
 					});
 				}

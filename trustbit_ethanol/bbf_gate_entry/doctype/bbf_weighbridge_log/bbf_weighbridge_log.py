@@ -53,15 +53,14 @@ class BBFWeighbridgeLog(Document):
 		if not self.purchase_order or not self.net_weight:
 			return
 
-		total_ordered_kg = frappe.db.sql("""
-			SELECT SUM(poi.qty * COALESCE(ucd.conversion_factor, 1)) as total_kg
-			FROM `tabPurchase Order Item` poi
-			LEFT JOIN `tabUOM Conversion Detail` ucd
-				ON ucd.parent = poi.item_code AND ucd.parenttype = 'Item' AND ucd.uom = 'Kg'
-			WHERE poi.parent = %s
-		""", self.purchase_order, as_dict=True)
+		from frappe.utils import flt
+		po_items = frappe.get_all(
+			"Purchase Order Item",
+			filters={"parent": self.purchase_order},
+			fields=["qty", "stock_qty"]
+		)
+		ordered_qty = sum(flt(item.stock_qty or item.qty) for item in po_items)
 
-		ordered_qty = total_ordered_kg[0].total_kg if total_ordered_kg and total_ordered_kg[0].total_kg else 0
 		if ordered_qty:
 			self.weight_difference_percent = round(
 				((self.net_weight - ordered_qty) / ordered_qty) * 100, 2

@@ -56,13 +56,18 @@ class BBFItemCreator {
 
 	// ── Helper: Monkey-patch Link controls ──
 	_on_link_value(control, callback) {
+		let _debounce_timer = null;
+		const debounced = (val) => {
+			clearTimeout(_debounce_timer);
+			_debounce_timer = setTimeout(() => callback(val), 150);
+		};
 		const orig = control.set_formatted_input.bind(control);
 		control.set_formatted_input = function (value) {
 			orig(value);
-			setTimeout(() => callback(control.get_value()), 0);
+			debounced(control.get_value());
 		};
 		control.$input.on("change", () => {
-			setTimeout(() => callback(control.get_value()), 100);
+			debounced(control.get_value());
 		});
 	}
 
@@ -621,6 +626,7 @@ class BBFItemCreator {
 	}
 
 	_update_preview() {
+		const esc = frappe.utils.escape_html;
 		const cc = this.state.company_code;
 		const cat = this.state.category_code;
 		const ser = this.state.serial_number;
@@ -638,22 +644,22 @@ class BBFItemCreator {
 			// Show template code + variant count
 			const count = this.variant_rows.length;
 			const first_code = this.variant_rows[0].brand_code || this.variant_rows[0].variant_code || "___";
-			const colored = `<span style="color:#90cdf4">${cc}</span>`
+			const colored = `<span style="color:#90cdf4">${esc(cc)}</span>`
 				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fbd38d">${cat}</span>`
+				+ `<span style="color:#fbd38d">${esc(cat)}</span>`
 				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fff">${ser || "___"}</span>`
+				+ `<span style="color:#fff">${esc(ser || "___")}</span>`
 				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#9ae6b4">${first_code}</span>`
+				+ `<span style="color:#9ae6b4">${esc(first_code)}</span>`
 				+ (count > 1 ? `<span style="color:rgba(255,255,255,0.5);font-size:16px;margin-left:8px;">+${count - 1} more</span>` : "");
 
 			this.$page.find("#bbf-live-code").html(colored);
 		} else {
-			const colored = `<span style="color:#90cdf4">${cc}</span>`
+			const colored = `<span style="color:#90cdf4">${esc(cc)}</span>`
 				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fbd38d">${cat}</span>`
+				+ `<span style="color:#fbd38d">${esc(cat)}</span>`
 				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fff">${ser || "___"}</span>`;
+				+ `<span style="color:#fff">${esc(ser || "___")}</span>`;
 
 			this.$page.find("#bbf-live-code").html(colored);
 		}
@@ -801,14 +807,15 @@ class BBFItemCreator {
 
 			// Build variants table
 			const $tbody = this.$page.find("#bbf-review-variants-body").empty();
+			const esc_html = frappe.utils.escape_html;
 			this.variant_rows.forEach((row) => {
 				const v_code = row.brand_code || row.variant_code;
 				const v_name = row.brand || row.variant || "-";
 				const full_code = base_code + "-" + v_code;
 				$tbody.append(`
 					<tr>
-						<td><code>${full_code}</code></td>
-						<td>${v_name}</td>
+						<td><code>${esc_html(full_code)}</code></td>
+						<td>${esc_html(v_name)}</td>
 						<td>${row.valuation_rate ? format_currency(row.valuation_rate) : "-"}</td>
 						<td>${row.standard_rate ? format_currency(row.standard_rate) : "-"}</td>
 						<td>${flt(row.opening_stock) || "-"}</td>
@@ -850,20 +857,20 @@ class BBFItemCreator {
 		const s = me.state;
 		const $btn = this.$page.find("#bbf-btn-create");
 
-		// Re-read field values
+		// Re-read current field values (prefer live values over stale state)
 		s.company = me.company_field.get_value() || s.company;
 		s.item_group = me.category_field.get_value() || s.item_group;
-		s.stock_uom = me.uom_field.get_value() || s.stock_uom || "Kg";
+		s.stock_uom = me.uom_field.get_value() || "Kg";
 		s.item_name = me.item_name_field.get_value() || s.item_name;
 		s.gst_hsn_code = me.hsn_field.get_value() || s.gst_hsn_code;
-		s.item_tax_template = me.tax_template_field.get_value() || s.item_tax_template;
-		s.description = me.desc_field.get_value() || s.description;
+		s.item_tax_template = me.tax_template_field.get_value() || "";
+		s.description = me.desc_field.get_value() || "";
 
 		if (!s.has_variant) {
-			s.valuation_rate = flt(me.valuation_rate_field.get_value()) || s.valuation_rate;
-			s.standard_rate = flt(me.standard_rate_field.get_value()) || s.standard_rate;
-			s.opening_stock = flt(me.opening_stock_field.get_value()) || s.opening_stock;
-			s.opening_warehouse = me.opening_warehouse_field.get_value() || s.opening_warehouse;
+			s.valuation_rate = flt(me.valuation_rate_field.get_value());
+			s.standard_rate = flt(me.standard_rate_field.get_value());
+			s.opening_stock = flt(me.opening_stock_field.get_value());
+			s.opening_warehouse = me.opening_warehouse_field.get_value() || "";
 		} else {
 			s.opening_warehouse = me.opening_warehouse_variant_field.get_value() || s.opening_warehouse;
 		}
@@ -1057,18 +1064,19 @@ class BBFItemCreator {
 				this.$page.find("#bbf-recent").show();
 				r.message.forEach((item) => {
 					const status_class = item.status === "Created" ? "status-created" : "status-draft";
+					const _esc = frappe.utils.escape_html;
 					const $el = $(`
 						<div class="bbf-recent-item">
 							<div>
-								<div class="bbf-recent-item-code">${item.generated_item_code || item.name}</div>
-								<div class="bbf-recent-item-name">${item.item_name || ""}</div>
+								<div class="bbf-recent-item-code">${_esc(item.generated_item_code || item.name)}</div>
+								<div class="bbf-recent-item-name">${_esc(item.item_name || "")}</div>
 							</div>
-							<span class="bbf-recent-item-status ${status_class}">${item.status}</span>
+							<span class="bbf-recent-item-status ${status_class}">${_esc(item.status)}</span>
 						</div>
 					`);
 
 					$el.on("click", () => {
-						if (item.item_created) {
+						if (item.item_created && item.item_created.trim()) {
 							const first_item = item.item_created.split(",")[0].trim();
 							frappe.set_route("Form", "Item", first_item);
 						} else {

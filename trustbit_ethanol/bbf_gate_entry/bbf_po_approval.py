@@ -715,7 +715,10 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 			notification.type = "Alert"
 			notification.insert(ignore_permissions=True)
 		except Exception:
-			frappe.log_error(f"Failed to create notification for {user}")
+			frappe.log_error(
+				title=f"Approval Notification Error ({doc.name} → {user})",
+				message=frappe.get_traceback()
+			)
 
 	# Email to all recipients at once
 	try:
@@ -728,7 +731,10 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 			reference_name=doc.name,
 		)
 	except Exception:
-		frappe.log_error(f"Failed to send approval email for {doc.name}")
+		frappe.log_error(
+			title=f"Approval Email Error ({doc.name})",
+			message=frappe.get_traceback()
+		)
 
 
 def _build_notification_message(doc, action, extra):
@@ -935,7 +941,11 @@ def _get_revise_options(user_info):
 			order_by="approval_level asc")
 		return [{"level": l.level, "label": l.role_label or l.role} for l in lower_levels]
 
-	target_levels = [int(x.strip()) for x in revise_to.split(",") if x.strip().isdigit()]
+	target_levels = []
+	for x in revise_to.split(","):
+		x = x.strip()
+		if x.isdigit():
+			target_levels.append(int(x))
 	options = []
 	for tl in target_levels:
 		info = _get_level_info(tl)

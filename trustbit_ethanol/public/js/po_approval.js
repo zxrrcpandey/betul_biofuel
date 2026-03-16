@@ -32,6 +32,9 @@ function _load_approval_context(frm) {
 			_render_buttons(frm, ctx);
 			_lock_fields(frm, ctx);
 			_render_timeline(frm);
+		},
+		error() {
+			console.error("Failed to load approval context for", frm.doc.name);
 		}
 	});
 }
@@ -318,6 +321,9 @@ function _show_revise_dialog(frm, ctx) {
 				callback: function () {
 					frm.reload_doc();
 					frappe.show_alert({ message: __("PO sent back for revision"), indicator: "orange" });
+				},
+				error: function () {
+					frappe.show_alert({ message: __("Failed to revise PO. Please try again."), indicator: "red" });
 				}
 			});
 		}
@@ -360,6 +366,9 @@ function _show_reject_dialog(frm) {
 				callback: function () {
 					frm.reload_doc();
 					frappe.show_alert({ message: __("PO has been rejected"), indicator: "red" });
+				},
+				error: function () {
+					frappe.show_alert({ message: __("Failed to reject PO. Please try again."), indicator: "red" });
 				}
 			});
 		}
@@ -395,6 +404,9 @@ function _show_resubmit_dialog(frm) {
 				callback: function () {
 					frm.reload_doc();
 					frappe.show_alert({ message: __("PO resubmitted for approval"), indicator: "blue" });
+				},
+				error: function () {
+					frappe.show_alert({ message: __("Failed to resubmit PO. Please try again."), indicator: "red" });
 				}
 			});
 		}
@@ -421,6 +433,9 @@ function _call_action(frm, method, args) {
 			} else {
 				frappe.show_alert({ message: __("Action completed"), indicator: "blue" });
 			}
+		},
+		error: function () {
+			frappe.show_alert({ message: __("Approval action failed. Please reload and try again."), indicator: "red" });
 		}
 	});
 }

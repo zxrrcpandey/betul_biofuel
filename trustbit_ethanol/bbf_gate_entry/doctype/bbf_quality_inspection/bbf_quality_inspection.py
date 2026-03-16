@@ -1,6 +1,6 @@
 import frappe
 from frappe.model.document import Document
-from frappe.utils import now_datetime
+from frappe.utils import now_datetime, flt
 
 
 class BBFQualityInspection(Document):
@@ -46,9 +46,9 @@ class BBFQualityInspection(Document):
 
 	def calculate_variances(self):
 		if self.item_category == "Coal":
-			if self.po_gcv and self.actual_gcv:
+			if self.actual_gcv and flt(self.po_gcv):
 				self.gcv_variance_percent = round(
-					((self.actual_gcv - self.po_gcv) / self.po_gcv) * 100, 2
+					((flt(self.actual_gcv) - flt(self.po_gcv)) / flt(self.po_gcv)) * 100, 2
 				)
 			if self.po_moisture_percent and self.actual_moisture_percent:
 				self.moisture_variance_percent = round(

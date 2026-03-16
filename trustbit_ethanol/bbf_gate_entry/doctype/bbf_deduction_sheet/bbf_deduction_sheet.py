@@ -35,18 +35,6 @@ class BBFDeductionSheet(Document):
 		if qi.purchase_order:
 			self.supplier_name = frappe.db.get_value("Purchase Order", qi.purchase_order, "supplier_name")
 
-		# Fetch weighbridge net weight for weight_deduction calculation
-		wb = frappe.db.get_value(
-			"BBF Weighbridge Log",
-			{"token_number": self.token_number},
-			["gross_weight", "tare_weight", "net_weight"],
-			as_dict=True
-		)
-		if wb and wb.net_weight:
-			# Weight deduction is the difference between invoice qty and actual net weight
-			# User will set invoice_qty and item_rate manually from the invoice
-			pass
-
 	def validate(self):
 		self.calculate_values()
 		self.update_override_flags()

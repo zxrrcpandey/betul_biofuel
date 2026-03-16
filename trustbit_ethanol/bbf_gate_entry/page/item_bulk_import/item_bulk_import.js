@@ -183,7 +183,7 @@ class BBFBulkImport {
 		var $tbody = me.$page.find("#bbf-preview-body");
 		$tbody.empty();
 
-		data.results.forEach(function (row) {
+		data.results.forEach(function (row, row_idx) {
 			var status_html = row.valid
 				? '<span class="bbf-status-icon bbf-status-ok">&#10003;</span>'
 				: '<span class="bbf-status-icon bbf-status-err">&#10007;</span>';
@@ -220,8 +220,8 @@ class BBFBulkImport {
 					"<td>" + frappe.utils.escape_html(row.item_name || "-") + "</td>" +
 					"<td>" + frappe.utils.escape_html(row.company || "-") + "</td>" +
 					"<td>" + frappe.utils.escape_html(row.item_group || "-") + "</td>" +
-					"<td>" + frappe.utils.escape_html(me.parsed_rows[data.results.indexOf(row)]?.stock_uom || "Kg") + "</td>" +
-					"<td>" + frappe.utils.escape_html(me.parsed_rows[data.results.indexOf(row)]?.gst_hsn_code || "-") + "</td>" +
+					"<td>" + frappe.utils.escape_html(me.parsed_rows[row_idx]?.stock_uom || "Kg") + "</td>" +
+					"<td>" + frappe.utils.escape_html(me.parsed_rows[row_idx]?.gst_hsn_code || "-") + "</td>" +
 					"<td>" + variant_html + "</td>" +
 					"<td>" + (errors_html || '<span style="color:#38a169;">OK</span>') + "</td>" +
 				"</tr>"

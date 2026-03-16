@@ -57,8 +57,8 @@ frappe.ui.form.on("BBF Token", {
 			let is_raw_material = frm.doc.purpose === "Raw Material";
 			if (is_raw_material) {
 				show_mark_exit = frm.doc.status === "GRN Created";
-			} else if (frm.doc.status !== "Token Generated" || frm.doc.purpose) {
-				// Non-RM: can exit at any stage including Token Generated
+			} else {
+				// Non-RM: can exit at any stage (visitor, service, etc.)
 				show_mark_exit = true;
 			}
 		}

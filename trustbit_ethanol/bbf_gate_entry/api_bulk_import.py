@@ -59,6 +59,9 @@ def parse_uploaded_file(file_content, file_type="csv"):
 	reader = csv.DictReader(io.StringIO(file_content))
 
 	for i, row in enumerate(reader):
+		if i >= 500:
+			frappe.throw("Maximum 500 rows allowed. Please split your file into smaller batches.")
+
 		# Normalize keys
 		cleaned = {}
 		for key, val in row.items():
@@ -225,6 +228,10 @@ def bulk_create_items(rows):
 			})
 		except Exception as e:
 			frappe.db.rollback()
+			frappe.log_error(
+				title=f"Bulk Item Import Error (Row {row_num})",
+				message=frappe.get_traceback()
+			)
 			frappe.clear_messages()
 			results.append({
 				"row_num": row_num,
