@@ -48,27 +48,34 @@ def get_data(filters):
 	if not budgets:
 		return []
 
-	# Get committed
+	# Get FY date range for PO/GL queries (PO has no fiscal_year field)
+	fy_doc = frappe.get_doc("Fiscal Year", fiscal_year)
+	fy_start = fy_doc.year_start_date
+	fy_end = fy_doc.year_end_date
+
+	# Get committed (POs in FY date range)
 	committed_data = {}
 	rows = frappe.db.sql("""
 		SELECT cost_center, COALESCE(SUM(grand_total), 0) as total
 		FROM `tabPurchase Order`
-		WHERE fiscal_year = %s AND company = %s AND docstatus = 1
+		WHERE transaction_date BETWEEN %s AND %s
+			AND company = %s AND docstatus = 1
 			AND status NOT IN ('Closed', 'Cancelled')
 		GROUP BY cost_center
-	""", (fiscal_year, company), as_dict=True)
+	""", (fy_start, fy_end, company), as_dict=True)
 	for r in rows:
 		committed_data[r.cost_center] = flt(r.total)
 
-	# Get actual
+	# Get actual (GL entries in FY date range)
 	actual_data = {}
 	rows = frappe.db.sql("""
 		SELECT cost_center, COALESCE(SUM(debit) - SUM(credit), 0) as total
 		FROM `tabGL Entry`
-		WHERE fiscal_year = %s AND company = %s AND is_cancelled = 0
+		WHERE posting_date BETWEEN %s AND %s
+			AND company = %s AND is_cancelled = 0
 			AND voucher_type IN ('Purchase Invoice', 'Journal Entry')
 		GROUP BY cost_center
-	""", (fiscal_year, company), as_dict=True)
+	""", (fy_start, fy_end, company), as_dict=True)
 	for r in rows:
 		actual_data[r.cost_center] = flt(r.total)
 

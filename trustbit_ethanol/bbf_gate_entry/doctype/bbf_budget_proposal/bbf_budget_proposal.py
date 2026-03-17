@@ -15,17 +15,17 @@ class BBFBudgetProposal(Document):
         self.total_approved = sum(flt(row.ceo_approved_amount) for row in self.budget_items)
 
     def _validate_duplicate(self):
-        if self.is_new():
-            existing = frappe.db.exists("BBF Budget Proposal", {
-                "cost_center": self.cost_center,
-                "fiscal_year": self.fiscal_year,
-                "status": ["not in", ["Rejected"]],
-                "name": ["!=", self.name]
-            })
-            if existing:
-                frappe.throw(_(
-                    "A budget proposal already exists for {0} in {1}: {2}"
-                ).format(self.cost_center, self.fiscal_year, existing))
+        # Check on new AND on status changes (e.g., resubmit from Revised)
+        existing = frappe.db.exists("BBF Budget Proposal", {
+            "cost_center": self.cost_center,
+            "fiscal_year": self.fiscal_year,
+            "status": ["in", ["Draft", "Pending CEO", "Approved"]],
+            "name": ["!=", self.name or ""]
+        })
+        if existing:
+            frappe.throw(_(
+                "A budget proposal already exists for {0} in {1}: {2}"
+            ).format(self.cost_center, self.fiscal_year, existing))
 
     def _validate_accounts(self):
         seen = []
