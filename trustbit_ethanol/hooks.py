@@ -33,7 +33,10 @@ fixtures = [
 			"Department Head",
 			"General Manager",
 			"CEO",
-			"MD"
+			"MD",
+			"Purchase Manager",
+			"Grain Purchase Manager",
+			"AVP"
 		]]]
 	},
 	{
@@ -65,6 +68,11 @@ fixtures = [
 			"Purchase Order-bbf_approval_log",
 			"Purchase Order-bbf_amount_at_submission",
 			"Purchase Order-bbf_last_sla_alert",
+			"Purchase Order-bbf_purchase_category",
+			"Purchase Order-bbf_approval_rule",
+			"Purchase Order-bbf_current_step",
+			"Purchase Order-bbf_total_steps",
+			"Purchase Order-bbf_can_send_to_md",
 			"Material Request-bbf_mr_section",
 			"Material Request-bbf_mr_status",
 			"Material Request-bbf_mr_col1",
@@ -73,7 +81,11 @@ fixtures = [
 			"Material Request-bbf_mr_revision_section",
 			"Material Request-bbf_mr_revision_reason",
 			"Material Request-bbf_mr_log_section",
-			"Material Request-bbf_mr_log"
+			"Material Request-bbf_mr_log",
+			"Material Request-bbf_mr_route",
+			"Material Request-bbf_mr_approval_route",
+			"Material Request-bbf_mr_current_step",
+			"Material Request-bbf_mr_total_steps"
 		]]]
 	}
 ]
@@ -90,6 +102,9 @@ doc_events = {
 		"on_cancel": "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.po_on_cancel",
 		"before_insert": "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.po_on_amend",
 		"before_save": "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.po_before_save",
+	},
+	"Material Request": {
+		"before_save": "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.mr_before_save",
 	}
 }
 

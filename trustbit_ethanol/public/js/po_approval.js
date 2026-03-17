@@ -1,20 +1,10 @@
-/**
- * BBF Purchase Order Approval — Client Script
- *
- * Injected via doctype_js hook. Manages:
- *   - Approval stepper progress indicator
- *   - Action buttons (Submit, Approve, Forward, Revise, Reject, Resubmit)
- *   - Field locking during approval
- *   - Approval history timeline
- */
-
+// BBF PO Approval v2.0 — Category-based routing with dynamic stepper
 frappe.ui.form.on("Purchase Order", {
 	refresh(frm) {
 		if (frm.is_new()) return;
 		_load_approval_context(frm);
-	},
+	}
 });
-
 
 function _load_approval_context(frm) {
 	frappe.call({
@@ -22,7 +12,7 @@ function _load_approval_context(frm) {
 		args: { doctype: "Purchase Order", docname: frm.doc.name },
 		callback(r) {
 			if (!r.message) return;
-			var ctx = r.message;
+			const ctx = r.message;
 			if (!ctx.approval_enabled) return;
 
 			_override_po_indicator(frm, ctx);
@@ -34,230 +24,250 @@ function _load_approval_context(frm) {
 			_render_timeline(frm);
 		},
 		error() {
-			console.error("Failed to load approval context for", frm.doc.name);
+			// Silently fail — approval UI just won't show
 		}
 	});
 }
 
-
-// ── Hide Standard Submit ─────────────────────────────────────────────
-
-function _hide_po_standard_submit(frm, ctx) {
-	// When approval system is enabled, ALWAYS hide standard Submit button & intro banner
-	// Users must use "Submit for Approval" instead of the standard Frappe Submit
-	if (frm.doc.docstatus === 0) {
-		// Hide the standard "Submit" primary button
-		frm.page.clear_primary_action();
-		// Hide "Submit this document to confirm" intro message
-		frm.dashboard.clear_headline();
-		$(frm.wrapper).find('.form-message.blue').hide();
-	}
-}
-
-
-// ── Page Indicator Override ──────────────────────────────────────────
-
 function _override_po_indicator(frm, ctx) {
-	var status = ctx.status || "Draft";
-	if (!status || status === "Draft") return;
+	const status = ctx.status;
+	if (!status) return;
 
-	var color = "blue";
-	if (status === "Approved") color = "green";
-	else if (status === "Rejected") color = "red";
-	else if (status === "Revised") color = "orange";
-	else if (status.startsWith("Pending")) color = "yellow";
+	const colors = {
+		"Approved": "green",
+		"Rejected": "red",
+		"Revised": "orange",
+	};
 
-	// Override the standard Frappe indicator (replaces "Draft" badge)
+	let color = colors[status];
+	if (!color) {
+		if (status.startsWith("Pending")) color = "blue";
+		else if (status.startsWith("Awaiting")) color = "yellow";
+		else color = "blue";
+	}
+
 	frm.page.set_indicator(status, color);
 }
 
-
-// ── Stepper ──────────────────────────────────────────────────────────
+function _hide_po_standard_submit(frm, ctx) {
+	if (!ctx.status || ctx.status === "Draft" || ctx.status === "") return;
+	frm.page.clear_primary_action();
+	frm.dashboard.clear_headline();
+	$(frm.page.wrapper).find(".form-message.blue").hide();
+}
 
 function _render_stepper(frm, ctx) {
-	var chain = ctx.approval_chain || [];
+	// Remove old stepper
+	$(frm.fields_dict.bbf_approval_section?.wrapper || frm.page.wrapper)
+		.find(".bbf-stepper").remove();
+
+	const chain = ctx.approval_chain || [];
 	if (!chain.length) return;
 
-	// Remove previous stepper
-	frm.fields_dict.bbf_approval_section &&
-		$(frm.fields_dict.bbf_approval_section.wrapper).find(".bbf-stepper").remove();
+	let html = '<div class="bbf-stepper" style="padding: 15px 0; margin: 10px 0;">';
+	html += '<div style="display: flex; align-items: flex-start; justify-content: center; gap: 0;">';
 
-	var steps_html = chain.map(function (step) {
-		var icon, cls;
-		if (step.status === "approved") {
-			icon = "&#10003;";
-			cls = "bbf-step--done";
+	chain.forEach((step, i) => {
+		// Circle color based on status and action_type
+		let circleColor = "#d1d5db"; // pending gray
+		let circleContent = i + 1;
+		let labelColor = "#6b7280";
+		let pulse = "";
+
+		if (step.status === "done") {
+			circleColor = "#10b981"; // green
+			circleContent = "✓";
+			labelColor = "#10b981";
 		} else if (step.status === "current") {
-			icon = step.level;
-			cls = "bbf-step--active";
-		} else {
-			icon = step.level;
-			cls = "bbf-step--pending";
+			if (step.action_type === "Review") {
+				circleColor = "#3b82f6"; // blue for review
+			} else if (step.action_type === "Final Approve") {
+				circleColor = "#10b981"; // green for final
+			} else {
+				circleColor = "#f59e0b"; // amber for approve
+			}
+			pulse = "animation: bbf-pulse 2s infinite;";
+			labelColor = circleColor;
+		} else if (step.status === "skipped") {
+			circleColor = "#ef4444"; // red
+			circleContent = "✕";
 		}
 
-		var detail = "";
+		// Step circle
+		html += '<div style="display: flex; flex-direction: column; align-items: center; min-width: 80px; max-width: 120px;">';
+		html += `<div style="width: 36px; height: 36px; border-radius: 50%; background: ${circleColor}; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; ${pulse}">`;
+		html += circleContent;
+		html += '</div>';
+
+		// Role label
+		html += `<div style="font-size: 11px; color: ${labelColor}; margin-top: 6px; text-align: center; font-weight: 600;">`;
+		html += frappe.utils.escape_html(step.role);
+		html += '</div>';
+
+		// Action type badge
+		let badgeColor = "#e5e7eb";
+		let badgeText = "#374151";
+		if (step.action_type === "Review") { badgeColor = "#dbeafe"; badgeText = "#1d4ed8"; }
+		else if (step.action_type === "Final Approve") { badgeColor = "#d1fae5"; badgeText = "#065f46"; }
+		else if (step.action_type === "Approve") { badgeColor = "#fef3c7"; badgeText = "#92400e"; }
+
+		html += `<div style="font-size: 9px; background: ${badgeColor}; color: ${badgeText}; padding: 1px 6px; border-radius: 8px; margin-top: 3px;">`;
+		html += step.action_type;
+		if (step.is_manual) html += " ⚡";
+		html += '</div>';
+
+		// Actor info
 		if (step.by) {
-			detail = '<div class="bbf-step__detail">' + frappe.utils.escape_html(step.by) + "</div>";
+			html += `<div style="font-size: 10px; color: #9ca3af; margin-top: 2px;">${frappe.utils.escape_html(step.by)}</div>`;
+		}
+		if (step.date) {
+			html += `<div style="font-size: 9px; color: #d1d5db;">${frappe.utils.escape_html(step.date)}</div>`;
 		}
 
-		return (
-			'<div class="bbf-step ' + cls + '">' +
-				'<div class="bbf-step__circle">' + icon + "</div>" +
-				'<div class="bbf-step__label">' + frappe.utils.escape_html(step.role) + "</div>" +
-				detail +
-			"</div>"
-		);
-	}).join('<div class="bbf-step__line"></div>');
+		html += '</div>';
 
-	var status = ctx.status || "Draft";
-	var badge_cls = "blue";
-	if (status === "Approved") badge_cls = "green";
-	else if (status === "Rejected") badge_cls = "red";
-	else if (status === "Revised") badge_cls = "orange";
-	else if (status.startsWith("Pending")) badge_cls = "yellow";
+		// Connector line between steps
+		if (i < chain.length - 1) {
+			const lineColor = step.status === "done" ? "#10b981" : "#d1d5db";
+			const lineStyle = chain[i + 1].is_manual ? "dashed" : "solid";
+			html += `<div style="flex: 1; height: 2px; border-top: 2px ${lineStyle} ${lineColor}; margin-top: 18px; min-width: 30px;"></div>`;
+		}
+	});
 
-	var stepper = $(
-		'<div class="bbf-stepper">' +
-			'<div class="bbf-stepper__header">' +
-				'<span class="indicator-pill ' + badge_cls + '">' + frappe.utils.escape_html(status) + "</span>" +
-			"</div>" +
-			'<div class="bbf-stepper__steps">' + steps_html + "</div>" +
-		"</div>"
-	);
+	html += '</div></div>';
 
-	// Insert after the section break
-	if (frm.fields_dict.bbf_approval_section) {
-		$(frm.fields_dict.bbf_approval_section.wrapper).prepend(stepper);
-	}
+	// Add pulse animation CSS
+	html += `<style>
+		@keyframes bbf-pulse {
+			0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+			50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+		}
+	</style>`;
 
-	// Inject CSS if not already present
-	if (!document.getElementById("bbf-stepper-css")) {
-		var style = document.createElement("style");
-		style.id = "bbf-stepper-css";
-		style.textContent =
-			".bbf-stepper { padding: 15px; margin-bottom: 10px; }" +
-			".bbf-stepper__header { margin-bottom: 12px; }" +
-			".bbf-stepper__steps { display: flex; align-items: flex-start; justify-content: center; flex-wrap: wrap; gap: 0; }" +
-			".bbf-step { display: flex; flex-direction: column; align-items: center; min-width: 90px; }" +
-			".bbf-step__circle { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center;" +
-			"  justify-content: center; font-weight: bold; font-size: 14px; border: 2px solid var(--gray-400);" +
-			"  color: var(--gray-500); background: var(--gray-100); }" +
-			".bbf-step--done .bbf-step__circle { background: var(--green-500); border-color: var(--green-500); color: #fff; }" +
-			".bbf-step--active .bbf-step__circle { background: var(--blue-500); border-color: var(--blue-500); color: #fff;" +
-			"  animation: bbf-pulse 1.5s infinite; }" +
-			"@keyframes bbf-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(37,139,239,0.4); } 50% { box-shadow: 0 0 0 8px rgba(37,139,239,0); } }" +
-			".bbf-step__label { margin-top: 6px; font-size: 11px; color: var(--gray-600); text-align: center; max-width: 100px; }" +
-			".bbf-step__detail { font-size: 10px; color: var(--green-600); text-align: center; }" +
-			".bbf-step__line { width: 40px; height: 2px; background: var(--gray-300); margin-top: 18px; flex-shrink: 0; }" +
-			".bbf-step--done + .bbf-step__line { background: var(--green-500); }";
-		document.head.appendChild(style);
+	// Insert stepper
+	const $section = $(frm.fields_dict.bbf_approval_section?.wrapper);
+	if ($section.length) {
+		$section.prepend(html);
 	}
 }
-
-
-// ── Amount Info ──────────────────────────────────────────────────────
 
 function _render_amount_info(frm, ctx) {
-	if (!ctx.required_level) return;
+	if (!ctx.status || ctx.status === "Draft" || ctx.status === "") return;
 
-	var chain = ctx.approval_chain || [];
-	var max_role = "";
-	for (var i = 0; i < chain.length; i++) {
-		if (chain[i].level === ctx.required_level) {
-			max_role = chain[i].role;
-			break;
-		}
+	const amount = format_currency(ctx.po_amount);
+	let info = `<strong>${amount}</strong>`;
+
+	if (ctx.purchase_category) {
+		info += ` | <span style="color: #6366f1; font-weight: 600;">${frappe.utils.escape_html(ctx.purchase_category)}</span>`;
+	}
+	if (ctx.total_steps) {
+		info += ` | ${ctx.total_steps} step${ctx.total_steps > 1 ? 's' : ''}`;
 	}
 
-	var amount_str = format_currency(frm.doc.grand_total || 0);
-	var msg = amount_str + " — Requires " + frappe.utils.escape_html(max_role) + " approval (Level " + ctx.required_level + ")";
-
-	// Clear any existing headline before setting to avoid duplicates
-	frm.dashboard.clear_headline();
-	frm.dashboard.set_headline_alert(
-		'<span style="font-size:13px;">' + msg + "</span>"
-	);
+	frm.dashboard.set_headline(info);
 }
 
-
-// ── Action Buttons ───────────────────────────────────────────────────
-
 function _render_buttons(frm, ctx) {
-	// Submit for Approval
+	// Remove old custom buttons
+	frm.page.clear_actions_menu();
+	$(".bbf-approval-btn").remove();
+
 	if (ctx.can_submit_for_approval) {
-		frm.add_custom_button(__("Submit for Approval"), function () {
-			// Determine target level dynamically based on submitter's role
+		frm.add_custom_button(__("Submit for Approval"), () => {
 			frappe.call({
 				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.get_submit_target",
-				args: { doctype: "Purchase Order" },
-				callback: function (r) {
-					var target = (r.message && r.message.target_label) || __("the next approver");
+				args: { doctype: "Purchase Order", docname: frm.doc.name },
+				callback(r) {
+					const target = r.message?.target_label || "Approver";
 					frappe.confirm(
-						__("Submit this PO for approval? It will be sent to {0}.", [target]),
-						function () { _call_action(frm, "submit_for_approval", {}); }
+						__("Submit this PO for approval? It will be sent to <b>{0}</b>.", [target]),
+						() => _call_action(frm, "submit_for_approval", { doctype: "Purchase Order", docname: frm.doc.name })
+					);
+				},
+				error() {
+					frappe.confirm(
+						__("Submit this PO for approval?"),
+						() => _call_action(frm, "submit_for_approval", { doctype: "Purchase Order", docname: frm.doc.name })
 					);
 				}
 			});
-		}, __("Approval"));
-		frm.change_custom_button_type(__("Submit for Approval"), __("Approval"), "primary");
+		}, null).addClass("btn-primary bbf-approval-btn");
 	}
 
-	// Approve & Forward
-	if (ctx.can_approve && !ctx.can_final_approve) {
-		frm.add_custom_button(__("Approve & Forward"), function () {
-			_show_comment_dialog(frm, "Approve & Forward", function (comment) {
-				_call_action(frm, "approve_document", { comment: comment });
+	if (ctx.can_review) {
+		frm.add_custom_button(__("Reviewed & Forward"), () => {
+			_show_comment_dialog(frm, "Review Comment", (comment) => {
+				_call_action(frm, "approve_document", { doctype: "Purchase Order", docname: frm.doc.name, comment });
 			});
-		}, __("Approval"));
-		frm.change_custom_button_type(__("Approve & Forward"), __("Approval"), "primary");
+		}, null).addClass("btn-primary bbf-approval-btn");
 	}
 
-	// Final Approve
+	if (ctx.can_approve) {
+		frm.add_custom_button(__("Approve & Forward"), () => {
+			_show_comment_dialog(frm, "Approval Comment", (comment) => {
+				_call_action(frm, "approve_document", { doctype: "Purchase Order", docname: frm.doc.name, comment });
+			});
+		}, null).addClass("btn-primary bbf-approval-btn");
+	}
+
 	if (ctx.can_final_approve) {
-		frm.add_custom_button(__("Final Approve"), function () {
-			_show_comment_dialog(frm, "Final Approve", function (comment) {
-				_call_action(frm, "approve_document", { comment: comment });
+		frm.add_custom_button(__("Final Approve"), () => {
+			_show_comment_dialog(frm, "Final Approval Comment", (comment) => {
+				_call_action(frm, "approve_document", { doctype: "Purchase Order", docname: frm.doc.name, comment });
 			});
-		}, __("Approval"));
-		frm.change_custom_button_type(__("Final Approve"), __("Approval"), "success");
+		}, null).addClass("btn-success bbf-approval-btn");
 	}
 
-	// Revise
+	if (ctx.can_send_to_md) {
+		frm.add_custom_button(__("Send to MD"), () => {
+			frappe.confirm(
+				__("Send this PO to the Managing Director for final approval?"),
+				() => {
+					_show_comment_dialog(frm, "Comment for MD", (comment) => {
+						frappe.call({
+							method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.send_to_md",
+							args: { docname: frm.doc.name, comment },
+							freeze: true,
+							freeze_message: __("Sending to MD..."),
+							callback() { frm.reload_doc(); },
+							error() { frm.reload_doc(); }
+						});
+					});
+				}
+			);
+		}, null).addClass("btn-warning bbf-approval-btn").css({ "color": "#92400e", "border-color": "#f59e0b", "background": "#fef3c7" });
+	}
+
 	if (ctx.can_revise) {
-		frm.add_custom_button(__("Revise"), function () {
+		frm.add_custom_button(__("Revise"), () => {
 			_show_revise_dialog(frm);
-		}, __("Approval"));
+		}, null).addClass("bbf-approval-btn");
 	}
 
-	// Reject
 	if (ctx.can_reject) {
-		frm.add_custom_button(__("Reject"), function () {
+		frm.add_custom_button(__("Reject"), () => {
 			_show_reject_dialog(frm);
-		}, __("Approval"));
+		}, null).addClass("bbf-approval-btn");
 	}
 
-	// Resubmit
 	if (ctx.can_resubmit) {
-		frm.add_custom_button(__("Resubmit for Approval"), function () {
-			_show_resubmit_dialog(frm);
-		}, __("Approval"));
-		frm.change_custom_button_type(__("Resubmit for Approval"), __("Approval"), "primary");
+		frm.add_custom_button(__("Resubmit for Approval"), () => {
+			frappe.confirm(
+				__("Resubmit this PO for approval? It will restart from the first step."),
+				() => _call_action(frm, "resubmit_document", { doctype: "Purchase Order", docname: frm.doc.name, mode: "restart" })
+			);
+		}, null).addClass("btn-primary bbf-approval-btn");
 	}
 }
 
-
 function _show_comment_dialog(frm, title, callback) {
-	var d = new frappe.ui.Dialog({
+	const d = new frappe.ui.Dialog({
 		title: __(title),
 		fields: [
-			{
-				fieldname: "comment",
-				fieldtype: "Small Text",
-				label: __("Comment (optional)"),
-			}
+			{ fieldtype: "Small Text", fieldname: "comment", label: __("Comment (optional)") }
 		],
-		primary_action_label: __(title),
-		primary_action: function (values) {
+		primary_action_label: __("Confirm"),
+		primary_action(values) {
 			d.hide();
 			callback(values.comment || "");
 		}
@@ -265,259 +275,123 @@ function _show_comment_dialog(frm, title, callback) {
 	d.show();
 }
 
-
 function _show_revise_dialog(frm) {
-	var d = new frappe.ui.Dialog({
-		title: __("Revise Purchase Order"),
+	const d = new frappe.ui.Dialog({
+		title: __("Revise PO"),
 		fields: [
-			{
-				fieldname: "reason",
-				fieldtype: "Small Text",
-				label: __("Revision Reason"),
-				reqd: 1,
-			},
-			{
-				fieldname: "comment",
-				fieldtype: "Small Text",
-				label: __("Additional Comment"),
-			}
+			{ fieldtype: "Small Text", fieldname: "reason", label: __("Reason for Revision"), reqd: 1 },
+			{ fieldtype: "Small Text", fieldname: "comment", label: __("Additional Comment (optional)") }
 		],
-		primary_action_label: __("Send Back for Revision"),
-		primary_action: function (values) {
-			if (!values.reason) {
-				frappe.throw(__("Revision reason is mandatory"));
-				return;
-			}
+		primary_action_label: __("Send for Revision"),
+		primary_action(values) {
 			d.hide();
-
-			frappe.call({
-				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.revise_document",
-				args: {
-					doctype: "Purchase Order",
-					docname: frm.doc.name,
-					reason: values.reason,
-					comment: values.comment || "",
-				},
-				callback: function () {
-					frm.reload_doc();
-					frappe.show_alert({ message: __("PO sent back for revision"), indicator: "orange" });
-				},
-				error: function () {
-					frappe.show_alert({ message: __("Failed to revise PO. Please try again."), indicator: "red" });
-				}
+			_call_action(frm, "revise_document", {
+				doctype: "Purchase Order", docname: frm.doc.name,
+				reason: values.reason, comment: values.comment || ""
 			});
 		}
 	});
 	d.show();
 }
-
 
 function _show_reject_dialog(frm) {
-	var d = new frappe.ui.Dialog({
-		title: __("Reject Purchase Order"),
+	const d = new frappe.ui.Dialog({
+		title: __("Reject PO"),
 		fields: [
-			{
-				fieldname: "reason",
-				fieldtype: "Small Text",
-				label: __("Rejection Reason"),
-				reqd: 1,
-			},
-			{
-				fieldname: "comment",
-				fieldtype: "Small Text",
-				label: __("Additional Comment"),
-			}
+			{ fieldtype: "Small Text", fieldname: "reason", label: __("Reason for Rejection"), reqd: 1 },
+			{ fieldtype: "Small Text", fieldname: "comment", label: __("Additional Comment (optional)") }
 		],
 		primary_action_label: __("Reject"),
-		primary_action: function (values) {
-			if (!values.reason) {
-				frappe.throw(__("Rejection reason is mandatory"));
-				return;
-			}
+		primary_action(values) {
 			d.hide();
-			frappe.call({
-				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.reject_document",
-				args: {
-					doctype: "Purchase Order",
-					docname: frm.doc.name,
-					reason: values.reason,
-					comment: values.comment || "",
-				},
-				callback: function () {
-					frm.reload_doc();
-					frappe.show_alert({ message: __("PO has been rejected"), indicator: "red" });
-				},
-				error: function () {
-					frappe.show_alert({ message: __("Failed to reject PO. Please try again."), indicator: "red" });
-				}
+			_call_action(frm, "reject_document", {
+				doctype: "Purchase Order", docname: frm.doc.name,
+				reason: values.reason, comment: values.comment || ""
 			});
 		}
 	});
 	d.show();
 }
-
-
-function _show_resubmit_dialog(frm) {
-	var d = new frappe.ui.Dialog({
-		title: __("Resubmit for Approval"),
-		fields: [
-			{
-				fieldname: "mode",
-				fieldtype: "Select",
-				label: __("Resubmit Mode"),
-				options: "Restart from Department Head\nRe-enter at reviser level",
-				default: "Restart from Department Head",
-				reqd: 1,
-			}
-		],
-		primary_action_label: __("Resubmit"),
-		primary_action: function (values) {
-			d.hide();
-			var mode = values.mode === "Restart from Department Head" ? "restart" : "reenter";
-			frappe.call({
-				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.resubmit_document",
-				args: {
-					doctype: "Purchase Order",
-					docname: frm.doc.name,
-					mode: mode,
-				},
-				callback: function () {
-					frm.reload_doc();
-					frappe.show_alert({ message: __("PO resubmitted for approval"), indicator: "blue" });
-				},
-				error: function () {
-					frappe.show_alert({ message: __("Failed to resubmit PO. Please try again."), indicator: "red" });
-				}
-			});
-		}
-	});
-	d.show();
-}
-
-
-// ── API Call Helper ──────────────────────────────────────────────────
 
 function _call_action(frm, method, args) {
-	args.doctype = "Purchase Order";
-	args.docname = frm.doc.name;
-
 	frappe.call({
-		method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval." + method,
-		args: args,
-		callback: function (r) {
-			frm.reload_doc();
-			if (r.message && r.message.status === "approved") {
-				frappe.show_alert({ message: __("PO has been approved and submitted!"), indicator: "green" });
-			} else if (r.message && r.message.status === "forwarded") {
-				frappe.show_alert({ message: __("PO forwarded to next approver"), indicator: "blue" });
-			} else {
-				frappe.show_alert({ message: __("Action completed"), indicator: "blue" });
-			}
-		},
-		error: function () {
-			frappe.show_alert({ message: __("Approval action failed. Please reload and try again."), indicator: "red" });
-		}
+		method: `trustbit_ethanol.bbf_gate_entry.bbf_po_approval.${method}`,
+		args,
+		freeze: true,
+		freeze_message: __("Processing..."),
+		callback() { frm.reload_doc(); },
+		error() { frm.reload_doc(); }
 	});
 }
 
-
-// ── Field Locking ────────────────────────────────────────────────────
-
 function _lock_fields(frm, ctx) {
-	if (!ctx.is_pending) return;
+	// Lock PO fields during approval to prevent tampering
+	const should_lock = ctx.is_pending || (ctx.status || "").startsWith("Awaiting");
+	if (!should_lock) return;
 
-	// Lock all editable PO fields during approval
-	var fields_to_lock = [
+	const fields_to_lock = [
 		"supplier", "supplier_name", "schedule_date", "transaction_date",
 		"currency", "buying_price_list", "price_list_currency",
 		"plc_conversion_rate", "conversion_rate",
-		"tc_name", "terms", "taxes_and_charges",
-		"apply_discount_on", "additional_discount_percentage",
-		"discount_amount", "payment_terms_template",
+		"apply_discount_on", "additional_discount_percentage", "discount_amount",
+		"items", "taxes", "pricing_rules",
+		"tc_name", "terms",
+		"payment_schedule", "payment_terms_template",
 	];
 
-	fields_to_lock.forEach(function (f) {
+	fields_to_lock.forEach(f => {
 		frm.set_df_property(f, "read_only", 1);
 	});
-
-	// Lock items table
-	frm.set_df_property("items", "read_only", 1);
-	frm.set_df_property("taxes", "read_only", 1);
 }
 
-
-// ── Approval Timeline ───────────────────────────────────────────────
-
 function _render_timeline(frm) {
-	var logs = frm.doc.bbf_approval_log || [];
+	// Remove old timeline
+	$(frm.fields_dict.bbf_approval_log_section?.wrapper).find(".bbf-timeline").remove();
+
+	const logs = frm.doc.bbf_approval_log || [];
 	if (!logs.length) return;
 
-	// Remove previous timeline
-	$(frm.fields_dict.bbf_approval_log_section &&
-		frm.fields_dict.bbf_approval_log_section.wrapper).find(".bbf-timeline").remove();
+	let html = '<div class="bbf-timeline" style="padding: 10px 0;">';
 
-	var items = logs.map(function (log) {
-		var icon_cls = "blue";
-		if (log.action === "Final Approved" || log.action === "Approved") icon_cls = "green";
-		else if (log.action === "Rejected") icon_cls = "red";
-		else if (log.action === "Revised") icon_cls = "orange";
-		else if (log.action === "Resubmitted") icon_cls = "blue";
-		else if (log.action === "Forwarded") icon_cls = "blue";
+	// Reverse to show newest first
+	const sorted_logs = [...logs].sort((a, b) => {
+		return new Date(b.action_date) - new Date(a.action_date);
+	});
 
-		var comment_html = "";
+	sorted_logs.forEach(log => {
+		const colors = {
+			"Submitted": "#3b82f6",
+			"Reviewed": "#3b82f6",
+			"Forwarded": "#8b5cf6",
+			"Approved": "#10b981",
+			"Final Approved": "#10b981",
+			"Sent to MD": "#f59e0b",
+			"Revised": "#f97316",
+			"Rejected": "#ef4444",
+			"Resubmitted": "#6366f1",
+		};
+		const color = colors[log.action] || "#6b7280";
+		const date = log.action_date ? frappe.datetime.str_to_user(log.action_date) : "";
+
+		html += `<div style="display: flex; align-items: flex-start; margin-bottom: 8px;">`;
+		html += `<div style="width: 10px; height: 10px; border-radius: 50%; background: ${color}; margin-top: 5px; margin-right: 10px; flex-shrink: 0;"></div>`;
+		html += `<div style="flex: 1;">`;
+		html += `<div style="font-size: 12px;"><strong style="color: ${color};">${frappe.utils.escape_html(log.action)}</strong>`;
+		html += ` by ${frappe.utils.escape_html(log.action_by_name || log.action_by || "System")}`;
+		if (log.action_by_role) html += ` <span style="color: #9ca3af;">(${frappe.utils.escape_html(log.action_by_role)})</span>`;
+		html += `</div>`;
+		html += `<div style="font-size: 11px; color: #9ca3af;">${frappe.utils.escape_html(log.from_state || "")} → ${frappe.utils.escape_html(log.to_state || "")}</div>`;
 		if (log.comment) {
-			comment_html = '<div class="bbf-tl__comment">' + frappe.utils.escape_html(log.comment) + "</div>";
+			html += `<div style="font-size: 11px; color: #6b7280; margin-top: 2px;">${frappe.utils.escape_html(log.comment)}</div>`;
 		}
+		html += `<div style="font-size: 10px; color: #d1d5db;">${frappe.utils.escape_html(date)}</div>`;
+		html += `</div></div>`;
+	});
 
-		var date_str = log.action_date ? frappe.datetime.str_to_user(log.action_date) : "";
+	html += '</div>';
 
-		return (
-			'<div class="bbf-tl__item">' +
-				'<div class="bbf-tl__dot bbf-tl__dot--' + icon_cls + '"></div>' +
-				'<div class="bbf-tl__content">' +
-					'<div class="bbf-tl__action">' +
-						'<strong>' + frappe.utils.escape_html(log.action) + "</strong>" +
-						" by " + frappe.utils.escape_html(log.action_by_name || log.action_by || "") +
-						(log.action_by_role ? " (" + frappe.utils.escape_html(log.action_by_role) + ")" : "") +
-					"</div>" +
-					'<div class="bbf-tl__meta">' +
-						frappe.utils.escape_html(log.from_state || "") + " &rarr; " +
-						frappe.utils.escape_html(log.to_state || "") +
-						" &middot; " + date_str +
-					"</div>" +
-					comment_html +
-				"</div>" +
-			"</div>"
-		);
-	}).join("");
-
-	var timeline = $(
-		'<div class="bbf-timeline">' +
-			'<div class="bbf-tl__list">' + items + "</div>" +
-		"</div>"
-	);
-
-	if (frm.fields_dict.bbf_approval_log_section) {
-		$(frm.fields_dict.bbf_approval_log_section.wrapper).prepend(timeline);
-	}
-
-	// Inject CSS
-	if (!document.getElementById("bbf-timeline-css")) {
-		var style = document.createElement("style");
-		style.id = "bbf-timeline-css";
-		style.textContent =
-			".bbf-timeline { padding: 10px 15px; }" +
-			".bbf-tl__list { border-left: 2px solid var(--gray-300); padding-left: 20px; }" +
-			".bbf-tl__item { position: relative; margin-bottom: 16px; }" +
-			".bbf-tl__dot { width: 12px; height: 12px; border-radius: 50%; position: absolute; left: -27px; top: 4px; }" +
-			".bbf-tl__dot--green { background: var(--green-500); }" +
-			".bbf-tl__dot--blue { background: var(--blue-500); }" +
-			".bbf-tl__dot--orange { background: var(--orange-500); }" +
-			".bbf-tl__dot--red { background: var(--red-500); }" +
-			".bbf-tl__action { font-size: 13px; }" +
-			".bbf-tl__meta { font-size: 11px; color: var(--gray-600); margin-top: 2px; }" +
-			".bbf-tl__comment { font-size: 12px; color: var(--gray-700); margin-top: 4px; padding: 6px 10px;" +
-			"  background: var(--gray-50); border-radius: 4px; border-left: 3px solid var(--gray-300); }";
-		document.head.appendChild(style);
+	const $section = $(frm.fields_dict.bbf_approval_log_section?.wrapper);
+	if ($section.length) {
+		$section.prepend(html);
 	}
 }

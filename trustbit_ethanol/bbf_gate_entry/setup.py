@@ -181,6 +181,55 @@ def create_custom_fields():
 				"no_copy": 1,
 				"allow_on_submit": 1
 			},
+			# ── v2.0 Category & Step Tracking ──
+			{
+				"fieldname": "bbf_purchase_category",
+				"fieldtype": "Data",
+				"label": "Purchase Category",
+				"insert_after": "bbf_approval_status",
+				"read_only": 1,
+				"no_copy": 1,
+				"in_standard_filter": 1,
+				"description": "Auto-detected from PO items: Store, Chemical, Grain, Coal"
+			},
+			{
+				"fieldname": "bbf_approval_rule",
+				"fieldtype": "Link",
+				"label": "Approval Rule",
+				"options": "BBF PO Approval Rule",
+				"insert_after": "bbf_purchase_category",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1
+			},
+			{
+				"fieldname": "bbf_current_step",
+				"fieldtype": "Int",
+				"label": "Current Step",
+				"insert_after": "bbf_approval_rule",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1
+			},
+			{
+				"fieldname": "bbf_total_steps",
+				"fieldtype": "Int",
+				"label": "Total Steps",
+				"insert_after": "bbf_current_step",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1
+			},
+			{
+				"fieldname": "bbf_can_send_to_md",
+				"fieldtype": "Check",
+				"label": "Can Send to MD",
+				"insert_after": "bbf_total_steps",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1,
+				"description": "Set by server when CEO can manually trigger MD approval step"
+			},
 			# ── Hidden tracking fields ──
 			{
 				"fieldname": "bbf_amount_at_submission",
@@ -222,6 +271,44 @@ def create_custom_fields():
 				"in_standard_filter": 1,
 				"bold": 1,
 				"allow_on_submit": 1
+			},
+			# ── v2.0 Route & Step Tracking ──
+			{
+				"fieldname": "bbf_mr_route",
+				"fieldtype": "Data",
+				"label": "MR Approval Route",
+				"insert_after": "bbf_mr_status",
+				"read_only": 1,
+				"no_copy": 1,
+				"description": "Resolved route: Operational or CAPEX (based on Cost Center)"
+			},
+			{
+				"fieldname": "bbf_mr_approval_route",
+				"fieldtype": "Link",
+				"label": "Approval Route Ref",
+				"options": "BBF MR Approval Route",
+				"insert_after": "bbf_mr_route",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1
+			},
+			{
+				"fieldname": "bbf_mr_current_step",
+				"fieldtype": "Int",
+				"label": "MR Current Step",
+				"insert_after": "bbf_mr_approval_route",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1
+			},
+			{
+				"fieldname": "bbf_mr_total_steps",
+				"fieldtype": "Int",
+				"label": "MR Total Steps",
+				"insert_after": "bbf_mr_current_step",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1
 			},
 			{
 				"fieldname": "bbf_mr_col1",
@@ -331,6 +418,7 @@ def create_custom_fields():
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
 	_setup_purchase_order_permissions()
+	_setup_material_request_permissions()
 	_seed_default_approval_limits()
 
 
@@ -366,7 +454,7 @@ def _setup_purchase_receipt_permissions():
 
 def _create_approval_roles():
 	"""Create approval roles if they don't exist."""
-	for role_name in ["Department Head", "General Manager", "CEO", "MD"]:
+	for role_name in ["Department Head", "General Manager", "CEO", "MD", "Purchase Manager", "Grain Purchase Manager", "AVP"]:
 		if not frappe.db.exists("Role", role_name):
 			role = frappe.new_doc("Role")
 			role.role_name = role_name
@@ -380,7 +468,7 @@ def _setup_purchase_order_permissions():
 
 	Uses direct DocPerm insert to avoid saving the DocType (which requires developer mode).
 	"""
-	approval_roles = ["Department Head", "General Manager", "CEO", "MD"]
+	approval_roles = ["Department Head", "General Manager", "CEO", "MD", "Purchase Manager", "Grain Purchase Manager", "AVP"]
 
 	for role in approval_roles:
 		existing = frappe.db.exists("DocPerm", {
@@ -405,6 +493,35 @@ def _setup_purchase_order_permissions():
 			}).insert(ignore_permissions=True)
 
 	frappe.clear_cache(doctype="Purchase Order")
+
+
+def _setup_material_request_permissions():
+	"""Ensure approval roles have read+write on Material Request."""
+	mr_roles = ["Department Head", "AVP", "CEO"]
+
+	for role in mr_roles:
+		existing = frappe.db.exists("DocPerm", {
+			"parent": "Material Request",
+			"role": role,
+			"permlevel": 0
+		})
+		if not existing:
+			frappe.get_doc({
+				"doctype": "DocPerm",
+				"parent": "Material Request",
+				"parenttype": "DocType",
+				"parentfield": "permissions",
+				"role": role,
+				"permlevel": 0,
+				"read": 1,
+				"write": 1,
+				"create": 0,
+				"submit": 0,
+				"cancel": 0,
+				"amend": 0,
+			}).insert(ignore_permissions=True)
+
+	frappe.clear_cache(doctype="Material Request")
 
 
 def _seed_default_approval_limits():

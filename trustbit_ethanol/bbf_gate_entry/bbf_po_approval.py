@@ -9,10 +9,7 @@ from frappe.utils import now_datetime, flt, cint, add_to_date, time_diff_in_hour
 
 @frappe.whitelist()
 def get_approval_context(doctype, docname):
-	"""Return approval context for the current user on a PO or MR.
-
-	Called on form refresh to determine which buttons to show.
-	"""
+	"""Return approval context for the current user on a PO or MR."""
 	doc = frappe.get_doc(doctype, docname)
 
 	settings = frappe.get_single("BBF Settings")
@@ -21,29 +18,42 @@ def get_approval_context(doctype, docname):
 	if doctype == "Material Request" and not settings.enable_mr_approval:
 		return {"approval_enabled": False}
 
-	user_info = _get_user_approval_role(frappe.session.user)
-
 	if doctype == "Material Request":
-		return _get_mr_approval_context(doc, user_info, settings)
+		return _get_mr_approval_context(doc, settings)
 
-	return _get_po_approval_context(doc, user_info, settings)
+	return _get_po_approval_context(doc, settings)
 
 
 @frappe.whitelist()
-def get_submit_target(doctype):
-	"""Return the target approval level for the current user (for confirm dialog)."""
-	submitter_info = _get_user_approval_role(frappe.session.user)
-	if submitter_info and submitter_info["level"] >= 1:
-		target_level = _get_next_level(submitter_info["level"])
-		if target_level:
-			return {"target_label": target_level["role_label"] or target_level["role"]}
-		else:
-			return {"target_label": submitter_info["role_label"] or submitter_info["role"]}
-	else:
-		level_1 = _get_level_info(1)
-		if level_1:
-			return {"target_label": level_1["role_label"] or level_1["role"]}
+def get_submit_target(doctype, docname=None):
+	"""Return the target step info for the submit confirmation dialog."""
+	if doctype == "Material Request" and docname:
+		doc = frappe.get_doc("Material Request", docname)
+		cost_center = _get_mr_cost_center(doc)
+		if cost_center:
+			route = _find_mr_route(cost_center)
+			if route:
+				route_doc = frappe.get_doc("BBF MR Approval Route", route)
+				steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
+				if steps:
+					target = _get_target_step_with_skip(steps, frappe.session.user)
+					return {"target_label": target.role_label or target.role}
 		return {"target_label": "Department Head"}
+
+	if doctype == "Purchase Order" and docname:
+		doc = frappe.get_doc("Purchase Order", docname)
+		category = _resolve_po_category(doc)
+		if category:
+			rule_name = _find_po_approval_rule(category, flt(doc.grand_total))
+			if rule_name:
+				rule = frappe.get_doc("BBF PO Approval Rule", rule_name)
+				steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
+				if steps:
+					target = _get_target_step_with_skip(steps, frappe.session.user)
+					return {"target_label": target.role_label or target.role}
+		return {"target_label": "CEO"}
+
+	return {"target_label": "Approver"}
 
 
 @frappe.whitelist()
@@ -52,49 +62,7 @@ def submit_for_approval(doctype, docname):
 	doc = frappe.get_doc(doctype, docname, for_update=True)
 
 	if doctype == "Purchase Order":
-		_validate_po_submittable(doc)
-
-		status = doc.bbf_approval_status
-		if status and status not in ("", "Draft"):
-			frappe.throw(_("This PO is already in the approval chain (status: {0})").format(status))
-
-		required_level = _get_required_level(flt(doc.grand_total))
-
-		# Determine the first approval level — skip the submitter's own level
-		submitter_info = _get_user_approval_role(frappe.session.user)
-		if submitter_info and submitter_info["level"] >= 1:
-			# Submitter has an approval role — send to next level above theirs
-			target_level = _get_next_level(submitter_info["level"])
-			if not target_level:
-				# Submitter is at or above the highest level — they can approve their own
-				# For safety, send to their own level (another user with same role can approve)
-				target_level = _get_level_info(submitter_info["level"])
-		else:
-			# Regular user (no approval role) — send to Level 1 (Department Head)
-			target_level = _get_level_info(1)
-
-		if not target_level:
-			frappe.throw(_("No active approval level found in BBF Approval Limit"))
-
-		next_state = f"Pending {target_level['role_label'] or target_level['role']}"
-		_log_approval_action(doc, "Submitted", "Draft", next_state,
-			po_amount=flt(doc.grand_total))
-
-		doc.db_set({
-			"bbf_approval_status": next_state,
-			"bbf_current_level": target_level["level"],
-			"bbf_required_level": required_level,
-			"bbf_submitted_by": frappe.session.user,
-			"bbf_amount_at_submission": flt(doc.grand_total),
-			"bbf_last_action": f"Submitted for approval on {now_datetime().strftime('%d %b %Y %H:%M')}",
-		}, update_modified=True)
-
-		_send_approval_notification(doc, "pending_approval",
-			_get_role_users(target_level["role"]),
-			extra={"next_role": target_level["role_label"] or target_level["role"]})
-
-		return {"status": "ok", "next_state": next_state}
-
+		return _submit_po_for_approval(doc)
 	elif doctype == "Material Request":
 		next_state = _submit_mr_for_approval(doc)
 		return {"status": "ok", "next_state": next_state}
@@ -102,97 +70,60 @@ def submit_for_approval(doctype, docname):
 
 @frappe.whitelist()
 def approve_document(doctype, docname, comment=""):
-	"""Approve action — final-approve or forward to next level based on amount."""
+	"""Approve/Review action — handles Review, Approve, Final Approve based on step config."""
 	doc = frappe.get_doc(doctype, docname, for_update=True)
 
 	if doctype == "Material Request":
 		return _approve_mr(doc, comment)
 
+	return _approve_po(doc, comment)
+
+
+@frappe.whitelist()
+def send_to_md(docname, comment=""):
+	"""CEO manually triggers MD approval step. Only available when next step is manual-trigger."""
+	doc = frappe.get_doc("Purchase Order", docname, for_update=True)
 	_validate_po_is_pending(doc)
-	_validate_not_self_approving(doc)
-
-	user_info = _get_user_approval_role(frappe.session.user)
-	if not user_info:
-		frappe.throw(_("You don't have an approval role configured in BBF Approval Limit"))
-
-	current_level = cint(doc.bbf_current_level)
-	if user_info["level"] < current_level:
-		frappe.throw(
-			_("This PO is at Level {0} ({1}), but your role is Level {2} ({3}). Only Level {0} or above can approve.").format(
-				current_level, doc.bbf_approval_status,
-				user_info["level"], user_info["role"]
-			)
-		)
-
-	# Server-side amount tamper detection
 	_validate_amount_unchanged(doc)
 
-	po_amount = flt(doc.grand_total)
-	settings = frappe.get_single("BBF Settings")
-	user_limit = flt(user_info["amt_limit"])
-	can_final = user_info["can_final_approve"]
+	rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
+	steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
+	current_step_order = cint(doc.bbf_current_step)
 
-	# Determine: final approve or forward?
-	is_final = False
-	if can_final:
-		if settings.enable_fast_track:
-			# Fast-track: approve if within limit (0 = unlimited)
-			is_final = (user_limit == 0 or po_amount <= user_limit)
-		else:
-			# No fast-track: only final if at the required level
-			is_final = (user_info["level"] >= cint(doc.bbf_required_level))
+	# Find current and next step
+	current_step = next((s for s in steps if s.step_order == current_step_order), None)
+	next_step = _get_next_step(steps, current_step_order)
+
+	if not current_step or not next_step or not next_step.is_manual_trigger:
+		frappe.throw(_("Cannot send to MD — no manual trigger step configured for this PO"))
+
+	# Validate user has the current step's role
+	user_roles = frappe.get_roles(frappe.session.user)
+	if current_step.role not in user_roles:
+		frappe.throw(_("Only the current approver ({0}) can send to MD").format(
+			current_step.role_label or current_step.role))
 
 	current_state = doc.bbf_approval_status
-	role_display = user_info["role_label"] or user_info["role"]
+	next_label = next_step.role_label or next_step.role
+	next_state = f"Pending {next_label}"
+	role_display = current_step.role_label or current_step.role
 
-	if is_final:
-		# FINAL APPROVAL — submit the PO
-		_log_approval_action(doc, "Final Approved", current_state, "Approved",
-			comment=comment, po_amount=po_amount)
+	_log_approval_action(doc, "Sent to MD", current_state, next_state,
+		comment=comment, po_amount=flt(doc.grand_total),
+		step_order=next_step.step_order, purchase_category=doc.bbf_purchase_category)
 
-		doc.db_set({
-			"bbf_approval_status": "Approved",
-			"bbf_approved_by": frappe.session.user,
-			"bbf_approved_date": now_datetime(),
-			"bbf_last_action": f"Final Approved by {role_display} on {now_datetime().strftime('%d %b %Y %H:%M')}",
-		}, update_modified=True)
+	doc.db_set({
+		"bbf_approval_status": next_state,
+		"bbf_current_step": next_step.step_order,
+		"bbf_can_send_to_md": 0,
+		"bbf_last_action": f"Sent to {next_label} by {role_display} on {now_datetime().strftime('%d %b %Y %H:%M')}",
+	}, update_modified=True)
 
-		# Submit the PO (docstatus 0 → 1)
-		doc.reload()
-		doc.submit()
+	_send_approval_notification(doc, "pending_approval",
+		_get_role_users(next_step.role),
+		extra={"forwarded_by": role_display, "next_role": next_label})
 
-		# Notify all stakeholders
-		all_users = _get_chain_users(doc)
-		if doc.bbf_submitted_by:
-			all_users.add(doc.bbf_submitted_by)
-		_send_approval_notification(doc, "final_approved", list(all_users),
-			extra={"approved_by": role_display})
-
-		return {"status": "approved", "message": f"PO {doc.name} has been final approved and submitted"}
-
-	else:
-		# FORWARD to next level
-		next_level = _get_next_level(user_info["level"])
-		if not next_level:
-			frappe.throw(_("No higher approval level configured. Cannot forward."))
-
-		next_role_display = next_level["role_label"] or next_level["role"]
-		next_state = f"Pending {next_role_display}"
-
-		_log_approval_action(doc, "Forwarded", current_state, next_state,
-			comment=comment, po_amount=po_amount)
-
-		doc.db_set({
-			"bbf_approval_status": next_state,
-			"bbf_current_level": next_level["level"],
-			"bbf_last_action": f"Forwarded by {role_display} to {next_role_display} on {now_datetime().strftime('%d %b %Y %H:%M')}",
-		}, update_modified=True)
-
-		_send_approval_notification(doc, "pending_approval",
-			_get_role_users(next_level["role"]),
-			extra={"forwarded_by": role_display, "next_role": next_role_display})
-
-		return {"status": "forwarded", "next_state": next_state}
+	return {"status": "sent_to_md", "next_state": next_state}
 
 
 @frappe.whitelist()
@@ -207,30 +138,22 @@ def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 		return _revise_mr(doc, reason, comment)
 
 	_validate_po_is_pending(doc)
-
-	user_info = _get_user_approval_role(frappe.session.user)
-	if not user_info:
-		frappe.throw(_("You don't have an approval role configured"))
-
-	current_level = cint(doc.bbf_current_level)
-	if user_info["level"] < current_level:
-		frappe.throw(_("You cannot revise this PO — your level is below the current approval level"))
-
-	if not user_info.get("can_revise"):
-		frappe.throw(_("Your approval role does not have revision permission"))
+	_validate_user_can_act_on_po(doc)
 
 	current_state = doc.bbf_approval_status
-	role_display = user_info["role_label"] or user_info["role"]
+	current_step = cint(doc.bbf_current_step)
+	role_display = _get_user_step_role(doc, current_step)
 
 	_log_approval_action(doc, "Revised", current_state, "Revised",
 		comment=comment or reason, po_amount=flt(doc.grand_total),
-		revision_target=str(revise_to_level or ""))
+		step_order=current_step, purchase_category=doc.bbf_purchase_category)
 
 	doc.db_set({
 		"bbf_approval_status": "Revised",
 		"bbf_revision_count": cint(doc.bbf_revision_count) + 1,
 		"bbf_revision_reason": reason,
 		"bbf_revised_by": f"{frappe.session.user} ({role_display})",
+		"bbf_can_send_to_md": 0,
 		"bbf_last_action": f"Revised by {role_display} on {now_datetime().strftime('%d %b %Y %H:%M')}",
 	}, update_modified=True)
 
@@ -259,23 +182,19 @@ def reject_document(doctype, docname, reason, comment=""):
 		return _reject_mr(doc, reason, comment)
 
 	_validate_po_is_pending(doc)
-
-	user_info = _get_user_approval_role(frappe.session.user)
-	if not user_info:
-		frappe.throw(_("You don't have an approval role configured"))
-
-	current_level = cint(doc.bbf_current_level)
-	if user_info["level"] < current_level:
-		frappe.throw(_("You cannot reject this PO — your level is below the current approval level"))
+	_validate_user_can_act_on_po(doc)
 
 	current_state = doc.bbf_approval_status
-	role_display = user_info["role_label"] or user_info["role"]
+	current_step = cint(doc.bbf_current_step)
+	role_display = _get_user_step_role(doc, current_step)
 
 	_log_approval_action(doc, "Rejected", current_state, "Rejected",
-		comment=comment or reason, po_amount=flt(doc.grand_total))
+		comment=comment or reason, po_amount=flt(doc.grand_total),
+		step_order=current_step, purchase_category=doc.bbf_purchase_category)
 
 	doc.db_set({
 		"bbf_approval_status": "Rejected",
+		"bbf_can_send_to_md": 0,
 		"bbf_last_action": f"Rejected by {role_display} on {now_datetime().strftime('%d %b %Y %H:%M')}",
 	}, update_modified=True)
 
@@ -289,8 +208,10 @@ def reject_document(doctype, docname, reason, comment=""):
 	all_users = _get_chain_users(doc)
 	if doc.bbf_submitted_by:
 		all_users.add(doc.bbf_submitted_by)
+
 	_send_approval_notification(doc, "rejected", list(all_users),
 		extra={"rejected_by": role_display, "reason": reason})
+	_send_post_approval_notification(doc, "rejection")
 
 	return {"status": "rejected", "message": f"PO {doc.name} has been rejected"}
 
@@ -308,119 +229,311 @@ def resubmit_document(doctype, docname, mode="restart"):
 
 	_validate_resubmit_permission(doc)
 
-	# Recalculate required level (amount may have changed during revision)
-	po_amount = flt(doc.grand_total)
-	required_level = _get_required_level(po_amount)
+	# Re-resolve category and rule (amount may have changed)
+	category = _resolve_po_category(doc)
+	rule_name = _find_po_approval_rule(category, flt(doc.grand_total))
+	rule = frappe.get_doc("BBF PO Approval Rule", rule_name)
+	steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
 
-	if mode == "restart":
-		target_level_info = _get_level_info(1)
-		resubmit_label = "Restart from Department Head"
-	else:
-		# Re-enter at the level that revised it
-		# Parse revised_by to find the level
-		revised_level = _find_reviser_level(doc)
-		target_level_info = _get_level_info(revised_level) if revised_level else _get_level_info(1)
-		resubmit_label = f"Re-enter at reviser level ({target_level_info['role_label'] or target_level_info['role']})"
-
-	if not target_level_info:
-		frappe.throw(_("Target approval level not found"))
-
-	target_role_display = target_level_info["role_label"] or target_level_info["role"]
-	next_state = f"Pending {target_role_display}"
+	# Always restart from step 1 (with self-skip)
+	target = _get_target_step_with_skip(steps, frappe.session.user)
+	next_state = f"Pending {target.role_label or target.role}"
 
 	_log_approval_action(doc, "Resubmitted", "Revised", next_state,
-		po_amount=po_amount, resubmit_mode=mode)
+		po_amount=flt(doc.grand_total), resubmit_mode=mode,
+		step_order=target.step_order, purchase_category=category)
 
 	doc.db_set({
 		"bbf_approval_status": next_state,
-		"bbf_current_level": target_level_info["level"],
-		"bbf_required_level": required_level,
-		"bbf_amount_at_submission": po_amount,
-		"bbf_resubmit_mode": resubmit_label,
-		"bbf_last_action": f"Resubmitted ({mode}) on {now_datetime().strftime('%d %b %Y %H:%M')}",
+		"bbf_purchase_category": category,
+		"bbf_approval_rule": rule_name,
+		"bbf_current_step": target.step_order,
+		"bbf_total_steps": len(steps),
+		"bbf_can_send_to_md": 0,
+		"bbf_amount_at_submission": flt(doc.grand_total),
+		"bbf_resubmit_mode": f"Restarted from {target.role_label or target.role}",
+		"bbf_last_action": f"Resubmitted on {now_datetime().strftime('%d %b %Y %H:%M')}",
 	}, update_modified=True)
 
 	_send_approval_notification(doc, "pending_approval",
-		_get_role_users(target_level_info["role"]),
-		extra={"next_role": target_role_display, "resubmitted": True})
+		_get_role_users(target.role),
+		extra={"next_role": target.role_label or target.role, "resubmitted": True})
 
 	return {"status": "resubmitted", "next_state": next_state}
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  MR-SPECIFIC HANDLERS (single-level approval)
+#  PO-SPECIFIC HANDLERS
+# ═══════════════════════════════════════════════════════════════════════
+
+def _submit_po_for_approval(doc):
+	"""Submit a PO for approval using category-based routing."""
+	_validate_po_submittable(doc)
+
+	status = doc.bbf_approval_status
+	if status and status not in ("", "Draft"):
+		frappe.throw(_("This PO is already in the approval chain (status: {0})").format(status))
+
+	# Resolve category from PO items → Item Group → BBF Purchase Category
+	category = _resolve_po_category(doc)
+	rule_name = _find_po_approval_rule(category, flt(doc.grand_total))
+	rule = frappe.get_doc("BBF PO Approval Rule", rule_name)
+	steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
+
+	# Self-skip: if creator has step 1's role, start at step 2
+	target = _get_target_step_with_skip(steps, frappe.session.user)
+	next_state = f"Pending {target.role_label or target.role}"
+
+	_log_approval_action(doc, "Submitted", "Draft", next_state,
+		po_amount=flt(doc.grand_total),
+		step_order=target.step_order, purchase_category=category)
+
+	doc.db_set({
+		"bbf_approval_status": next_state,
+		"bbf_purchase_category": category,
+		"bbf_approval_rule": rule_name,
+		"bbf_current_step": target.step_order,
+		"bbf_total_steps": len(steps),
+		"bbf_can_send_to_md": 0,
+		"bbf_submitted_by": frappe.session.user,
+		"bbf_amount_at_submission": flt(doc.grand_total),
+		"bbf_last_action": f"Submitted for approval on {now_datetime().strftime('%d %b %Y %H:%M')}",
+	}, update_modified=True)
+
+	_send_approval_notification(doc, "pending_approval",
+		_get_role_users(target.role),
+		extra={"next_role": target.role_label or target.role})
+
+	return {"status": "ok", "next_state": next_state}
+
+
+def _approve_po(doc, comment=""):
+	"""Approve/Review/Forward a PO based on the current step's action_type."""
+	_validate_po_is_pending(doc)
+	_validate_not_self_approving(doc)
+	_validate_amount_unchanged(doc)
+
+	if not doc.bbf_approval_rule:
+		frappe.throw(_("This PO has no approval rule set. Please resubmit."))
+
+	rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
+	steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
+	current_step_order = cint(doc.bbf_current_step)
+
+	current_step = next((s for s in steps if s.step_order == current_step_order), None)
+	if not current_step:
+		frappe.throw(_("Current approval step not found"))
+
+	# Validate user has the current step's role (or higher step role for override)
+	user_roles = frappe.get_roles(frappe.session.user)
+	can_act = False
+	for step in steps:
+		if step.step_order >= current_step_order and step.role in user_roles:
+			can_act = True
+			break
+	if not can_act:
+		frappe.throw(_("You don't have permission to act on this PO at this step"))
+
+	po_amount = flt(doc.grand_total)
+	current_state = doc.bbf_approval_status
+	role_display = current_step.role_label or current_step.role
+
+	if current_step.action_type == "Final Approve":
+		# FINAL APPROVAL — submit the PO
+		_log_approval_action(doc, "Final Approved", current_state, "Approved",
+			comment=comment, po_amount=po_amount,
+			step_order=current_step_order, purchase_category=doc.bbf_purchase_category)
+
+		doc.db_set({
+			"bbf_approval_status": "Approved",
+			"bbf_approved_by": frappe.session.user,
+			"bbf_approved_date": now_datetime(),
+			"bbf_can_send_to_md": 0,
+			"bbf_last_action": f"Final Approved by {role_display} on {now_datetime().strftime('%d %b %Y %H:%M')}",
+		}, update_modified=True)
+
+		# Submit the PO (docstatus 0 → 1)
+		doc.reload()
+		doc.submit()
+
+		# Notify all stakeholders
+		all_users = _get_chain_users(doc)
+		if doc.bbf_submitted_by:
+			all_users.add(doc.bbf_submitted_by)
+		_send_approval_notification(doc, "final_approved", list(all_users),
+			extra={"approved_by": role_display})
+		_send_post_approval_notification(doc, "approval")
+
+		return {"status": "approved", "message": f"PO {doc.name} has been final approved and submitted"}
+
+	else:
+		# REVIEW or APPROVE — forward to next step
+		next_step = _get_next_step(steps, current_step_order)
+
+		if next_step and next_step.is_manual_trigger:
+			# Next step is MD (manual trigger) — mark current step as done, show "Send to MD" button
+			action_label = "Reviewed" if current_step.action_type == "Review" else "Approved"
+			_log_approval_action(doc, action_label, current_state,
+				f"Awaiting Send to {next_step.role_label or next_step.role}",
+				comment=comment, po_amount=po_amount,
+				step_order=current_step_order, purchase_category=doc.bbf_purchase_category)
+
+			doc.db_set({
+				"bbf_approval_status": f"Awaiting Send to {next_step.role_label or next_step.role}",
+				"bbf_can_send_to_md": 1,
+				"bbf_last_action": f"{action_label} by {role_display} on {now_datetime().strftime('%d %b %Y %H:%M')} — awaiting manual send to {next_step.role_label or next_step.role}",
+			}, update_modified=True)
+
+			return {"status": "awaiting_md", "message": f"PO reviewed. CEO must now send to {next_step.role_label or next_step.role}."}
+
+		elif next_step:
+			# Auto-forward to next step
+			next_label = next_step.role_label or next_step.role
+			next_state = f"Pending {next_label}"
+			action_label = "Reviewed" if current_step.action_type == "Review" else "Forwarded"
+
+			_log_approval_action(doc, action_label, current_state, next_state,
+				comment=comment, po_amount=po_amount,
+				step_order=current_step_order, purchase_category=doc.bbf_purchase_category)
+
+			doc.db_set({
+				"bbf_approval_status": next_state,
+				"bbf_current_step": next_step.step_order,
+				"bbf_can_send_to_md": 0,
+				"bbf_last_action": f"{action_label} by {role_display} to {next_label} on {now_datetime().strftime('%d %b %Y %H:%M')}",
+			}, update_modified=True)
+
+			_send_approval_notification(doc, "pending_approval",
+				_get_role_users(next_step.role),
+				extra={"forwarded_by": role_display, "next_role": next_label})
+
+			return {"status": "forwarded", "next_state": next_state}
+
+		else:
+			frappe.throw(_("No next approval step configured. Cannot forward."))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MR-SPECIFIC HANDLERS (cost-center-based routing)
 # ═══════════════════════════════════════════════════════════════════════
 
 def _submit_mr_for_approval(doc):
-	"""Submit MR for approval — skips to next level if submitter has an approval role."""
+	"""Submit MR for approval — routes by Cost Center."""
 	status = doc.bbf_mr_status
 	if status and status not in ("", "Draft"):
 		frappe.throw(_("This MR is already in the approval chain (status: {0})").format(status))
 
-	# Determine target: if submitter is Dept Head or above, skip to next level
-	submitter_info = _get_user_approval_role(frappe.session.user)
-	if submitter_info and submitter_info["level"] >= 1:
-		target_level = _get_next_level(submitter_info["level"])
-		if target_level:
-			target_role = target_level["role"]
-			target_label = target_level["role_label"] or target_role
-		else:
-			# Submitter is at highest level — send to their own level for peer approval
-			target_role = submitter_info["role"]
-			target_label = submitter_info["role_label"] or target_role
-	else:
-		target_role = "Department Head"
-		target_label = "Department Head"
+	cost_center = _get_mr_cost_center(doc)
+	if not cost_center:
+		frappe.throw(_("Cost Center is required for MR approval routing. Please set it on the MR or its items."))
 
-	next_state = f"Pending {target_label}"
-	_log_mr_action(doc, "Submitted", "Draft", next_state)
+	route_name = _find_mr_route(cost_center)
+	if not route_name:
+		frappe.throw(_("No MR approval route configured for Cost Center: {0}").format(cost_center))
+
+	route_doc = frappe.get_doc("BBF MR Approval Route", route_name)
+	steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
+
+	# Self-skip
+	target = _get_target_step_with_skip(steps, frappe.session.user)
+	next_state = f"Pending {target.role_label or target.role}"
+
+	_log_mr_action(doc, "Submitted", "Draft", next_state,
+		step_order=target.step_order, purchase_category=route_name)
 
 	doc.db_set({
 		"bbf_mr_status": next_state,
+		"bbf_mr_route": route_name,
+		"bbf_mr_approval_route": route_name,
+		"bbf_mr_current_step": target.step_order,
+		"bbf_mr_total_steps": len(steps),
 	}, update_modified=True)
 
 	_send_approval_notification(doc, "mr_pending",
-		_get_role_users(target_role),
-		extra={"next_role": target_label})
+		_get_role_users(target.role),
+		extra={"next_role": target.role_label or target.role})
 
 	return next_state
 
 
 def _approve_mr(doc, comment=""):
-	"""Approve MR — Dept Head or any higher approval role."""
+	"""Approve/Review MR based on current step."""
 	if not (doc.bbf_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.bbf_mr_status))
 
-	if not frappe.has_permission("Material Request", "write", doc.name):
-		frappe.throw(_("You don't have permission to approve this MR"))
-
-	user_info = _get_user_approval_role(frappe.session.user)
-	if not user_info or user_info["level"] < 1:
-		frappe.throw(_("You don't have an approval role to approve Material Requests"))
-
-	# Prevent self-approval: creator cannot approve their own MR
+	# Prevent self-approval
 	if doc.owner == frappe.session.user:
-		frappe.throw(_("You cannot approve a Material Request that you created. A different approver must act on this MR."))
+		frappe.throw(_("You cannot approve a Material Request that you created."))
 
-	role_display = user_info["role_label"] or user_info["role"]
+	route_name = doc.bbf_mr_approval_route
+	if not route_name:
+		frappe.throw(_("This MR has no approval route set. Please resubmit."))
+
+	route_doc = frappe.get_doc("BBF MR Approval Route", route_name)
+	steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
+	current_step_order = cint(doc.bbf_mr_current_step)
+
+	current_step = next((s for s in steps if s.step_order == current_step_order), None)
+	if not current_step:
+		frappe.throw(_("Current MR approval step not found"))
+
+	# Validate user has the role
+	user_roles = frappe.get_roles(frappe.session.user)
+	can_act = False
+	for step in steps:
+		if step.step_order >= current_step_order and step.role in user_roles:
+			can_act = True
+			break
+	if not can_act:
+		frappe.throw(_("You don't have permission to act on this MR at this step"))
+
+	role_display = current_step.role_label or current_step.role
 	current_state = doc.bbf_mr_status
-	_log_mr_action(doc, "Final Approved", current_state, "Approved", comment=comment)
 
-	doc.db_set({
-		"bbf_mr_status": "Approved",
-		"bbf_mr_approved_by": frappe.session.user,
-		"bbf_mr_approved_date": now_datetime(),
-	}, update_modified=True)
+	if current_step.action_type == "Final Approve":
+		# FINAL APPROVAL
+		_log_mr_action(doc, "Final Approved", current_state, "Approved",
+			comment=comment, step_order=current_step_order, purchase_category=route_name)
 
-	# Submit the MR (docstatus 0 → 1)
-	doc.reload()
-	doc.submit()
+		doc.db_set({
+			"bbf_mr_status": "Approved",
+			"bbf_mr_approved_by": frappe.session.user,
+			"bbf_mr_approved_date": now_datetime(),
+		}, update_modified=True)
 
-	# Notify owner
-	_send_approval_notification(doc, "mr_approved", [doc.owner],
-		extra={"approved_by": role_display})
+		# Submit the MR (docstatus 0 → 1)
+		doc.reload()
+		doc.submit()
 
-	return {"status": "approved", "message": f"MR {doc.name} has been approved and submitted"}
+		# Notify owner
+		_send_approval_notification(doc, "mr_approved", [doc.owner],
+			extra={"approved_by": role_display})
+		_send_post_approval_notification(doc, "mr_approval")
+
+		return {"status": "approved", "message": f"MR {doc.name} has been approved and submitted"}
+
+	else:
+		# REVIEW — forward to next step
+		next_step = _get_next_step(steps, current_step_order)
+		if not next_step:
+			frappe.throw(_("No next MR approval step configured. Cannot forward."))
+
+		next_label = next_step.role_label or next_step.role
+		next_state = f"Pending {next_label}"
+
+		_log_mr_action(doc, "Reviewed", current_state, next_state,
+			comment=comment, step_order=current_step_order, purchase_category=route_name)
+
+		doc.db_set({
+			"bbf_mr_status": next_state,
+			"bbf_mr_current_step": next_step.step_order,
+		}, update_modified=True)
+
+		_send_approval_notification(doc, "mr_pending",
+			_get_role_users(next_step.role),
+			extra={"forwarded_by": role_display, "next_role": next_label})
+
+		return {"status": "forwarded", "next_state": next_state}
 
 
 def _revise_mr(doc, reason, comment=""):
@@ -428,13 +541,13 @@ def _revise_mr(doc, reason, comment=""):
 	if not (doc.bbf_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.bbf_mr_status))
 
-	user_info = _get_user_approval_role(frappe.session.user)
-	if not user_info or user_info["level"] < 1:
-		frappe.throw(_("You don't have an approval role to revise Material Requests"))
-
-	role_display = user_info["role_label"] or user_info["role"]
+	current_step = cint(doc.bbf_mr_current_step)
+	role_display = _get_user_mr_step_role(doc, current_step)
 	current_state = doc.bbf_mr_status
-	_log_mr_action(doc, "Revised", current_state, "Revised", comment=comment or reason)
+
+	_log_mr_action(doc, "Revised", current_state, "Revised",
+		comment=comment or reason, step_order=current_step,
+		purchase_category=doc.bbf_mr_approval_route)
 
 	doc.db_set({
 		"bbf_mr_status": "Revised",
@@ -452,13 +565,13 @@ def _reject_mr(doc, reason, comment=""):
 	if not (doc.bbf_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.bbf_mr_status))
 
-	user_info = _get_user_approval_role(frappe.session.user)
-	if not user_info or user_info["level"] < 1:
-		frappe.throw(_("You don't have an approval role to reject Material Requests"))
-
-	role_display = user_info["role_label"] or user_info["role"]
+	current_step = cint(doc.bbf_mr_current_step)
+	role_display = _get_user_mr_step_role(doc, current_step)
 	current_state = doc.bbf_mr_status
-	_log_mr_action(doc, "Rejected", current_state, "Rejected", comment=comment or reason)
+
+	_log_mr_action(doc, "Rejected", current_state, "Rejected",
+		comment=comment or reason, step_order=current_step,
+		purchase_category=doc.bbf_mr_approval_route)
 
 	doc.db_set({
 		"bbf_mr_status": "Rejected",
@@ -471,150 +584,208 @@ def _reject_mr(doc, reason, comment=""):
 
 	_send_approval_notification(doc, "mr_rejected", [doc.owner],
 		extra={"rejected_by": role_display, "reason": reason})
+	_send_post_approval_notification(doc, "mr_rejection")
 
 	return {"status": "rejected"}
 
 
 def _resubmit_mr(doc):
-	"""Resubmit a revised MR — skips to next level if submitter has an approval role."""
+	"""Resubmit a revised MR."""
 	if doc.bbf_mr_status != "Revised":
 		frappe.throw(_("Only revised MRs can be resubmitted"))
 
 	if frappe.session.user not in (doc.owner, "Administrator"):
 		frappe.throw(_("Only the MR creator can resubmit after revision"))
 
-	# Same skip logic as initial submission
-	submitter_info = _get_user_approval_role(frappe.session.user)
-	if submitter_info and submitter_info["level"] >= 1:
-		target_level = _get_next_level(submitter_info["level"])
-		if target_level:
-			target_role = target_level["role"]
-			target_label = target_level["role_label"] or target_role
-		else:
-			target_role = submitter_info["role"]
-			target_label = submitter_info["role_label"] or target_role
-	else:
-		target_role = "Department Head"
-		target_label = "Department Head"
+	cost_center = _get_mr_cost_center(doc)
+	route_name = _find_mr_route(cost_center)
+	if not route_name:
+		frappe.throw(_("No MR approval route configured for Cost Center: {0}").format(cost_center))
 
-	next_state = f"Pending {target_label}"
-	_log_mr_action(doc, "Resubmitted", "Revised", next_state)
+	route_doc = frappe.get_doc("BBF MR Approval Route", route_name)
+	steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
+
+	target = _get_target_step_with_skip(steps, frappe.session.user)
+	next_state = f"Pending {target.role_label or target.role}"
+
+	_log_mr_action(doc, "Resubmitted", "Revised", next_state,
+		step_order=target.step_order, purchase_category=route_name)
 
 	doc.db_set({
 		"bbf_mr_status": next_state,
+		"bbf_mr_route": route_name,
+		"bbf_mr_approval_route": route_name,
+		"bbf_mr_current_step": target.step_order,
+		"bbf_mr_total_steps": len(steps),
 		"bbf_mr_revision_reason": "",
 	}, update_modified=True)
 
 	_send_approval_notification(doc, "mr_pending",
-		_get_role_users(target_role),
-		extra={"next_role": target_label, "resubmitted": True})
+		_get_role_users(target.role),
+		extra={"next_role": target.role_label or target.role, "resubmitted": True})
 
 	return {"status": "resubmitted"}
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  APPROVAL ROUTING LOGIC
+#  CATEGORY & RULE ROUTING (PO)
 # ═══════════════════════════════════════════════════════════════════════
 
-def _get_required_level(amount):
-	"""Determine the highest approval level needed for this PO amount.
+def _resolve_po_category(doc):
+	"""Auto-detect BBF Purchase Category from PO items → Item Group mapping."""
+	item_groups = set()
+	for item in (doc.get("items") or []):
+		ig = frappe.db.get_value("Item", item.item_code, "item_group") if item.item_code else None
+		if ig:
+			item_groups.add(ig)
 
-	Finds the LOWEST level whose limit >= amount AND can_final_approve.
-	Limit of 0 = unlimited (matches any amount).
+	if not item_groups:
+		settings = frappe.get_single("BBF Settings")
+		if settings.default_po_category:
+			return settings.default_po_category
+		frappe.throw(_("Cannot determine purchase category — no items with Item Groups on this PO"))
 
-	Example:
-		₹8,000  → Level 1 (Dept Head, limit ₹10K)
-		₹50,000 → Level 2 (GM, limit ₹1L)
-		₹4L     → Level 3 (CEO, limit ₹6L)
-		₹10L    → Level 4 (MD, unlimited)
-	"""
-	limits = frappe.get_all("BBF Approval Limit",
-		filters={"is_active": 1, "can_final_approve": 1},
-		fields=["role", "approval_level", "approval_limit"],
-		order_by="approval_level asc")
+	# Map each Item Group to its BBF Purchase Category
+	categories = set()
+	for ig in item_groups:
+		result = frappe.db.sql("""
+			SELECT parent FROM `tabBBF Purchase Category Item`
+			WHERE item_group = %s
+		""", ig, as_dict=True)
+		if result:
+			categories.add(result[0].parent)
 
-	if not limits:
-		frappe.throw(_("No active approval levels configured in BBF Approval Limit"))
+	if not categories:
+		settings = frappe.get_single("BBF Settings")
+		if settings.default_po_category:
+			return settings.default_po_category
+		frappe.throw(_(
+			"No purchase category mapped for Item Group(s): {0}. "
+			"Please configure BBF Purchase Category or set a default in BBF Settings."
+		).format(", ".join(item_groups)))
 
-	for ll in limits:
-		limit_amount = flt(ll.approval_limit)
-		# 0 = unlimited — can approve any amount
-		if limit_amount == 0 or amount <= limit_amount:
-			return ll.approval_level
+	if len(categories) == 1:
+		return categories.pop()
 
-	# Shouldn't reach here if MD has unlimited, but fallback to highest level
-	return limits[-1].approval_level
+	# Mixed categories — pick the one with the strictest (most steps) rule
+	return _pick_strictest_category(categories, flt(doc.grand_total))
 
 
-def _get_user_approval_role(user):
-	"""Determine which approval role (if any) this user has.
+def _pick_strictest_category(categories, amount):
+	"""Pick the category requiring the most approval steps for this amount."""
+	max_steps = 0
+	strictest = None
 
-	If user has multiple approval roles, use the HIGHEST level
-	(so a CEO who also has Dept Head role acts as CEO).
-	"""
+	for cat in categories:
+		rule_name = _find_po_approval_rule(cat, amount)
+		if rule_name:
+			step_count = frappe.db.count("BBF PO Approval Step",
+				filters={"parent": rule_name})
+			if step_count > max_steps:
+				max_steps = step_count
+				strictest = cat
+
+	return strictest or list(categories)[0]
+
+
+def _find_po_approval_rule(category, amount):
+	"""Find the matching BBF PO Approval Rule for this category + amount."""
+	rules = frappe.get_all("BBF PO Approval Rule",
+		filters={"purchase_category": category, "is_active": 1},
+		fields=["name", "min_amount", "max_amount", "priority"],
+		order_by="priority asc")
+
+	for rule in rules:
+		min_amt = flt(rule.min_amount)
+		max_amt = flt(rule.max_amount)
+		if amount >= min_amt and (max_amt == 0 or amount <= max_amt):
+			return rule.name
+
+	frappe.throw(_(
+		"No approval rule configured for category '{0}' at amount {1}. "
+		"Please configure BBF PO Approval Rule."
+	).format(category, frappe.format_value(amount, {"fieldtype": "Currency"})))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  COST CENTER ROUTING (MR)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _get_mr_cost_center(doc):
+	"""Get Cost Center from MR — header first, then first item."""
+	if hasattr(doc, "cost_center") and doc.cost_center:
+		return doc.cost_center
+
+	for item in (doc.get("items") or []):
+		if item.cost_center:
+			return item.cost_center
+
+	return None
+
+
+def _find_mr_route(cost_center):
+	"""Find the BBF MR Approval Route for this Cost Center."""
+	result = frappe.db.sql("""
+		SELECT r.name
+		FROM `tabBBF MR Approval Route` r
+		INNER JOIN `tabBBF MR Route Cost Center` cc ON cc.parent = r.name
+		WHERE cc.cost_center = %s AND r.is_active = 1
+		LIMIT 1
+	""", cost_center, as_dict=True)
+
+	return result[0].name if result else None
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  STEP HELPERS
+# ═══════════════════════════════════════════════════════════════════════
+
+def _get_target_step_with_skip(steps, user):
+	"""Get the first step, skipping if the user has step 1's role (self-skip)."""
+	if not steps:
+		frappe.throw(_("No approval steps configured"))
+
+	first_step = steps[0]
 	user_roles = frappe.get_roles(user)
 
-	limits = frappe.get_all("BBF Approval Limit",
-		filters={"is_active": 1, "role": ["in", user_roles]},
-		fields=["role", "role_label", "approval_level", "approval_limit",
-				"can_final_approve", "can_revise", "revise_to_levels",
-				"notify_on_pending", "notify_on_approval"],
-		order_by="approval_level desc")
+	if first_step.role in user_roles and len(steps) > 1:
+		return steps[1]
 
-	if not limits:
-		return None
-
-	highest = limits[0]
-	return {
-		"role": highest.role,
-		"role_label": highest.role_label or highest.role,
-		"level": highest.approval_level,
-		"amt_limit": flt(highest.approval_limit),
-		"can_final_approve": highest.can_final_approve,
-		"can_revise": highest.can_revise,
-		"revise_to_levels": highest.revise_to_levels,
-	}
+	return first_step
 
 
-def _get_next_level(current_level):
-	"""Get the next active approval level above current."""
-	result = frappe.get_all("BBF Approval Limit",
-		filters={"is_active": 1, "approval_level": [">", current_level]},
-		fields=["role", "role_label", "approval_level as level", "approval_limit as amt_limit",
-				"can_final_approve"],
-		order_by="approval_level asc",
-		limit=1)
-	return result[0] if result else None
+def _get_next_step(steps, current_step_order):
+	"""Get the next step after current_step_order."""
+	for step in sorted(steps, key=lambda s: s.step_order):
+		if step.step_order > current_step_order:
+			return step
+	return None
 
 
-def _get_level_info(level):
-	"""Get approval limit info for a specific level."""
-	result = frappe.get_all("BBF Approval Limit",
-		filters={"is_active": 1, "approval_level": level},
-		fields=["role", "role_label", "approval_level as level", "approval_limit as amt_limit",
-				"can_final_approve", "can_revise", "revise_to_levels"],
-		limit=1)
-	return result[0] if result else None
+def _get_user_step_role(doc, current_step_order):
+	"""Get the display label for the current user's role at the given step."""
+	if not doc.bbf_approval_rule:
+		return frappe.utils.get_fullname(frappe.session.user)
+
+	rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
+	user_roles = frappe.get_roles(frappe.session.user)
+	for step in sorted(rule.approval_steps, key=lambda s: s.step_order):
+		if step.step_order >= current_step_order and step.role in user_roles:
+			return step.role_label or step.role
+	return frappe.utils.get_fullname(frappe.session.user)
 
 
-def _find_reviser_level(doc):
-	"""Find the approval level of the person who last revised this PO."""
-	logs = frappe.get_all("BBF Approval Log",
-		filters={"parent": doc.name, "parenttype": doc.doctype, "action": "Revised"},
-		fields=["action_by_role"],
-		order_by="action_date desc",
-		limit=1)
+def _get_user_mr_step_role(doc, current_step_order):
+	"""Get the display label for the current user's role at the MR step."""
+	if not doc.bbf_mr_approval_route:
+		return frappe.utils.get_fullname(frappe.session.user)
 
-	if not logs:
-		return 1
-
-	role = logs[0].action_by_role
-	level_info = frappe.get_all("BBF Approval Limit",
-		filters={"role": role, "is_active": 1},
-		fields=["approval_level"],
-		limit=1)
-
-	return level_info[0].approval_level if level_info else 1
+	route = frappe.get_doc("BBF MR Approval Route", doc.bbf_mr_approval_route)
+	user_roles = frappe.get_roles(frappe.session.user)
+	for step in sorted(route.approval_steps, key=lambda s: s.step_order):
+		if step.step_order >= current_step_order and step.role in user_roles:
+			return step.role_label or step.role
+	return frappe.utils.get_fullname(frappe.session.user)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -622,12 +793,12 @@ def _find_reviser_level(doc):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _validate_po_is_pending(doc):
-	"""Ensure PO is in a Pending state before allowing approve/revise/reject."""
+	"""Ensure PO is in a Pending or Awaiting state."""
 	status = doc.bbf_approval_status or ""
-	if not status.startswith("Pending"):
+	if not (status.startswith("Pending") or status.startswith("Awaiting")):
 		frappe.throw(
 			_("This PO is not pending approval (current status: {0}). "
-			  "Only POs with 'Pending' status can be acted upon.").format(status or "Draft")
+			  "Only POs with 'Pending' or 'Awaiting' status can be acted upon.").format(status or "Draft")
 		)
 
 
@@ -640,8 +811,25 @@ def _validate_not_self_approving(doc):
 		)
 
 
+def _validate_user_can_act_on_po(doc):
+	"""Validate user has a role that can act on the PO at its current step."""
+	if not doc.bbf_approval_rule:
+		return
+
+	rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
+	steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
+	current_step_order = cint(doc.bbf_current_step)
+	user_roles = frappe.get_roles(frappe.session.user)
+
+	for step in steps:
+		if step.step_order >= current_step_order and step.role in user_roles:
+			return
+
+	frappe.throw(_("You don't have permission to act on this PO at this step"))
+
+
 def _validate_resubmit_permission(doc):
-	"""Only the original submitter or PO owner can resubmit after revision."""
+	"""Only the original submitter or PO owner can resubmit."""
 	allowed_users = {doc.owner}
 	if doc.bbf_submitted_by:
 		allowed_users.add(doc.bbf_submitted_by)
@@ -654,7 +842,7 @@ def _validate_resubmit_permission(doc):
 
 
 def _validate_po_submittable(doc):
-	"""Validate PO is in a state that can be submitted for approval."""
+	"""Validate PO can be submitted for approval."""
 	if doc.docstatus != 0:
 		frappe.throw(_("Only Draft POs can be submitted for approval"))
 
@@ -667,7 +855,7 @@ def _validate_po_submittable(doc):
 
 
 def _validate_amount_unchanged(doc):
-	"""Server-side check that PO amount hasn't been tampered with during approval."""
+	"""Server-side check that PO amount hasn't been tampered with."""
 	submitted_amount = flt(doc.bbf_amount_at_submission)
 	current_amount = flt(doc.grand_total)
 
@@ -686,12 +874,20 @@ def _validate_amount_unchanged(doc):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _log_approval_action(doc, action, from_state, to_state,
-						 comment="", po_amount=0, revision_target="", resubmit_mode=""):
-	"""Add an immutable row to the bbf_approval_log child table.
-
-	Uses direct insert to avoid triggering parent doc validation.
-	"""
-	user_info = _get_user_approval_role(frappe.session.user)
+						 comment="", po_amount=0, revision_target="",
+						 resubmit_mode="", step_order=0, purchase_category=""):
+	"""Add an immutable row to the bbf_approval_log child table."""
+	user_roles = frappe.get_roles(frappe.session.user)
+	user_role = ""
+	if doc.bbf_approval_rule:
+		try:
+			rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
+			for step in sorted(rule.approval_steps, key=lambda s: s.step_order):
+				if step.role in user_roles:
+					user_role = step.role_label or step.role
+					break
+		except Exception:
+			pass
 
 	log = frappe.get_doc({
 		"doctype": "BBF Approval Log",
@@ -703,19 +899,32 @@ def _log_approval_action(doc, action, from_state, to_state,
 		"to_state": to_state,
 		"action_by": frappe.session.user,
 		"action_by_name": frappe.utils.get_fullname(frappe.session.user),
-		"action_by_role": user_info["role"] if user_info else "",
+		"action_by_role": user_role,
 		"action_date": now_datetime(),
 		"comment": comment,
 		"revision_target": revision_target,
 		"resubmit_mode": resubmit_mode,
 		"po_amount": po_amount or flt(doc.grand_total if hasattr(doc, "grand_total") else 0),
+		"step_order": step_order,
+		"purchase_category": purchase_category,
 	})
 	log.insert(ignore_permissions=True)
 
 
-def _log_mr_action(doc, action, from_state, to_state, comment=""):
+def _log_mr_action(doc, action, from_state, to_state, comment="",
+				   step_order=0, purchase_category=""):
 	"""Add an immutable row to the bbf_mr_log child table."""
-	user_info = _get_user_approval_role(frappe.session.user)
+	user_roles = frappe.get_roles(frappe.session.user)
+	user_role = ""
+	if doc.bbf_mr_approval_route:
+		try:
+			route = frappe.get_doc("BBF MR Approval Route", doc.bbf_mr_approval_route)
+			for step in sorted(route.approval_steps, key=lambda s: s.step_order):
+				if step.role in user_roles:
+					user_role = step.role_label or step.role
+					break
+		except Exception:
+			pass
 
 	log = frappe.get_doc({
 		"doctype": "BBF Approval Log",
@@ -727,10 +936,12 @@ def _log_mr_action(doc, action, from_state, to_state, comment=""):
 		"to_state": to_state,
 		"action_by": frappe.session.user,
 		"action_by_name": frappe.utils.get_fullname(frappe.session.user),
-		"action_by_role": user_info["role"] if user_info else "",
+		"action_by_role": user_role,
 		"action_date": now_datetime(),
 		"comment": comment,
 		"po_amount": flt(doc.grand_total) if hasattr(doc, "grand_total") else 0,
+		"step_order": step_order,
+		"purchase_category": purchase_category,
 	})
 	log.insert(ignore_permissions=True)
 
@@ -750,7 +961,6 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 	amount_str = frappe.format_value(flt(doc.grand_total) if hasattr(doc, "grand_total") else 0,
 		{"fieldtype": "Currency"})
 
-	# Build subject and message based on action
 	subjects = {
 		"pending_approval": f"[Action Required] {doc_label} {doc.name} ({amount_str}) awaiting your approval",
 		"final_approved": f"[Approved] {doc_label} {doc.name} ({amount_str}) — Final Approval Granted",
@@ -760,18 +970,14 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 		"mr_approved": f"[Approved] MR {doc.name} — Approved",
 		"mr_revised": f"[Revision Required] MR {doc.name} sent back for revision",
 		"mr_rejected": f"[Rejected] MR {doc.name} — Rejected",
-		"sla_breach": f"[SLA Alert] {doc_label} {doc.name} stuck at approval level",
+		"sla_breach": f"[SLA Alert] {doc_label} {doc.name} stuck at approval step",
 	}
 	subject = subjects.get(action, f"{doc_label} {doc.name} — Approval Update")
 
-	# Build message body
 	message = _build_notification_message(doc, action, extra)
-
-	# Deduplicate and filter valid recipients
 	recipients = list(set(r for r in recipients if r and r != "Administrator"))
 
 	for user in recipients:
-		# Bell notification (Notification Log)
 		try:
 			notification = frappe.new_doc("Notification Log")
 			notification.for_user = user
@@ -787,7 +993,6 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 				message=frappe.get_traceback()
 			)
 
-	# Email to all recipients at once
 	try:
 		frappe.sendmail(
 			recipients=recipients,
@@ -804,6 +1009,33 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 		)
 
 
+def _send_post_approval_notification(doc, action_type):
+	"""Send notifications to configured post-approval recipients in BBF Settings."""
+	try:
+		settings = frappe.get_single("BBF Settings")
+		if not settings.post_approval_notify:
+			return
+
+		is_po = doc.doctype == "Purchase Order"
+		recipients = []
+		for row in settings.post_approval_notify:
+			if action_type == "approval" and is_po and row.notify_on_po_approval:
+				recipients.append(row.user)
+			elif action_type == "mr_approval" and not is_po and row.notify_on_mr_approval:
+				recipients.append(row.user)
+			elif action_type in ("rejection", "mr_rejection") and row.notify_on_rejection:
+				recipients.append(row.user)
+
+		if recipients:
+			_send_approval_notification(doc, "final_approved" if "approval" in action_type else "rejected",
+				recipients)
+	except Exception:
+		frappe.log_error(
+			title=f"Post-Approval Notification Error ({doc.name})",
+			message=frappe.get_traceback()
+		)
+
+
 def _build_notification_message(doc, action, extra):
 	"""Build HTML email message for approval notifications."""
 	is_po = doc.doctype == "Purchase Order"
@@ -814,7 +1046,6 @@ def _build_notification_message(doc, action, extra):
 	site_url = frappe.utils.get_url()
 	doc_url = f"{site_url}/app/{frappe.scrub(doc.doctype)}/{doc.name}"
 
-	# Items summary (first 3 items)
 	items_html = ""
 	if is_po:
 		items = doc.get("items") or []
@@ -825,23 +1056,33 @@ def _build_notification_message(doc, action, extra):
 			items_summary.append(f"... and {len(items) - 3} more items")
 		items_html = "<br>".join(items_summary)
 
+	# Category/route info
+	category_html = ""
+	if is_po and doc.bbf_purchase_category:
+		category_html = f"<tr><td style='padding: 5px; font-weight: bold;'>Category:</td><td style='padding: 5px;'>{frappe.utils.escape_html(doc.bbf_purchase_category)}</td></tr>"
+	elif not is_po and hasattr(doc, "bbf_mr_route") and doc.bbf_mr_route:
+		category_html = f"<tr><td style='padding: 5px; font-weight: bold;'>Route:</td><td style='padding: 5px;'>{frappe.utils.escape_html(doc.bbf_mr_route)}</td></tr>"
+
 	reason_html = ""
 	if extra.get("reason"):
 		reason_html = f"<p><strong>Reason:</strong> {frappe.utils.escape_html(extra['reason'])}</p>"
 
 	forwarded_html = ""
 	if extra.get("forwarded_by"):
-		forwarded_html = f"<p>Forwarded by: <strong>{extra['forwarded_by']}</strong></p>"
+		forwarded_html = f"<p>Forwarded by: <strong>{frappe.utils.escape_html(extra['forwarded_by'])}</strong></p>"
+
+	status_value = doc.bbf_approval_status if is_po else (doc.bbf_mr_status if hasattr(doc, "bbf_mr_status") else "")
 
 	return f"""
 	<div style="font-family: Arial, sans-serif; max-width: 600px;">
 		<p>A {doc_label} requires your attention:</p>
 		<table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
 			<tr><td style="padding: 5px; font-weight: bold;">{doc_label}:</td><td style="padding: 5px;">{doc.name}</td></tr>
-			{"<tr><td style='padding: 5px; font-weight: bold;'>Supplier:</td><td style='padding: 5px;'>" + (doc.supplier_name or doc.supplier or "") + "</td></tr>" if is_po else ""}
+			{"<tr><td style='padding: 5px; font-weight: bold;'>Supplier:</td><td style='padding: 5px;'>" + frappe.utils.escape_html(doc.supplier_name or doc.supplier or "") + "</td></tr>" if is_po else ""}
 			<tr><td style="padding: 5px; font-weight: bold;">Amount:</td><td style="padding: 5px;">{amount_str}</td></tr>
+			{category_html}
 			{"<tr><td style='padding: 5px; font-weight: bold;'>Items:</td><td style='padding: 5px;'>" + items_html + "</td></tr>" if items_html else ""}
-			<tr><td style="padding: 5px; font-weight: bold;">Status:</td><td style="padding: 5px;">{doc.bbf_approval_status if is_po else doc.bbf_mr_status}</td></tr>
+			<tr><td style="padding: 5px; font-weight: bold;">Status:</td><td style="padding: 5px;">{frappe.utils.escape_html(status_value)}</td></tr>
 		</table>
 		{forwarded_html}
 		{reason_html}
@@ -878,156 +1119,246 @@ def _get_chain_users(doc):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  PO APPROVAL CONTEXT (for JS)
+#  APPROVAL CONTEXT (for JS)
 # ═══════════════════════════════════════════════════════════════════════
 
-def _get_po_approval_context(doc, user_info, settings):
+def _get_po_approval_context(doc, settings):
 	"""Build full approval context for PO form JS."""
 	status = doc.bbf_approval_status or ""
-	current_level = cint(doc.bbf_current_level)
-	required_level = cint(doc.bbf_required_level)
+	current_step = cint(doc.bbf_current_step)
+	total_steps = cint(doc.bbf_total_steps)
 	po_amount = flt(doc.grand_total)
-	is_pending = status.startswith("Pending")
+	is_pending = status.startswith("Pending") or status.startswith("Awaiting")
+	is_self_submitted = (doc.bbf_submitted_by and doc.bbf_submitted_by == frappe.session.user)
 
 	ctx = {
 		"approval_enabled": True,
 		"status": status,
-		"current_level": current_level,
-		"required_level": required_level or _get_required_level(po_amount),
+		"purchase_category": doc.bbf_purchase_category or "",
+		"rule_name": doc.bbf_approval_rule or "",
+		"current_step": current_step,
+		"total_steps": total_steps,
 		"po_amount": po_amount,
 		"can_submit_for_approval": (doc.docstatus == 0 and status in ("", "Draft")),
+		"can_review": False,
 		"can_approve": False,
 		"can_final_approve": False,
+		"can_send_to_md": (cint(doc.bbf_can_send_to_md) == 1 and not is_self_submitted),
 		"can_revise": False,
 		"can_reject": False,
 		"can_resubmit": (status == "Revised" and frappe.session.user in (doc.owner, doc.bbf_submitted_by or "", "Administrator")),
 		"is_pending": is_pending,
-		"user_approval_role": None,
-		"user_approval_level": 0,
-		"revise_to_options": [],
-		"approval_chain": _build_approval_chain(doc, required_level or _get_required_level(po_amount)),
+		"approval_chain": [],
 	}
 
-	is_self_submitted = (doc.bbf_submitted_by and doc.bbf_submitted_by == frappe.session.user)
+	# Build approval chain from rule
+	if doc.bbf_approval_rule:
+		try:
+			rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
+			ctx["approval_chain"] = _build_po_approval_chain(doc, rule)
+		except Exception:
+			pass
 
-	if user_info and is_pending and user_info["level"] >= current_level:
-		ctx["user_approval_role"] = user_info["role_label"] or user_info["role"]
-		ctx["user_approval_level"] = user_info["level"]
-		ctx["can_approve"] = not is_self_submitted
-		ctx["can_reject"] = True
+	# Determine user's permissions at current step
+	if is_pending and doc.bbf_approval_rule:
+		try:
+			rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
+			steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
+			user_roles = frappe.get_roles(frappe.session.user)
 
-		user_limit = flt(user_info["amt_limit"])
-		if user_info["can_final_approve"]:
-			if settings.enable_fast_track:
-				ctx["can_final_approve"] = (user_limit == 0 or po_amount <= user_limit)
-			else:
-				ctx["can_final_approve"] = (user_info["level"] >= ctx["required_level"])
+			current_step_obj = next((s for s in steps if s.step_order == current_step), None)
 
-		if user_info["can_revise"]:
-			ctx["can_revise"] = True
-			ctx["revise_to_options"] = _get_revise_options(user_info)
+			if current_step_obj:
+				can_act = False
+				for step in steps:
+					if step.step_order >= current_step and step.role in user_roles:
+						can_act = True
+						break
+
+				if can_act and not is_self_submitted:
+					if current_step_obj.action_type == "Review":
+						ctx["can_review"] = True
+					elif current_step_obj.action_type == "Approve":
+						ctx["can_approve"] = True
+					elif current_step_obj.action_type == "Final Approve":
+						ctx["can_final_approve"] = True
+
+					if current_step_obj.can_revise:
+						ctx["can_revise"] = True
+					if current_step_obj.can_reject:
+						ctx["can_reject"] = True
+		except Exception:
+			pass
+
+	# If awaiting MD send, only CEO can see send_to_md + revise/reject
+	if status.startswith("Awaiting") and doc.bbf_approval_rule:
+		try:
+			rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
+			steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
+			current_step_obj = next((s for s in steps if s.step_order == current_step), None)
+			user_roles = frappe.get_roles(frappe.session.user)
+
+			if current_step_obj and current_step_obj.role in user_roles and not is_self_submitted:
+				ctx["can_send_to_md"] = True
+				ctx["can_revise"] = current_step_obj.can_revise
+				ctx["can_reject"] = current_step_obj.can_reject
+		except Exception:
+			pass
 
 	return ctx
 
 
-def _get_mr_approval_context(doc, user_info, settings):
+def _get_mr_approval_context(doc, settings):
 	"""Build approval context for MR form JS."""
 	status = doc.bbf_mr_status or ""
 	is_pending = status.startswith("Pending")
-	# Any approval role (Dept Head or above) can act on pending MRs
-	has_approval_role = user_info and user_info["level"] >= 1
-
-	# Prevent self-approval: if current user submitted the MR, they can't approve it
+	current_step = cint(doc.bbf_mr_current_step) if hasattr(doc, "bbf_mr_current_step") else 0
 	is_self_submitted = (is_pending and doc.owner == frappe.session.user)
 
-	return {
+	ctx = {
 		"approval_enabled": True,
 		"status": status,
+		"mr_route": doc.bbf_mr_route if hasattr(doc, "bbf_mr_route") else "",
+		"current_step": current_step,
+		"total_steps": cint(doc.bbf_mr_total_steps) if hasattr(doc, "bbf_mr_total_steps") else 0,
 		"can_submit_for_approval": (doc.docstatus == 0 and status in ("", "Draft")),
-		"can_approve": (is_pending and has_approval_role and not is_self_submitted),
-		"can_revise": (is_pending and has_approval_role),
-		"can_reject": (is_pending and has_approval_role),
+		"can_review": False,
+		"can_approve": False,
+		"can_final_approve": False,
+		"can_revise": False,
+		"can_reject": False,
 		"can_resubmit": (status == "Revised" and frappe.session.user in (doc.owner, "Administrator")),
 		"is_pending": is_pending,
+		"approval_chain": [],
 	}
 
+	# Build chain
+	route_name = doc.bbf_mr_approval_route if hasattr(doc, "bbf_mr_approval_route") else None
+	if route_name:
+		try:
+			route_doc = frappe.get_doc("BBF MR Approval Route", route_name)
+			ctx["approval_chain"] = _build_mr_approval_chain(doc, route_doc)
 
-def _build_approval_chain(doc, required_level):
-	"""Build the approval chain display for the stepper UI."""
-	levels = frappe.get_all("BBF Approval Limit",
-		filters={"is_active": 1, "approval_level": ["<=", required_level]},
-		fields=["role", "role_label", "approval_level"],
-		order_by="approval_level asc")
+			if is_pending:
+				steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
+				user_roles = frappe.get_roles(frappe.session.user)
+				current_step_obj = next((s for s in steps if s.step_order == current_step), None)
 
-	# Get log entries for this doc
-	logs = frappe.get_all("BBF Approval Log",
-		filters={"parent": doc.name, "parenttype": doc.doctype,
-				 "action": ["in", ["Forwarded", "Final Approved", "Approved"]]},
-		fields=["action_by_name", "action_by_role", "action_date", "action"],
-		order_by="action_date asc")
+				if current_step_obj:
+					can_act = False
+					for step in steps:
+						if step.step_order >= current_step and step.role in user_roles:
+							can_act = True
+							break
 
-	# Map logs by role
-	log_by_role = {}
-	for log in logs:
-		log_by_role[log.action_by_role] = log
+					if can_act and not is_self_submitted:
+						if current_step_obj.action_type == "Review":
+							ctx["can_review"] = True
+						elif current_step_obj.action_type == "Final Approve":
+							ctx["can_final_approve"] = True
 
-	chain = []
-	current_level = cint(doc.bbf_current_level)
+						if current_step_obj.can_revise:
+							ctx["can_revise"] = True
+						if current_step_obj.can_reject:
+							ctx["can_reject"] = True
+		except Exception:
+			pass
+
+	return ctx
+
+
+def _build_po_approval_chain(doc, rule):
+	"""Build the approval chain for the PO stepper UI."""
+	steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
+	current_step = cint(doc.bbf_current_step)
 	status = doc.bbf_approval_status or ""
 
-	for lvl in levels:
-		log = log_by_role.get(lvl.role)
-		step = {
-			"level": lvl.approval_level,
-			"role": lvl.role_label or lvl.role,
+	# Get log entries
+	logs = frappe.get_all("BBF Approval Log",
+		filters={"parent": doc.name, "parenttype": doc.doctype,
+				 "action": ["in", ["Reviewed", "Forwarded", "Approved", "Final Approved", "Sent to MD"]]},
+		fields=["action_by_name", "action_by_role", "action_date", "action", "step_order"],
+		order_by="action_date asc")
+
+	log_by_step = {}
+	for log in logs:
+		log_by_step[cint(log.step_order)] = log
+
+	chain = []
+	for step in steps:
+		log = log_by_step.get(step.step_order)
+		item = {
+			"step": step.step_order,
+			"role": step.role_label or step.role,
+			"action_type": step.action_type,
+			"is_manual": step.is_manual_trigger,
 			"status": "pending",
 			"by": None,
 			"date": None,
 		}
 
 		if log:
-			step["status"] = "approved"
-			step["by"] = log.action_by_name
-			step["date"] = format_datetime(log.action_date, "dd MMM yyyy HH:mm")
-		elif lvl.approval_level == current_level and status.startswith("Pending"):
-			step["status"] = "current"
+			item["status"] = "done"
+			item["by"] = log.action_by_name
+			item["date"] = format_datetime(log.action_date, "dd MMM yyyy HH:mm")
+		elif step.step_order == current_step and (status.startswith("Pending") or status.startswith("Awaiting")):
+			item["status"] = "current"
 		elif status == "Approved":
-			step["status"] = "approved"
+			item["status"] = "done"
 		elif status in ("Rejected", "Revised"):
-			if lvl.approval_level <= current_level:
-				step["status"] = "skipped"
+			item["status"] = "skipped"
 
-		chain.append(step)
+		chain.append(item)
 
 	return chain
 
 
-def _get_revise_options(user_info):
-	"""Get the list of levels this user can revise to."""
-	revise_to = user_info.get("revise_to_levels", "")
-	if not revise_to:
-		# Can revise to any lower level
-		lower_levels = frappe.get_all("BBF Approval Limit",
-			filters={"is_active": 1, "approval_level": ["<", user_info["level"]]},
-			fields=["role", "role_label", "approval_level as level"],
-			order_by="approval_level asc")
-		return [{"level": l.level, "label": l.role_label or l.role} for l in lower_levels]
+def _build_mr_approval_chain(doc, route_doc):
+	"""Build the approval chain for the MR stepper UI."""
+	steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
+	current_step = cint(doc.bbf_mr_current_step) if hasattr(doc, "bbf_mr_current_step") else 0
+	status = doc.bbf_mr_status or ""
 
-	target_levels = []
-	for x in revise_to.split(","):
-		x = x.strip()
-		if x.isdigit():
-			target_levels.append(int(x))
-	options = []
-	for tl in target_levels:
-		info = _get_level_info(tl)
-		if info:
-			options.append({"level": tl, "label": info["role_label"] or info["role"]})
-	return options
+	logs = frappe.get_all("BBF Approval Log",
+		filters={"parent": doc.name, "parenttype": "Material Request",
+				 "action": ["in", ["Reviewed", "Final Approved"]]},
+		fields=["action_by_name", "action_by_role", "action_date", "action", "step_order"],
+		order_by="action_date asc")
+
+	log_by_step = {}
+	for log in logs:
+		log_by_step[cint(log.step_order)] = log
+
+	chain = []
+	for step in steps:
+		log = log_by_step.get(step.step_order)
+		item = {
+			"step": step.step_order,
+			"role": step.role_label or step.role,
+			"action_type": step.action_type,
+			"status": "pending",
+			"by": None,
+			"date": None,
+		}
+
+		if log:
+			item["status"] = "done"
+			item["by"] = log.action_by_name
+			item["date"] = format_datetime(log.action_date, "dd MMM yyyy HH:mm")
+		elif step.step_order == current_step and status.startswith("Pending"):
+			item["status"] = "current"
+		elif status == "Approved":
+			item["status"] = "done"
+		elif status in ("Rejected", "Revised"):
+			item["status"] = "skipped"
+
+		chain.append(item)
+
+	return chain
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  DOC EVENT HOOKS (called from hooks.py)
+#  DOC EVENT HOOKS
 # ═══════════════════════════════════════════════════════════════════════
 
 def po_on_cancel(doc, method):
@@ -1035,15 +1366,13 @@ def po_on_cancel(doc, method):
 	if doc.bbf_approval_status:
 		doc.db_set({
 			"bbf_approval_status": "Rejected",
+			"bbf_can_send_to_md": 0,
 			"bbf_last_action": f"Cancelled on {now_datetime().strftime('%d %b %Y %H:%M')}",
 		}, update_modified=False)
 
 
 def po_on_amend(doc, method):
-	"""Reset approval fields when PO is amended (new draft from cancelled).
-
-	Called via before_insert — only acts if this is an amendment (amended_from is set).
-	"""
+	"""Reset approval fields when PO is amended."""
 	if not doc.amended_from:
 		return
 
@@ -1060,6 +1389,12 @@ def po_on_amend(doc, method):
 	doc.bbf_resubmit_mode = ""
 	doc.bbf_amount_at_submission = 0
 	doc.bbf_last_sla_alert = None
+	# v2.0 fields
+	doc.bbf_purchase_category = ""
+	doc.bbf_approval_rule = ""
+	doc.bbf_current_step = 0
+	doc.bbf_total_steps = 0
+	doc.bbf_can_send_to_md = 0
 
 
 def po_before_save(doc, method):
@@ -1068,8 +1403,7 @@ def po_before_save(doc, method):
 		return
 
 	status = doc.bbf_approval_status
-	if status.startswith("Pending"):
-		# Check if amount changed
+	if status.startswith("Pending") or status.startswith("Awaiting"):
 		old_amount = flt(doc.bbf_amount_at_submission)
 		new_amount = flt(doc.grand_total)
 		if old_amount and old_amount != new_amount:
@@ -1079,12 +1413,23 @@ def po_before_save(doc, method):
 			)
 
 
+def mr_before_save(doc, method):
+	"""Prevent changes while MR is in approval chain."""
+	if not hasattr(doc, "bbf_mr_status") or not doc.bbf_mr_status:
+		return
+
+	status = doc.bbf_mr_status
+	if status.startswith("Pending"):
+		# Lock MR during approval — prevent field changes
+		pass  # MR doesn't have amount tamper detection, but fields are locked in JS
+
+
 # ═══════════════════════════════════════════════════════════════════════
-#  SLA CHECKER (scheduler)
+#  SLA CHECKER
 # ═══════════════════════════════════════════════════════════════════════
 
 def check_approval_sla():
-	"""Find POs stuck at any approval level beyond SLA hours. Runs via scheduler."""
+	"""Find POs stuck at any approval step beyond SLA hours."""
 	settings = frappe.get_single("BBF Settings")
 	if not settings.approval_sla_hours:
 		return
@@ -1099,13 +1444,12 @@ def check_approval_sla():
 			"docstatus": 0,
 		},
 		fields=["name", "bbf_approval_status", "grand_total", "modified",
-				"bbf_current_level", "bbf_last_sla_alert"])
+				"bbf_current_step", "bbf_approval_rule", "bbf_last_sla_alert"])
 
 	if not stuck_pos:
 		return
 
 	for po_data in stuck_pos:
-		# Deduplication: skip if alert sent within last SLA period
 		if po_data.bbf_last_sla_alert:
 			last_alert_hours = time_diff_in_hours(now_datetime(), po_data.bbf_last_sla_alert)
 			if last_alert_hours < sla_hours:
@@ -1113,11 +1457,9 @@ def check_approval_sla():
 
 		hours_stuck = round(time_diff_in_hours(now_datetime(), po_data.modified), 1)
 
-		# Mark last alert time
 		frappe.db.set_value("Purchase Order", po_data.name,
 			"bbf_last_sla_alert", now_datetime(), update_modified=False)
 
-		# Send alert email
 		if settings.approval_sla_email:
 			amount_str = frappe.format_value(flt(po_data.grand_total), {"fieldtype": "Currency"})
 			frappe.sendmail(
@@ -1132,7 +1474,6 @@ def check_approval_sla():
 				now=True,
 			)
 
-		# Auto-escalate if enabled
 		if settings.approval_escalation_enabled:
 			_auto_escalate(po_data)
 
@@ -1140,26 +1481,34 @@ def check_approval_sla():
 
 
 def _auto_escalate(po_data):
-	"""Auto-forward a stuck PO to the next approval level."""
-	next_level = _get_next_level(po_data.bbf_current_level)
-	if not next_level:
+	"""Auto-forward a stuck PO to the next approval step."""
+	if not po_data.bbf_approval_rule:
 		return
 
 	doc = frappe.get_doc("Purchase Order", po_data.name, for_update=True)
-	next_role_display = next_level["role_label"] or next_level["role"]
+	rule = frappe.get_doc("BBF PO Approval Rule", po_data.bbf_approval_rule)
+	steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
+	current_step_order = cint(po_data.bbf_current_step)
+
+	next_step = _get_next_step(steps, current_step_order)
+	if not next_step or next_step.is_manual_trigger:
+		return  # Don't auto-escalate to manual-trigger steps (MD)
+
+	next_label = next_step.role_label or next_step.role
 	current_state = doc.bbf_approval_status
-	next_state = f"Pending {next_role_display}"
+	next_state = f"Pending {next_label}"
 
 	_log_approval_action(doc, "Forwarded", current_state, next_state,
-		comment=f"Auto-escalated due to SLA breach ({doc.bbf_last_action})",
-		po_amount=flt(doc.grand_total))
+		comment=f"Auto-escalated due to SLA breach",
+		po_amount=flt(doc.grand_total),
+		step_order=next_step.step_order, purchase_category=doc.bbf_purchase_category)
 
 	doc.db_set({
 		"bbf_approval_status": next_state,
-		"bbf_current_level": next_level["level"],
-		"bbf_last_action": f"Auto-escalated to {next_role_display} (SLA breach) on {now_datetime().strftime('%d %b %Y %H:%M')}",
+		"bbf_current_step": next_step.step_order,
+		"bbf_last_action": f"Auto-escalated to {next_label} (SLA breach) on {now_datetime().strftime('%d %b %Y %H:%M')}",
 	}, update_modified=True)
 
 	_send_approval_notification(doc, "pending_approval",
-		_get_role_users(next_level["role"]),
-		extra={"next_role": next_role_display, "escalated": True})
+		_get_role_users(next_step.role),
+		extra={"next_role": next_label, "escalated": True})

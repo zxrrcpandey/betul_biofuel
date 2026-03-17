@@ -20,7 +20,11 @@
   "enable_po_approval",
   "enable_mr_approval",
   "column_break_approval",
-  "enable_fast_track",
+  "default_po_category",
+  "notification_section",
+  "notification_manager",
+  "column_break_notification",
+  "post_approval_notify",
   "approval_sla_section",
   "approval_sla_hours",
   "approval_sla_email",
@@ -125,11 +129,34 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "enable_fast_track",
-   "fieldtype": "Check",
-   "label": "Enable Fast-Track Routing",
-   "default": "1",
-   "description": "When enabled, POs below a role's limit are final-approved at that level. When disabled, ALL POs go through the full chain (useful during audits)."
+   "fieldname": "default_po_category",
+   "fieldtype": "Link",
+   "label": "Default Purchase Category",
+   "options": "BBF Purchase Category",
+   "description": "Fallback category if PO items don't match any configured Item Group mapping"
+  },
+  {
+   "fieldname": "notification_section",
+   "fieldtype": "Section Break",
+   "label": "Post-Approval Notifications"
+  },
+  {
+   "fieldname": "notification_manager",
+   "fieldtype": "Link",
+   "label": "Notification Manager",
+   "options": "User",
+   "description": "IT Head or admin who can manage the notification recipient list"
+  },
+  {
+   "fieldname": "column_break_notification",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "post_approval_notify",
+   "fieldtype": "Table",
+   "label": "Post-Approval Notification Recipients",
+   "options": "BBF Notification Recipient",
+   "description": "Users to notify after PO/MR final approval or rejection"
   },
   {
    "fieldname": "approval_sla_section",
@@ -164,7 +191,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-03-11 00:00:00",
+ "modified": "2026-03-17 00:00:00",
  "modified_by": "Administrator",
  "module": "BBF Gate Entry",
  "name": "BBF Settings",
