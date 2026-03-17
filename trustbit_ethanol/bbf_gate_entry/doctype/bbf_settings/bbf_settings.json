@@ -49,7 +49,7 @@
    "fieldtype": "Data",
    "label": "Escalation Email",
    "options": "Email",
-   "description": "Email address to send SLA breach alerts to (CTO/Plant Head)"
+   "description": "Email address to send SLA breach alerts to (IT Head/Plant Head)"
   },
   {
    "fieldname": "token_section",
@@ -175,7 +175,7 @@
    "fieldtype": "Data",
    "label": "Approval SLA Alert Email",
    "options": "Email",
-   "description": "Email for stuck-approval alerts (typically CTO)"
+   "description": "Email for stuck-approval alerts (typically IT Head)"
   },
   {
    "fieldname": "column_break_approval_sla",

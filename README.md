@@ -33,7 +33,7 @@ Example: `TKN-260307-4829`
   - Search by PO Date
   - Search by Tentative Qty (with 80%-120% tolerance)
 - PO items auto-populated into child table on selection
-- Supplier name hidden from Gate Operator (visible only to Accounts/CTO)
+- Supplier name hidden from Gate Operator (visible only to Accounts/IT Head)
 - Material flow selection: Raw Material → Weighbridge, Non-Raw Material → Stores
 - Transport details (transporter, LR number) hidden from floor staff
 - On submit: Updates token status to "PO Linked" with timestamp
@@ -59,18 +59,18 @@ Example: `TKN-260307-4829`
 - Master data for transporters with full details (name, contact, GSTIN, PAN, bank details)
 - Links to ERPNext Supplier for payment processing
 - **Performance tracking** (auto-updated): Total trips, average turnaround, last trip date
-- Visible only to Accounts Manager and CTO roles
+- Visible only to Accounts Manager and IT Head roles
 
 ### 6. BBF Vehicle Master
 - Tracks all vehicles that enter the plant
 - Auto-created when a vehicle's first token is generated
 - Links to transporter
 - **Trip log** (auto-updated): Total trips, average turnaround, last visit date
-- Visible only to Accounts Manager and CTO roles
+- Visible only to Accounts Manager and IT Head roles
 
 ### 7. BBF Settings (Singleton)
 - **SLA Threshold** — configurable minutes before escalation alert (default: 30 min)
-- **Escalation Email** — CTO/Plant Head email for SLA breach notifications
+- **Escalation Email** — IT Head/Plant Head email for SLA breach notifications
 - **Token Suffix Digits** — configurable random digit count (4 or 5)
 - **Shift Configuration** — default shift start/end times
 
@@ -130,7 +130,7 @@ Every token automatically tracks timestamps and calculates duration at each stag
 
 ## Role Permissions
 
-| DocType | G1 Security | G2 Gate Operator | Weighbridge Operator | Stores User | Accounts Manager | CTO |
+| DocType | G1 Security | G2 Gate Operator | Weighbridge Operator | Stores User | Accounts Manager | IT Head |
 |---|---|---|---|---|---|---|
 | BBF Token | Create, Read | Read | Read | Read | Full | Full |
 | BBF Gate Entry | — | Create, Read, Write | Read | Read | Full | Full |
@@ -139,7 +139,7 @@ Every token automatically tracks timestamps and calculates duration at each stag
 | BBF Vehicle Master | — | — | — | — | Full | Full |
 | BBF Unloading Entry | — | — | — | Create, Read, Write | Full | Full |
 
-**Field-level restrictions (permlevel 1 — only Accounts/CTO can see):**
+**Field-level restrictions (permlevel 1 — only Accounts/IT Head can see):**
 - `vehicle_number` on BBF Token
 - `driver_name`, `driver_mobile` on BBF Token
 - `supplier_name` on BBF Gate Entry

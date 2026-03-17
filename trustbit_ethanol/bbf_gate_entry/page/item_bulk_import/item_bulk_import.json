@@ -12,7 +12,7 @@
  "page_name": "item-bulk-import",
  "roles": [
   {"role": "System Manager"},
-  {"role": "CTO"},
+  {"role": "IT Head"},
   {"role": "Stores User"}
  ],
  "standard": "Yes",

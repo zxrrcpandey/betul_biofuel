@@ -29,7 +29,7 @@ fixtures = [
 			"Weighbridge Operator",
 			"Stores User",
 			"Quality Inspector",
-			"CTO",
+			"IT Head",
 			"Department Head",
 			"General Manager",
 			"CEO",
