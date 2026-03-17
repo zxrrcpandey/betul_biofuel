@@ -21,8 +21,10 @@ frappe.ui.form.on("BBF Token", {
 			}).addClass("btn-primary-dark");
 		}
 
-		// Create GRN button - shown when Tare Weighed and no PR yet
-		if (frm.doc.status === "Tare Weighed" && !frm.doc.purchase_receipt) {
+		// Create GRN button - shown when Tare Weighed and no PR yet (restricted roles)
+		let grn_roles = ["Accounts Manager", "Accounts User", "Stores User", "IT Head", "System Manager"];
+		let can_create_grn = grn_roles.some(r => frappe.user.has_role(r));
+		if (frm.doc.status === "Tare Weighed" && !frm.doc.purchase_receipt && can_create_grn) {
 			frm.add_custom_button(__("Create GRN"), function () {
 				frappe.confirm(
 					__("Create Purchase Receipt (GRN) for this token?<br><br>This will generate a Purchase Receipt against the linked Purchase Order with the net weight from the Weighbridge."),

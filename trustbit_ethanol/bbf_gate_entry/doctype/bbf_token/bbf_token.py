@@ -52,6 +52,10 @@ class BBFToken(Document):
 	@frappe.whitelist()
 	def create_grn(self):
 		"""Create a Purchase Receipt (GRN) from token data."""
+		allowed_roles = {"Accounts Manager", "Accounts User", "Stores User", "IT Head", "System Manager"}
+		if not allowed_roles.intersection(set(frappe.get_roles())):
+			frappe.throw("You do not have permission to create GRN")
+
 		if self.status != "Tare Weighed":
 			frappe.throw("GRN can only be created when status is 'Tare Weighed'")
 
