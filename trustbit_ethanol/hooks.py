@@ -85,7 +85,8 @@ fixtures = [
 			"Material Request-bbf_mr_route",
 			"Material Request-bbf_mr_approval_route",
 			"Material Request-bbf_mr_current_step",
-			"Material Request-bbf_mr_total_steps"
+			"Material Request-bbf_mr_total_steps",
+			"Material Request-bbf_mr_submitted_by"
 		]]]
 	}
 ]

@@ -20,6 +20,7 @@ function _load_mr_context(frm) {
 			_render_mr_stepper(frm, ctx);
 			_render_mr_info(frm, ctx);
 			_render_mr_buttons(frm, ctx);
+			_lock_mr_fields(frm, ctx);
 			_render_mr_timeline(frm);
 		},
 		error() {}
@@ -260,6 +261,22 @@ function _call_mr_action(frm, method, args) {
 		freeze_message: __("Processing..."),
 		callback() { frm.reload_doc(); },
 		error() { frm.reload_doc(); }
+	});
+}
+
+function _lock_mr_fields(frm, ctx) {
+	const status = ctx.status || "";
+	const should_lock = ctx.is_pending || status === "Rejected" || status === "Revised";
+	if (!should_lock) return;
+
+	const fields_to_lock = [
+		"material_request_type", "schedule_date", "transaction_date",
+		"items", "cost_center", "project",
+		"tc_name", "terms",
+	];
+
+	fields_to_lock.forEach(f => {
+		frm.set_df_property(f, "read_only", 1);
 	});
 }
 

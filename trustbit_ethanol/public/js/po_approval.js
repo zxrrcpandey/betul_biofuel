@@ -325,8 +325,9 @@ function _call_action(frm, method, args) {
 }
 
 function _lock_fields(frm, ctx) {
-	// Lock PO fields during approval to prevent tampering
-	const should_lock = ctx.is_pending || (ctx.status || "").startsWith("Awaiting");
+	// Lock PO fields during approval and after terminal states
+	const status = ctx.status || "";
+	const should_lock = ctx.is_pending || status.startsWith("Awaiting") || status === "Rejected" || status === "Revised";
 	if (!should_lock) return;
 
 	const fields_to_lock = [

@@ -3,6 +3,14 @@ from frappe import _
 from frappe.utils import now_datetime, flt, cint, add_to_date, time_diff_in_hours, format_datetime
 
 
+ALLOWED_DOCTYPES = ("Purchase Order", "Material Request")
+
+
+def _validate_doctype(doctype):
+	if doctype not in ALLOWED_DOCTYPES:
+		frappe.throw(_("Invalid document type for approval: {0}").format(doctype))
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  PUBLIC API — Whitelisted methods called from JS
 # ═══════════════════════════════════════════════════════════════════════
@@ -10,6 +18,7 @@ from frappe.utils import now_datetime, flt, cint, add_to_date, time_diff_in_hour
 @frappe.whitelist()
 def get_approval_context(doctype, docname):
 	"""Return approval context for the current user on a PO or MR."""
+	_validate_doctype(doctype)
 	doc = frappe.get_doc(doctype, docname)
 
 	settings = frappe.get_single("BBF Settings")
@@ -27,6 +36,7 @@ def get_approval_context(doctype, docname):
 @frappe.whitelist()
 def get_submit_target(doctype, docname=None):
 	"""Return the target step info for the submit confirmation dialog."""
+	_validate_doctype(doctype)
 	if doctype == "Material Request" and docname:
 		doc = frappe.get_doc("Material Request", docname)
 		cost_center = _get_mr_cost_center(doc)
@@ -59,6 +69,7 @@ def get_submit_target(doctype, docname=None):
 @frappe.whitelist()
 def submit_for_approval(doctype, docname):
 	"""Submit a Draft PO/MR into the approval chain."""
+	_validate_doctype(doctype)
 	doc = frappe.get_doc(doctype, docname, for_update=True)
 
 	if doctype == "Purchase Order":
@@ -71,6 +82,7 @@ def submit_for_approval(doctype, docname):
 @frappe.whitelist()
 def approve_document(doctype, docname, comment=""):
 	"""Approve/Review action — handles Review, Approve, Final Approve based on step config."""
+	_validate_doctype(doctype)
 	doc = frappe.get_doc(doctype, docname, for_update=True)
 
 	if doctype == "Material Request":
@@ -84,6 +96,7 @@ def send_to_md(docname, comment=""):
 	"""CEO manually triggers MD approval step. Only available when next step is manual-trigger."""
 	doc = frappe.get_doc("Purchase Order", docname, for_update=True)
 	_validate_po_is_pending(doc)
+	_validate_not_self_approving(doc)
 	_validate_amount_unchanged(doc)
 
 	rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
@@ -129,6 +142,7 @@ def send_to_md(docname, comment=""):
 @frappe.whitelist()
 def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 	"""Send a PO/MR back for revision."""
+	_validate_doctype(doctype)
 	if not reason:
 		frappe.throw(_("Revision reason is mandatory"))
 
@@ -173,6 +187,7 @@ def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 @frappe.whitelist()
 def reject_document(doctype, docname, reason, comment=""):
 	"""Reject a PO/MR. Terminal state."""
+	_validate_doctype(doctype)
 	if not reason:
 		frappe.throw(_("Rejection reason is mandatory"))
 
@@ -198,11 +213,8 @@ def reject_document(doctype, docname, reason, comment=""):
 		"bbf_last_action": f"Rejected by {role_display} on {now_datetime().strftime('%d %b %Y %H:%M')}",
 	}, update_modified=True)
 
-	# Cancel the PO (docstatus → 2)
-	doc.reload()
-	if doc.docstatus == 0:
-		doc.flags.ignore_permissions = True
-		doc.cancel()
+	# Rejected PO stays as Draft with "Rejected" status — fields are locked in JS
+	# (cancel() is invalid on Draft docs; docstatus 0 → 2 is not allowed by Frappe)
 
 	# Notify all stakeholders
 	all_users = _get_chain_users(doc)
@@ -219,6 +231,7 @@ def reject_document(doctype, docname, reason, comment=""):
 @frappe.whitelist()
 def resubmit_document(doctype, docname, mode="restart"):
 	"""Resubmit a revised PO/MR back into the approval chain."""
+	_validate_doctype(doctype)
 	doc = frappe.get_doc(doctype, docname, for_update=True)
 
 	if doctype == "Material Request":
@@ -447,6 +460,7 @@ def _submit_mr_for_approval(doc):
 		"bbf_mr_approval_route": route_name,
 		"bbf_mr_current_step": target.step_order,
 		"bbf_mr_total_steps": len(steps),
+		"bbf_mr_submitted_by": frappe.session.user,
 	}, update_modified=True)
 
 	_send_approval_notification(doc, "mr_pending",
@@ -461,9 +475,12 @@ def _approve_mr(doc, comment=""):
 	if not (doc.bbf_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.bbf_mr_status))
 
-	# Prevent self-approval
+	# Prevent self-approval — check both creator and submitter
+	mr_submitted_by = doc.bbf_mr_submitted_by if hasattr(doc, "bbf_mr_submitted_by") else None
 	if doc.owner == frappe.session.user:
 		frappe.throw(_("You cannot approve a Material Request that you created."))
+	if mr_submitted_by and mr_submitted_by == frappe.session.user:
+		frappe.throw(_("You cannot approve a Material Request that you submitted for approval."))
 
 	route_name = doc.bbf_mr_approval_route
 	if not route_name:
@@ -541,6 +558,8 @@ def _revise_mr(doc, reason, comment=""):
 	if not (doc.bbf_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.bbf_mr_status))
 
+	_validate_user_can_act_on_mr(doc)
+
 	current_step = cint(doc.bbf_mr_current_step)
 	role_display = _get_user_mr_step_role(doc, current_step)
 	current_state = doc.bbf_mr_status
@@ -565,6 +584,8 @@ def _reject_mr(doc, reason, comment=""):
 	if not (doc.bbf_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.bbf_mr_status))
 
+	_validate_user_can_act_on_mr(doc)
+
 	current_step = cint(doc.bbf_mr_current_step)
 	role_display = _get_user_mr_step_role(doc, current_step)
 	current_state = doc.bbf_mr_status
@@ -577,10 +598,8 @@ def _reject_mr(doc, reason, comment=""):
 		"bbf_mr_status": "Rejected",
 	}, update_modified=True)
 
-	doc.reload()
-	if doc.docstatus == 0:
-		doc.flags.ignore_permissions = True
-		doc.cancel()
+	# Rejected MR stays as Draft with "Rejected" status — fields are locked in JS
+	# (cancel() is invalid on Draft docs; docstatus 0 → 2 is not allowed by Frappe)
 
 	_send_approval_notification(doc, "mr_rejected", [doc.owner],
 		extra={"rejected_by": role_display, "reason": reason})
@@ -633,11 +652,14 @@ def _resubmit_mr(doc):
 
 def _resolve_po_category(doc):
 	"""Auto-detect BBF Purchase Category from PO items → Item Group mapping."""
+	item_codes = [item.item_code for item in (doc.get("items") or []) if item.item_code]
 	item_groups = set()
-	for item in (doc.get("items") or []):
-		ig = frappe.db.get_value("Item", item.item_code, "item_group") if item.item_code else None
-		if ig:
-			item_groups.add(ig)
+	if item_codes:
+		results = frappe.get_all("Item",
+			filters={"name": ["in", item_codes]},
+			fields=["item_group"],
+			pluck="item_group")
+		item_groups = set(results)
 
 	if not item_groups:
 		settings = frappe.get_single("BBF Settings")
@@ -828,6 +850,23 @@ def _validate_user_can_act_on_po(doc):
 	frappe.throw(_("You don't have permission to act on this PO at this step"))
 
 
+def _validate_user_can_act_on_mr(doc):
+	"""Validate user has a role that can act on the MR at its current step."""
+	if not doc.bbf_mr_approval_route:
+		return
+
+	route = frappe.get_doc("BBF MR Approval Route", doc.bbf_mr_approval_route)
+	steps = sorted(route.approval_steps, key=lambda s: s.step_order)
+	current_step_order = cint(doc.bbf_mr_current_step)
+	user_roles = frappe.get_roles(frappe.session.user)
+
+	for step in steps:
+		if step.step_order >= current_step_order and step.role in user_roles:
+			return
+
+	frappe.throw(_("You don't have permission to act on this MR at this step"))
+
+
 def _validate_resubmit_permission(doc):
 	"""Only the original submitter or PO owner can resubmit."""
 	allowed_users = {doc.owner}
@@ -882,8 +921,10 @@ def _log_approval_action(doc, action, from_state, to_state,
 	if doc.bbf_approval_rule:
 		try:
 			rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
+			# Match role at or above the current step_order to get the correct role
+			effective_step = cint(step_order) or cint(doc.bbf_current_step)
 			for step in sorted(rule.approval_steps, key=lambda s: s.step_order):
-				if step.role in user_roles:
+				if step.step_order >= effective_step and step.role in user_roles:
 					user_role = step.role_label or step.role
 					break
 		except Exception:
@@ -919,8 +960,10 @@ def _log_mr_action(doc, action, from_state, to_state, comment="",
 	if doc.bbf_mr_approval_route:
 		try:
 			route = frappe.get_doc("BBF MR Approval Route", doc.bbf_mr_approval_route)
+			# Match role at or above the current step_order to get the correct role
+			effective_step = cint(step_order) or cint(doc.bbf_mr_current_step if hasattr(doc, "bbf_mr_current_step") else 0)
 			for step in sorted(route.approval_steps, key=lambda s: s.step_order):
-				if step.role in user_roles:
+				if step.step_order >= effective_step and step.role in user_roles:
 					user_role = step.role_label or step.role
 					break
 		except Exception:
@@ -1094,20 +1137,16 @@ def _build_notification_message(doc, action, extra):
 
 
 def _get_role_users(role):
-	"""Get all active users with a specific role."""
-	users = frappe.get_all("Has Role",
-		filters={"role": role, "parenttype": "User"},
-		fields=["parent"])
-
-	active_users = []
-	for u in users:
-		if u.parent == "Administrator":
-			continue
-		is_enabled = frappe.db.get_value("User", u.parent, "enabled")
-		if is_enabled:
-			active_users.append(u.parent)
-
-	return active_users
+	"""Get all active users with a specific role (batch query)."""
+	return frappe.db.sql_list("""
+		SELECT DISTINCT hr.parent
+		FROM `tabHas Role` hr
+		INNER JOIN `tabUser` u ON u.name = hr.parent
+		WHERE hr.role = %s
+			AND hr.parenttype = 'User'
+			AND u.enabled = 1
+			AND hr.parent != 'Administrator'
+	""", role)
 
 
 def _get_chain_users(doc):
@@ -1151,7 +1190,8 @@ def _get_po_approval_context(doc, settings):
 		"approval_chain": [],
 	}
 
-	# Build approval chain from rule
+	# Build approval chain and determine user permissions from rule (single fetch)
+	rule = None
 	if doc.bbf_approval_rule:
 		try:
 			rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
@@ -1160,9 +1200,8 @@ def _get_po_approval_context(doc, settings):
 			pass
 
 	# Determine user's permissions at current step
-	if is_pending and doc.bbf_approval_rule:
+	if is_pending and rule:
 		try:
-			rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
 			steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
 			user_roles = frappe.get_roles(frappe.session.user)
 
@@ -1191,9 +1230,8 @@ def _get_po_approval_context(doc, settings):
 			pass
 
 	# If awaiting MD send, only CEO can see send_to_md + revise/reject
-	if status.startswith("Awaiting") and doc.bbf_approval_rule:
+	if status.startswith("Awaiting") and rule:
 		try:
-			rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
 			steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
 			current_step_obj = next((s for s in steps if s.step_order == current_step), None)
 			user_roles = frappe.get_roles(frappe.session.user)
@@ -1213,7 +1251,11 @@ def _get_mr_approval_context(doc, settings):
 	status = doc.bbf_mr_status or ""
 	is_pending = status.startswith("Pending")
 	current_step = cint(doc.bbf_mr_current_step) if hasattr(doc, "bbf_mr_current_step") else 0
-	is_self_submitted = (is_pending and doc.owner == frappe.session.user)
+	mr_submitted_by = doc.bbf_mr_submitted_by if hasattr(doc, "bbf_mr_submitted_by") else None
+	is_self_submitted = (is_pending and (
+		doc.owner == frappe.session.user or
+		(mr_submitted_by and mr_submitted_by == frappe.session.user)
+	))
 
 	ctx = {
 		"approval_enabled": True,
@@ -1419,9 +1461,12 @@ def mr_before_save(doc, method):
 		return
 
 	status = doc.bbf_mr_status
-	if status.startswith("Pending"):
-		# Lock MR during approval — prevent field changes
-		pass  # MR doesn't have amount tamper detection, but fields are locked in JS
+	if status.startswith("Pending") or status in ("Rejected", "Revised"):
+		if not doc.is_new() and doc.has_value_changed("items"):
+			frappe.throw(
+				_("Cannot modify MR items while it is in the approval chain (status: {0}). "
+				  "The approver must revise the MR first.").format(status)
+			)
 
 
 # ═══════════════════════════════════════════════════════════════════════

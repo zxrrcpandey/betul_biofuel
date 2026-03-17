@@ -153,9 +153,8 @@ def create_custom_fields():
 			},
 			{
 				"fieldname": "bbf_resubmit_mode",
-				"fieldtype": "Select",
+				"fieldtype": "Data",
 				"label": "Resubmit Mode",
-				"options": "\nRestart from Department Head\nRe-enter at reviser level",
 				"insert_after": "bbf_revision_col1",
 				"read_only": 1,
 				"no_copy": 1,
@@ -309,6 +308,17 @@ def create_custom_fields():
 				"read_only": 1,
 				"hidden": 1,
 				"no_copy": 1
+			},
+			{
+				"fieldname": "bbf_mr_submitted_by",
+				"fieldtype": "Link",
+				"label": "MR Submitted By",
+				"options": "User",
+				"insert_after": "bbf_mr_total_steps",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1,
+				"description": "User who submitted this MR for approval (for self-approval prevention)"
 			},
 			{
 				"fieldname": "bbf_mr_col1",
