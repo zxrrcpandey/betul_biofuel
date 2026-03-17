@@ -301,6 +301,10 @@ def _submit_po_for_approval(doc):
 		po_amount=flt(doc.grand_total),
 		step_order=target.step_order, purchase_category=category)
 
+	# Track if self-skip was impossible (single-step rule where submitter has the role)
+	# In this case, self-approval must be allowed or the PO would be stuck forever
+	self_skip_impossible = (target == steps[0] and target.role in frappe.get_roles(frappe.session.user) and len(steps) == 1)
+
 	doc.db_set({
 		"bbf_approval_status": next_state,
 		"bbf_purchase_category": category,
@@ -309,6 +313,7 @@ def _submit_po_for_approval(doc):
 		"bbf_total_steps": len(steps),
 		"bbf_can_send_to_md": 0,
 		"bbf_submitted_by": frappe.session.user,
+		"bbf_self_skip_impossible": 1 if self_skip_impossible else 0,
 		"bbf_amount_at_submission": flt(doc.grand_total),
 		"bbf_last_action": f"Submitted for approval on {now_datetime().strftime('%d %b %Y %H:%M')}",
 	}, update_modified=True)
@@ -349,7 +354,8 @@ def _approve_po(doc, comment=""):
 
 	po_amount = flt(doc.grand_total)
 	current_state = doc.bbf_approval_status
-	role_display = current_step.role_label or current_step.role
+	# Use the acting user's actual approval role (not the step's role) for display
+	role_display = _get_user_step_role(doc, current_step_order)
 
 	if current_step.action_type == "Final Approve":
 		# FINAL APPROVAL — submit the PO
@@ -432,6 +438,12 @@ def _approve_po(doc, comment=""):
 
 def _submit_mr_for_approval(doc):
 	"""Submit MR for approval — routes by Cost Center."""
+	if doc.docstatus != 0:
+		frappe.throw(_("Only Draft Material Requests can be submitted for approval"))
+
+	if not (doc.get("items") or []):
+		frappe.throw(_("MR must have at least one item to submit for approval"))
+
 	status = doc.bbf_mr_status
 	if status and status not in ("", "Draft"):
 		frappe.throw(_("This MR is already in the approval chain (status: {0})").format(status))
@@ -613,8 +625,12 @@ def _resubmit_mr(doc):
 	if doc.bbf_mr_status != "Revised":
 		frappe.throw(_("Only revised MRs can be resubmitted"))
 
-	if frappe.session.user not in (doc.owner, "Administrator"):
-		frappe.throw(_("Only the MR creator can resubmit after revision"))
+	mr_submitted_by = doc.bbf_mr_submitted_by if hasattr(doc, "bbf_mr_submitted_by") else None
+	allowed_users = {doc.owner, "Administrator"}
+	if mr_submitted_by:
+		allowed_users.add(mr_submitted_by)
+	if frappe.session.user not in allowed_users:
+		frappe.throw(_("Only the MR creator or original submitter can resubmit after revision"))
 
 	cost_center = _get_mr_cost_center(doc)
 	route_name = _find_mr_route(cost_center)
@@ -636,6 +652,7 @@ def _resubmit_mr(doc):
 		"bbf_mr_approval_route": route_name,
 		"bbf_mr_current_step": target.step_order,
 		"bbf_mr_total_steps": len(steps),
+		"bbf_mr_submitted_by": frappe.session.user,
 		"bbf_mr_revision_reason": "",
 	}, update_modified=True)
 
@@ -825,8 +842,13 @@ def _validate_po_is_pending(doc):
 
 
 def _validate_not_self_approving(doc):
-	"""Prevent the same user who submitted from approving their own PO."""
+	"""Prevent the same user who submitted from approving their own PO.
+	Exception: when self-skip was impossible (single-step rule where submitter has the only role).
+	"""
 	if doc.bbf_submitted_by and doc.bbf_submitted_by == frappe.session.user:
+		# Allow self-approval if self-skip was impossible (would otherwise create stuck state)
+		if cint(doc.bbf_self_skip_impossible):
+			return
 		frappe.throw(
 			_("You cannot approve a PO that you submitted for approval. "
 			  "A different approver must act on this PO.")
@@ -1169,6 +1191,9 @@ def _get_po_approval_context(doc, settings):
 	po_amount = flt(doc.grand_total)
 	is_pending = status.startswith("Pending") or status.startswith("Awaiting")
 	is_self_submitted = (doc.bbf_submitted_by and doc.bbf_submitted_by == frappe.session.user)
+	self_skip_impossible = cint(doc.bbf_self_skip_impossible) if hasattr(doc, "bbf_self_skip_impossible") else 0
+	# Allow self-approval when self-skip was impossible (single-step rule)
+	effective_self_block = is_self_submitted and not self_skip_impossible
 
 	ctx = {
 		"approval_enabled": True,
@@ -1182,10 +1207,11 @@ def _get_po_approval_context(doc, settings):
 		"can_review": False,
 		"can_approve": False,
 		"can_final_approve": False,
-		"can_send_to_md": (cint(doc.bbf_can_send_to_md) == 1 and not is_self_submitted),
+		"can_send_to_md": (cint(doc.bbf_can_send_to_md) == 1 and not effective_self_block),
 		"can_revise": False,
 		"can_reject": False,
 		"can_resubmit": (status == "Revised" and frappe.session.user in (doc.owner, doc.bbf_submitted_by or "", "Administrator")),
+		"self_skip_impossible": bool(self_skip_impossible),
 		"is_pending": is_pending,
 		"approval_chain": [],
 	}
@@ -1214,7 +1240,7 @@ def _get_po_approval_context(doc, settings):
 						can_act = True
 						break
 
-				if can_act and not is_self_submitted:
+				if can_act and not effective_self_block:
 					if current_step_obj.action_type == "Review":
 						ctx["can_review"] = True
 					elif current_step_obj.action_type == "Approve":
@@ -1236,7 +1262,7 @@ def _get_po_approval_context(doc, settings):
 			current_step_obj = next((s for s in steps if s.step_order == current_step), None)
 			user_roles = frappe.get_roles(frappe.session.user)
 
-			if current_step_obj and current_step_obj.role in user_roles and not is_self_submitted:
+			if current_step_obj and current_step_obj.role in user_roles and not effective_self_block:
 				ctx["can_send_to_md"] = True
 				ctx["can_revise"] = current_step_obj.can_revise
 				ctx["can_reject"] = current_step_obj.can_reject
@@ -1269,7 +1295,9 @@ def _get_mr_approval_context(doc, settings):
 		"can_final_approve": False,
 		"can_revise": False,
 		"can_reject": False,
-		"can_resubmit": (status == "Revised" and frappe.session.user in (doc.owner, "Administrator")),
+		"can_resubmit": (status == "Revised" and frappe.session.user in (
+			doc.owner, mr_submitted_by or "", "Administrator"
+		)),
 		"is_pending": is_pending,
 		"approval_chain": [],
 	}
@@ -1437,6 +1465,7 @@ def po_on_amend(doc, method):
 	doc.bbf_current_step = 0
 	doc.bbf_total_steps = 0
 	doc.bbf_can_send_to_md = 0
+	doc.bbf_self_skip_impossible = 0
 
 
 def po_before_save(doc, method):

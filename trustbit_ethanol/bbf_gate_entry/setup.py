@@ -220,10 +220,20 @@ def create_custom_fields():
 				"no_copy": 1
 			},
 			{
+				"fieldname": "bbf_self_skip_impossible",
+				"fieldtype": "Check",
+				"label": "Self Skip Impossible",
+				"insert_after": "bbf_total_steps",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1,
+				"description": "Set when submitter has the only approval role (single-step rule) — allows self-approval"
+			},
+			{
 				"fieldname": "bbf_can_send_to_md",
 				"fieldtype": "Check",
 				"label": "Can Send to MD",
-				"insert_after": "bbf_total_steps",
+				"insert_after": "bbf_self_skip_impossible",
 				"read_only": 1,
 				"hidden": 1,
 				"no_copy": 1,

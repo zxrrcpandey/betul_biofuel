@@ -72,6 +72,7 @@ fixtures = [
 			"Purchase Order-bbf_approval_rule",
 			"Purchase Order-bbf_current_step",
 			"Purchase Order-bbf_total_steps",
+			"Purchase Order-bbf_self_skip_impossible",
 			"Purchase Order-bbf_can_send_to_md",
 			"Material Request-bbf_mr_section",
 			"Material Request-bbf_mr_status",
