@@ -53,10 +53,10 @@ def get_data(filters):
 	fy_start = fy_doc.year_start_date
 	fy_end = fy_doc.year_end_date
 
-	# Get committed (POs in FY date range)
+	# Get committed (unbilled portion of POs in FY date range)
 	committed_data = {}
 	rows = frappe.db.sql("""
-		SELECT cost_center, COALESCE(SUM(grand_total), 0) as total
+		SELECT cost_center, COALESCE(SUM(grand_total * (1 - IFNULL(per_billed, 0) / 100)), 0) as total
 		FROM `tabPurchase Order`
 		WHERE transaction_date BETWEEN %s AND %s
 			AND company = %s AND docstatus = 1

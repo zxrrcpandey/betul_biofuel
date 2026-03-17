@@ -44,7 +44,13 @@ frappe.pages["budget-control-matrix"].refresh = function(wrapper) {
 	_refresh_matrix(page);
 };
 
+let _matrix_timeout = null;
 function _refresh_matrix(page) {
+	clearTimeout(_matrix_timeout);
+	_matrix_timeout = setTimeout(() => _do_refresh_matrix(page), 300);
+}
+
+function _do_refresh_matrix(page) {
 	const fiscal_year = page.fields_dict.fiscal_year?.get_value();
 	const company = page.fields_dict.company?.get_value();
 	const view_mode = page.fields_dict.view_mode?.get_value() || "Summary";

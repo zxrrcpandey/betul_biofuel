@@ -308,6 +308,7 @@ def fetch_last_year_data(cost_center, fiscal_year):
 @frappe.whitelist()
 def check_budget_for_po(docname):
 	"""Check if a PO has sufficient budget. Returns budget status for UI indicator."""
+	# Any user who can read the PO can see budget status (Frappe permission check on get_doc)
 	doc = frappe.get_doc("Purchase Order", docname)
 
 	cost_center = doc.cost_center if hasattr(doc, "cost_center") and doc.cost_center else None
@@ -544,10 +545,10 @@ def _get_budget_info(cost_center, fiscal_year, company, fy_start, fy_end):
 			fields=["budget_amount"])
 		result["annual_budget"] += sum(flt(i.budget_amount) for i in items)
 
-	# Get committed amount (from submitted POs in this FY date range)
-	# PO doesn't have fiscal_year field — use transaction_date between FY start/end
+	# Get committed amount (unbilled portion of submitted POs in this FY)
+	# Uses grand_total * (1 - per_billed/100) to avoid double-counting with actual spent
 	committed = frappe.db.sql("""
-		SELECT COALESCE(SUM(grand_total), 0) as total
+		SELECT COALESCE(SUM(grand_total * (1 - IFNULL(per_billed, 0) / 100)), 0) as total
 		FROM `tabPurchase Order`
 		WHERE cost_center = %s
 			AND transaction_date BETWEEN %s AND %s
@@ -663,7 +664,7 @@ def _create_erpnext_budget(proposal):
 	budget.applicable_on_purchase_order = 1
 	budget.action_if_annual_budget_exceeded_on_po = "Stop"
 	budget.action_if_accumulated_monthly_budget_exceeded_on_po = "Stop"
-	budget.applicable_on_booking_actual_entry = 1
+	budget.applicable_on_booking_actual_expenses = 1
 	budget.action_if_annual_budget_exceeded = "Warn"
 	budget.action_if_accumulated_monthly_budget_exceeded = "Warn"
 
@@ -718,10 +719,10 @@ def get_budget_dashboard(fiscal_year=None, company=None):
 	if not budgets:
 		return {"data": [], "summary": {}}
 
-	# Get committed (submitted POs in FY date range) per CC
+	# Get committed (unbilled portion of submitted POs in FY) per CC
 	committed_data = {}
 	committed_rows = frappe.db.sql("""
-		SELECT cost_center, COALESCE(SUM(grand_total), 0) as total
+		SELECT cost_center, COALESCE(SUM(grand_total * (1 - IFNULL(per_billed, 0) / 100)), 0) as total
 		FROM `tabPurchase Order`
 		WHERE transaction_date BETWEEN %s AND %s
 			AND company = %s AND docstatus = 1

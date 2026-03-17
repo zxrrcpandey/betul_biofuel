@@ -185,7 +185,7 @@ def create_custom_fields():
 				"fieldname": "bbf_purchase_category",
 				"fieldtype": "Data",
 				"label": "Purchase Category",
-				"insert_after": "bbf_approval_status",
+				"insert_after": "bbf_required_level",
 				"read_only": 1,
 				"no_copy": 1,
 				"in_standard_filter": 1,
@@ -479,7 +479,8 @@ def create_custom_fields():
 	_create_approval_roles()
 	_setup_purchase_order_permissions()
 	_setup_material_request_permissions()
-	_seed_default_approval_limits()
+	# Legacy v1.0 — BBF Approval Limit is no longer used by v2.0 rule-based system
+	# _seed_default_approval_limits()
 
 
 def _setup_purchase_receipt_permissions():
@@ -557,7 +558,7 @@ def _setup_purchase_order_permissions():
 
 def _setup_material_request_permissions():
 	"""Ensure approval roles have read+write on Material Request."""
-	mr_roles = ["Department Head", "AVP", "CEO"]
+	mr_roles = ["Department Head", "AVP", "CEO", "General Manager", "MD"]
 
 	for role in mr_roles:
 		existing = frappe.db.exists("DocPerm", {

@@ -84,6 +84,7 @@ def submit_for_approval(doctype, docname):
 def approve_document(doctype, docname, comment=""):
 	"""Approve/Review action — handles Review, Approve, Final Approve based on step config."""
 	_validate_doctype(doctype)
+	comment = (comment or "")[:2000]
 	doc = frappe.get_doc(doctype, docname, for_update=True)
 
 	if doctype == "Material Request":
@@ -95,6 +96,7 @@ def approve_document(doctype, docname, comment=""):
 @frappe.whitelist()
 def send_to_md(docname, comment=""):
 	"""CEO manually triggers MD approval step. Only available when next step is manual-trigger."""
+	comment = (comment or "")[:2000]
 	doc = frappe.get_doc("Purchase Order", docname, for_update=True)
 	_validate_po_is_pending(doc)
 	_validate_not_self_approving(doc)
@@ -144,6 +146,8 @@ def send_to_md(docname, comment=""):
 def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 	"""Send a PO/MR back for revision."""
 	_validate_doctype(doctype)
+	comment = (comment or "")[:2000]
+	reason = (reason or "")[:2000]
 	if not reason:
 		frappe.throw(_("Revision reason is mandatory"))
 
@@ -189,6 +193,8 @@ def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 def reject_document(doctype, docname, reason, comment=""):
 	"""Reject a PO/MR. Terminal state."""
 	_validate_doctype(doctype)
+	comment = (comment or "")[:2000]
+	reason = (reason or "")[:2000]
 	if not reason:
 		frappe.throw(_("Rejection reason is mandatory"))
 
@@ -287,7 +293,7 @@ def _submit_po_for_approval(doc):
 	# Budget check — blocks if budget exceeded (CEO can override during approval)
 	settings = frappe.get_single("BBF Settings")
 	if settings.enable_budget_check:
-		budget_result = validate_budget_on_po_submit(doc)
+		validate_budget_on_po_submit(doc)
 
 	status = doc.bbf_approval_status
 	if status and status not in ("", "Draft"):
@@ -697,15 +703,15 @@ def _resolve_po_category(doc):
 			return settings.default_po_category
 		frappe.throw(_("Cannot determine purchase category — no items with Item Groups on this PO"))
 
-	# Map each Item Group to its BBF Purchase Category
+	# Map each Item Group to its BBF Purchase Category (batch query)
 	categories = set()
-	for ig in item_groups:
-		result = frappe.db.sql("""
-			SELECT parent FROM `tabBBF Purchase Category Item`
-			WHERE item_group = %s
-		""", ig, as_dict=True)
-		if result:
-			categories.add(result[0].parent)
+	if item_groups:
+		cat_results = frappe.db.sql("""
+			SELECT item_group, parent FROM `tabBBF Purchase Category Item`
+			WHERE item_group IN %s
+		""", [list(item_groups)], as_dict=True)
+		for row in cat_results:
+			categories.add(row.parent)
 
 	if not categories:
 		settings = frappe.get_single("BBF Settings")
@@ -793,17 +799,20 @@ def _find_mr_route(cost_center):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _get_target_step_with_skip(steps, user):
-	"""Get the first step, skipping if the user has step 1's role (self-skip)."""
+	"""Get the first step where user does NOT have the role (self-skip).
+	Skips ALL consecutive steps where the submitter holds the role.
+	"""
 	if not steps:
 		frappe.throw(_("No approval steps configured"))
 
-	first_step = steps[0]
 	user_roles = frappe.get_roles(user)
 
-	if first_step.role in user_roles and len(steps) > 1:
-		return steps[1]
+	for step in steps:
+		if step.role not in user_roles:
+			return step
 
-	return first_step
+	# User has roles for ALL steps — return last step with self_skip_impossible
+	return steps[-1]
 
 
 def _get_next_step(steps, current_step_order):
@@ -855,15 +864,16 @@ def _validate_po_is_pending(doc):
 
 
 def _validate_not_self_approving(doc):
-	"""Prevent the same user who submitted from approving their own PO.
+	"""Prevent the same user who submitted or created from approving their own PO.
 	Exception: when self-skip was impossible (single-step rule where submitter has the only role).
 	"""
-	if doc.bbf_submitted_by and doc.bbf_submitted_by == frappe.session.user:
-		# Allow self-approval if self-skip was impossible (would otherwise create stuck state)
+	is_submitter = doc.bbf_submitted_by and doc.bbf_submitted_by == frappe.session.user
+	is_creator = doc.owner and doc.owner == frappe.session.user
+	if is_submitter or is_creator:
 		if cint(doc.bbf_self_skip_impossible):
 			return
 		frappe.throw(
-			_("You cannot approve a PO that you submitted for approval. "
+			_("You cannot approve a PO that you created or submitted for approval. "
 			  "A different approver must act on this PO.")
 		)
 
@@ -933,7 +943,8 @@ def _validate_amount_unchanged(doc):
 	submitted_amount = flt(doc.bbf_amount_at_submission)
 	current_amount = flt(doc.grand_total)
 
-	if submitted_amount and submitted_amount != current_amount:
+	# Use explicit > 0 check (not falsy) to prevent bypass when amount is 0
+	if submitted_amount > 0 and submitted_amount != current_amount:
 		frappe.throw(
 			_("PO amount has changed from {0} to {1} during approval. "
 			  "This PO must be revised and resubmitted.").format(
@@ -963,7 +974,7 @@ def _log_approval_action(doc, action, from_state, to_state,
 					user_role = step.role_label or step.role
 					break
 		except Exception:
-			pass
+			frappe.log_error(title="Approval Context Error", message=frappe.get_traceback())
 
 	log = frappe.get_doc({
 		"doctype": "BBF Approval Log",
@@ -1002,7 +1013,7 @@ def _log_mr_action(doc, action, from_state, to_state, comment="",
 					user_role = step.role_label or step.role
 					break
 		except Exception:
-			pass
+			frappe.log_error(title="Approval Context Error", message=frappe.get_traceback())
 
 	log = frappe.get_doc({
 		"doctype": "BBF Approval Log",
@@ -1129,7 +1140,8 @@ def _build_notification_message(doc, action, extra):
 		items = doc.get("items") or []
 		items_summary = []
 		for item in items[:3]:
-			items_summary.append(f"{item.item_name or item.item_code} (Qty: {item.qty})")
+			items_summary.append("{0} (Qty: {1})".format(
+				frappe.utils.escape_html(item.item_name or item.item_code), item.qty))
 		if len(items) > 3:
 			items_summary.append(f"... and {len(items) - 3} more items")
 		items_html = "<br>".join(items_summary)
@@ -1236,7 +1248,7 @@ def _get_po_approval_context(doc, settings):
 			rule = frappe.get_doc("BBF PO Approval Rule", doc.bbf_approval_rule)
 			ctx["approval_chain"] = _build_po_approval_chain(doc, rule)
 		except Exception:
-			pass
+			frappe.log_error(title="Approval Context Error", message=frappe.get_traceback())
 
 	# Determine user's permissions at current step
 	if is_pending and rule:
@@ -1266,7 +1278,7 @@ def _get_po_approval_context(doc, settings):
 					if current_step_obj.can_reject:
 						ctx["can_reject"] = True
 		except Exception:
-			pass
+			frappe.log_error(title="Approval Context Error", message=frappe.get_traceback())
 
 	# If awaiting MD send, only CEO can see send_to_md + revise/reject
 	if status.startswith("Awaiting") and rule:
@@ -1280,7 +1292,7 @@ def _get_po_approval_context(doc, settings):
 				ctx["can_revise"] = current_step_obj.can_revise
 				ctx["can_reject"] = current_step_obj.can_reject
 		except Exception:
-			pass
+			frappe.log_error(title="Approval Context Error", message=frappe.get_traceback())
 
 	return ctx
 
@@ -1348,7 +1360,7 @@ def _get_mr_approval_context(doc, settings):
 						if current_step_obj.can_reject:
 							ctx["can_reject"] = True
 		except Exception:
-			pass
+			frappe.log_error(title="Approval Context Error", message=frappe.get_traceback())
 
 	return ctx
 
@@ -1463,8 +1475,6 @@ def po_on_amend(doc, method):
 		return
 
 	doc.bbf_approval_status = "Draft"
-	doc.bbf_current_level = 0
-	doc.bbf_required_level = 0
 	doc.bbf_approved_by = None
 	doc.bbf_approved_date = None
 	doc.bbf_revision_count = 0
@@ -1540,6 +1550,9 @@ def check_approval_sla():
 		return
 
 	for po_data in stuck_pos:
+		# Lock the row to prevent duplicate SLA alerts from concurrent scheduler workers
+		frappe.db.sql("SELECT name FROM `tabPurchase Order` WHERE name = %s FOR UPDATE", po_data.name)
+
 		if po_data.bbf_last_sla_alert:
 			last_alert_hours = time_diff_in_hours(now_datetime(), po_data.bbf_last_sla_alert)
 			if last_alert_hours < sla_hours:

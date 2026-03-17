@@ -115,12 +115,15 @@ function _render_mr_stepper(frm, ctx) {
 
 	html += '</div></div>';
 
-	html += `<style>
-		@keyframes bbf-mr-pulse {
-			0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-			50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
-		}
-	</style>`;
+	// Only inject animation CSS once
+	if (!document.getElementById("bbf-mr-pulse-style")) {
+		html += `<style id="bbf-mr-pulse-style">
+			@keyframes bbf-mr-pulse {
+				0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+				50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+			}
+		</style>`;
+	}
 
 	const $section = $(frm.fields_dict.bbf_mr_section?.wrapper);
 	if ($section.length) {
@@ -153,6 +156,8 @@ function _render_mr_buttons(frm, ctx) {
 			frappe.call({
 				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.get_submit_target",
 				args: { doctype: "Material Request", docname: frm.doc.name },
+				freeze: true,
+				freeze_message: __("Checking..."),
 				callback(r) {
 					const target = r.message?.target_label || "Approver";
 					frappe.confirm(

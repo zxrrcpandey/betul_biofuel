@@ -146,13 +146,15 @@ function _render_stepper(frm, ctx) {
 
 	html += '</div></div>';
 
-	// Add pulse animation CSS
-	html += `<style>
-		@keyframes bbf-pulse {
-			0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-			50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
-		}
-	</style>`;
+	// Only inject animation CSS once
+	if (!document.getElementById("bbf-pulse-style")) {
+		html += `<style id="bbf-pulse-style">
+			@keyframes bbf-pulse {
+				0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+				50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+			}
+		</style>`;
+	}
 
 	// Insert stepper
 	const $section = $(frm.fields_dict.bbf_approval_section?.wrapper);
@@ -186,6 +188,8 @@ function _render_buttons(frm, ctx) {
 			frappe.call({
 				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.get_submit_target",
 				args: { doctype: "Purchase Order", docname: frm.doc.name },
+				freeze: true,
+				freeze_message: __("Checking..."),
 				callback(r) {
 					const target = r.message?.target_label || "Approver";
 					frappe.confirm(
@@ -402,7 +406,7 @@ function _load_budget_indicator(frm) {
 function _lock_fields(frm, ctx) {
 	// Lock PO fields during approval and after terminal states
 	const status = ctx.status || "";
-	const should_lock = ctx.is_pending || status.startsWith("Awaiting") || status === "Rejected" || status === "Revised";
+	const should_lock = ctx.is_pending || status.startsWith("Awaiting") || status === "Rejected" || status === "Revised" || status === "Approved";
 	if (!should_lock) return;
 
 	const fields_to_lock = [
@@ -413,6 +417,7 @@ function _lock_fields(frm, ctx) {
 		"items", "taxes", "pricing_rules",
 		"tc_name", "terms",
 		"payment_schedule", "payment_terms_template",
+		"cost_center",
 	];
 
 	fields_to_lock.forEach(f => {
