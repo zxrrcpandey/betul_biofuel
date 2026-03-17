@@ -1,6 +1,12 @@
 // BBF MR Approval v2.0 — Cost-center-based routing with stepper
 frappe.ui.form.on("Material Request", {
 	refresh(frm) {
+		// Show all Cost Centers (not filtered by company) for approval routing
+		frm.set_query("cost_center", function() {
+			return {
+				filters: { "is_group": 0 }
+			};
+		});
 		if (frm.is_new()) return;
 		_load_mr_context(frm);
 	}

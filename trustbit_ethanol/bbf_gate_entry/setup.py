@@ -300,7 +300,8 @@ def create_custom_fields():
 				"options": "Cost Center",
 				"insert_after": "schedule_date",
 				"reqd": 0,
-				"description": "Cost Center for MR approval routing. If not set, uses first item's Cost Center."
+				"ignore_user_permissions": 1,
+				"description": "Cost Center for MR approval routing. Shows all Cost Centers across companies."
 			},
 			{
 				"fieldname": "bbf_mr_section",
