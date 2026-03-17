@@ -3,6 +3,16 @@ frappe.ui.form.on("Purchase Order", {
 	refresh(frm) {
 		if (frm.is_new()) return;
 		_load_approval_context(frm);
+		_load_budget_indicator(frm);
+	},
+	cost_center(frm) {
+		if (!frm.is_new()) _load_budget_indicator(frm);
+	},
+	validate(frm) {
+		if (!frm.doc.cost_center) {
+			frappe.validated = false;
+			frappe.throw(__("Cost Center is mandatory on Purchase Orders for budget control."));
+		}
 	}
 });
 
@@ -320,6 +330,72 @@ function _call_action(frm, method, args) {
 		freeze_message: __("Processing..."),
 		callback() { frm.reload_doc(); },
 		error() { frm.reload_doc(); }
+	});
+}
+
+function _load_budget_indicator(frm) {
+	if (frm.is_new() || !frm.doc.cost_center) return;
+
+	frappe.call({
+		method: "trustbit_ethanol.bbf_gate_entry.bbf_budget.check_budget_for_po",
+		args: { docname: frm.doc.name },
+		callback(r) {
+			if (!r.message) return;
+			const b = r.message;
+
+			// Remove old indicator
+			$(frm.fields_dict.bbf_approval_section?.wrapper || frm.page.wrapper)
+				.find(".bbf-budget-indicator").remove();
+
+			if (b.status === "no_cc" || b.status === "no_budget") return;
+
+			const colors = { green: "#10b981", yellow: "#f59e0b", red: "#ef4444" };
+			const bgColors = { green: "#d1fae5", yellow: "#fef3c7", red: "#fee2e2" };
+			const borderColors = { green: "#6ee7b7", yellow: "#fcd34d", red: "#fca5a5" };
+			const color = colors[b.color] || colors.green;
+			const bg = bgColors[b.color] || bgColors.green;
+			const border = borderColors[b.color] || borderColors.green;
+
+			let html = `<div class="bbf-budget-indicator" style="padding: 10px 15px; margin: 8px 0; background: ${bg}; border: 1px solid ${border}; border-radius: 8px; font-size: 12px;">`;
+			html += `<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">`;
+
+			// Budget bar
+			const pct = Math.min(b.utilization_pct || 0, 100);
+			html += `<div style="flex: 1; min-width: 200px;">`;
+			html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">`;
+			html += `<span style="font-weight: 600; color: ${color};">Budget: ${frappe.utils.escape_html(b.cost_center)}</span>`;
+			html += `<span style="font-weight: 600; color: ${color};">${b.utilization_pct}% used</span>`;
+			html += `</div>`;
+			html += `<div style="height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">`;
+			html += `<div style="height: 100%; width: ${pct}%; background: ${color}; border-radius: 4px;"></div>`;
+			html += `</div>`;
+			html += `</div>`;
+
+			// Numbers
+			html += `<div style="display: flex; gap: 15px; font-size: 11px; color: #374151;">`;
+			html += `<div><strong>Annual:</strong> ${format_currency(b.annual_budget)}</div>`;
+			html += `<div><strong>Committed:</strong> ${format_currency(b.committed)}</div>`;
+			html += `<div><strong>Spent:</strong> ${format_currency(b.actual_spent)}</div>`;
+			html += `<div style="font-weight: 700; color: ${color};"><strong>Available:</strong> ${format_currency(b.available)}</div>`;
+			html += `</div>`;
+
+			html += `</div>`;
+
+			if (b.status === "exceeded") {
+				html += `<div style="margin-top: 6px; padding: 6px 10px; background: #fef2f2; border-radius: 4px; color: #991b1b; font-size: 11px; font-weight: 600;">`;
+				html += `⚠ Budget exceeded by ${format_currency(b.shortfall)}. PO submission will be blocked. CEO can override during approval.`;
+				html += `</div>`;
+			}
+
+			html += `</div>`;
+
+			const $section = $(frm.fields_dict.bbf_approval_section?.wrapper);
+			if ($section.length) {
+				$section.find(".bbf-budget-indicator").remove();
+				$section.prepend(html);
+			}
+		},
+		error() {} // Silent fail
 	});
 }
 

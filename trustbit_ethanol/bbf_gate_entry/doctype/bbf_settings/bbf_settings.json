@@ -21,6 +21,8 @@
   "enable_mr_approval",
   "column_break_approval",
   "default_po_category",
+  "enable_budget_check",
+  "default_monthly_distribution",
   "notification_section",
   "notification_manager",
   "column_break_notification",
@@ -136,6 +138,20 @@
    "description": "Fallback category if PO items don't match any configured Item Group mapping"
   },
   {
+   "fieldname": "enable_budget_check",
+   "fieldtype": "Check",
+   "label": "Enable Budget Check on PO",
+   "default": "1",
+   "description": "If checked, PO submission for approval will check budget availability. CEO can override."
+  },
+  {
+   "fieldname": "default_monthly_distribution",
+   "fieldtype": "Link",
+   "label": "Default Monthly Distribution",
+   "options": "Monthly Distribution",
+   "description": "Default monthly distribution template for new budget proposals"
+  },
+  {
    "fieldname": "notification_section",
    "fieldtype": "Section Break",
    "label": "Post-Approval Notifications"
@@ -191,7 +207,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-03-17 00:00:00",
+ "modified": "2026-03-17 12:00:00",
  "modified_by": "Administrator",
  "module": "BBF Gate Entry",
  "name": "BBF Settings",

@@ -1,0 +1,95 @@
+{
+ "actions": [],
+ "creation": "2026-03-17 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "account",
+  "account_name",
+  "column_break_1",
+  "proposed_amount",
+  "ceo_approved_amount",
+  "column_break_2",
+  "last_year_budget",
+  "last_year_actual",
+  "variance_pct"
+ ],
+ "fields": [
+  {
+   "bold": 1,
+   "description": "Expense account to budget",
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Account",
+   "options": "Account",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "account.account_name",
+   "fieldname": "account_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Account Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "description": "Amount proposed by Department Head",
+   "fieldname": "proposed_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Proposed Amount",
+   "reqd": 1
+  },
+  {
+   "bold": 1,
+   "description": "Amount approved by CEO (can differ from proposed)",
+   "fieldname": "ceo_approved_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "CEO Approved Amount"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Budget allocated last year for reference",
+   "fieldname": "last_year_budget",
+   "fieldtype": "Currency",
+   "label": "Last Year Budget",
+   "read_only": 1
+  },
+  {
+   "description": "Actual spend last year for reference",
+   "fieldname": "last_year_actual",
+   "fieldtype": "Currency",
+   "label": "Last Year Actual",
+   "read_only": 1
+  },
+  {
+   "description": "% change from last year budget",
+   "fieldname": "variance_pct",
+   "fieldtype": "Percent",
+   "label": "Variance %",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-03-17 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "BBF Budget Proposal Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC",
+ "track_changes": 0
+}

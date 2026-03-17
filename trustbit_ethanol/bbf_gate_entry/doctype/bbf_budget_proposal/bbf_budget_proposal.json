@@ -1,0 +1,300 @@
+{
+ "actions": [],
+ "autoname": "format:BUD-{fiscal_year}-{cost_center_name}-{####}",
+ "creation": "2026-03-17 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "proposal_section",
+  "cost_center",
+  "cost_center_name",
+  "fiscal_year",
+  "company",
+  "column_break_1",
+  "monthly_distribution",
+  "status",
+  "proposed_by",
+  "proposed_date",
+  "reference_section",
+  "last_year_fiscal",
+  "last_year_total_budget",
+  "last_year_total_actual",
+  "column_break_ref",
+  "last_year_utilization_pct",
+  "approval_section",
+  "approved_by",
+  "approved_date",
+  "ceo_comment",
+  "column_break_approval",
+  "rejection_reason",
+  "total_section",
+  "total_proposed",
+  "column_break_totals",
+  "total_approved",
+  "items_section",
+  "budget_items"
+ ],
+ "fields": [
+  {
+   "fieldname": "proposal_section",
+   "fieldtype": "Section Break",
+   "label": "Proposal Details"
+  },
+  {
+   "bold": 1,
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "cost_center.cost_center_name",
+   "fieldname": "cost_center_name",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Cost Center Name",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "fiscal_year",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Fiscal Year",
+   "options": "Fiscal Year",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "cost_center.company",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "How to spread annual budget across months. Leave blank for no monthly control.",
+   "fieldname": "monthly_distribution",
+   "fieldtype": "Link",
+   "label": "Monthly Distribution",
+   "options": "Monthly Distribution"
+  },
+  {
+   "allow_on_submit": 0,
+   "bold": 1,
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Draft\nPending CEO\nApproved\nRevised\nRejected",
+   "read_only": 1
+  },
+  {
+   "default": "__user",
+   "fieldname": "proposed_by",
+   "fieldtype": "Link",
+   "label": "Proposed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "proposed_date",
+   "fieldtype": "Date",
+   "label": "Proposed Date",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "reference_section",
+   "fieldtype": "Section Break",
+   "label": "Last Year Reference"
+  },
+  {
+   "description": "Previous fiscal year for reference",
+   "fieldname": "last_year_fiscal",
+   "fieldtype": "Link",
+   "label": "Last Year Fiscal",
+   "options": "Fiscal Year",
+   "read_only": 1
+  },
+  {
+   "description": "Total budget from last year",
+   "fieldname": "last_year_total_budget",
+   "fieldtype": "Currency",
+   "label": "Last Year Total Budget",
+   "read_only": 1
+  },
+  {
+   "description": "Total actual spend from last year",
+   "fieldname": "last_year_total_actual",
+   "fieldtype": "Currency",
+   "label": "Last Year Total Actual",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ref",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Last year utilization %",
+   "fieldname": "last_year_utilization_pct",
+   "fieldtype": "Percent",
+   "label": "Last Year Utilization %",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.status != 'Draft'",
+   "fieldname": "approval_section",
+   "fieldtype": "Section Break",
+   "label": "CEO Approval"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_date",
+   "fieldtype": "Date",
+   "label": "Approved Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ceo_comment",
+   "fieldtype": "Small Text",
+   "label": "CEO Comment",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_approval",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.status == 'Rejected' || doc.status == 'Revised'",
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Rejection/Revision Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_section",
+   "fieldtype": "Section Break",
+   "label": "Budget Totals"
+  },
+  {
+   "bold": 1,
+   "description": "Sum of all proposed amounts",
+   "fieldname": "total_proposed",
+   "fieldtype": "Currency",
+   "label": "Total Proposed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "description": "Sum of all CEO-approved amounts",
+   "fieldname": "total_approved",
+   "fieldtype": "Currency",
+   "label": "Total Approved",
+   "read_only": 1
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Budget Line Items"
+  },
+  {
+   "fieldname": "budget_items",
+   "fieldtype": "Table",
+   "label": "Budget Items",
+   "options": "BBF Budget Proposal Item",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "links": [],
+ "modified": "2026-03-17 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "BBF Budget Proposal",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IT Head",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Department Head",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "CEO",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "MD",
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

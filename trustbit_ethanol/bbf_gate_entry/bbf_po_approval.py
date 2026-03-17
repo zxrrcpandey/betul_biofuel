@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
 from frappe.utils import now_datetime, flt, cint, add_to_date, time_diff_in_hours, format_datetime
+from trustbit_ethanol.bbf_gate_entry.bbf_budget import validate_budget_on_po_submit
 
 
 ALLOWED_DOCTYPES = ("Purchase Order", "Material Request")
@@ -282,6 +283,11 @@ def resubmit_document(doctype, docname, mode="restart"):
 def _submit_po_for_approval(doc):
 	"""Submit a PO for approval using category-based routing."""
 	_validate_po_submittable(doc)
+
+	# Budget check — blocks if budget exceeded (CEO can override during approval)
+	settings = frappe.get_single("BBF Settings")
+	if settings.enable_budget_check:
+		budget_result = validate_budget_on_po_submit(doc)
 
 	status = doc.bbf_approval_status
 	if status and status not in ("", "Draft"):

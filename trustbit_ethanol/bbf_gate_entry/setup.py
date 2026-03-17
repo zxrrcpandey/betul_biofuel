@@ -259,6 +259,36 @@ def create_custom_fields():
 				"hidden": 1,
 				"no_copy": 1
 			},
+			# ── Budget Override Fields ──
+			{
+				"fieldname": "bbf_budget_overridden",
+				"fieldtype": "Check",
+				"label": "Budget Overridden",
+				"insert_after": "bbf_last_sla_alert",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1,
+				"description": "Set when CEO overrides budget block on this PO"
+			},
+			{
+				"fieldname": "bbf_budget_override_log_section",
+				"fieldtype": "Section Break",
+				"label": "Budget Override History",
+				"insert_after": "bbf_budget_overridden",
+				"collapsible": 1,
+				"depends_on": "eval:doc.bbf_budget_overridden"
+			},
+			{
+				"fieldname": "bbf_budget_override_log",
+				"fieldtype": "Table",
+				"label": "Budget Override Log",
+				"options": "BBF Budget Override Log",
+				"insert_after": "bbf_budget_override_log_section",
+				"read_only": 1,
+				"cannot_add_rows": 1,
+				"cannot_delete_rows": 1,
+				"no_copy": 1
+			},
 		],
 
 		# ── MR Approval Fields ──────────────────────────────────────────
