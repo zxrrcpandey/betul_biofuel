@@ -95,7 +95,7 @@ function _render_mr_stepper(frm, ctx) {
 		let badgeColor = step.action_type === "Review" ? "#dbeafe" : "#d1fae5";
 		let badgeText = step.action_type === "Review" ? "#1d4ed8" : "#065f46";
 		html += `<div style="font-size: 9px; background: ${badgeColor}; color: ${badgeText}; padding: 1px 6px; border-radius: 8px; margin-top: 3px;">`;
-		html += step.action_type;
+		html += frappe.utils.escape_html(step.action_type);
 		html += '</div>';
 
 		if (step.by) {

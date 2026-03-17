@@ -320,11 +320,21 @@ def create_custom_fields():
 				"no_copy": 1
 			},
 			{
+				"fieldname": "bbf_mr_self_skip_impossible",
+				"fieldtype": "Check",
+				"label": "MR Self Skip Impossible",
+				"insert_after": "bbf_mr_total_steps",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1,
+				"description": "Set when MR submitter has the only approval role (single-step route) — allows self-approval"
+			},
+			{
 				"fieldname": "bbf_mr_submitted_by",
 				"fieldtype": "Link",
 				"label": "MR Submitted By",
 				"options": "User",
-				"insert_after": "bbf_mr_total_steps",
+				"insert_after": "bbf_mr_self_skip_impossible",
 				"read_only": 1,
 				"hidden": 1,
 				"no_copy": 1,
@@ -333,7 +343,7 @@ def create_custom_fields():
 			{
 				"fieldname": "bbf_mr_col1",
 				"fieldtype": "Column Break",
-				"insert_after": "bbf_mr_status"
+				"insert_after": "bbf_mr_submitted_by"
 			},
 			{
 				"fieldname": "bbf_mr_approved_by",

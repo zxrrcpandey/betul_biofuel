@@ -463,6 +463,9 @@ def _submit_mr_for_approval(doc):
 	target = _get_target_step_with_skip(steps, frappe.session.user)
 	next_state = f"Pending {target.role_label or target.role}"
 
+	# Track if self-skip was impossible (single-step route where submitter has the role)
+	self_skip_impossible = (target == steps[0] and target.role in frappe.get_roles(frappe.session.user) and len(steps) == 1)
+
 	_log_mr_action(doc, "Submitted", "Draft", next_state,
 		step_order=target.step_order, purchase_category=route_name)
 
@@ -473,6 +476,7 @@ def _submit_mr_for_approval(doc):
 		"bbf_mr_current_step": target.step_order,
 		"bbf_mr_total_steps": len(steps),
 		"bbf_mr_submitted_by": frappe.session.user,
+		"bbf_mr_self_skip_impossible": 1 if self_skip_impossible else 0,
 	}, update_modified=True)
 
 	_send_approval_notification(doc, "mr_pending",
@@ -488,11 +492,14 @@ def _approve_mr(doc, comment=""):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.bbf_mr_status))
 
 	# Prevent self-approval — check both creator and submitter
+	# Exception: when self-skip was impossible (single-step route where submitter has the only role)
+	mr_self_skip_impossible = cint(doc.bbf_mr_self_skip_impossible) if hasattr(doc, "bbf_mr_self_skip_impossible") else 0
 	mr_submitted_by = doc.bbf_mr_submitted_by if hasattr(doc, "bbf_mr_submitted_by") else None
-	if doc.owner == frappe.session.user:
-		frappe.throw(_("You cannot approve a Material Request that you created."))
-	if mr_submitted_by and mr_submitted_by == frappe.session.user:
-		frappe.throw(_("You cannot approve a Material Request that you submitted for approval."))
+	if not mr_self_skip_impossible:
+		if doc.owner == frappe.session.user:
+			frappe.throw(_("You cannot approve a Material Request that you created."))
+		if mr_submitted_by and mr_submitted_by == frappe.session.user:
+			frappe.throw(_("You cannot approve a Material Request that you submitted for approval."))
 
 	route_name = doc.bbf_mr_approval_route
 	if not route_name:
@@ -1278,10 +1285,13 @@ def _get_mr_approval_context(doc, settings):
 	is_pending = status.startswith("Pending")
 	current_step = cint(doc.bbf_mr_current_step) if hasattr(doc, "bbf_mr_current_step") else 0
 	mr_submitted_by = doc.bbf_mr_submitted_by if hasattr(doc, "bbf_mr_submitted_by") else None
+	mr_self_skip_impossible = cint(doc.bbf_mr_self_skip_impossible) if hasattr(doc, "bbf_mr_self_skip_impossible") else 0
 	is_self_submitted = (is_pending and (
 		doc.owner == frappe.session.user or
 		(mr_submitted_by and mr_submitted_by == frappe.session.user)
 	))
+	# Allow self-approval when self-skip was impossible (single-step route)
+	effective_mr_self_block = is_self_submitted and not mr_self_skip_impossible
 
 	ctx = {
 		"approval_enabled": True,
@@ -1321,7 +1331,7 @@ def _get_mr_approval_context(doc, settings):
 							can_act = True
 							break
 
-					if can_act and not is_self_submitted:
+					if can_act and not effective_mr_self_block:
 						if current_step_obj.action_type == "Review":
 							ctx["can_review"] = True
 						elif current_step_obj.action_type == "Final Approve":
@@ -1536,14 +1546,15 @@ def check_approval_sla():
 
 		if settings.approval_sla_email:
 			amount_str = frappe.format_value(flt(po_data.grand_total), {"fieldtype": "Currency"})
+			esc = frappe.utils.escape_html
 			frappe.sendmail(
 				recipients=[settings.approval_sla_email],
 				subject=f"[SLA Alert] PO {po_data.name} stuck at {po_data.bbf_approval_status} for {hours_stuck}h",
 				message=f"""
-				<p>Purchase Order <strong>{po_data.name}</strong> ({amount_str}) has been stuck
-				at <strong>{po_data.bbf_approval_status}</strong> for <strong>{hours_stuck} hours</strong>,
+				<p>Purchase Order <strong>{esc(po_data.name)}</strong> ({esc(amount_str)}) has been stuck
+				at <strong>{esc(po_data.bbf_approval_status)}</strong> for <strong>{hours_stuck} hours</strong>,
 				exceeding the {sla_hours}-hour SLA.</p>
-				<p><a href="{frappe.utils.get_url()}/app/purchase-order/{po_data.name}">View PO</a></p>
+				<p><a href="{frappe.utils.get_url()}/app/purchase-order/{esc(po_data.name)}">View PO</a></p>
 				""",
 				now=True,
 			)

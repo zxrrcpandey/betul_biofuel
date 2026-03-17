@@ -112,7 +112,7 @@ function _render_stepper(frm, ctx) {
 		else if (step.action_type === "Approve") { badgeColor = "#fef3c7"; badgeText = "#92400e"; }
 
 		html += `<div style="font-size: 9px; background: ${badgeColor}; color: ${badgeText}; padding: 1px 6px; border-radius: 8px; margin-top: 3px;">`;
-		html += step.action_type;
+		html += frappe.utils.escape_html(step.action_type);
 		if (step.is_manual) html += " ⚡";
 		html += '</div>';
 
@@ -168,8 +168,7 @@ function _render_amount_info(frm, ctx) {
 }
 
 function _render_buttons(frm, ctx) {
-	// Remove old custom buttons
-	frm.page.clear_actions_menu();
+	// Remove old approval buttons only (don't clear standard Frappe menu items)
 	$(".bbf-approval-btn").remove();
 
 	if (ctx.can_submit_for_approval) {
