@@ -294,6 +294,15 @@ def create_custom_fields():
 		# ── MR Approval Fields ──────────────────────────────────────────
 		"Material Request": [
 			{
+				"fieldname": "cost_center",
+				"fieldtype": "Link",
+				"label": "Cost Center",
+				"options": "Cost Center",
+				"insert_after": "schedule_date",
+				"reqd": 0,
+				"description": "Cost Center for MR approval routing. If not set, uses first item's Cost Center."
+			},
+			{
 				"fieldname": "bbf_mr_section",
 				"fieldtype": "Section Break",
 				"label": "BBF Approval",

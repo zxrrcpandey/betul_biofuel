@@ -77,6 +77,7 @@ fixtures = [
 			"Purchase Order-bbf_budget_overridden",
 			"Purchase Order-bbf_budget_override_log_section",
 			"Purchase Order-bbf_budget_override_log",
+			"Material Request-cost_center",
 			"Material Request-bbf_mr_section",
 			"Material Request-bbf_mr_status",
 			"Material Request-bbf_mr_col1",
