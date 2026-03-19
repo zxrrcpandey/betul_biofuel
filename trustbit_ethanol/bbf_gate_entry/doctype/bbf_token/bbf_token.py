@@ -74,8 +74,8 @@ class BBFToken(Document):
 	@staticmethod
 	def _format_duration(minutes):
 		"""Format minutes into human-readable duration string."""
-		if not minutes or minutes <= 0:
-			return ""
+		if not minutes or minutes < 0:
+			return "0m"
 		hours = int(minutes // 60)
 		mins = int(minutes % 60)
 		if hours > 0:
