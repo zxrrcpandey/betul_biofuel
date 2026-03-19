@@ -626,12 +626,22 @@ def _setup_admin_reception_permissions():
 
 
 def _fix_workspace_content():
-	"""Fix workspace content that may be stale after shortcut renames."""
-	if frappe.db.exists("Workspace", "Admin Reception"):
-		content = frappe.db.get_value("Workspace", "Admin Reception", "content") or ""
-		if "Todays Visitors" in content:
-			content = content.replace("Todays Visitors", "All Gate Passes")
-			frappe.db.set_value("Workspace", "Admin Reception", "content", content)
+	"""Ensure Admin Reception workspace shortcuts are in sync."""
+	if not frappe.db.exists("Workspace", "Admin Reception"):
+		return
+
+	# Fix shortcut label if it was renamed
+	shortcuts = frappe.get_all("Workspace Shortcut",
+		filters={"parent": "Admin Reception", "label": "All Gate Passes"},
+		fields=["name"])
+	for s in shortcuts:
+		frappe.db.set_value("Workspace Shortcut", s.name, "label", "Todays Visitors")
+
+	# Fix content JSON if it has wrong shortcut name
+	content = frappe.db.get_value("Workspace", "Admin Reception", "content") or ""
+	if "All Gate Passes" in content:
+		content = content.replace("All Gate Passes", "Todays Visitors")
+		frappe.db.set_value("Workspace", "Admin Reception", "content", content)
 
 
 def seed_gate_pass_destinations():
