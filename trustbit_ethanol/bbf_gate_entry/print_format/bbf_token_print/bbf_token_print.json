@@ -3,7 +3,7 @@
  "name": "BBF Token Print",
  "module": "BBF Gate Entry",
  "doc_type": "BBF Token",
- "standard": "Yes",
+ "standard": "No",
  "print_format_type": "Jinja",
  "raw_printing": 0,
  "custom_format": 1,
