@@ -70,11 +70,9 @@
   },
   {
    "color": "Grey",
-   "doc_view": "List",
    "label": "Todays Visitors",
-   "link_to": "BBF Token",
-   "stats_filter": "[[\"BBF Token\",\"entry_type\",\"=\",\"Gate Pass\"],[\"BBF Token\",\"entry_date\",\"Timespan\",\"today\"]]",
-   "type": "DocType"
+   "link_to": "/app/bbf-token?entry_type=Gate+Pass&entry_date=%5B%22%3D%22%2C%22Today%22%5D",
+   "type": "URL"
   },
   {
    "color": "Orange",
