@@ -35,7 +35,11 @@ frappe.ui.form.on("BBF Token", {
 			let print_label = is_gate_pass ? __("Print Gate Pass") : __("Print Token");
 			let print_format = is_gate_pass ? "BBF Gate Pass" : "BBF Token Print";
 			frm.add_custom_button(print_label, function () {
-				frappe.set_route("print", "BBF Token", frm.doc.name, print_format);
+				window.open(
+					"/printview?doctype=" + encodeURIComponent("BBF Token")
+					+ "&name=" + encodeURIComponent(frm.doc.name)
+					+ "&format=" + encodeURIComponent(print_format)
+				);
 			}).addClass("btn-primary-dark");
 
 			// === MATERIAL TOKEN BUTTONS ===
