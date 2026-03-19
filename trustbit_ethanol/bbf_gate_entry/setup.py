@@ -643,12 +643,12 @@ def _fix_workspace_content():
 		if s.label == "All Gate Passes":
 			frappe.db.set_value("Workspace Shortcut", s.name, "label", "Todays Visitors")
 
-		# Fix "New Gate Pass" to use URL with entry_type preset
-		if s.label == "New Gate Pass" and s.type != "URL":
+		# Fix "New Gate Pass" — ensure it's DocType/New (not broken URL)
+		if s.label == "New Gate Pass" and s.type == "URL":
 			frappe.db.set_value("Workspace Shortcut", s.name, {
-				"type": "URL",
-				"link_to": "/app/bbf-token/new?entry_type=Gate+Pass",
-				"doc_view": "",
+				"type": "DocType",
+				"link_to": "BBF Token",
+				"doc_view": "New",
 			})
 
 	# Fix content JSON

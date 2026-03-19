@@ -63,9 +63,10 @@
  "shortcuts": [
   {
    "color": "Blue",
+   "doc_view": "New",
    "label": "New Gate Pass",
-   "link_to": "/app/bbf-token/new?entry_type=Gate+Pass",
-   "type": "URL"
+   "link_to": "BBF Token",
+   "type": "DocType"
   },
   {
    "color": "Grey",

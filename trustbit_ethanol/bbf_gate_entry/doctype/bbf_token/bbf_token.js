@@ -20,6 +20,12 @@ frappe.ui.form.on("BBF Token", {
 			frm.set_df_property("turnaround_section", "hidden", 1);
 		}
 
+		// Apply route_options defaults (e.g., from workspace shortcut)
+		if (frm.is_new() && frappe.route_options && frappe.route_options.entry_type) {
+			frm.set_value("entry_type", frappe.route_options.entry_type);
+			delete frappe.route_options.entry_type;
+		}
+
 		// Filter visitor Link to show enabled visitors
 		frm.set_query("visitor", function () {
 			return { filters: { enabled: 1 } };
