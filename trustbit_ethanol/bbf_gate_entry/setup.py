@@ -490,6 +490,7 @@ def create_custom_fields():
 	_setup_purchase_order_permissions()
 	_setup_material_request_permissions()
 	_setup_admin_reception_permissions()
+	_fix_workspace_content()
 	# Legacy v1.0 — BBF Approval Limit is no longer used by v2.0 rule-based system
 	# _seed_default_approval_limits()
 
@@ -622,6 +623,15 @@ def _setup_admin_reception_permissions():
 
 	frappe.clear_cache(doctype="BBF Token")
 	frappe.clear_cache(doctype="BBF Visitor")
+
+
+def _fix_workspace_content():
+	"""Fix workspace content that may be stale after shortcut renames."""
+	if frappe.db.exists("Workspace", "Admin Reception"):
+		content = frappe.db.get_value("Workspace", "Admin Reception", "content") or ""
+		if "Todays Visitors" in content:
+			content = content.replace("Todays Visitors", "All Gate Passes")
+			frappe.db.set_value("Workspace", "Admin Reception", "content", content)
 
 
 def seed_gate_pass_destinations():
