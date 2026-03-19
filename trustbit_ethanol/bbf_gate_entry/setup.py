@@ -489,6 +489,7 @@ def create_custom_fields():
 	_create_approval_roles()
 	_setup_purchase_order_permissions()
 	_setup_material_request_permissions()
+	_setup_admin_reception_permissions()
 	# Legacy v1.0 — BBF Approval Limit is no longer used by v2.0 rule-based system
 	# _seed_default_approval_limits()
 
@@ -593,6 +594,34 @@ def _setup_material_request_permissions():
 			}).insert(ignore_permissions=True)
 
 	frappe.clear_cache(doctype="Material Request")
+
+
+def _setup_admin_reception_permissions():
+	"""Ensure Admin Reception role has create/read/write on BBF Token and BBF Visitor."""
+	for doctype in ["BBF Token", "BBF Visitor", "BBF Gate Pass Destination"]:
+		role = "Admin Reception"
+		existing = frappe.db.exists("DocPerm", {
+			"parent": doctype,
+			"role": role,
+			"permlevel": 0
+		})
+		if not existing:
+			perm = {
+				"doctype": "DocPerm",
+				"parent": doctype,
+				"parenttype": "DocType",
+				"parentfield": "permissions",
+				"role": role,
+				"permlevel": 0,
+				"read": 1,
+				"write": 1,
+			}
+			if doctype in ("BBF Token", "BBF Visitor"):
+				perm["create"] = 1
+			frappe.get_doc(perm).insert(ignore_permissions=True)
+
+	frappe.clear_cache(doctype="BBF Token")
+	frappe.clear_cache(doctype="BBF Visitor")
 
 
 def seed_gate_pass_destinations():
