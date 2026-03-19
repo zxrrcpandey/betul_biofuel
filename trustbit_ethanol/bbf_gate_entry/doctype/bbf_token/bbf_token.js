@@ -31,13 +31,15 @@ frappe.ui.form.on("BBF Token", {
 				frm.set_df_property("driver_license_number", "read_only", 1);
 			}
 
+			// === PRINT BUTTON (auto-selects format) ===
+			let print_label = is_gate_pass ? __("Print Gate Pass") : __("Print Token");
+			let print_format = is_gate_pass ? "BBF Gate Pass" : "BBF Token Print";
+			frm.add_custom_button(print_label, function () {
+				frappe.set_route("print", "BBF Token", frm.doc.name, print_format);
+			}).addClass("btn-primary-dark");
+
 			// === MATERIAL TOKEN BUTTONS ===
 			if (!is_gate_pass) {
-				// Print Token button
-				frm.add_custom_button(__("Print Token"), function () {
-					frm.print_doc();
-				}).addClass("btn-primary-dark");
-
 				// Create GRN button - restricted roles
 				let grn_roles = ["Accounts Manager", "Accounts User", "Stores User", "IT Head", "System Manager"];
 				let can_create_grn = grn_roles.some(r => frappe.user.has_role(r));
@@ -97,23 +99,6 @@ frappe.ui.form.on("BBF Token", {
 
 			// === GATE PASS BUTTONS ===
 			if (is_gate_pass) {
-				// Print Gate Pass button
-				frm.add_custom_button(__("Print Gate Pass"), function () {
-					// Use the custom Gate Pass print format
-					let w = window.open(
-						frappe.urllib.get_full_url(
-							"/api/method/frappe.utils.print_format.download_pdf?"
-							+ "doctype=BBF Token"
-							+ "&name=" + encodeURIComponent(frm.doc.name)
-							+ "&format=BBF Gate Pass"
-							+ "&no_letterhead=0"
-						)
-					);
-					if (!w) {
-						frappe.msgprint(__("Please allow popups for this site to print the gate pass"));
-					}
-				}).addClass("btn-primary-dark");
-
 				// G2 Log Entry button — G2 Gate Operator when visitor is Inside Campus
 				let g2_roles = ["G2 Gate Operator", "IT Head", "System Manager"];
 				let is_g2 = g2_roles.some(r => frappe.user.has_role(r));
