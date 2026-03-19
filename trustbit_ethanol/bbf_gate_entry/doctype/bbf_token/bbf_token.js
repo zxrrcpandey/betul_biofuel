@@ -1,5 +1,7 @@
 frappe.ui.form.on("BBF Token", {
 	refresh(frm) {
+		let is_gate_pass = frm.doc.entry_type === "Gate Pass";
+
 		// Hide barcode and token_number on new unsaved form
 		if (frm.is_new()) {
 			frm.set_df_property("barcode", "hidden", 1);
@@ -8,89 +10,247 @@ frappe.ui.form.on("BBF Token", {
 			frm.set_df_property("barcode", "hidden", 0);
 			frm.set_df_property("token_number", "hidden", 0);
 
-			// Lock fields after token is saved (prevent editing)
-			frm.set_df_property("purpose", "read_only", 1);
-			frm.set_df_property("vehicle_number", "read_only", 1);
-			frm.set_df_property("driver_name", "read_only", 1);
-			frm.set_df_property("driver_mobile", "read_only", 1);
-			frm.set_df_property("driver_license_number", "read_only", 1);
+			// Lock entry_type after save (cannot change Material <-> Gate Pass)
+			frm.set_df_property("entry_type", "read_only", 1);
 
-			// Add Print Token button
-			frm.add_custom_button(__("Print Token"), function () {
-				frm.print_doc();
-			}).addClass("btn-primary-dark");
-		}
+			// Lock common fields after save
+			if (is_gate_pass) {
+				// Lock gate pass fields after save
+				let gp_lock_fields = [
+					"visitor_name", "visitor_company", "contact_number",
+					"id_proof_type", "id_proof_number", "visit_purpose",
+					"destination", "number_of_visitors"
+				];
+				gp_lock_fields.forEach(f => frm.set_df_property(f, "read_only", 1));
+			} else {
+				// Lock material fields after save
+				frm.set_df_property("purpose", "read_only", 1);
+				frm.set_df_property("vehicle_number", "read_only", 1);
+				frm.set_df_property("driver_name", "read_only", 1);
+				frm.set_df_property("driver_mobile", "read_only", 1);
+				frm.set_df_property("driver_license_number", "read_only", 1);
+			}
 
-		// Create GRN button - shown when Tare Weighed and no PR yet (restricted roles)
-		let grn_roles = ["Accounts Manager", "Accounts User", "Stores User", "IT Head", "System Manager"];
-		let can_create_grn = grn_roles.some(r => frappe.user.has_role(r));
-		if (frm.doc.status === "Tare Weighed" && !frm.doc.purchase_receipt && can_create_grn) {
-			frm.add_custom_button(__("Create GRN"), function () {
-				frappe.confirm(
-					__("Create Purchase Receipt (GRN) for this token?<br><br>This will generate a Purchase Receipt against the linked Purchase Order with the net weight from the Weighbridge."),
-					function () {
-						frm.call("create_grn").then((r) => {
-							frm.reload_doc();
-							if (r.message && r.message.purchase_receipt) {
-								frappe.show_alert({
-									message: __("GRN {0} created successfully", [r.message.purchase_receipt]),
-									indicator: "green"
+			// === MATERIAL TOKEN BUTTONS ===
+			if (!is_gate_pass) {
+				// Print Token button
+				frm.add_custom_button(__("Print Token"), function () {
+					frm.print_doc();
+				}).addClass("btn-primary-dark");
+
+				// Create GRN button - restricted roles
+				let grn_roles = ["Accounts Manager", "Accounts User", "Stores User", "IT Head", "System Manager"];
+				let can_create_grn = grn_roles.some(r => frappe.user.has_role(r));
+				if (frm.doc.status === "Tare Weighed" && !frm.doc.purchase_receipt && can_create_grn) {
+					frm.add_custom_button(__("Create GRN"), function () {
+						frappe.confirm(
+							__("Create Purchase Receipt (GRN) for this token?<br><br>This will generate a Purchase Receipt against the linked Purchase Order with the net weight from the Weighbridge."),
+							function () {
+								frm.call("create_grn").then((r) => {
+									frm.reload_doc();
+									if (r.message && r.message.purchase_receipt) {
+										frappe.show_alert({
+											message: __("GRN {0} created successfully", [r.message.purchase_receipt]),
+											indicator: "green"
+										});
+									}
 								});
 							}
-						});
+						);
+					}).addClass("btn-primary");
+				}
+
+				// View GRN button
+				if (frm.doc.purchase_receipt) {
+					frm.add_custom_button(__("View GRN"), function () {
+						frappe.set_route("Form", "Purchase Receipt", frm.doc.purchase_receipt);
+					}, __("Actions"));
+				}
+
+				// Mark Exit for Material tokens
+				let show_mark_exit = false;
+				if (frm.doc.status && frm.doc.status !== "Exited") {
+					if (frm.doc.purpose === "Raw Material") {
+						show_mark_exit = frm.doc.status === "GRN Created";
+					} else {
+						show_mark_exit = true;
 					}
-				);
-			}).addClass("btn-primary");
-		}
+				}
 
-		// View GRN button - shown when GRN exists
-		if (frm.doc.purchase_receipt) {
-			frm.add_custom_button(__("View GRN"), function () {
-				frappe.set_route("Form", "Purchase Receipt", frm.doc.purchase_receipt);
-			}, __("Actions"));
-		}
+				if (show_mark_exit && !frappe.user.has_role("Weighbridge Operator")) {
+					frm.add_custom_button(__("Mark Exit"), function () {
+						frappe.confirm(
+							__("Are you sure you want to mark this vehicle as exited?"),
+							function () {
+								frm.call("mark_exit").then(() => {
+									frm.reload_doc();
+									frappe.show_alert({
+										message: __("Vehicle marked as exited"),
+										indicator: "green"
+									});
+								});
+							}
+						);
+					}, __("Actions"));
+				}
+			}
 
-		// Mark Exit button logic:
-		// - Raw Material tokens: only after GRN Created
-		// - Visitor/Non-Raw Material/Service/Other: any stage after Token Generated
-		// - Not shown for Weighbridge Operator role
-		let show_mark_exit = false;
-		if (frm.doc.status && frm.doc.status !== "Exited") {
-			let is_raw_material = frm.doc.purpose === "Raw Material";
-			if (is_raw_material) {
-				show_mark_exit = frm.doc.status === "GRN Created";
-			} else {
-				// Non-RM: can exit at any stage (visitor, service, etc.)
-				show_mark_exit = true;
+			// === GATE PASS BUTTONS ===
+			if (is_gate_pass) {
+				// Print Gate Pass button
+				frm.add_custom_button(__("Print Gate Pass"), function () {
+					// Use the custom Gate Pass print format
+					let w = window.open(
+						frappe.urllib.get_full_url(
+							"/api/method/frappe.utils.print_format.download_pdf?"
+							+ "doctype=BBF Token"
+							+ "&name=" + encodeURIComponent(frm.doc.name)
+							+ "&format=BBF Gate Pass"
+							+ "&no_letterhead=0"
+						)
+					);
+					if (!w) {
+						frappe.msgprint(__("Please allow popups for this site to print the gate pass"));
+					}
+				}).addClass("btn-primary-dark");
+
+				// G2 Log Entry button — G2 Gate Operator when visitor is Inside Campus
+				let g2_roles = ["G2 Gate Operator", "IT Head", "System Manager"];
+				let is_g2 = g2_roles.some(r => frappe.user.has_role(r));
+
+				if (frm.doc.gate_pass_status === "Inside Campus" && is_g2 && frm.doc.destination) {
+					// Check if destination has G2 checkpoint
+					frappe.db.get_value("BBF Gate Pass Destination", frm.doc.destination, "has_g2_checkpoint", (r) => {
+						if (r && r.has_g2_checkpoint) {
+							frm.add_custom_button(__("Log G2 Entry"), function () {
+								frappe.confirm(
+									__("Log visitor entry into the plant at G2?"),
+									function () {
+										frm.call("g2_log_entry").then(() => {
+											frm.reload_doc();
+											frappe.show_alert({
+												message: __("G2 entry logged"),
+												indicator: "green"
+											});
+										});
+									}
+								);
+							}).addClass("btn-warning");
+						}
+					});
+				}
+
+				// G2 Log Exit button — G2 Gate Operator when visitor is Inside Plant
+				if (frm.doc.gate_pass_status === "Inside Plant" && is_g2) {
+					frm.add_custom_button(__("Log G2 Exit"), function () {
+						frappe.confirm(
+							__("Log visitor exit from the plant at G2?"),
+							function () {
+								frm.call("g2_log_exit").then(() => {
+									frm.reload_doc();
+									frappe.show_alert({
+										message: __("G2 exit logged"),
+										indicator: "green"
+									});
+								});
+							}
+						);
+					}).addClass("btn-warning");
+				}
+
+				// Mark Exit for Gate Pass — G1 Security when visitor is Inside Campus (not Inside Plant)
+				if (frm.doc.gate_pass_status && frm.doc.gate_pass_status !== "Exited") {
+					let g1_roles = ["G1 Security", "IT Head", "System Manager"];
+					let is_g1 = g1_roles.some(r => frappe.user.has_role(r));
+
+					if (is_g1 && frm.doc.gate_pass_status !== "Inside Plant") {
+						frm.add_custom_button(__("Mark Exit"), function () {
+							frappe.confirm(
+								__("Mark this visitor as exited from the campus?"),
+								function () {
+									frm.call("mark_exit").then(() => {
+										frm.reload_doc();
+										frappe.show_alert({
+											message: __("Visitor marked as exited"),
+											indicator: "green"
+										});
+									});
+								}
+							);
+						}).addClass("btn-danger");
+					}
+				}
 			}
 		}
 
-		if (show_mark_exit && !frappe.user.has_role("Weighbridge Operator")) {
-			frm.add_custom_button(__("Mark Exit"), function () {
-				frappe.confirm(
-					__("Are you sure you want to mark this vehicle as exited?"),
-					function () {
-						frm.call("mark_exit").then(() => {
-							frm.reload_doc();
-							frappe.show_alert({
-								message: __("Vehicle marked as exited"),
-								indicator: "green"
-							});
-						});
-					}
-				);
-			}, __("Actions"));
+		// === STATUS INDICATORS ===
+		if (is_gate_pass) {
+			// Gate Pass status indicators
+			if (frm.doc.gate_pass_status === "Inside Campus") {
+				frm.page.set_indicator(__("Inside Campus"), "blue");
+			} else if (frm.doc.gate_pass_status === "Inside Plant") {
+				frm.page.set_indicator(__("Inside Plant"), "orange");
+			} else if (frm.doc.gate_pass_status === "Exited") {
+				frm.page.set_indicator(__("Exited"), "green");
+			} else if (frm.is_new()) {
+				frm.page.set_indicator(__("New Gate Pass"), "blue");
+			}
+		} else {
+			// Material token status indicators
+			if (frm.doc.status === "Exited") {
+				frm.page.set_indicator(__("Exited"), "green");
+			} else if (frm.doc.status === "GRN Created") {
+				frm.page.set_indicator(__("GRN Created"), "green");
+			} else if (frm.doc.status === "Token Generated") {
+				frm.page.set_indicator(__("Token Generated"), "blue");
+			} else {
+				frm.page.set_indicator(__(frm.doc.status), "orange");
+			}
 		}
 
-		// Color-code status
-		if (frm.doc.status === "Exited") {
-			frm.page.set_indicator(__("Exited"), "green");
-		} else if (frm.doc.status === "GRN Created") {
-			frm.page.set_indicator(__("GRN Created"), "green");
-		} else if (frm.doc.status === "Token Generated") {
-			frm.page.set_indicator(__("Token Generated"), "blue");
-		} else {
-			frm.page.set_indicator(__(frm.doc.status), "orange");
+		// Filter destination to show only enabled ones
+		frm.set_query("destination", function () {
+			return { filters: { enabled: 1 } };
+		});
+	},
+
+	entry_type(frm) {
+		// Clear fields when switching type on new form
+		if (frm.is_new()) {
+			if (frm.doc.entry_type === "Gate Pass") {
+				// Clear material fields
+				frm.set_value("purpose", "");
+				frm.set_value("vehicle_number", "");
+				frm.set_value("driver_name", "");
+				frm.set_value("driver_mobile", "");
+				frm.set_value("driver_license_number", "");
+			} else {
+				// Clear gate pass fields
+				frm.set_value("visitor_name", "");
+				frm.set_value("visitor_company", "");
+				frm.set_value("contact_number", "");
+				frm.set_value("visit_purpose", "");
+				frm.set_value("destination", "");
+				frm.set_value("host_name", "");
+				frm.set_value("host_department", "");
+				frm.set_value("purpose_detail", "");
+				frm.set_value("id_proof_type", "");
+				frm.set_value("id_proof_number", "");
+				frm.set_value("expected_duration", "");
+				frm.set_value("number_of_visitors", 1);
+			}
+			frm.refresh_fields();
+		}
+	},
+
+	destination(frm) {
+		// Auto-fill host name from destination default
+		if (frm.doc.destination && frm.doc.entry_type === "Gate Pass") {
+			frappe.db.get_value("BBF Gate Pass Destination", frm.doc.destination, "default_host", (r) => {
+				if (r && r.default_host && !frm.doc.host_name) {
+					frm.set_value("host_name", r.default_host);
+				}
+			});
 		}
 	}
 });

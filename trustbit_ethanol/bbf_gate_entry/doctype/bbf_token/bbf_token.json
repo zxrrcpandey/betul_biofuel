@@ -5,6 +5,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "entry_type",
   "token_number",
   "barcode",
   "status",
@@ -12,6 +13,7 @@
   "entry_date",
   "entry_time",
   "purpose",
+  "gate_pass_status",
   "vehicle_section",
   "vehicle_number",
   "vehicle_type",
@@ -19,6 +21,35 @@
   "driver_name",
   "driver_mobile",
   "driver_license_number",
+  "gate_pass_visitor_section",
+  "visitor_name",
+  "visitor_company",
+  "contact_number",
+  "number_of_visitors",
+  "column_break_gp_visitor",
+  "id_proof_type",
+  "id_proof_number",
+  "visitor_photo",
+  "gate_pass_visit_section",
+  "visit_purpose",
+  "purpose_detail",
+  "destination",
+  "destination_detail",
+  "column_break_gp_visit",
+  "host_name",
+  "host_department",
+  "expected_duration",
+  "vehicle_in_gate_pass",
+  "gate_pass_g2_section",
+  "g2_entry_time_gp",
+  "g2_entry_by",
+  "column_break_gp_g2",
+  "g2_exit_time_gp",
+  "g2_exit_by",
+  "gate_pass_timing_section",
+  "total_campus_time",
+  "column_break_gp_timing",
+  "total_plant_time",
   "timestamps_section",
   "g1_entry_time",
   "g2_link_time",
@@ -46,6 +77,17 @@
   "amended_from"
  ],
  "fields": [
+  {
+   "fieldname": "entry_type",
+   "fieldtype": "Select",
+   "label": "Entry Type",
+   "options": "Material\nGate Pass",
+   "default": "Material",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "bold": 1
+  },
   {
    "fieldname": "token_number",
    "fieldtype": "Data",
@@ -99,21 +141,34 @@
    "options": "\nRaw Material\nNon-Raw Material\nVisitor\nService\nOther",
    "reqd": 1,
    "in_standard_filter": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "depends_on": "eval:doc.entry_type==='Material'"
+  },
+  {
+   "fieldname": "gate_pass_status",
+   "fieldtype": "Select",
+   "label": "Gate Pass Status",
+   "options": "\nInside Campus\nInside Plant\nExited",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "depends_on": "eval:doc.entry_type==='Gate Pass'",
+   "bold": 1
   },
   {
    "fieldname": "vehicle_section",
    "fieldtype": "Section Break",
    "label": "Vehicle Details",
-   "permlevel": 1
+   "permlevel": 1,
+   "depends_on": "eval:doc.entry_type==='Material'"
   },
   {
    "fieldname": "vehicle_number",
    "fieldtype": "Link",
    "label": "Vehicle Number",
    "options": "BBF Vehicle Master",
-   "reqd": 1,
-   "permlevel": 1
+   "reqd": 0,
+   "permlevel": 1,
+   "mandatory_depends_on": "eval:doc.entry_type==='Material'"
   },
   {
    "fieldname": "vehicle_type",
@@ -147,9 +202,175 @@
    "permlevel": 1
   },
   {
+   "fieldname": "gate_pass_visitor_section",
+   "fieldtype": "Section Break",
+   "label": "Visitor Details",
+   "depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "visitor_name",
+   "fieldtype": "Data",
+   "label": "Visitor Name",
+   "mandatory_depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "visitor_company",
+   "fieldtype": "Data",
+   "label": "Visitor Company"
+  },
+  {
+   "fieldname": "contact_number",
+   "fieldtype": "Data",
+   "label": "Contact Number",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "number_of_visitors",
+   "fieldtype": "Int",
+   "label": "Number of Visitors",
+   "default": "1"
+  },
+  {
+   "fieldname": "column_break_gp_visitor",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "id_proof_type",
+   "fieldtype": "Select",
+   "label": "ID Proof Type",
+   "options": "\nAadhaar\nDriving License\nCompany ID\nOther"
+  },
+  {
+   "fieldname": "id_proof_number",
+   "fieldtype": "Data",
+   "label": "ID Proof Number"
+  },
+  {
+   "fieldname": "visitor_photo",
+   "fieldtype": "Attach Image",
+   "label": "Visitor Photo"
+  },
+  {
+   "fieldname": "gate_pass_visit_section",
+   "fieldtype": "Section Break",
+   "label": "Visit Details",
+   "depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "visit_purpose",
+   "fieldtype": "Select",
+   "label": "Visit Purpose",
+   "options": "\nVisitor\nAdmin\nMaintenance\nElectrician\nContractor\nDelivery\nOther",
+   "mandatory_depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "purpose_detail",
+   "fieldtype": "Small Text",
+   "label": "Purpose Detail"
+  },
+  {
+   "fieldname": "destination",
+   "fieldtype": "Link",
+   "label": "Destination",
+   "options": "BBF Gate Pass Destination",
+   "mandatory_depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "destination_detail",
+   "fieldtype": "Data",
+   "label": "Destination Detail",
+   "description": "Specific location or area within the destination"
+  },
+  {
+   "fieldname": "column_break_gp_visit",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "host_name",
+   "fieldtype": "Data",
+   "label": "Host Name"
+  },
+  {
+   "fieldname": "host_department",
+   "fieldtype": "Data",
+   "label": "Host Department"
+  },
+  {
+   "fieldname": "expected_duration",
+   "fieldtype": "Data",
+   "label": "Expected Duration",
+   "description": "e.g., 2 hours, Full day, 30 minutes"
+  },
+  {
+   "fieldname": "vehicle_in_gate_pass",
+   "fieldtype": "Data",
+   "label": "Vehicle Number",
+   "description": "If visitor has a vehicle"
+  },
+  {
+   "fieldname": "gate_pass_g2_section",
+   "fieldtype": "Section Break",
+   "label": "G2 Checkpoint",
+   "depends_on": "eval:doc.entry_type==='Gate Pass' && doc.destination",
+   "description": "G2 entry/exit tracking for destinations inside the plant"
+  },
+  {
+   "fieldname": "g2_entry_time_gp",
+   "fieldtype": "Datetime",
+   "label": "G2 Entry Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "g2_entry_by",
+   "fieldtype": "Data",
+   "label": "G2 Entry By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_gp_g2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "g2_exit_time_gp",
+   "fieldtype": "Datetime",
+   "label": "G2 Exit Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "g2_exit_by",
+   "fieldtype": "Data",
+   "label": "G2 Exit By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gate_pass_timing_section",
+   "fieldtype": "Section Break",
+   "label": "Gate Pass Duration",
+   "depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "total_campus_time",
+   "fieldtype": "Data",
+   "label": "Total Campus Time",
+   "read_only": 1,
+   "description": "Total time inside campus (G1 entry to G1 exit)"
+  },
+  {
+   "fieldname": "column_break_gp_timing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_plant_time",
+   "fieldtype": "Data",
+   "label": "Total Plant Time",
+   "read_only": 1,
+   "description": "Time inside plant (G2 entry to G2 exit)"
+  },
+  {
    "fieldname": "timestamps_section",
    "fieldtype": "Section Break",
-   "label": "Turnaround Timestamps"
+   "label": "Turnaround Timestamps",
+   "depends_on": "eval:doc.entry_type==='Material'"
   },
   {
    "fieldname": "g1_entry_time",
@@ -225,7 +446,8 @@
   {
    "fieldname": "turnaround_section",
    "fieldtype": "Section Break",
-   "label": "Turnaround Summary"
+   "label": "Turnaround Summary",
+   "depends_on": "eval:doc.entry_type==='Material'"
   },
   {
    "fieldname": "g1_to_g2_minutes",
@@ -331,7 +553,7 @@
    "link_fieldname": "bbf_token"
   }
  ],
- "modified": "2026-03-07 00:00:00",
+ "modified": "2026-03-19 00:00:00",
  "modified_by": "Administrator",
  "module": "BBF Gate Entry",
  "name": "BBF Token",
@@ -366,6 +588,7 @@
   },
   {
    "read": 1,
+   "write": 1,
    "role": "G2 Gate Operator",
    "permlevel": 0
   },
@@ -401,7 +624,7 @@
    "permlevel": 0
   }
  ],
- "search_fields": "token_number, status, entry_date",
+ "search_fields": "token_number, status, entry_date, entry_type",
  "sort_field": "creation",
  "sort_order": "DESC",
  "title_field": "token_number",

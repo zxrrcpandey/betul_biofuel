@@ -595,6 +595,34 @@ def _setup_material_request_permissions():
 	frappe.clear_cache(doctype="Material Request")
 
 
+def seed_gate_pass_destinations():
+	"""Create default Gate Pass destinations if none exist."""
+	if frappe.db.count("BBF Gate Pass Destination") > 0:
+		return
+
+	defaults = [
+		{
+			"destination_name": "Admin Office",
+			"has_g2_checkpoint": 0,
+			"enabled": 1,
+			"description": "Common area admin office — no G2 checkpoint required"
+		},
+		{
+			"destination_name": "BBF Plant",
+			"has_g2_checkpoint": 1,
+			"enabled": 1,
+			"description": "Betul Bio Fuel plant area — G2 checkpoint required"
+		},
+	]
+
+	for d in defaults:
+		doc = frappe.new_doc("BBF Gate Pass Destination")
+		doc.update(d)
+		doc.insert(ignore_permissions=True)
+
+	frappe.db.commit()
+
+
 def _seed_default_approval_limits():
 	"""Create default BBF Approval Limit records if none exist."""
 	if frappe.db.count("BBF Approval Limit") > 0:

@@ -40,6 +40,13 @@ fixtures = [
 		]]]
 	},
 	{
+		"doctype": "Print Format",
+		"filters": [["name", "in", [
+			"BBF Token Print",
+			"BBF Gate Pass"
+		]]]
+	},
+	{
 		"doctype": "Custom Field",
 		"filters": [["name", "in", [
 			"Purchase Receipt-bbf_token",
@@ -117,7 +124,8 @@ doc_events = {
 
 # Setup custom fields on Purchase Receipt, Purchase Order, Material Request, Company, Item Group, Brand
 after_migrate = [
-	"trustbit_ethanol.bbf_gate_entry.setup.create_custom_fields"
+	"trustbit_ethanol.bbf_gate_entry.setup.create_custom_fields",
+	"trustbit_ethanol.bbf_gate_entry.setup.seed_gate_pass_destinations"
 ]
 
 # Scheduled Tasks
