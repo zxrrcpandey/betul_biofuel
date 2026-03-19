@@ -2,6 +2,11 @@ frappe.ui.form.on("BBF Token", {
 	refresh(frm) {
 		let is_gate_pass = frm.doc.entry_type === "Gate Pass";
 
+		// Hide Connections sidebar for Gate Pass (material-only links)
+		if (is_gate_pass && frm.dashboard && frm.dashboard.wrapper) {
+			frm.dashboard.wrapper.find(".form-links, .form-heatmap, .form-graph").hide();
+		}
+
 		// Hide barcode and token_number on new unsaved form
 		if (frm.is_new()) {
 			frm.set_df_property("barcode", "hidden", 1);
