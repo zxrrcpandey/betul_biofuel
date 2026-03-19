@@ -16,6 +16,48 @@ class BBFToken(Document):
 		if self.entry_type == "Gate Pass":
 			self.gate_pass_status = "Inside Campus"
 
+			# Auto-fill from BBF Visitor master if linked
+			if self.visitor and not self.visitor_name:
+				visitor = frappe.get_doc("BBF Visitor", self.visitor)
+				self.visitor_name = visitor.visitor_name
+				self.visitor_company = self.visitor_company or visitor.visitor_company
+				self.contact_number = self.contact_number or visitor.contact_number
+				self.id_proof_type = self.id_proof_type or visitor.id_proof_type
+				self.id_proof_number = self.id_proof_number or visitor.id_proof_number
+				if not self.visitor_photo and visitor.visitor_photo:
+					self.visitor_photo = visitor.visitor_photo
+
+			# Auto-create BBF Visitor master for new visitors
+			if not self.visitor and self.visitor_name:
+				existing = frappe.db.get_value(
+					"BBF Visitor",
+					{"visitor_name": self.visitor_name, "contact_number": self.contact_number or ""},
+					"name"
+				)
+				if existing:
+					self.visitor = existing
+				else:
+					new_visitor = frappe.get_doc({
+						"doctype": "BBF Visitor",
+						"visitor_name": self.visitor_name,
+						"visitor_company": self.visitor_company,
+						"contact_number": self.contact_number,
+						"id_proof_type": self.id_proof_type,
+						"id_proof_number": self.id_proof_number,
+						"visitor_photo": self.visitor_photo,
+						"first_visit_date": getdate(),
+					})
+					new_visitor.insert(ignore_permissions=True)
+					self.visitor = new_visitor.name
+
+			# Admin Reception: auto-set destination to Admin Office
+			if frappe.session.user != "Administrator":
+				user_roles = set(frappe.get_roles())
+				is_admin_reception = "Admin Reception" in user_roles
+				is_g1 = "G1 Security" in user_roles
+				if is_admin_reception and not is_g1 and not self.destination:
+					self.destination = "Admin Office"
+
 		# Auto-fill host name from destination default
 		if self.entry_type == "Gate Pass" and self.destination:
 			default_host = frappe.db.get_value(
@@ -256,6 +298,12 @@ class BBFToken(Document):
 			if self.status == "Exited":
 				frappe.throw("This token is already marked as exited")
 
+		# Admin Reception can mark exit too
+		if self.entry_type == "Gate Pass":
+			allowed_roles = {"G1 Security", "Admin Reception", "IT Head", "System Manager"}
+			if not allowed_roles.intersection(set(frappe.get_roles())):
+				frappe.throw("You do not have permission to mark exit")
+
 		# Material tokens: exit restrictions based on purpose and weighing
 		if self.entry_type == "Material":
 			if self.purpose == "Raw Material" and self.status != "GRN Created":
@@ -284,6 +332,8 @@ class BBFToken(Document):
 				"total_campus_time": self._format_duration(campus_minutes),
 				"total_turnaround_minutes": campus_minutes
 			})
+			# Update BBF Visitor stats
+			self._update_visitor_stats(campus_minutes)
 		else:
 			self.status = "Exited"
 			self.db_set({
@@ -366,6 +416,27 @@ class BBFToken(Document):
 			)
 
 		vehicle.save(ignore_permissions=True)
+
+	def _update_visitor_stats(self, campus_minutes):
+		"""Update BBF Visitor master with visit statistics."""
+		if not self.visitor or not frappe.db.exists("BBF Visitor", self.visitor):
+			return
+
+		visitor = frappe.get_doc("BBF Visitor", self.visitor)
+		visitor.total_visits = (visitor.total_visits or 0) + 1
+		visitor.last_visit_date = getdate()
+
+		if not visitor.first_visit_date:
+			visitor.first_visit_date = getdate()
+
+		if campus_minutes and campus_minutes > 0:
+			prev_visits = max(visitor.total_visits - 1, 0)
+			prev_total = (visitor.average_duration_minutes or 0) * prev_visits
+			visitor.average_duration_minutes = round(
+				(prev_total + campus_minutes) / visitor.total_visits, 1
+			)
+
+		visitor.save(ignore_permissions=True)
 
 	def _update_transport_master(self):
 		transporter_name = frappe.db.get_value(

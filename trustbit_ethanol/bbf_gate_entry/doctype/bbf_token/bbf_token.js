@@ -1,11 +1,29 @@
 frappe.ui.form.on("BBF Token", {
 	refresh(frm) {
 		let is_gate_pass = frm.doc.entry_type === "Gate Pass";
+		let is_admin_reception = frappe.user.has_role("Admin Reception") && !frappe.user.has_role("G1 Security");
 
 		// Hide Connections sidebar for Gate Pass (material-only links)
 		if (is_gate_pass && frm.dashboard && frm.dashboard.wrapper) {
 			frm.dashboard.wrapper.find(".form-links, .form-heatmap, .form-graph").hide();
 		}
+
+		// Admin Reception: force Gate Pass mode and hide material fields
+		if (is_admin_reception) {
+			if (frm.is_new()) {
+				frm.set_value("entry_type", "Gate Pass");
+			}
+			frm.set_df_property("entry_type", "read_only", 1);
+			// Hide material-only sections
+			frm.set_df_property("vehicle_section", "hidden", 1);
+			frm.set_df_property("timestamps_section", "hidden", 1);
+			frm.set_df_property("turnaround_section", "hidden", 1);
+		}
+
+		// Filter visitor Link to show enabled visitors
+		frm.set_query("visitor", function () {
+			return { filters: { enabled: 1 } };
+		});
 
 		// Hide barcode and token_number on new unsaved form
 		if (frm.is_new()) {
@@ -154,7 +172,7 @@ frappe.ui.form.on("BBF Token", {
 
 				// Mark Exit for Gate Pass — G1 Security when visitor is Inside Campus (not Inside Plant)
 				if (frm.doc.gate_pass_status && frm.doc.gate_pass_status !== "Exited") {
-					let g1_roles = ["G1 Security", "IT Head", "System Manager"];
+					let g1_roles = ["G1 Security", "Admin Reception", "IT Head", "System Manager"];
 					let is_g1 = g1_roles.some(r => frappe.user.has_role(r));
 
 					if (is_g1 && frm.doc.gate_pass_status !== "Inside Plant") {
@@ -245,6 +263,29 @@ frappe.ui.form.on("BBF Token", {
 					frm.set_value("host_name", r.default_host);
 				}
 			});
+		}
+	},
+
+	visitor(frm) {
+		// Auto-fill visitor details from BBF Visitor master
+		if (frm.doc.visitor) {
+			frappe.db.get_doc("BBF Visitor", frm.doc.visitor).then(v => {
+				frm.set_value("visitor_name", v.visitor_name || "");
+				frm.set_value("visitor_company", v.visitor_company || "");
+				frm.set_value("contact_number", v.contact_number || "");
+				frm.set_value("id_proof_type", v.id_proof_type || "");
+				frm.set_value("id_proof_number", v.id_proof_number || "");
+				if (v.visitor_photo) {
+					frm.set_value("visitor_photo", v.visitor_photo);
+				}
+			});
+		} else {
+			// Clear fields when visitor is unlinked
+			frm.set_value("visitor_name", "");
+			frm.set_value("visitor_company", "");
+			frm.set_value("contact_number", "");
+			frm.set_value("id_proof_type", "");
+			frm.set_value("id_proof_number", "");
 		}
 	}
 });

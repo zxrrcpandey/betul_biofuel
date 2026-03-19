@@ -36,7 +36,8 @@ fixtures = [
 			"MD",
 			"Purchase Manager",
 			"Grain Purchase Manager",
-			"AVP"
+			"AVP",
+			"Admin Reception"
 		]]]
 	},
 	{

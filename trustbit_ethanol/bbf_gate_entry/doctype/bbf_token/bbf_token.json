@@ -22,6 +22,7 @@
   "driver_mobile",
   "driver_license_number",
   "gate_pass_visitor_section",
+  "visitor",
   "visitor_name",
   "visitor_company",
   "contact_number",
@@ -207,6 +208,13 @@
    "fieldtype": "Section Break",
    "label": "Visitor Details",
    "depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "visitor",
+   "fieldtype": "Link",
+   "label": "Returning Visitor",
+   "options": "BBF Visitor",
+   "description": "Select existing visitor to auto-fill details, or leave blank for new visitor"
   },
   {
    "fieldname": "visitor_name",
@@ -622,6 +630,13 @@
   {
    "read": 1,
    "role": "Quality Inspector",
+   "permlevel": 0
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Admin Reception",
    "permlevel": 0
   }
  ],

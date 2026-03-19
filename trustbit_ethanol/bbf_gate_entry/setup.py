@@ -525,7 +525,7 @@ def _setup_purchase_receipt_permissions():
 
 def _create_approval_roles():
 	"""Create approval roles if they don't exist."""
-	for role_name in ["Department Head", "General Manager", "CEO", "MD", "Purchase Manager", "Grain Purchase Manager", "AVP", "IT Head"]:
+	for role_name in ["Department Head", "General Manager", "CEO", "MD", "Purchase Manager", "Grain Purchase Manager", "AVP", "IT Head", "Admin Reception"]:
 		if not frappe.db.exists("Role", role_name):
 			role = frappe.new_doc("Role")
 			role.role_name = role_name
