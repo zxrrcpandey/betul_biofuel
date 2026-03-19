@@ -39,6 +39,7 @@ class BBFGateEntry(Document):
 	def on_submit(self):
 		self.update_token_status()
 		self.set_gate_entry_status()
+		self._create_material_inspection()
 
 	def update_token_status(self):
 		token = frappe.get_doc("BBF Token", self.token_number)
@@ -68,3 +69,9 @@ class BBFGateEntry(Document):
 				"uom": item.uom
 			})
 		self.supplier_name = po.supplier_name
+
+	def _create_material_inspection(self):
+		"""Auto-create material inspection for Non-RM gate entries."""
+		if self.material_flow != "Raw Material":
+			from trustbit_ethanol.bbf_gate_entry.doctype.bbf_material_inspection.bbf_material_inspection import create_material_inspection
+			create_material_inspection(self.name)

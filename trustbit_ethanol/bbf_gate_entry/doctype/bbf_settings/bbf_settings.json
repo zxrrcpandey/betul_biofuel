@@ -31,7 +31,14 @@
   "approval_sla_hours",
   "approval_sla_email",
   "column_break_approval_sla",
-  "approval_escalation_enabled"
+  "approval_escalation_enabled",
+  "inspection_section",
+  "enable_material_inspection",
+  "inspection_2nd_notify_hours",
+  "inspection_3rd_notify_hours",
+  "column_break_inspection",
+  "inspection_4th_notify_hours",
+  "inspection_notify_it_head"
  ],
  "fields": [
   {
@@ -203,11 +210,55 @@
    "label": "Auto-Escalate Stuck POs",
    "default": "0",
    "description": "Auto-forward POs to next approval level after SLA breach"
+  },
+  {
+   "fieldname": "inspection_section",
+   "fieldtype": "Section Break",
+   "label": "Material Inspection (Non-RM)"
+  },
+  {
+   "fieldname": "enable_material_inspection",
+   "fieldtype": "Check",
+   "label": "Enable Material Inspection",
+   "default": "1",
+   "description": "Auto-create inspection when Non-RM items arrive at G2. Requester/HOD must approve before GRN."
+  },
+  {
+   "fieldname": "inspection_2nd_notify_hours",
+   "fieldtype": "Int",
+   "label": "2nd Notification (Hours)",
+   "default": "8",
+   "description": "Reminder notification after these many hours"
+  },
+  {
+   "fieldname": "inspection_3rd_notify_hours",
+   "fieldtype": "Int",
+   "label": "3rd Notification (Hours)",
+   "default": "24",
+   "description": "Warning notification after these many hours"
+  },
+  {
+   "fieldname": "column_break_inspection",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "inspection_4th_notify_hours",
+   "fieldtype": "Int",
+   "label": "4th Final Notification (Hours)",
+   "default": "48",
+   "description": "Final notice to Requester + HOD + IT Head. Status changes to Auto-Proceeded."
+  },
+  {
+   "fieldname": "inspection_notify_it_head",
+   "fieldtype": "Check",
+   "label": "Notify IT Head on 4th",
+   "default": "1",
+   "description": "Include IT Head in the 4th (final) notification"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-03-17 12:00:00",
+ "modified": "2026-03-19 12:00:00",
  "modified_by": "Administrator",
  "module": "BBF Gate Entry",
  "name": "BBF Settings",

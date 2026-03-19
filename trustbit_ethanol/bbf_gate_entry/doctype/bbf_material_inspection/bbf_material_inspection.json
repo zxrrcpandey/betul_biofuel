@@ -1,0 +1,286 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-03-19 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "status",
+  "column_break_header",
+  "created_time",
+  "notification_stage",
+  "reference_section",
+  "token_number",
+  "gate_entry",
+  "purchase_order",
+  "column_break_ref",
+  "material_request",
+  "supplier_name",
+  "requester_section",
+  "requester",
+  "requester_name",
+  "column_break_req",
+  "department_head",
+  "department_head_name",
+  "items_section",
+  "items",
+  "action_section",
+  "overall_action",
+  "rejection_reason",
+  "column_break_action",
+  "inspection_by",
+  "inspection_time",
+  "sla_section",
+  "sla_1st_sent",
+  "sla_2nd_sent",
+  "column_break_sla",
+  "sla_3rd_sent",
+  "sla_4th_sent"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "BBF-INSP-.YYYY.-.#####",
+   "default": "BBF-INSP-.YYYY.-.#####",
+   "hidden": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending Inspection\nApproved\nPartially Approved\nOn Hold\nRejected\nAuto-Proceeded",
+   "default": "Pending Inspection",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "column_break_header",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "created_time",
+   "fieldtype": "Datetime",
+   "label": "Created Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notification_stage",
+   "fieldtype": "Int",
+   "label": "Notification Stage",
+   "read_only": 1,
+   "default": "1",
+   "description": "Current notification stage (1-4)"
+  },
+  {
+   "fieldname": "reference_section",
+   "fieldtype": "Section Break",
+   "label": "Reference"
+  },
+  {
+   "fieldname": "token_number",
+   "fieldtype": "Link",
+   "label": "Token Number",
+   "options": "BBF Token",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "gate_entry",
+   "fieldtype": "Link",
+   "label": "Gate Entry",
+   "options": "BBF Gate Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "purchase_order",
+   "fieldtype": "Link",
+   "label": "Purchase Order",
+   "options": "Purchase Order",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_ref",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "material_request",
+   "fieldtype": "Link",
+   "label": "Material Request",
+   "options": "Material Request",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supplier_name",
+   "fieldtype": "Data",
+   "label": "Supplier",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "requester_section",
+   "fieldtype": "Section Break",
+   "label": "Requester / HOD"
+  },
+  {
+   "fieldname": "requester",
+   "fieldtype": "Link",
+   "label": "Material Requester",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "requester_name",
+   "fieldtype": "Data",
+   "label": "Requester Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_req",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "department_head",
+   "fieldtype": "Link",
+   "label": "Department Head",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "department_head_name",
+   "fieldtype": "Data",
+   "label": "Department Head Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Items for Inspection"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "BBF Material Inspection Item",
+   "reqd": 0
+  },
+  {
+   "fieldname": "action_section",
+   "fieldtype": "Section Break",
+   "label": "Inspection Action"
+  },
+  {
+   "fieldname": "overall_action",
+   "fieldtype": "Select",
+   "label": "Overall Action",
+   "options": "\nApprove All\nReject All\nItem-wise",
+   "description": "Choose how to inspect: approve all, reject all, or decide per item"
+  },
+  {
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Rejection / Hold Reason",
+   "depends_on": "eval:doc.overall_action==='Reject All' || doc.status==='Rejected' || doc.status==='On Hold'"
+  },
+  {
+   "fieldname": "column_break_action",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "inspection_by",
+   "fieldtype": "Link",
+   "label": "Inspected By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "inspection_time",
+   "fieldtype": "Datetime",
+   "label": "Inspection Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sla_section",
+   "fieldtype": "Section Break",
+   "label": "Notification Tracking",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "sla_1st_sent",
+   "fieldtype": "Datetime",
+   "label": "1st Notification Sent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sla_2nd_sent",
+   "fieldtype": "Datetime",
+   "label": "2nd Notification Sent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_sla",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sla_3rd_sent",
+   "fieldtype": "Datetime",
+   "label": "3rd Notification Sent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sla_4th_sent",
+   "fieldtype": "Datetime",
+   "label": "4th Notification Sent (Final)",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-03-19 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "BBF Material Inspection",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "Department Head"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "Stores User"
+  },
+  {
+   "read": 1,
+   "role": "G2 Gate Operator"
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager"
+  }
+ ],
+ "search_fields": "token_number, purchase_order, status, requester",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "token_number",
+ "track_changes": 1
+}

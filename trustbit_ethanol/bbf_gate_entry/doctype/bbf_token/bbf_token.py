@@ -98,6 +98,18 @@ class BBFToken(Document):
 		if self.purchase_receipt:
 			frappe.throw(f"Purchase Receipt {self.purchase_receipt} already exists for this token")
 
+		# Check material inspection for Non-RM items
+		if self.purpose != "Raw Material":
+			from trustbit_ethanol.bbf_gate_entry.doctype.bbf_material_inspection.bbf_material_inspection import get_inspection_status_for_token
+			insp = get_inspection_status_for_token(self.name)
+			if insp:
+				if insp.status == "Rejected":
+					frappe.throw("GRN cannot be created — material inspection has been rejected. Please resolve the inspection first.")
+				elif insp.status == "On Hold":
+					frappe.throw("GRN cannot be created — material inspection is on hold. Please resolve held items first.")
+				elif insp.status == "Pending Inspection":
+					frappe.throw("GRN cannot be created — material inspection is still pending. Please wait for inspection approval or contact the requester/HOD.")
+
 		# Gather all linked data
 		gate_entry = frappe.db.get_value(
 			"BBF Gate Entry",

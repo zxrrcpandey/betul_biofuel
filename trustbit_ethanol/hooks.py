@@ -137,7 +137,8 @@ scheduler_events = {
 			"trustbit_ethanol.bbf_gate_entry.api.check_sla_breaches"
 		],
 		"*/30 * * * *": [
-			"trustbit_ethanol.bbf_gate_entry.bbf_po_approval.check_approval_sla"
+			"trustbit_ethanol.bbf_gate_entry.bbf_po_approval.check_approval_sla",
+			"trustbit_ethanol.bbf_gate_entry.doctype.bbf_material_inspection.bbf_material_inspection.check_inspection_sla"
 		]
 	}
 }
