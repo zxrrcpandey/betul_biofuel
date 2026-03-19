@@ -633,17 +633,23 @@ def _fix_workspace_content():
 	# Fix any shortcut that has a date filter (entry_date, Today, etc.)
 	all_shortcuts = frappe.get_all("Workspace Shortcut",
 		filters={"parent": "Admin Reception"},
-		fields=["name", "label", "stats_filter"])
+		fields=["name", "label", "stats_filter", "link_to", "type"])
 	for s in all_shortcuts:
 		sf = s.stats_filter or ""
 		if "entry_date" in sf or "Today" in sf or "today" in sf or "Timespan" in sf:
-			# Remove date filter — keep only entry_type filter
 			clean_filter = '[["BBF Token","entry_type","=","Gate Pass"]]'
 			frappe.db.set_value("Workspace Shortcut", s.name, "stats_filter", clean_filter)
 
-		# Fix label if it was renamed
 		if s.label == "All Gate Passes":
 			frappe.db.set_value("Workspace Shortcut", s.name, "label", "Todays Visitors")
+
+		# Fix "New Gate Pass" to use URL with entry_type preset
+		if s.label == "New Gate Pass" and s.type != "URL":
+			frappe.db.set_value("Workspace Shortcut", s.name, {
+				"type": "URL",
+				"link_to": "/app/bbf-token/new?entry_type=Gate+Pass",
+				"doc_view": "",
+			})
 
 	# Fix content JSON
 	content = frappe.db.get_value("Workspace", "Admin Reception", "content") or ""
