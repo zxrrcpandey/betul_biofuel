@@ -28,6 +28,29 @@ def get_purchase_orders(po_id=None, po_date=None, tentative_qty=None):
 
 
 @frappe.whitelist()
+def get_weighbridge_tokens(doctype, txt, searchfield, start, page_len, filters):
+	"""Return tokens eligible for weighbridge: Raw Material OR Non-RM with requires_weighing."""
+	return frappe.db.sql("""
+		SELECT t.name, t.token_number, t.purpose, t.entry_date
+		FROM `tabBBF Token` t
+		WHERE t.status = 'PO Linked'
+		AND t.entry_type = 'Material'
+		AND (
+			t.purpose = 'Raw Material'
+			OR EXISTS (
+				SELECT 1 FROM `tabBBF Gate Entry` ge
+				WHERE ge.token_number = t.name
+				AND ge.docstatus = 1
+				AND ge.requires_weighing = 1
+			)
+		)
+		AND (t.name LIKE %(txt)s OR t.token_number LIKE %(txt)s)
+		ORDER BY t.creation DESC
+		LIMIT %(start)s, %(page_len)s
+	""", {"txt": f"%{txt}%", "start": start, "page_len": page_len})
+
+
+@frappe.whitelist()
 def check_sla_breaches():
 	settings = frappe.get_single("BBF Settings")
 	threshold = settings.sla_threshold_minutes or 30

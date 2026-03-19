@@ -26,6 +26,7 @@
   "material_flow",
   "column_break_flow",
   "route_to",
+  "requires_weighing",
   "transport_section",
   "transporter",
   "lr_number",
@@ -166,6 +167,14 @@
    "read_only": 1
   },
   {
+   "fieldname": "requires_weighing",
+   "fieldtype": "Check",
+   "label": "Requires Weighing",
+   "default": "0",
+   "depends_on": "eval:doc.material_flow==='Non-Raw Material'",
+   "description": "Check if this Non-Raw Material needs to be weighed (e.g., Steel, Chemical)"
+  },
+  {
    "fieldname": "transport_section",
    "fieldtype": "Section Break",
    "label": "Transport Details"
@@ -211,7 +220,7 @@
    "link_fieldname": "gate_entry"
   }
  ],
- "modified": "2026-03-07 00:00:00",
+ "modified": "2026-03-19 00:00:00",
  "modified_by": "Administrator",
  "module": "BBF Gate Entry",
  "name": "BBF Gate Entry",

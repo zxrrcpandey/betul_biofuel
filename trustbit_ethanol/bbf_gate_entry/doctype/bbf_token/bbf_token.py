@@ -244,10 +244,20 @@ class BBFToken(Document):
 			if self.status == "Exited":
 				frappe.throw("This token is already marked as exited")
 
-		# Material tokens: Raw material requires GRN Created
+		# Material tokens: exit restrictions based on purpose and weighing
 		if self.entry_type == "Material":
 			if self.purpose == "Raw Material" and self.status != "GRN Created":
 				frappe.throw("Raw Material tokens can only be marked as exited after GRN is created")
+
+			# Non-RM with requires_weighing: must complete weighbridge (Tare Weighed or GRN Created)
+			if self.purpose != "Raw Material":
+				requires_weighing = frappe.db.get_value(
+					"BBF Gate Entry",
+					{"token_number": self.name, "docstatus": 1},
+					"requires_weighing"
+				)
+				if requires_weighing and self.status not in ("Tare Weighed", "GRN Created"):
+					frappe.throw("This vehicle requires weighing. Please complete weighbridge (gross + tare) before marking exit.")
 
 		exit_time = now_datetime()
 		self.g1_exit_time = exit_time

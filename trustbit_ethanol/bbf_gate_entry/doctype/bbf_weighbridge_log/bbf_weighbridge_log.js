@@ -21,8 +21,15 @@ frappe.ui.form.on("BBF Weighbridge Log", {
 			frm.set_df_property("tare_weight", "read_only", 1);
 		}
 
-		// Disable tare weight if unloading not complete
-		if (!frm.doc.unloading_complete) {
+		// Disable tare weight if unloading not complete (Non-RM weighing skips unloading)
+		let is_non_rm_weighing = frm.doc.material_flow === "Non-Raw Material";
+		if (is_non_rm_weighing) {
+			// Non-RM weighing: tare allowed directly after gross (no unloading needed)
+			if (!frm.doc.tare_weight && frm.doc.gross_weight) {
+				frm.set_df_property("tare_weight", "read_only", 0);
+				frm.set_df_property("tare_weight", "description", "");
+			}
+		} else if (!frm.doc.unloading_complete) {
 			frm.set_df_property("tare_weight", "read_only", 1);
 			frm.set_df_property("tare_weight", "description",
 				"Tare weight can only be entered after unloading is confirmed complete");
@@ -33,13 +40,10 @@ frappe.ui.form.on("BBF Weighbridge Log", {
 	},
 
 	setup(frm) {
-		// Only show Raw Material tokens that are at PO Linked stage (ready for weighbridge)
+		// Show tokens at PO Linked stage: Raw Material OR Non-RM with requires_weighing
 		frm.set_query("token_number", function () {
 			return {
-				filters: {
-					status: ["in", ["PO Linked"]],
-					purpose: "Raw Material"
-				}
+				query: "trustbit_ethanol.bbf_gate_entry.api.get_weighbridge_tokens"
 			};
 		});
 	},

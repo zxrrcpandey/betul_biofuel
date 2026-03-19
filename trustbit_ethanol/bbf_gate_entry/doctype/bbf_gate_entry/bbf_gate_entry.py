@@ -13,7 +13,10 @@ class BBFGateEntry(Document):
 		if self.material_flow == "Raw Material":
 			self.route_to = "Weighbridge"
 		elif self.material_flow == "Non-Raw Material":
-			self.route_to = "Stores/Department"
+			if self.requires_weighing:
+				self.route_to = "Weighbridge"
+			else:
+				self.route_to = "Stores/Department"
 
 	def validate_token_status(self):
 		if not self.token_number:
@@ -45,7 +48,7 @@ class BBFGateEntry(Document):
 		})
 
 	def set_gate_entry_status(self):
-		if self.material_flow == "Raw Material":
+		if self.material_flow == "Raw Material" or self.requires_weighing:
 			self.db_set("status", "Sent to Weighbridge")
 		else:
 			self.db_set("status", "Sent to Stores")

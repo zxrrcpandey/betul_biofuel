@@ -129,8 +129,23 @@ frappe.ui.form.on("BBF Gate Entry", {
 	material_flow(frm) {
 		if (frm.doc.material_flow === "Raw Material") {
 			frm.set_value("route_to", "Weighbridge");
+			frm.set_value("requires_weighing", 0);
 		} else if (frm.doc.material_flow === "Non-Raw Material") {
-			frm.set_value("route_to", "Stores/Department");
+			if (frm.doc.requires_weighing) {
+				frm.set_value("route_to", "Weighbridge");
+			} else {
+				frm.set_value("route_to", "Stores/Department");
+			}
+		}
+	},
+
+	requires_weighing(frm) {
+		if (frm.doc.material_flow === "Non-Raw Material") {
+			if (frm.doc.requires_weighing) {
+				frm.set_value("route_to", "Weighbridge");
+			} else {
+				frm.set_value("route_to", "Stores/Department");
+			}
 		}
 	}
 });

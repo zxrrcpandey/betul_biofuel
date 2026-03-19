@@ -66,13 +66,29 @@ class BBFWeighbridgeLog(Document):
 				((self.net_weight - ordered_qty) / ordered_qty) * 100, 2
 			)
 
+	def _is_non_rm_weighing(self):
+		"""Check if this is a Non-RM token with requires_weighing (no unloading needed)."""
+		if not self.token_number:
+			return False
+		purpose = frappe.db.get_value("BBF Token", self.token_number, "purpose")
+		if purpose != "Raw Material":
+			ge = frappe.db.get_value(
+				"BBF Gate Entry",
+				{"token_number": self.token_number, "docstatus": 1},
+				"requires_weighing"
+			)
+			return bool(ge)
+		return False
+
 	def update_status(self):
 		if self.tare_weight and self.gross_weight:
 			self.status = "Completed"
-		elif self.unloading_complete and self.gross_weight and not self.tare_weight:
-			self.status = "Awaiting Tare Weight"
 		elif self.gross_weight and not self.tare_weight:
-			self.status = "Awaiting Unloading"
+			# Non-RM weighing: skip unloading, go straight to Awaiting Tare Weight
+			if self._is_non_rm_weighing() or self.unloading_complete:
+				self.status = "Awaiting Tare Weight"
+			else:
+				self.status = "Awaiting Unloading"
 		else:
 			self.status = "Gross Recorded"
 
