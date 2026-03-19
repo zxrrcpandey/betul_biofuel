@@ -626,21 +626,32 @@ def _setup_admin_reception_permissions():
 
 
 def _fix_workspace_content():
-	"""Ensure Admin Reception workspace shortcuts are in sync."""
+	"""Ensure Admin Reception workspace shortcuts are clean — no date filters."""
 	if not frappe.db.exists("Workspace", "Admin Reception"):
 		return
 
-	# Fix shortcut label if it was renamed
-	shortcuts = frappe.get_all("Workspace Shortcut",
-		filters={"parent": "Admin Reception", "label": "All Gate Passes"},
-		fields=["name"])
-	for s in shortcuts:
-		frappe.db.set_value("Workspace Shortcut", s.name, "label", "Todays Visitors")
+	# Fix any shortcut that has a date filter (entry_date, Today, etc.)
+	all_shortcuts = frappe.get_all("Workspace Shortcut",
+		filters={"parent": "Admin Reception"},
+		fields=["name", "label", "stats_filter"])
+	for s in all_shortcuts:
+		sf = s.stats_filter or ""
+		if "entry_date" in sf or "Today" in sf or "today" in sf or "Timespan" in sf:
+			# Remove date filter — keep only entry_type filter
+			clean_filter = '[["BBF Token","entry_type","=","Gate Pass"]]'
+			frappe.db.set_value("Workspace Shortcut", s.name, "stats_filter", clean_filter)
 
-	# Fix content JSON if it has wrong shortcut name
+		# Fix label if it was renamed
+		if s.label == "All Gate Passes":
+			frappe.db.set_value("Workspace Shortcut", s.name, "label", "Todays Visitors")
+
+	# Fix content JSON
 	content = frappe.db.get_value("Workspace", "Admin Reception", "content") or ""
+	changed = False
 	if "All Gate Passes" in content:
 		content = content.replace("All Gate Passes", "Todays Visitors")
+		changed = True
+	if changed:
 		frappe.db.set_value("Workspace", "Admin Reception", "content", content)
 
 
