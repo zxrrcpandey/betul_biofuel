@@ -598,28 +598,26 @@ def _setup_material_request_permissions():
 
 
 def _setup_admin_reception_permissions():
-	"""Ensure Admin Reception role has create/read/write on BBF Token and BBF Visitor."""
+	"""Ensure Admin Reception role has create/read/write on BBF Token and BBF Visitor.
+
+	For non-custom DocTypes (custom=0), Frappe loads permissions from JSON file,
+	so DocPerm inserts alone don't work. We must add via the DocType document.
+	"""
 	for doctype in ["BBF Token", "BBF Visitor", "BBF Gate Pass Destination"]:
 		role = "Admin Reception"
-		existing = frappe.db.exists("DocPerm", {
-			"parent": doctype,
-			"role": role,
-			"permlevel": 0
-		})
-		if not existing:
-			perm = {
-				"doctype": "DocPerm",
-				"parent": doctype,
-				"parenttype": "DocType",
-				"parentfield": "permissions",
+		dt = frappe.get_doc("DocType", doctype)
+		has_perm = any(p.role == role for p in dt.permissions)
+		if not has_perm:
+			dt.append("permissions", {
 				"role": role,
 				"permlevel": 0,
 				"read": 1,
 				"write": 1,
-			}
-			if doctype in ("BBF Token", "BBF Visitor"):
-				perm["create"] = 1
-			frappe.get_doc(perm).insert(ignore_permissions=True)
+				"create": 1 if doctype in ("BBF Token", "BBF Visitor") else 0,
+			})
+			dt.flags.ignore_permissions = True
+			dt.flags.ignore_version = True
+			dt.save()
 
 	frappe.clear_cache(doctype="BBF Token")
 	frappe.clear_cache(doctype="BBF Visitor")
