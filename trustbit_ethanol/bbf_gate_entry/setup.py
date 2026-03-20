@@ -490,6 +490,7 @@ def create_custom_fields():
 	_setup_purchase_order_permissions()
 	_setup_material_request_permissions()
 	_setup_admin_reception_permissions()
+	_setup_workspace_roles()
 	_fix_workspace_content()
 	# Legacy v1.0 — BBF Approval Limit is no longer used by v2.0 rule-based system
 	# _seed_default_approval_limits()
@@ -597,30 +598,83 @@ def _setup_material_request_permissions():
 	frappe.clear_cache(doctype="Material Request")
 
 
-def _setup_admin_reception_permissions():
-	"""Ensure Admin Reception role has create/read/write on BBF Token and BBF Visitor.
+def _setup_role_permissions(role, doctypes_config):
+	"""Add a role to DocType permissions, handling Custom DocPerm override.
 
-	For non-custom DocTypes (custom=0), Frappe loads permissions from JSON file,
-	so DocPerm inserts alone don't work. We must add via the DocType document.
+	CRITICAL: If Custom DocPerm exists for a DocType (via Role Permissions Manager),
+	Frappe IGNORES all standard tabDocPerm/JSON permissions. New roles must be added
+	to Custom DocPerm table in that case.
+
+	Args:
+		role: Role name (e.g., "Admin Reception")
+		doctypes_config: dict of {doctype: {"read": 1, "write": 1, "create": 1, ...}}
 	"""
-	for doctype in ["BBF Token", "BBF Visitor", "BBF Gate Pass Destination"]:
-		role = "Admin Reception"
-		dt = frappe.get_doc("DocType", doctype)
-		has_perm = any(p.role == role for p in dt.permissions)
-		if not has_perm:
-			dt.append("permissions", {
-				"role": role,
-				"permlevel": 0,
-				"read": 1,
-				"write": 1,
-				"create": 1 if doctype in ("BBF Token", "BBF Visitor") else 0,
-			})
-			dt.flags.ignore_permissions = True
-			dt.flags.ignore_version = True
-			dt.save()
+	from frappe.permissions import get_doctypes_with_custom_docperms
+	custom_perm_doctypes = get_doctypes_with_custom_docperms()
 
-	frappe.clear_cache(doctype="BBF Token")
-	frappe.clear_cache(doctype="BBF Visitor")
+	for doctype, perm_config in doctypes_config.items():
+		if doctype in custom_perm_doctypes:
+			# Custom DocPerm exists — must add there (standard DocPerm is ignored)
+			existing = frappe.db.exists("Custom DocPerm", {
+				"parent": doctype, "role": role, "permlevel": 0
+			})
+			if not existing:
+				max_idx = frappe.db.sql(
+					"SELECT MAX(idx) FROM `tabCustom DocPerm` WHERE parent=%s", doctype
+				)[0][0] or 0
+				doc = frappe.get_doc({
+					"doctype": "Custom DocPerm",
+					"parent": doctype,
+					"parenttype": "DocType",
+					"parentfield": "permissions",
+					"role": role,
+					"permlevel": 0,
+					"idx": max_idx + 1,
+					**perm_config,
+				})
+				doc.insert(ignore_permissions=True)
+		else:
+			# No Custom DocPerm — add via standard DocType save
+			dt = frappe.get_doc("DocType", doctype)
+			has_perm = any(p.role == role for p in dt.permissions)
+			if not has_perm:
+				dt.append("permissions", {"role": role, "permlevel": 0, **perm_config})
+				dt.flags.ignore_permissions = True
+				dt.flags.ignore_version = True
+				dt.save()
+
+		frappe.clear_cache(doctype=doctype)
+
+
+def _setup_admin_reception_permissions():
+	"""Ensure Admin Reception role has permissions on Gate Pass DocTypes."""
+	_setup_role_permissions("Admin Reception", {
+		"BBF Token": {"read": 1, "write": 1, "create": 1},
+		"BBF Visitor": {"read": 1, "write": 1, "create": 1},
+		"BBF Gate Pass Destination": {"read": 1, "write": 0, "create": 0},
+	})
+
+
+def _setup_workspace_roles():
+	"""Ensure all custom roles can see their workspaces.
+
+	CRITICAL: Child workspace won't show in sidebar unless parent workspace
+	also includes the role. Must add role to BOTH parent and child.
+	"""
+	# Map: role → workspaces that need it (parent + child)
+	role_workspace_map = {
+		"Admin Reception": ["Trustbit Ethanol", "Admin Reception"],
+	}
+	for role, workspaces in role_workspace_map.items():
+		for ws_name in workspaces:
+			if not frappe.db.exists("Workspace", ws_name):
+				continue
+			ws = frappe.get_doc("Workspace", ws_name)
+			has_role = any(r.role == role for r in ws.roles)
+			if not has_role:
+				ws.append("roles", {"role": role})
+				ws.flags.ignore_permissions = True
+				ws.save()
 
 
 def _fix_workspace_content():
