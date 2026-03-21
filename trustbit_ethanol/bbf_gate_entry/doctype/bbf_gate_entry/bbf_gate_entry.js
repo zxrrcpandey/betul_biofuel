@@ -15,8 +15,8 @@ frappe.ui.form.on("BBF Gate Entry", {
 				&& !frappe.user.has_role("IT Head")
 				&& !frappe.user.has_role("System Manager");
 			if (is_g2_only) {
-				frappe.db.get_single_value("BBF Settings", "allow_g2_detailed_gate_entry_print").then(allowed => {
-					if (allowed) {
+				frappe.db.get_single_value("BBF Settings", "g2_print_mode").then(mode => {
+					if (mode === "Detailed + Slip") {
 						frm.add_custom_button(__("Detailed"), () => _open_ge_print("BBF Gate Entry Detailed"), __("Print"));
 					}
 					frm.add_custom_button(__("Slip"), () => _open_ge_print("BBF Gate Entry Slip"), __("Print"));

@@ -40,9 +40,7 @@
   "inspection_4th_notify_hours",
   "inspection_notify_it_head",
   "print_controls_section",
-  "allow_g2_detailed_token_print",
-  "column_break_print_controls",
-  "allow_g2_detailed_gate_entry_print"
+  "g2_print_mode"
  ],
  "fields": [
   {
@@ -262,30 +260,17 @@
   {
    "fieldname": "print_controls_section",
    "fieldtype": "Section Break",
-   "label": "Print Controls (IT Head Only)",
-   "permlevel": 1,
-   "description": "Control what G2 Gate Operator can print. Only IT Head can change these settings."
-  },
-  {
-   "fieldname": "allow_g2_detailed_token_print",
-   "fieldtype": "Check",
-   "label": "Allow G2 Detailed Token Print",
-   "default": "1",
-   "permlevel": 1,
-   "description": "If enabled, G2 sees both Detailed + Slip. If disabled, G2 sees Slip only."
-  },
-  {
-   "fieldname": "column_break_print_controls",
-   "fieldtype": "Column Break",
+   "label": "G2 Print Controls (IT Head Only)",
    "permlevel": 1
   },
   {
-   "fieldname": "allow_g2_detailed_gate_entry_print",
-   "fieldtype": "Check",
-   "label": "Allow G2 Detailed Gate Entry Print",
-   "default": "1",
+   "fieldname": "g2_print_mode",
+   "fieldtype": "Select",
+   "label": "G2 Print Mode",
+   "options": "Slip Only\nDetailed + Slip",
+   "default": "Slip Only",
    "permlevel": 1,
-   "description": "If enabled, G2 sees both Detailed + Slip. If disabled, G2 sees Slip only."
+   "description": "Slip Only: G2 can print compact slip. Detailed + Slip: G2 can print both formats. Applies to Token and Gate Entry."
   }
  ],
  "issingle": 1,

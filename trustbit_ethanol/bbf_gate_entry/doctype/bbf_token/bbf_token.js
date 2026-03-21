@@ -77,8 +77,8 @@ frappe.ui.form.on("BBF Token", {
 					&& !frappe.user.has_role("IT Head")
 					&& !frappe.user.has_role("System Manager");
 				if (is_g2_only) {
-					frappe.db.get_single_value("BBF Settings", "allow_g2_detailed_token_print").then(allowed => {
-						if (allowed) {
+					frappe.db.get_single_value("BBF Settings", "g2_print_mode").then(mode => {
+						if (mode === "Detailed + Slip") {
 							frm.add_custom_button(__("Detailed"), () => _open_print("BBF Token Print"), __("Print"));
 						}
 						frm.add_custom_button(__("Slip"), () => _open_print("BBF Token Slip"), __("Print"));
