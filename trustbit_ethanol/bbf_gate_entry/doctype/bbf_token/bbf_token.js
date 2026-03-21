@@ -60,16 +60,26 @@ frappe.ui.form.on("BBF Token", {
 				frm.set_df_property("driver_license_number", "read_only", 1);
 			}
 
-			// === PRINT BUTTON (auto-selects format) ===
-			let print_label = is_gate_pass ? __("Print Gate Pass") : __("Print Token");
-			let print_format = is_gate_pass ? "BBF Gate Pass" : "BBF Token Print";
-			frm.add_custom_button(print_label, function () {
+			// === PRINT BUTTONS ===
+			let _open_print = function (format) {
 				window.open(
 					"/printview?doctype=" + encodeURIComponent("BBF Token")
 					+ "&name=" + encodeURIComponent(frm.doc.name)
-					+ "&format=" + encodeURIComponent(print_format)
+					+ "&format=" + encodeURIComponent(format)
 				);
-			}).addClass("btn-primary-dark");
+			};
+			if (is_gate_pass) {
+				frm.add_custom_button(__("Print Gate Pass"), function () {
+					_open_print("BBF Gate Pass");
+				}).addClass("btn-primary-dark");
+			} else {
+				frm.add_custom_button(__("Detailed"), function () {
+					_open_print("BBF Token Print");
+				}, __("Print"));
+				frm.add_custom_button(__("Slip"), function () {
+					_open_print("BBF Token Slip");
+				}, __("Print"));
+			}
 
 			// === MATERIAL TOKEN BUTTONS ===
 			if (!is_gate_pass) {
