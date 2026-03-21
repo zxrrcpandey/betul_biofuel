@@ -44,7 +44,9 @@ fixtures = [
 		"doctype": "Print Format",
 		"filters": [["name", "in", [
 			"BBF Token Print",
-			"BBF Gate Pass"
+			"BBF Gate Pass",
+			"BBF Gate Entry Detailed",
+			"BBF Gate Entry Slip"
 		]]]
 	},
 	{

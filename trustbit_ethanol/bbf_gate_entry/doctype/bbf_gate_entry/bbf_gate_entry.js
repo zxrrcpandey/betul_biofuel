@@ -1,5 +1,27 @@
 frappe.ui.form.on("BBF Gate Entry", {
 	refresh(frm) {
+		// Print button with format selection
+		if (frm.doc.docstatus === 1 && frm.doc.token_number) {
+			frm.add_custom_button(__("Print Detailed"), function () {
+				window.open(
+					frappe.urllib.get_full_url(
+						"/printview?doctype=BBF%20Gate%20Entry&name=" +
+						encodeURIComponent(frm.doc.name) +
+						"&format=BBF%20Gate%20Entry%20Detailed"
+					), "_blank"
+				);
+			}, __("Print"));
+			frm.add_custom_button(__("Print Slip"), function () {
+				window.open(
+					frappe.urllib.get_full_url(
+						"/printview?doctype=BBF%20Gate%20Entry&name=" +
+						encodeURIComponent(frm.doc.name) +
+						"&format=BBF%20Gate%20Entry%20Slip"
+					), "_blank"
+				);
+			}, __("Print"));
+		}
+
 		if (frm.doc.purchase_order && !frm.doc.docstatus) {
 			frm.add_custom_button(__("Fetch PO Items"), function () {
 				frm.call("fetch_po_items").then(() => {
