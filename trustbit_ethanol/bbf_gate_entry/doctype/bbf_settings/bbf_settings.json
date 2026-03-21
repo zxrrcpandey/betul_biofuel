@@ -297,6 +297,14 @@
    "write": 1,
    "role": "IT Head",
    "permlevel": 1
+  },
+  {
+   "read": 1,
+   "role": "G2 Gate Operator"
+  },
+  {
+   "read": 1,
+   "role": "G1 Security"
   }
  ],
  "sort_field": "modified",
