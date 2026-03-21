@@ -2,24 +2,29 @@ frappe.ui.form.on("BBF Gate Entry", {
 	refresh(frm) {
 		// Print button with format selection
 		if (frm.doc.docstatus === 1 && frm.doc.token_number) {
-			frm.add_custom_button(__("Print Detailed"), function () {
+			let _open_ge_print = function (format) {
 				window.open(
 					frappe.urllib.get_full_url(
 						"/printview?doctype=BBF%20Gate%20Entry&name=" +
 						encodeURIComponent(frm.doc.name) +
-						"&format=BBF%20Gate%20Entry%20Detailed"
+						"&format=" + encodeURIComponent(format)
 					), "_blank"
 				);
-			}, __("Print"));
-			frm.add_custom_button(__("Print Slip"), function () {
-				window.open(
-					frappe.urllib.get_full_url(
-						"/printview?doctype=BBF%20Gate%20Entry&name=" +
-						encodeURIComponent(frm.doc.name) +
-						"&format=BBF%20Gate%20Entry%20Slip"
-					), "_blank"
-				);
-			}, __("Print"));
+			};
+			let is_g2_only = frappe.user.has_role("G2 Gate Operator")
+				&& !frappe.user.has_role("IT Head")
+				&& !frappe.user.has_role("System Manager");
+			if (is_g2_only) {
+				frappe.db.get_single_value("BBF Settings", "allow_g2_detailed_gate_entry_print").then(allowed => {
+					if (allowed) {
+						frm.add_custom_button(__("Detailed"), () => _open_ge_print("BBF Gate Entry Detailed"), __("Print"));
+					}
+					frm.add_custom_button(__("Slip"), () => _open_ge_print("BBF Gate Entry Slip"), __("Print"));
+				});
+			} else {
+				frm.add_custom_button(__("Detailed"), () => _open_ge_print("BBF Gate Entry Detailed"), __("Print"));
+				frm.add_custom_button(__("Slip"), () => _open_ge_print("BBF Gate Entry Slip"), __("Print"));
+			}
 		}
 
 		if (frm.doc.purchase_order && !frm.doc.docstatus) {

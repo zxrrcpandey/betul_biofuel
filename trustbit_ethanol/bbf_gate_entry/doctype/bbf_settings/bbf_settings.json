@@ -38,7 +38,11 @@
   "inspection_3rd_notify_hours",
   "column_break_inspection",
   "inspection_4th_notify_hours",
-  "inspection_notify_it_head"
+  "inspection_notify_it_head",
+  "print_controls_section",
+  "allow_g2_detailed_token_print",
+  "column_break_print_controls",
+  "allow_g2_detailed_gate_entry_print"
  ],
  "fields": [
   {
@@ -254,6 +258,34 @@
    "label": "Notify IT Head on 4th",
    "default": "1",
    "description": "Include IT Head in the 4th (final) notification"
+  },
+  {
+   "fieldname": "print_controls_section",
+   "fieldtype": "Section Break",
+   "label": "Print Controls (IT Head Only)",
+   "permlevel": 1,
+   "description": "Control what G2 Gate Operator can print. Only IT Head can change these settings."
+  },
+  {
+   "fieldname": "allow_g2_detailed_token_print",
+   "fieldtype": "Check",
+   "label": "Allow G2 Detailed Token Print",
+   "default": "1",
+   "permlevel": 1,
+   "description": "If enabled, G2 sees both Detailed + Slip. If disabled, G2 sees Slip only."
+  },
+  {
+   "fieldname": "column_break_print_controls",
+   "fieldtype": "Column Break",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "allow_g2_detailed_gate_entry_print",
+   "fieldtype": "Check",
+   "label": "Allow G2 Detailed Gate Entry Print",
+   "default": "1",
+   "permlevel": 1,
+   "description": "If enabled, G2 sees both Detailed + Slip. If disabled, G2 sees Slip only."
   }
  ],
  "issingle": 1,
@@ -274,6 +306,12 @@
    "read": 1,
    "write": 1,
    "role": "IT Head"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "IT Head",
+   "permlevel": 1
   }
  ],
  "sort_field": "modified",

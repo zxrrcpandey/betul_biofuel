@@ -73,12 +73,20 @@ frappe.ui.form.on("BBF Token", {
 					_open_print("BBF Gate Pass");
 				}).addClass("btn-primary-dark");
 			} else {
-				frm.add_custom_button(__("Detailed"), function () {
-					_open_print("BBF Token Print");
-				}, __("Print"));
-				frm.add_custom_button(__("Slip"), function () {
-					_open_print("BBF Token Slip");
-				}, __("Print"));
+				let is_g2_only = frappe.user.has_role("G2 Gate Operator")
+					&& !frappe.user.has_role("IT Head")
+					&& !frappe.user.has_role("System Manager");
+				if (is_g2_only) {
+					frappe.db.get_single_value("BBF Settings", "allow_g2_detailed_token_print").then(allowed => {
+						if (allowed) {
+							frm.add_custom_button(__("Detailed"), () => _open_print("BBF Token Print"), __("Print"));
+						}
+						frm.add_custom_button(__("Slip"), () => _open_print("BBF Token Slip"), __("Print"));
+					});
+				} else {
+					frm.add_custom_button(__("Detailed"), () => _open_print("BBF Token Print"), __("Print"));
+					frm.add_custom_button(__("Slip"), () => _open_print("BBF Token Slip"), __("Print"));
+				}
 			}
 
 			// === MATERIAL TOKEN BUTTONS ===
