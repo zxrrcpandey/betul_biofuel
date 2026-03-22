@@ -32,6 +32,11 @@
   "cctv_gross_snapshot",
   "column_break_audit",
   "cctv_tare_snapshot",
+  "po_uom_section",
+  "po_uom",
+  "conversion_factor",
+  "column_break_po_uom",
+  "net_weight_in_po_uom",
   "remarks"
  ],
  "fields": [
@@ -201,6 +206,41 @@
    "fieldname": "cctv_tare_snapshot",
    "fieldtype": "Attach Image",
    "label": "CCTV Tare Snapshot"
+  },
+  {
+   "fieldname": "po_uom_section",
+   "fieldtype": "Section Break",
+   "label": "PO UOM Reference",
+   "description": "Weighbridge always captures in KG. This section shows the equivalent weight in the Purchase Order's UOM for reference.",
+   "depends_on": "eval:doc.net_weight && doc.po_uom && doc.po_uom !== 'Kg'"
+  },
+  {
+   "fieldname": "po_uom",
+   "fieldtype": "Data",
+   "label": "PO UOM",
+   "read_only": 1,
+   "description": "UOM from Purchase Order"
+  },
+  {
+   "fieldname": "conversion_factor",
+   "fieldtype": "Float",
+   "label": "Conversion Factor",
+   "read_only": 1,
+   "precision": "6",
+   "description": "1 PO UOM = X KG"
+  },
+  {
+   "fieldname": "column_break_po_uom",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "net_weight_in_po_uom",
+   "fieldtype": "Float",
+   "label": "Net Weight (PO UOM)",
+   "read_only": 1,
+   "precision": "3",
+   "bold": 1,
+   "description": "Net weight converted to PO UOM"
   },
   {
    "fieldname": "remarks",

@@ -33,6 +33,7 @@ class BBFWeighbridgeLog(Document):
 	def validate(self):
 		self.set_operators()
 		self.calculate_net_weight()
+		self.fetch_po_uom()
 		self.update_status()
 
 	def set_operators(self):
@@ -65,6 +66,90 @@ class BBFWeighbridgeLog(Document):
 			self.weight_difference_percent = round(
 				((self.net_weight - ordered_qty) / ordered_qty) * 100, 2
 			)
+
+	def fetch_po_uom(self):
+		"""Fetch UOM from PO and calculate conversion for display."""
+		from frappe.utils import flt
+		if not self.purchase_order or not self.net_weight:
+			return
+
+		# Get first PO item's UOM (primary item)
+		po_item = frappe.db.get_value(
+			"Purchase Order Item",
+			{"parent": self.purchase_order},
+			["uom", "item_code", "conversion_factor"],
+			as_dict=True,
+			order_by="idx"
+		)
+		if not po_item:
+			return
+
+		po_uom = po_item.uom
+		self.po_uom = po_uom
+
+		if not po_uom or po_uom == "Kg":
+			# Same UOM, no conversion needed
+			self.conversion_factor = 1
+			self.net_weight_in_po_uom = self.net_weight
+			return
+
+		# Get conversion factor: how many KG per 1 PO UOM
+		# Check item-level UOM conversion first
+		conversion = frappe.db.get_value(
+			"UOM Conversion Detail",
+			{"parent": po_item.item_code, "uom": "Kg"},
+			"conversion_factor"
+		)
+		if conversion:
+			# conversion_factor on item = how many stock_uom per 1 of this UOM
+			# e.g., Quintal item has Kg conversion_factor = 0.01 (1 Kg = 0.01 Quintal)
+			# We need: 1 Quintal = 100 Kg
+			po_uom_conversion = frappe.db.get_value(
+				"UOM Conversion Detail",
+				{"parent": po_item.item_code, "uom": po_uom},
+				"conversion_factor"
+			)
+			if po_uom_conversion:
+				kg_conversion = frappe.db.get_value(
+					"UOM Conversion Detail",
+					{"parent": po_item.item_code, "uom": "Kg"},
+					"conversion_factor"
+				)
+				if kg_conversion and flt(kg_conversion) > 0:
+					# conversion_factor = PO UOM factor / Kg factor
+					# e.g., Quintal=1, Kg=0.01 → 1 Quintal = 1/0.01 = 100 Kg
+					factor = flt(po_uom_conversion) / flt(kg_conversion)
+					self.conversion_factor = factor
+					self.net_weight_in_po_uom = round(self.net_weight / factor, 3) if factor else 0
+					return
+
+		# Fallback: check global UOM Conversion Factor
+		global_factor = frappe.db.get_value(
+			"UOM Conversion Factor",
+			{"from_uom": po_uom, "to_uom": "Kg"},
+			"value"
+		)
+		if global_factor and flt(global_factor) > 0:
+			self.conversion_factor = flt(global_factor)
+			self.net_weight_in_po_uom = round(self.net_weight / flt(global_factor), 3)
+			return
+
+		# Reverse lookup
+		reverse_factor = frappe.db.get_value(
+			"UOM Conversion Factor",
+			{"from_uom": "Kg", "to_uom": po_uom},
+			"value"
+		)
+		if reverse_factor and flt(reverse_factor) > 0:
+			self.conversion_factor = round(1 / flt(reverse_factor), 6)
+			self.net_weight_in_po_uom = round(self.net_weight * flt(reverse_factor), 3)
+			return
+
+		# Known conversions fallback
+		known = {"Quintal": 100, "MT": 1000, "Ton": 1000, "Gram": 0.001}
+		if po_uom in known:
+			self.conversion_factor = known[po_uom]
+			self.net_weight_in_po_uom = round(self.net_weight / known[po_uom], 3)
 
 	def _is_non_rm_weighing(self):
 		"""Check if this is a Non-RM token with requires_weighing (no unloading needed)."""

@@ -206,17 +206,35 @@ class BBFToken(Document):
 		if not gate_entry_items:
 			frappe.throw("No items found in Gate Entry")
 
-		net_weight = flt(wb_log.net_weight)
+		net_weight_kg = flt(wb_log.net_weight)
 
 		for idx, ge_item in enumerate(gate_entry_items):
 			# For single-item deliveries (most common), use full net weight
 			# For multi-item, proportionally distribute
 			if len(gate_entry_items) == 1:
-				received_qty = net_weight
+				weight_kg = net_weight_kg
 			else:
 				total_ordered = sum(flt(i.ordered_qty) for i in gate_entry_items)
 				proportion = flt(ge_item.ordered_qty) / total_ordered if total_ordered else 1
-				received_qty = net_weight * proportion
+				weight_kg = net_weight_kg * proportion
+
+			item_uom = ge_item.uom or "Kg"
+
+			# Convert KG to PO's UOM
+			if item_uom == "Kg":
+				received_qty = weight_kg
+			else:
+				conversion_factor = self._get_uom_conversion_to_kg(ge_item.item_code, item_uom)
+				if conversion_factor and flt(conversion_factor) > 0:
+					received_qty = flt(weight_kg / conversion_factor, 3)
+				else:
+					# No conversion found — use KG as-is and log warning
+					received_qty = weight_kg
+					item_uom = "Kg"
+					frappe.msgprint(
+						f"No UOM conversion found for {ge_item.item_code}: {ge_item.uom} → Kg. Using KG as quantity.",
+						indicator="orange"
+					)
 
 			# Get rate: per-item from PO, fallback to deduction sheet rate
 			po_item = frappe.db.get_value(
@@ -237,8 +255,8 @@ class BBFToken(Document):
 				"item_code": ge_item.item_code,
 				"item_name": ge_item.item_name,
 				"qty": received_qty,
-				"uom": ge_item.uom or "Kg",
-				"stock_uom": ge_item.uom or "Kg",
+				"uom": item_uom,
+				"stock_uom": item_uom,
 				"rate": item_rate,
 				"warehouse": accepted_warehouse or warehouse,
 				"purchase_order": po.name,
@@ -399,6 +417,52 @@ class BBFToken(Document):
 		})
 
 		frappe.msgprint("G2 exit logged successfully", indicator="green")
+
+	def _get_uom_conversion_to_kg(self, item_code, uom):
+		"""Get how many KG per 1 unit of the given UOM.
+		Returns conversion factor (e.g., Quintal → 100, MT → 1000).
+		"""
+		from frappe.utils import flt
+
+		# 1. Check item-level UOM conversion
+		if item_code:
+			conversions = frappe.get_all(
+				"UOM Conversion Detail",
+				filters={"parent": item_code},
+				fields=["uom", "conversion_factor"]
+			)
+			conv_map = {c.uom: flt(c.conversion_factor) for c in conversions}
+
+			if uom in conv_map and "Kg" in conv_map:
+				# conversion_factor is relative to stock_uom
+				# e.g., if stock_uom=Quintal: Kg=0.01, Quintal=1
+				# So 1 Quintal = 1/0.01 = 100 Kg
+				uom_factor = conv_map[uom]
+				kg_factor = conv_map["Kg"]
+				if kg_factor > 0:
+					return uom_factor / kg_factor
+
+		# 2. Check global UOM Conversion Factor
+		global_factor = frappe.db.get_value(
+			"UOM Conversion Factor",
+			{"from_uom": uom, "to_uom": "Kg"},
+			"value"
+		)
+		if global_factor and flt(global_factor) > 0:
+			return flt(global_factor)
+
+		# Reverse lookup
+		reverse_factor = frappe.db.get_value(
+			"UOM Conversion Factor",
+			{"from_uom": "Kg", "to_uom": uom},
+			"value"
+		)
+		if reverse_factor and flt(reverse_factor) > 0:
+			return 1 / flt(reverse_factor)
+
+		# 3. Known conversions fallback
+		known = {"Quintal": 100, "MT": 1000, "Ton": 1000, "Gram": 0.001}
+		return known.get(uom)
 
 	def _update_vehicle_master(self):
 		if not self.vehicle_number or not frappe.db.exists("BBF Vehicle Master", self.vehicle_number):
