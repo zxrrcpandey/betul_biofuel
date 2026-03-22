@@ -52,8 +52,7 @@ frappe.ui.form.on("BBF Token", {
 				];
 				gp_lock_fields.forEach(f => frm.set_df_property(f, "read_only", 1));
 			} else {
-				// Lock material fields after save
-				frm.set_df_property("purpose", "read_only", 1);
+				// Lock material fields after save (purpose is hidden, auto-set from Gate Entry)
 				frm.set_df_property("vehicle_number", "read_only", 1);
 				frm.set_df_property("driver_name", "read_only", 1);
 				frm.set_df_property("driver_mobile", "read_only", 1);
@@ -254,8 +253,7 @@ frappe.ui.form.on("BBF Token", {
 		// Clear fields when switching type on new form
 		if (frm.is_new()) {
 			if (frm.doc.entry_type === "Gate Pass") {
-				// Clear material fields
-				frm.set_value("purpose", "");
+				// Clear material fields (purpose is auto-set from Gate Entry, not on Token form)
 				frm.set_value("vehicle_number", "");
 				frm.set_value("driver_name", "");
 				frm.set_value("driver_mobile", "");

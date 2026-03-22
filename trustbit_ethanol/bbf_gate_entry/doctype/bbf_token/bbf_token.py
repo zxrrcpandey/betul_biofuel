@@ -324,6 +324,9 @@ class BBFToken(Document):
 
 		# Material tokens: exit restrictions based on purpose and weighing
 		if self.entry_type == "Material":
+			if not self.purpose:
+				frappe.throw("This token has no purpose set. Gate Entry must be submitted at G2 before exit.")
+
 			if self.purpose == "Raw Material" and self.status != "GRN Created":
 				frappe.throw("Raw Material tokens can only be marked as exited after GRN is created")
 
