@@ -31,6 +31,16 @@ frappe.ui.form.on("BBF Token", {
 			return { filters: { enabled: 1 } };
 		});
 
+		// Filter vehicle to hide blacklisted
+		frm.set_query("vehicle_number", function () {
+			return { filters: { is_blacklisted: 0 } };
+		});
+
+		// Filter driver to hide blacklisted
+		frm.set_query("driver", function () {
+			return { filters: { is_blacklisted: 0 } };
+		});
+
 		// Hide barcode and token_number on new unsaved form
 		if (frm.is_new()) {
 			frm.set_df_property("barcode", "hidden", 1);
@@ -54,6 +64,7 @@ frappe.ui.form.on("BBF Token", {
 			} else {
 				// Lock material fields after save (purpose is hidden, auto-set from Gate Entry)
 				frm.set_df_property("vehicle_number", "read_only", 1);
+				frm.set_df_property("driver", "read_only", 1);
 				frm.set_df_property("driver_name", "read_only", 1);
 				frm.set_df_property("driver_mobile", "read_only", 1);
 				frm.set_df_property("driver_license_number", "read_only", 1);

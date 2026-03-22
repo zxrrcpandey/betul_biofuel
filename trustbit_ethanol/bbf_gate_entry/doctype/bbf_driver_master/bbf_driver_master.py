@@ -3,7 +3,7 @@ from frappe.model.document import Document
 from frappe.utils import getdate
 
 
-class BBFVehicleMaster(Document):
+class BBFDriverMaster(Document):
 	def validate(self):
 		if self.is_blacklisted and self.has_value_changed("is_blacklisted"):
 			self.blacklisted_by = frappe.session.user

@@ -6,6 +6,7 @@ from frappe.utils import now_datetime, time_diff_in_seconds, getdate, nowtime, f
 
 class BBFToken(Document):
 	def before_insert(self):
+		self._check_blacklist()
 		self.generate_token_number()
 		self.g1_entry_time = now_datetime()
 		self.entry_date = getdate()
@@ -65,6 +66,36 @@ class BBFToken(Document):
 			)
 			if default_host and not self.host_name:
 				self.host_name = default_host
+
+	def _check_blacklist(self):
+		"""Block token creation for blacklisted vehicles or drivers."""
+		if self.vehicle_number:
+			bl = frappe.db.get_value(
+				"BBF Vehicle Master", self.vehicle_number,
+				["is_blacklisted", "blacklist_reason"], as_dict=True
+			)
+			if bl and bl.is_blacklisted:
+				reason = bl.blacklist_reason or "No reason specified"
+				frappe.throw(
+					f"Vehicle <b>{self.vehicle_number}</b> is blacklisted and cannot enter the premises.<br><br>"
+					f"<b>Reason:</b> {reason}<br><br>"
+					f"Contact IT Head to resolve.",
+					title="Blacklisted Vehicle"
+				)
+
+		if self.driver:
+			bl = frappe.db.get_value(
+				"BBF Driver Master", self.driver,
+				["is_blacklisted", "blacklist_reason"], as_dict=True
+			)
+			if bl and bl.is_blacklisted:
+				reason = bl.blacklist_reason or "No reason specified"
+				frappe.throw(
+					f"Driver <b>{self.driver}</b> is blacklisted and cannot enter the premises.<br><br>"
+					f"<b>Reason:</b> {reason}<br><br>"
+					f"Contact IT Head to resolve.",
+					title="Blacklisted Driver"
+				)
 
 	def generate_token_number(self):
 		date_part = getdate().strftime("%y%m%d")
