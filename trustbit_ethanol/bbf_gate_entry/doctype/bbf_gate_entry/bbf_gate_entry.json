@@ -20,6 +20,8 @@
   "column_break_po",
   "purchase_order",
   "supplier_name",
+  "po_list_section",
+  "po_list",
   "items_section",
   "po_items",
   "flow_section",
@@ -130,6 +132,18 @@
    "fetch_from": "purchase_order.supplier_name",
    "read_only": 1,
    "permlevel": 1
+  },
+  {
+   "fieldname": "po_list_section",
+   "fieldtype": "Section Break",
+   "label": "Linked Purchase Orders"
+  },
+  {
+   "fieldname": "po_list",
+   "fieldtype": "Table",
+   "label": "Purchase Orders",
+   "options": "BBF Gate Entry PO",
+   "description": "Add one or more Purchase Orders. All must be from the same supplier."
   },
   {
    "fieldname": "items_section",

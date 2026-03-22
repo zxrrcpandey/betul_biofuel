@@ -5,9 +5,42 @@ from frappe.utils import now_datetime, flt
 
 class BBFGateEntry(Document):
 	def validate(self):
+		self._sync_purchase_order_from_po_list()
+		self._validate_same_supplier()
 		self.set_route()
 		self.validate_token_status()
 		self.validate_po_remaining_qty()
+
+	def _sync_purchase_order_from_po_list(self):
+		"""Keep purchase_order field in sync with first PO in po_list for backward compatibility."""
+		if self.po_list and len(self.po_list) > 0:
+			self.purchase_order = self.po_list[0].purchase_order
+			if not self.supplier_name:
+				self.supplier_name = self.po_list[0].supplier_name
+		elif self.purchase_order and (not self.po_list or len(self.po_list) == 0):
+			# Legacy: single PO entered directly — auto-add to po_list
+			po = frappe.get_doc("Purchase Order", self.purchase_order)
+			self.append("po_list", {
+				"purchase_order": self.purchase_order,
+				"supplier_name": po.supplier_name,
+				"grand_total": po.grand_total,
+				"item_count": len(po.items)
+			})
+			self.supplier_name = po.supplier_name
+
+	def _validate_same_supplier(self):
+		"""All POs must be from the same supplier."""
+		if not self.po_list or len(self.po_list) <= 1:
+			return
+
+		suppliers = set()
+		for row in self.po_list:
+			supplier = frappe.db.get_value("Purchase Order", row.purchase_order, "supplier")
+			if supplier:
+				suppliers.add(supplier)
+
+		if len(suppliers) > 1:
+			frappe.throw("All Purchase Orders must be from the same supplier. Found multiple suppliers.")
 
 	def set_route(self):
 		if self.material_flow == "Raw Material":
@@ -30,11 +63,14 @@ class BBFGateEntry(Document):
 			frappe.throw(f"Token {self.token_number} is already at stage '{token_status}'. Only tokens with status 'Token Generated' can be linked to a Gate Entry.")
 
 	def validate_po_remaining_qty(self):
-		if not self.purchase_order:
+		if not self.po_list:
 			return
-		po = frappe.get_doc("Purchase Order", self.purchase_order)
-		if po.per_received >= 100:
-			frappe.throw(f"Purchase Order {self.purchase_order} is already 100% received. Please select a different PO.")
+		for row in self.po_list:
+			if not row.purchase_order:
+				continue
+			po = frappe.get_doc("Purchase Order", row.purchase_order)
+			if po.per_received >= 100:
+				frappe.throw(f"Purchase Order {row.purchase_order} is already 100% received. Please remove it.")
 
 	def on_submit(self):
 		self.update_token_status()
@@ -57,19 +93,80 @@ class BBFGateEntry(Document):
 
 	@frappe.whitelist()
 	def fetch_po_items(self):
-		if not self.purchase_order:
-			frappe.throw("Please select a Purchase Order first")
-
-		po = frappe.get_doc("Purchase Order", self.purchase_order)
+		"""Fetch items from all POs in po_list (or from purchase_order for backward compat)."""
 		self.po_items = []
+
+		po_names = []
+		if self.po_list and len(self.po_list) > 0:
+			po_names = [row.purchase_order for row in self.po_list if row.purchase_order]
+		elif self.purchase_order:
+			po_names = [self.purchase_order]
+
+		if not po_names:
+			frappe.throw("Please add at least one Purchase Order first")
+
+		for po_name in po_names:
+			po = frappe.get_doc("Purchase Order", po_name)
+			for item in po.items:
+				self.append("po_items", {
+					"item_code": item.item_code,
+					"item_name": item.item_name,
+					"ordered_qty": item.qty,
+					"uom": item.uom,
+					"purchase_order": po_name
+				})
+
+		if not self.supplier_name and po_names:
+			self.supplier_name = frappe.db.get_value("Purchase Order", po_names[0], "supplier_name")
+
+	@frappe.whitelist()
+	def add_purchase_order(self, po_name):
+		"""Add a PO to the po_list and fetch its items."""
+		if not po_name:
+			frappe.throw("Please specify a Purchase Order")
+
+		# Check not already added
+		existing = [row.purchase_order for row in (self.po_list or [])]
+		if po_name in existing:
+			frappe.throw(f"Purchase Order {po_name} is already added")
+
+		po = frappe.get_doc("Purchase Order", po_name)
+
+		# Validate same supplier
+		if self.po_list and len(self.po_list) > 0:
+			first_supplier = frappe.db.get_value("Purchase Order", self.po_list[0].purchase_order, "supplier")
+			if po.supplier != first_supplier:
+				frappe.throw(f"All POs must be from the same supplier. First PO supplier: {first_supplier}, this PO supplier: {po.supplier}")
+
+		if po.per_received >= 100:
+			frappe.throw(f"Purchase Order {po_name} is already 100% received")
+
+		if po.docstatus != 1:
+			frappe.throw(f"Purchase Order {po_name} is not submitted")
+
+		# Add to PO list
+		self.append("po_list", {
+			"purchase_order": po_name,
+			"supplier_name": po.supplier_name,
+			"grand_total": po.grand_total,
+			"item_count": len(po.items)
+		})
+
+		# Add items
 		for item in po.items:
 			self.append("po_items", {
 				"item_code": item.item_code,
 				"item_name": item.item_name,
 				"ordered_qty": item.qty,
-				"uom": item.uom
+				"uom": item.uom,
+				"purchase_order": po_name
 			})
-		self.supplier_name = po.supplier_name
+
+		# Set supplier from first PO
+		if not self.supplier_name:
+			self.supplier_name = po.supplier_name
+		if not self.purchase_order:
+			self.purchase_order = po_name
 
 	def _create_material_inspection(self):
 		"""Auto-create material inspection for Non-RM gate entries."""

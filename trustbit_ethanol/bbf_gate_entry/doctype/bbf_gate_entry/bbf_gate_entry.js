@@ -27,16 +27,72 @@ frappe.ui.form.on("BBF Gate Entry", {
 			}
 		}
 
-		if (frm.doc.purchase_order && !frm.doc.docstatus) {
-			frm.add_custom_button(__("Fetch PO Items"), function () {
-				frm.call("fetch_po_items").then(() => {
-					frm.refresh_fields();
-					frappe.show_alert({
-						message: __("PO Items fetched successfully"),
-						indicator: "green"
+		// Add PO button (before submit)
+		if (!frm.doc.docstatus) {
+			frm.add_custom_button(__("Add Purchase Order"), function () {
+				// Determine supplier filter (must match first PO's supplier)
+				let supplier_filter = {};
+				if (frm.doc.po_list && frm.doc.po_list.length > 0) {
+					let first_supplier = frm.doc.po_list[0].supplier_name;
+					if (first_supplier) {
+						supplier_filter.supplier_name = first_supplier;
+					}
+				}
+
+				// Get already-added POs to exclude
+				let existing_pos = (frm.doc.po_list || []).map(r => r.purchase_order);
+
+				let d = new frappe.ui.Dialog({
+					title: __("Select Purchase Order"),
+					fields: [
+						{
+							fieldname: "purchase_order",
+							fieldtype: "Link",
+							label: "Purchase Order",
+							options: "Purchase Order",
+							reqd: 1,
+							get_query: function () {
+								let filters = {
+									docstatus: 1,
+									status: ["not in", ["Closed", "Cancelled", "Completed"]],
+									per_received: ["<", 100],
+									name: ["not in", existing_pos]
+								};
+								if (supplier_filter.supplier_name) {
+									filters.supplier_name = supplier_filter.supplier_name;
+								}
+								return { filters: filters };
+							}
+						}
+					],
+					primary_action_label: __("Add"),
+					primary_action(values) {
+						frm.call("add_purchase_order", { po_name: values.purchase_order }).then(() => {
+							frm.refresh_fields();
+							frm.dirty();
+							frappe.show_alert({
+								message: __("PO {0} added with items", [values.purchase_order]),
+								indicator: "green"
+							});
+						});
+						d.hide();
+					}
+				});
+				d.show();
+			}).addClass("btn-primary-dark");
+
+			// Fetch All PO Items button
+			if (frm.doc.po_list && frm.doc.po_list.length > 0) {
+				frm.add_custom_button(__("Refresh PO Items"), function () {
+					frm.call("fetch_po_items").then(() => {
+						frm.refresh_fields();
+						frappe.show_alert({
+							message: __("PO Items refreshed from all linked POs"),
+							indicator: "green"
+						});
 					});
 				});
-			});
+			}
 		}
 
 		// Lock fields after submit
@@ -51,24 +107,40 @@ frappe.ui.form.on("BBF Gate Entry", {
 	},
 
 	setup(frm) {
-		// Filter token_number to only show tokens at "Token Generated" stage (any purpose)
+		// Filter token_number to only show tokens at "Token Generated" stage
 		frm.set_query("token_number", function () {
 			return {
 				filters: {
-					status: ["in", ["Token Generated"]]
+					status: ["in", ["Token Generated"]],
+					entry_type: "Material"
 				}
 			};
 		});
 
-		// Filter purchase_order to only show open POs with remaining qty
+		// Filter purchase_order (legacy field) to only show open POs
 		frm.set_query("purchase_order", function () {
-			return {
-				filters: {
-					docstatus: 1,
-					status: ["not in", ["Closed", "Cancelled", "Completed"]],
-					per_received: ["<", 100]
-				}
+			let filters = {
+				docstatus: 1,
+				status: ["not in", ["Closed", "Cancelled", "Completed"]],
+				per_received: ["<", 100]
 			};
+			if (frm.doc.supplier_name) {
+				filters.supplier_name = frm.doc.supplier_name;
+			}
+			return { filters: filters };
+		});
+
+		// Filter PO in child table to same supplier
+		frm.set_query("purchase_order", "po_list", function () {
+			let filters = {
+				docstatus: 1,
+				status: ["not in", ["Closed", "Cancelled", "Completed"]],
+				per_received: ["<", 100]
+			};
+			if (frm.doc.supplier_name) {
+				filters.supplier_name = frm.doc.supplier_name;
+			}
+			return { filters: filters };
 		});
 	},
 
@@ -105,7 +177,7 @@ frappe.ui.form.on("BBF Gate Entry", {
 						title: __("Select Purchase Order"),
 						fields: [
 							{
-								fieldname: "po_list",
+								fieldname: "po_list_html",
 								fieldtype: "HTML"
 							}
 						]
@@ -121,21 +193,26 @@ frappe.ui.form.on("BBF Gate Entry", {
 							<td>${esc(po.transaction_date || "")}</td>
 							<td>${esc(po.total_qty || "")}</td>
 							<td>${esc(po.per_received || 0)}%</td>
-							<td><button class="btn btn-xs btn-primary select-po">Select</button></td>
+							<td><button class="btn btn-xs btn-primary select-po">Add</button></td>
 						</tr>`;
 					});
 					html += "</tbody></table>";
 
-					d.fields_dict.po_list.$wrapper.html(html);
-					d.fields_dict.po_list.$wrapper.find(".select-po").each(function (i) {
+					d.fields_dict.po_list_html.$wrapper.html(html);
+					d.fields_dict.po_list_html.$wrapper.find(".select-po").each(function (i) {
 						$(this).data("po", r.message[i].name);
 					});
-					d.fields_dict.po_list.$wrapper.find(".select-po").on("click", function () {
-						frm.set_value("purchase_order", $(this).data("po"));
-						d.hide();
-						frm.call("fetch_po_items").then(() => {
+					d.fields_dict.po_list_html.$wrapper.find(".select-po").on("click", function () {
+						let po_name = $(this).data("po");
+						frm.call("add_purchase_order", { po_name: po_name }).then(() => {
 							frm.refresh_fields();
+							frm.dirty();
+							frappe.show_alert({
+								message: __("PO {0} added", [po_name]),
+								indicator: "green"
+							});
 						});
+						d.hide();
 					});
 					d.show();
 				} else {
@@ -146,8 +223,9 @@ frappe.ui.form.on("BBF Gate Entry", {
 	},
 
 	purchase_order(frm) {
-		if (frm.doc.purchase_order) {
-			frm.call("fetch_po_items").then(() => {
+		// Legacy: when purchase_order is set directly, auto-add to po_list
+		if (frm.doc.purchase_order && (!frm.doc.po_list || frm.doc.po_list.length === 0)) {
+			frm.call("add_purchase_order", { po_name: frm.doc.purchase_order }).then(() => {
 				frm.refresh_fields();
 			});
 		}

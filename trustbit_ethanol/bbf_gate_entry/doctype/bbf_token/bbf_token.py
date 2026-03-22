@@ -195,7 +195,7 @@ class BBFToken(Document):
 		if not gate_entry.purchase_order:
 			frappe.throw("No Purchase Order linked in the Gate Entry")
 
-		# Get PO details and validate it's submitted
+		# Get primary PO for PR header (supplier, company, currency)
 		po = frappe.get_doc("Purchase Order", gate_entry.purchase_order)
 		if po.docstatus != 1:
 			frappe.throw(f"Purchase Order {po.name} is not submitted")
@@ -231,7 +231,7 @@ class BBFToken(Document):
 		gate_entry_items = frappe.get_all(
 			"BBF Gate Entry Item",
 			filters={"parent": gate_entry.name},
-			fields=["item_code", "item_name", "ordered_qty", "uom"]
+			fields=["item_code", "item_name", "ordered_qty", "uom", "purchase_order"]
 		)
 
 		if not gate_entry_items:
@@ -267,10 +267,11 @@ class BBFToken(Document):
 						indicator="orange"
 					)
 
-			# Get rate: per-item from PO, fallback to deduction sheet rate
+			# Get rate: per-item from its own PO, fallback to deduction sheet rate
+			item_po_name = ge_item.purchase_order or po.name
 			po_item = frappe.db.get_value(
 				"Purchase Order Item",
-				{"parent": po.name, "item_code": ge_item.item_code},
+				{"parent": item_po_name, "item_code": ge_item.item_code},
 				["name", "rate"],
 				as_dict=True
 			)
@@ -290,7 +291,7 @@ class BBFToken(Document):
 				"stock_uom": item_uom,
 				"rate": item_rate,
 				"warehouse": accepted_warehouse or warehouse,
-				"purchase_order": po.name,
+				"purchase_order": item_po_name,
 				"purchase_order_item": po_item_name,
 			}
 			pr_items.append(pr_item)

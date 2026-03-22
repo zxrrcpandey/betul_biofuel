@@ -8,7 +8,8 @@
   "item_code",
   "item_name",
   "ordered_qty",
-  "uom"
+  "uom",
+  "purchase_order"
  ],
  "fields": [
   {
@@ -39,6 +40,14 @@
    "label": "UOM",
    "options": "UOM",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "purchase_order",
+   "fieldtype": "Link",
+   "label": "Purchase Order",
+   "options": "Purchase Order",
+   "in_list_view": 1,
+   "read_only": 1
   }
  ],
  "links": [],
