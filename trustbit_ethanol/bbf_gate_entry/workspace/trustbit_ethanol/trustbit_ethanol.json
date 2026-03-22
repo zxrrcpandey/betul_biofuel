@@ -210,7 +210,8 @@
   {"role": "Weighbridge Operator"},
   {"role": "Stores User"},
   {"role": "Accounts Manager"},
-  {"role": "IT Head"}
+  {"role": "IT Head"},
+  {"role": "Admin Reception"}
  ],
  "sequence_id": 0,
  "shortcuts": [
