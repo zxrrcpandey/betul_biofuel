@@ -129,7 +129,8 @@ doc_events = {
 # Setup custom fields on Purchase Receipt, Purchase Order, Material Request, Company, Item Group, Brand
 after_migrate = [
 	"trustbit_ethanol.bbf_gate_entry.setup.create_custom_fields",
-	"trustbit_ethanol.bbf_gate_entry.setup.seed_gate_pass_destinations"
+	"trustbit_ethanol.bbf_gate_entry.setup.seed_gate_pass_destinations",
+	"trustbit_ethanol.bbf_gate_entry.setup.seed_visiting_companies"
 ]
 
 # Scheduled Tasks

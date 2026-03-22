@@ -741,6 +741,25 @@ def seed_gate_pass_destinations():
 	frappe.db.commit()
 
 
+def seed_visiting_companies():
+	"""Create default visiting companies if none exist."""
+	if frappe.db.count("BBF Visiting Company") > 0:
+		return
+
+	defaults = [
+		{"company_name": "Betul Bio Fuel", "enabled": 1, "description": "Ethanol Division"},
+		{"company_name": "Cattle Feed", "enabled": 1, "description": "Cattle Feed Division"},
+		{"company_name": "Frozen Food", "enabled": 1, "description": "Frozen Food Division"},
+	]
+
+	for d in defaults:
+		doc = frappe.new_doc("BBF Visiting Company")
+		doc.update(d)
+		doc.insert(ignore_permissions=True)
+
+	frappe.db.commit()
+
+
 def _seed_default_approval_limits():
 	"""Create default BBF Approval Limit records if none exist."""
 	if frappe.db.count("BBF Approval Limit") > 0:

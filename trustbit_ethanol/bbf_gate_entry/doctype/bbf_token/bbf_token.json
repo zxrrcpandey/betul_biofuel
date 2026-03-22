@@ -33,6 +33,7 @@
   "visitor_photo",
   "gate_pass_visit_section",
   "visit_purpose",
+  "visiting_company",
   "purpose_detail",
   "destination",
   "destination_detail",
@@ -270,6 +271,13 @@
    "label": "Visit Purpose",
    "options": "\nVisitor\nAdmin\nMaintenance\nElectrician\nContractor\nDelivery\nOther",
    "mandatory_depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "visiting_company",
+   "fieldtype": "Link",
+   "label": "Visiting Company",
+   "options": "BBF Visiting Company",
+   "depends_on": "eval:doc.entry_type==='Gate Pass'"
   },
   {
    "fieldname": "purpose_detail",
