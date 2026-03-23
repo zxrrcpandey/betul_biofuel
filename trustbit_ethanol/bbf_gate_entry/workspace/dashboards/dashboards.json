@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Dashboards</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gate Operations Dashboard\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Wall Display\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Procurement Dashboard\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Control Matrix\",\"col\":4}}]",
+ "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Dashboards</b></span>\",\"col\":12}},{\"id\":\"s0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Dashboard\",\"col\":4}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gate Operations Dashboard\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Wall Display\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Procurement Dashboard\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Control Matrix\",\"col\":4}}]",
  "creation": "2026-03-23 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -11,6 +11,21 @@
  "is_hidden": 0,
  "label": "Dashboards",
  "links": [
+  {
+   "hidden": 0,
+   "label": "Executive",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "CEO Dashboard",
+   "link_to": "ceo-dashboard",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
   {
    "hidden": 0,
    "label": "Gate Operations",
@@ -83,7 +98,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-03-23 00:00:00",
+ "modified": "2026-03-23 18:00:00",
  "modified_by": "Administrator",
  "module": "BBF Gate Entry",
  "name": "Dashboards",
@@ -104,6 +119,12 @@
  ],
  "sequence_id": 9,
  "shortcuts": [
+  {
+   "color": "Red",
+   "label": "CEO Dashboard",
+   "link_to": "ceo-dashboard",
+   "type": "Page"
+  },
   {
    "color": "Blue",
    "label": "Gate Operations Dashboard",
