@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Dashboards</b></span>\",\"col\":12}},{\"id\":\"s0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Dashboard\",\"col\":4}},{\"id\":\"s0b\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Wall Display\",\"col\":4}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gate Operations Dashboard\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Wall Display\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Procurement Dashboard\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Control Matrix\",\"col\":4}}]",
+ "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Dashboards</b></span>\",\"col\":12}},{\"id\":\"s5\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"MD Dashboard\",\"col\":4}},{\"id\":\"s5b\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"MD Wall Display\",\"col\":4}},{\"id\":\"s0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Dashboard\",\"col\":4}},{\"id\":\"s0b\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Wall Display\",\"col\":4}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gate Operations Dashboard\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Wall Display\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Procurement Dashboard\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Control Matrix\",\"col\":4}}]",
  "creation": "2026-03-23 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -11,6 +11,29 @@
  "is_hidden": 0,
  "label": "Dashboards",
  "links": [
+  {
+   "hidden": 0,
+   "label": "MD (Owner)",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "MD Dashboard",
+   "link_to": "md-dashboard",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "MD Wall Display",
+   "link_to": "md-wall-display",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
   {
    "hidden": 0,
    "label": "Executive",
@@ -106,7 +129,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-03-23 18:00:00",
+ "modified": "2026-03-23 21:00:00",
  "modified_by": "Administrator",
  "module": "BBF Gate Entry",
  "name": "Dashboards",
@@ -127,6 +150,18 @@
  ],
  "sequence_id": 9,
  "shortcuts": [
+  {
+   "color": "Purple",
+   "label": "MD Dashboard",
+   "link_to": "md-dashboard",
+   "type": "Page"
+  },
+  {
+   "color": "Pink",
+   "label": "MD Wall Display",
+   "link_to": "md-wall-display",
+   "type": "Page"
+  },
   {
    "color": "Red",
    "label": "CEO Dashboard",
