@@ -27,14 +27,22 @@ frappe.ui.form.on("BBF Gate Entry", {
 			}
 		}
 
-		// Stock OUT: hide PO sections, show SI section
-		if (frm.doc.stock_direction === "Stock OUT") {
-			frm.set_df_property("po_section", "hidden", 1);
-			frm.set_df_property("po_list_section", "hidden", 1);
-			frm.set_df_property("material_flow", "reqd", 0);
-			frm.set_df_property("purchase_order", "reqd", 0);
-		} else {
-			frm.set_df_property("si_section", "hidden", 1);
+		// Stock Direction toggle — show/hide sections
+		let is_stock_out = frm.doc.stock_direction === "Stock OUT";
+		// PO sections: hide for Stock OUT, show for Stock IN
+		frm.set_df_property("po_section", "hidden", is_stock_out ? 1 : 0);
+		frm.set_df_property("po_list_section", "hidden", is_stock_out ? 1 : 0);
+		// SI section: show for Stock OUT, hide for Stock IN
+		frm.set_df_property("si_section", "hidden", is_stock_out ? 0 : 1);
+		// Material Flow: not required for Stock OUT
+		frm.set_df_property("material_flow", "reqd", is_stock_out ? 0 : 1);
+		frm.set_df_property("material_flow", "hidden", is_stock_out ? 1 : 0);
+		frm.set_df_property("requires_weighing", "hidden", is_stock_out ? 1 : 0);
+		// Items label
+		frm.set_df_property("items_section", "label", is_stock_out ? "Sales Invoice Items" : "PO Items");
+		// Add PO button only for Stock IN
+		if (is_stock_out) {
+			frm.remove_custom_button(__("Add Purchase Order"));
 		}
 
 		// Fetch SI Items button (Stock OUT, before submit)
@@ -267,10 +275,11 @@ frappe.ui.form.on("BBF Gate Entry", {
 	},
 
 	stock_direction(frm) {
-		frm.trigger("refresh");
 		if (frm.doc.stock_direction === "Stock OUT") {
 			frm.set_value("route_to", "Weighbridge");
+			frm.set_value("material_flow", "Non-Raw Material");
 		}
+		frm.trigger("refresh");
 	},
 
 	sales_invoice(frm) {
