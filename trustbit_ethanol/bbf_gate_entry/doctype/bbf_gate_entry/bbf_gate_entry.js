@@ -39,18 +39,25 @@ frappe.ui.form.on("BBF Gate Entry", {
 		frm.set_df_property("material_flow", "reqd", is_stock_out ? 0 : 1);
 		// Transport section: hide for Stock OUT (no LR for outbound)
 		frm.set_df_property("transport_section", "hidden", is_stock_out ? 1 : 0);
-		// Items section label — use DOM since set_df_property doesn't work for Section Break labels
-		let items_section_el = frm.fields_dict.items_section;
-		if (items_section_el && items_section_el.$wrapper) {
-			items_section_el.$wrapper.find(".section-head, .control-label").text(
-				is_stock_out ? "Sales Invoice Items" : "PO Items"
-			);
+		// Items section: hide for Stock OUT (items auto-fetched from SI, read-only)
+		if (is_stock_out) {
+			let has_items = frm.doc.po_items && frm.doc.po_items.length > 0;
+			frm.set_df_property("items_section", "hidden", has_items ? 0 : 1);
+			if (has_items) {
+				let el = frm.fields_dict.items_section;
+				if (el && el.$wrapper) {
+					el.$wrapper.find(".section-head, .control-label").text("Sales Invoice Items");
+				}
+				frm.fields_dict.po_items.grid.update_docfield_property("purchase_order", "hidden", 1);
+				frm.fields_dict.po_items.grid.df.read_only = 1;
+				frm.fields_dict.po_items.grid.refresh();
+			}
+		} else {
+			frm.set_df_property("items_section", "hidden", 0);
+			frm.fields_dict.po_items.grid.update_docfield_property("purchase_order", "hidden", 0);
+			frm.fields_dict.po_items.grid.df.read_only = 0;
+			frm.fields_dict.po_items.grid.refresh();
 		}
-		// Hide "Purchase Order" column in items table for Stock OUT
-		frm.fields_dict.po_items.grid.update_docfield_property(
-			"purchase_order", "hidden", is_stock_out ? 1 : 0
-		);
-		frm.fields_dict.po_items.grid.refresh();
 		// Remove Add PO button for Stock OUT
 		if (is_stock_out) {
 			frm.remove_custom_button(__("Add Purchase Order"));
