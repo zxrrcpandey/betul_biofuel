@@ -71,53 +71,27 @@ function _mwd_start(page) {
 }
 
 function _mwd_show_pin(page) {
-	$("#mwd-container").html(`
-		<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;">
-			<div style="text-align:center;">
-				<div style="width:100px;height:100px;border-radius:50%;background:linear-gradient(135deg,#1e40af,#7c3aed);margin:0 auto 30px;display:flex;align-items:center;justify-content:center;">
-					<span style="font-size:48px;">&#128274;</span>
-				</div>
-				<div style="font-size:28px;font-weight:800;color:#f8fafc;margin-bottom:8px;">MD Wall Display</div>
-				<div style="font-size:14px;color:#64748b;margin-bottom:40px;">Enter PIN to unlock</div>
-				<input type="password" maxlength="6" id="mwd-pin-input" autocomplete="off"
-					style="width:220px;text-align:center;font-size:32px;letter-spacing:14px;padding:16px 24px;
-					background:#1e293b;border:2px solid #334155;border-radius:14px;color:#f8fafc;outline:none;
-					font-weight:700;">
-				<div style="margin-top:24px;">
-					<button id="mwd-pin-btn" style="background:linear-gradient(135deg,#1e40af,#7c3aed);
-						border:none;padding:14px 56px;border-radius:12px;color:white;font-weight:700;font-size:15px;cursor:pointer;">
-						Unlock
-					</button>
-				</div>
-				<div id="mwd-pin-error" style="margin-top:20px;color:#ef4444;font-size:14px;font-weight:600;display:none;">
-					Incorrect PIN
-				</div>
-			</div>
-		</div>
-	`);
-
-	function doUnlock() {
-		const pin = $("#mwd-pin-input").val();
-		if (!pin) return;
-		frappe.call({
-			method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
-			args: { pin },
-			callback(r) {
-				if (r.message && r.message.valid) {
-					sessionStorage.setItem("md_dash_unlocked", "1");
-					_mwd_start(page);
-				} else {
-					$("#mwd-pin-error").show();
-					$("#mwd-pin-input").val("").css("border-color", "#ef4444");
-					setTimeout(() => { $("#mwd-pin-input").css("border-color", "#334155").focus(); }, 600);
-				}
-			},
-		});
-	}
-
-	$("#mwd-pin-btn").on("click", doUnlock);
-	$("#mwd-pin-input").on("keydown", function(e) { if (e.key === "Enter") doUnlock(); });
-	setTimeout(() => $("#mwd-pin-input").focus(), 100);
+	$("#mwd-container").html('<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#64748b;font-size:16px;">Wall Display locked. Enter PIN to continue.</div>');
+	frappe.prompt(
+		[{ label: "Enter PIN", fieldname: "pin", fieldtype: "Password", reqd: 1 }],
+		function(values) {
+			frappe.call({
+				method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
+				args: { pin: values.pin },
+				callback(r) {
+					if (r.message && r.message.valid) {
+						sessionStorage.setItem("md_dash_unlocked", "1");
+						_mwd_start(page);
+					} else {
+						frappe.msgprint({ title: "Access Denied", message: "Incorrect PIN.", indicator: "red" });
+						setTimeout(() => _mwd_show_pin(page), 500);
+					}
+				},
+			});
+		},
+		"MD Wall Display — PIN Required",
+		"Unlock"
+	);
 }
 
 function _mwd_exit(page) {

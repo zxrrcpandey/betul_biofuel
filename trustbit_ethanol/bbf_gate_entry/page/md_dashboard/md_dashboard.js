@@ -46,66 +46,28 @@ function _md_check_pin(page) {
 }
 
 function _md_show_pin_screen(page) {
-	const $c = $("#md-app");
-	$c.html(`
-		<div style="display:flex;align-items:center;justify-content:center;min-height:70vh;">
-			<div style="text-align:center;max-width:380px;width:100%;">
-				<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#1e40af,#7c3aed);margin:0 auto 24px;display:flex;align-items:center;justify-content:center;">
-					<span style="font-size:36px;color:white;">&#128274;</span>
-				</div>
-				<div style="font-size:22px;font-weight:800;color:#1e293b;margin-bottom:6px;">MD Dashboard</div>
-				<div style="font-size:13px;color:#64748b;margin-bottom:32px;">Enter PIN to access the dashboard</div>
-				<div style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;">
-					<input type="password" maxlength="6" id="md-pin-input" autocomplete="off"
-						style="width:200px;text-align:center;font-size:28px;letter-spacing:12px;padding:14px 20px;
-						border:2px solid #e2e8f0;border-radius:12px;outline:none;font-weight:700;
-						transition:border-color 0.2s;">
-				</div>
-				<button id="md-pin-btn" class="btn btn-primary btn-lg"
-					style="background:linear-gradient(135deg,#1e40af,#7c3aed);border:none;padding:12px 48px;
-					border-radius:10px;font-weight:700;font-size:14px;width:200px;">
-					Unlock
-				</button>
-				<div id="md-pin-error" style="margin-top:16px;color:#ef4444;font-size:13px;font-weight:600;display:none;">
-					Incorrect PIN. Please try again.
-				</div>
-			</div>
-		</div>
-	`);
-
-	function doUnlock() {
-		const pin = $("#md-pin-input").val();
-		if (!pin) return;
-		frappe.call({
-			method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
-			args: { pin },
-			callback(r) {
-				if (r.message && r.message.valid) {
-					sessionStorage.setItem("md_dash_unlocked", "1");
-					page._unlocked = true;
-					_md_refresh(page);
-				} else {
-					$("#md-pin-error").show();
-					$("#md-pin-input").val("").css("border-color", "#ef4444")
-						.addClass("md-shake");
-					setTimeout(() => {
-						$("#md-pin-input").removeClass("md-shake").css("border-color", "#e2e8f0").focus();
-					}, 600);
-				}
-			},
-		});
-	}
-
-	$("#md-pin-btn").on("click", doUnlock);
-	$("#md-pin-input").on("keydown", function(e) {
-		if (e.key === "Enter") doUnlock();
-	}).on("focus", function() {
-		$(this).css("border-color", "#7c3aed");
-	}).on("blur", function() {
-		$(this).css("border-color", "#e2e8f0");
-	});
-
-	setTimeout(() => $("#md-pin-input").focus(), 100);
+	$("#md-app").html('<div style="text-align:center;padding:80px;color:#64748b;font-size:14px;">Dashboard locked. Enter PIN to continue.</div>');
+	frappe.prompt(
+		[{ label: "Enter PIN", fieldname: "pin", fieldtype: "Password", reqd: 1 }],
+		function(values) {
+			frappe.call({
+				method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
+				args: { pin: values.pin },
+				callback(r) {
+					if (r.message && r.message.valid) {
+						sessionStorage.setItem("md_dash_unlocked", "1");
+						page._unlocked = true;
+						_md_refresh(page);
+					} else {
+						frappe.msgprint({ title: "Access Denied", message: "Incorrect PIN. Please try again.", indicator: "red" });
+						setTimeout(() => _md_show_pin_screen(page), 500);
+					}
+				},
+			});
+		},
+		"MD Dashboard — PIN Required",
+		"Unlock"
+	);
 }
 
 let _md_timeout = null;
