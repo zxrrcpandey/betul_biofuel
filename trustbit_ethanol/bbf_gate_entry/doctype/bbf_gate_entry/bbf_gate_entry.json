@@ -33,6 +33,13 @@
   "column_break_flow",
   "route_to",
   "requires_weighing",
+  "vehicle_driver_section",
+  "vehicle_number_display",
+  "vehicle_master",
+  "column_break_vd",
+  "driver",
+  "driver_name",
+  "driver_mobile",
   "challan_section",
   "challan_number",
   "column_break_challan",
@@ -226,6 +233,52 @@
    "default": "0",
    "depends_on": "eval:doc.material_flow==='Non-Raw Material'",
    "description": "Check if this Non-Raw Material needs to be weighed (e.g., Steel, Chemical)"
+  },
+  {
+   "fieldname": "vehicle_driver_section",
+   "fieldtype": "Section Break",
+   "label": "Vehicle & Driver Registration"
+  },
+  {
+   "fieldname": "vehicle_number_display",
+   "fieldtype": "Data",
+   "label": "Vehicle Number",
+   "fetch_from": "token_number.vehicle_number",
+   "read_only": 1,
+   "description": "Vehicle number entered at G1"
+  },
+  {
+   "fieldname": "vehicle_master",
+   "fieldtype": "Link",
+   "label": "Vehicle Master",
+   "options": "BBF Vehicle Master",
+   "description": "Link to registered vehicle. Create new if not registered."
+  },
+  {
+   "fieldname": "column_break_vd",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "label": "Driver",
+   "options": "BBF Driver Master",
+   "description": "Select or create driver record"
+  },
+  {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Driver Name",
+   "fetch_from": "driver.driver_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "driver_mobile",
+   "fieldtype": "Data",
+   "label": "Driver Mobile",
+   "fetch_from": "driver.mobile_number",
+   "read_only": 1,
+   "options": "Phone"
   },
   {
    "fieldname": "challan_section",

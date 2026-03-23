@@ -172,25 +172,23 @@
    "fieldname": "vehicle_section",
    "fieldtype": "Section Break",
    "label": "Vehicle Details",
-   "permlevel": 1,
    "depends_on": "eval:doc.entry_type==='Material'"
   },
   {
    "fieldname": "vehicle_number",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "label": "Vehicle Number",
-   "options": "BBF Vehicle Master",
    "reqd": 0,
-   "permlevel": 1,
-   "mandatory_depends_on": "eval:doc.entry_type==='Material'"
+   "mandatory_depends_on": "eval:doc.entry_type==='Material'",
+   "description": "Enter vehicle registration number (e.g., MP48AB1234)"
   },
   {
    "fieldname": "vehicle_type",
    "fieldtype": "Data",
    "label": "Vehicle Type",
-   "fetch_from": "vehicle_number.vehicle_type",
    "read_only": 1,
-   "permlevel": 1
+   "hidden": 1,
+   "description": "Auto-filled from Gate Entry at G2"
   },
   {
    "fieldname": "column_break_vehicle",
@@ -201,33 +199,32 @@
    "fieldtype": "Link",
    "label": "Driver",
    "options": "BBF Driver Master",
-   "permlevel": 1,
-   "depends_on": "eval:doc.entry_type==='Material'"
+   "read_only": 1,
+   "hidden": 1,
+   "depends_on": "eval:doc.entry_type==='Material'",
+   "description": "Set from Gate Entry at G2"
   },
   {
    "fieldname": "driver_name",
    "fieldtype": "Data",
    "label": "Driver Name",
-   "permlevel": 1,
    "read_only": 1,
-   "fetch_from": "driver.driver_name"
+   "hidden": 1
   },
   {
    "fieldname": "driver_mobile",
    "fieldtype": "Data",
    "label": "Driver Mobile",
    "options": "Phone",
-   "permlevel": 1,
    "read_only": 1,
-   "fetch_from": "driver.mobile_number"
+   "hidden": 1
   },
   {
    "fieldname": "driver_license_number",
    "fieldtype": "Data",
    "label": "Driver License Number",
-   "permlevel": 1,
    "read_only": 1,
-   "fetch_from": "driver.license_number"
+   "hidden": 1
   },
   {
    "fieldname": "gate_pass_visitor_section",

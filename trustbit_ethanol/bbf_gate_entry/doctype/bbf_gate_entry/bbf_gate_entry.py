@@ -88,10 +88,57 @@ class BBFGateEntry(Document):
 				frappe.throw(f"Purchase Order {row.purchase_order} is already 100% received. Please remove it.")
 
 	def on_submit(self):
+		self._check_blacklist_on_submit()
+		self._copy_vehicle_driver_to_token()
 		self.update_token_status()
 		self.set_gate_entry_status()
 		if self.stock_direction != "Stock OUT":
 			self._create_material_inspection()
+
+	def _check_blacklist_on_submit(self):
+		"""Re-check blacklist at G2 submit for vehicle and driver."""
+		vehicle_number = frappe.db.get_value("BBF Token", self.token_number, "vehicle_number")
+		if vehicle_number and frappe.db.exists("BBF Vehicle Master", vehicle_number):
+			bl = frappe.db.get_value(
+				"BBF Vehicle Master", vehicle_number,
+				["is_blacklisted", "blacklist_reason"], as_dict=True
+			)
+			if bl and bl.is_blacklisted:
+				reason = bl.blacklist_reason or "No reason specified"
+				frappe.throw(
+					f"Vehicle <b>{vehicle_number}</b> is blacklisted.<br><b>Reason:</b> {reason}<br>Contact IT Head.",
+					title="Blacklisted Vehicle"
+				)
+
+		if self.driver and frappe.db.exists("BBF Driver Master", self.driver):
+			bl = frappe.db.get_value(
+				"BBF Driver Master", self.driver,
+				["is_blacklisted", "blacklist_reason"], as_dict=True
+			)
+			if bl and bl.is_blacklisted:
+				reason = bl.blacklist_reason or "No reason specified"
+				frappe.throw(
+					f"Driver <b>{self.driver}</b> is blacklisted.<br><b>Reason:</b> {reason}<br>Contact IT Head.",
+					title="Blacklisted Driver"
+				)
+
+	def _copy_vehicle_driver_to_token(self):
+		"""Copy vehicle master and driver details from Gate Entry to Token."""
+		if not self.token_number:
+			return
+		updates = {}
+		if self.driver:
+			driver_doc = frappe.get_doc("BBF Driver Master", self.driver)
+			updates["driver"] = self.driver
+			updates["driver_name"] = driver_doc.driver_name
+			updates["driver_mobile"] = driver_doc.mobile_number
+			updates["driver_license_number"] = driver_doc.license_number
+		if self.vehicle_master:
+			vehicle_doc = frappe.get_doc("BBF Vehicle Master", self.vehicle_master)
+			updates["vehicle_type"] = vehicle_doc.vehicle_type
+		if updates:
+			token = frappe.get_doc("BBF Token", self.token_number)
+			token.db_set(updates)
 
 	def update_token_status(self):
 		token = frappe.get_doc("BBF Token", self.token_number)

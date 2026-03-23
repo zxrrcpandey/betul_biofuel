@@ -31,12 +31,7 @@ frappe.ui.form.on("BBF Token", {
 			return { filters: { enabled: 1 } };
 		});
 
-		// Filter vehicle to hide blacklisted
-		frm.set_query("vehicle_number", function () {
-			return { filters: { is_blacklisted: 0 } };
-		});
-
-		// Filter driver to hide blacklisted
+		// Filter driver to hide blacklisted (driver is filled at G2 via Gate Entry)
 		frm.set_query("driver", function () {
 			return { filters: { is_blacklisted: 0 } };
 		});
@@ -62,12 +57,8 @@ frappe.ui.form.on("BBF Token", {
 				];
 				gp_lock_fields.forEach(f => frm.set_df_property(f, "read_only", 1));
 			} else {
-				// Lock material fields after save (purpose is hidden, auto-set from Gate Entry)
+				// Lock vehicle number after save (G1 fills it, no changes after)
 				frm.set_df_property("vehicle_number", "read_only", 1);
-				frm.set_df_property("driver", "read_only", 1);
-				frm.set_df_property("driver_name", "read_only", 1);
-				frm.set_df_property("driver_mobile", "read_only", 1);
-				frm.set_df_property("driver_license_number", "read_only", 1);
 			}
 
 			// === PRINT BUTTONS ===

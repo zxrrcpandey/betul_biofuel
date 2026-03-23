@@ -154,6 +154,8 @@ frappe.ui.form.on("BBF Gate Entry", {
 			frm.set_df_property("transporter", "read_only", 1);
 			frm.set_df_property("lr_number", "read_only", 1);
 			frm.set_df_property("lr_date", "read_only", 1);
+			frm.set_df_property("vehicle_master", "read_only", 1);
+			frm.set_df_property("driver", "read_only", 1);
 		}
 	},
 
@@ -176,6 +178,16 @@ frappe.ui.form.on("BBF Gate Entry", {
 					status: ["not in", ["Cancelled", "Credit Note Issued"]]
 				}
 			};
+		});
+
+		// Filter vehicle_master to hide blacklisted
+		frm.set_query("vehicle_master", function () {
+			return { filters: { is_blacklisted: 0 } };
+		});
+
+		// Filter driver to hide blacklisted
+		frm.set_query("driver", function () {
+			return { filters: { is_blacklisted: 0 } };
 		});
 
 		// Filter purchase_order (legacy field) to only show open POs
@@ -219,8 +231,46 @@ frappe.ui.form.on("BBF Gate Entry", {
 				if (r && r.length) {
 					frappe.msgprint(__("This token already has a Gate Entry: {0}", [r[0].name]));
 					frm.set_value("token_number", "");
+					return;
 				}
+
+				// Check vehicle registration + auto-fill vehicle_master
+				frappe.db.get_value("BBF Token", frm.doc.token_number, "vehicle_number").then(v => {
+					let vn = v.message && v.message.vehicle_number;
+					if (!vn) return;
+					frappe.db.exists("BBF Vehicle Master", vn).then(exists => {
+						if (exists) {
+							frm.set_value("vehicle_master", vn);
+						} else {
+							frappe.msgprint({
+								title: __("Vehicle Not Registered"),
+								message: __("Vehicle <b>{0}</b> is not registered in Vehicle Master. Please <a href='/app/bbf-vehicle-master/new?vehicle_number={0}' target='_blank'>create Vehicle Master</a> before submitting.", [vn]),
+								indicator: "orange"
+							});
+						}
+					});
+				});
 			});
+		}
+	},
+
+	vehicle_master(frm) {
+		// Warn if vehicle_master doesn't match token's vehicle_number
+		if (frm.doc.vehicle_master && frm.doc.vehicle_number_display) {
+			if (frm.doc.vehicle_master !== frm.doc.vehicle_number_display) {
+				frappe.msgprint({
+					title: __("Vehicle Mismatch"),
+					message: __("Vehicle Master <b>{0}</b> does not match the vehicle number <b>{1}</b> entered at G1.", [frm.doc.vehicle_master, frm.doc.vehicle_number_display]),
+					indicator: "orange"
+				});
+			}
+		}
+	},
+
+	driver(frm) {
+		// Just trigger refresh to clear any warnings
+		if (frm.doc.driver) {
+			frm.refresh_fields();
 		}
 	},
 

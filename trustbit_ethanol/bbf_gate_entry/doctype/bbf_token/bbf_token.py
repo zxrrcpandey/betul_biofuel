@@ -68,8 +68,12 @@ class BBFToken(Document):
 				self.host_name = default_host
 
 	def _check_blacklist(self):
-		"""Block token creation for blacklisted vehicles or drivers."""
+		"""Block token creation for blacklisted vehicles or drivers.
+		vehicle_number is now Data field — lookup by name match in Vehicle Master.
+		Driver check only if driver Link is set (filled at G2).
+		"""
 		if self.vehicle_number:
+			# vehicle_number is Data — check if it exists in Vehicle Master and is blacklisted
 			bl = frappe.db.get_value(
 				"BBF Vehicle Master", self.vehicle_number,
 				["is_blacklisted", "blacklist_reason"], as_dict=True
