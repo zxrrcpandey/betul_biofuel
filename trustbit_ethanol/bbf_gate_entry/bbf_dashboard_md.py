@@ -527,11 +527,21 @@ def _get_top_suppliers(start_date, end_date):
 
 def _get_non_branded_items():
 	items = frappe.db.sql("""
-		SELECT name, item_name, item_group, creation
-		FROM `tabItem`
-		WHERE disabled = 0
-		AND (brand IS NULL OR brand = '')
-		ORDER BY creation DESC
+		SELECT i.name, i.item_name, i.item_group,
+			COALESCE(po_stats.po_count, 0) as po_count,
+			COALESCE(po_stats.total_qty, 0) as total_qty
+		FROM `tabItem` i
+		LEFT JOIN (
+			SELECT poi.item_code, COUNT(DISTINCT poi.parent) as po_count,
+				SUM(poi.qty) as total_qty
+			FROM `tabPurchase Order Item` poi
+			JOIN `tabPurchase Order` po ON poi.parent = po.name
+			WHERE po.docstatus = 1
+			GROUP BY poi.item_code
+		) po_stats ON po_stats.item_code = i.name
+		WHERE i.disabled = 0
+		AND (i.brand IS NULL OR i.brand = '')
+		ORDER BY po_stats.po_count DESC, i.item_name ASC
 		LIMIT 50
 	""", as_dict=True)
 

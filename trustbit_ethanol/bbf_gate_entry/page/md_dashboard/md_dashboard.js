@@ -114,21 +114,28 @@ function _md_render(data, $c) {
 			<div class="md-section-title" style="color:#92400e;">&#9888; Non-Branded Items</div>
 			<span class="md-section-badge md-flash-badge" style="background:#fef2f2;color:#dc2626;font-weight:700;">${nbi.count} items without brand</span>
 		</div>`;
-		html += '<div style="font-size:12px;color:#92400e;margin-bottom:10px;">These items have no Brand assigned. Please assign brands for proper categorization.</div>';
+		html += '<div style="font-size:12px;color:#92400e;margin-bottom:10px;">These items have no Brand assigned. Sorted by most purchased.</div>';
 		html += '<table class="md-action-table"><thead><tr>';
-		html += '<th>Item Code</th><th>Item Name</th><th>Item Group</th>';
+		html += '<th>Item Code</th><th>Item Name</th><th>Item Group</th><th style="text-align:right;">POs</th>';
 		html += '</tr></thead><tbody>';
-		nbi.items.slice(0, 20).forEach((item) => {
-			html += `<tr style="cursor:pointer;" onclick="frappe.set_route('item', '${_md_esc(item.name)}')">
+		nbi.items.forEach((item, idx) => {
+			const hidden = idx >= 5 ? ' class="md-nbi-extra" style="display:none;cursor:pointer;"' : ' style="cursor:pointer;"';
+			html += `<tr${hidden} onclick="frappe.set_route('item', '${_md_esc(item.name)}')">
 				<td style="font-weight:600;color:#1e40af;">${_md_esc(item.name)}</td>
 				<td>${_md_esc(item.item_name)}</td>
 				<td>${_md_esc(item.item_group)}</td>
+				<td style="text-align:right;font-weight:600;">${item.po_count || 0}</td>
 			</tr>`;
 		});
-		if (nbi.count > 20) {
-			html += `<tr><td colspan="3" style="text-align:center;color:#92400e;font-weight:600;">+ ${nbi.count - 20} more items</td></tr>`;
+		html += '</tbody></table>';
+		if (nbi.count > 5) {
+			html += `<div style="text-align:center;margin-top:8px;">
+				<button class="btn btn-xs btn-default" id="md-nbi-toggle" onclick="_md_toggle_nbi()" style="color:#92400e;border-color:#f59e0b;">
+					Show ${nbi.count - 5} More Items ▼
+				</button>
+			</div>`;
 		}
-		html += '</tbody></table></div>';
+		html += '</div>';
 	}
 
 	// ── Two Column: Gate Operations + Stage Distribution ──
@@ -572,6 +579,14 @@ function _md_fmt_wait(hours) {
 }
 
 function _md_esc(v) { return frappe.utils.escape_html(v || ""); }
+
+function _md_toggle_nbi() {
+	const rows = document.querySelectorAll(".md-nbi-extra");
+	const btn = document.getElementById("md-nbi-toggle");
+	const showing = rows[0] && rows[0].style.display !== "none";
+	rows.forEach((r) => { r.style.display = showing ? "none" : ""; r.style.cursor = "pointer"; });
+	btn.innerHTML = showing ? `Show ${rows.length} More Items &#9660;` : "Show Less &#9650;";
+}
 
 let _md_clock_interval = null;
 function _md_start_clock() {
