@@ -349,7 +349,7 @@ def _get_procurement(start_date, end_date, company):
 
 	# Monthly trend (last 6 months)
 	monthly = frappe.db.sql(f"""
-		SELECT DATE_FORMAT(po.transaction_date, '%%Y-%%m') as month,
+		SELECT DATE_FORMAT(po.transaction_date, '%Y-%m') as month,
 			SUM(po.grand_total) as value, COUNT(*) as cnt
 		FROM `tabPurchase Order` po
 		WHERE po.docstatus = 1 AND po.transaction_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
