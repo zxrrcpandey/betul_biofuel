@@ -1059,7 +1059,7 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 		"mr_approved": f"[Approved] MR {doc.name} — Approved",
 		"mr_revised": f"[Revision Required] MR {doc.name} sent back for revision",
 		"mr_rejected": f"[Rejected] MR {doc.name} — Rejected",
-		"sla_breach": f"[SLA Alert] {doc_label} {doc.name} stuck at approval step",
+		"sla_breach": f"[CTL Alert] {doc_label} {doc.name} stuck at approval step",
 	}
 	subject = subjects.get(action, f"{doc_label} {doc.name} — Approval Update")
 
@@ -1568,11 +1568,11 @@ def check_approval_sla():
 			esc = frappe.utils.escape_html
 			frappe.sendmail(
 				recipients=[settings.approval_sla_email],
-				subject=f"[SLA Alert] PO {po_data.name} stuck at {po_data.bbf_approval_status} for {hours_stuck}h",
+				subject=f"[CTL Alert] PO {po_data.name} stuck at {po_data.bbf_approval_status} for {hours_stuck}h",
 				message=f"""
 				<p>Purchase Order <strong>{esc(po_data.name)}</strong> ({esc(amount_str)}) has been stuck
 				at <strong>{esc(po_data.bbf_approval_status)}</strong> for <strong>{hours_stuck} hours</strong>,
-				exceeding the {sla_hours}-hour SLA.</p>
+				exceeding the {sla_hours}-hour CTL (Committed Time Limit).</p>
 				<p><a href="{frappe.utils.get_url()}/app/purchase-order/{esc(po_data.name)}">View PO</a></p>
 				""",
 				now=True,
@@ -1603,14 +1603,14 @@ def _auto_escalate(po_data):
 	next_state = f"Pending {next_label}"
 
 	_log_approval_action(doc, "Forwarded", current_state, next_state,
-		comment=f"Auto-escalated due to SLA breach",
+		comment=f"Auto-escalated due to CTL breach",
 		po_amount=flt(doc.grand_total),
 		step_order=next_step.step_order, purchase_category=doc.bbf_purchase_category)
 
 	doc.db_set({
 		"bbf_approval_status": next_state,
 		"bbf_current_step": next_step.step_order,
-		"bbf_last_action": f"Auto-escalated to {next_label} (SLA breach) on {now_datetime().strftime('%d %b %Y %H:%M')}",
+		"bbf_last_action": f"Auto-escalated to {next_label} (CTL breach) on {now_datetime().strftime('%d %b %Y %H:%M')}",
 	}, update_modified=True)
 
 	_send_approval_notification(doc, "pending_approval",

@@ -158,7 +158,7 @@ def _get_hourly_distribution(target_date):
 
 
 def _get_sla_breaches():
-	"""Vehicles exceeding SLA threshold."""
+	"""Vehicles exceeding CTL (Committed Time Limit) threshold — stuck vehicles."""
 	settings = frappe.get_single("BBF Settings")
 	threshold = settings.sla_threshold_minutes or 30
 	now = now_datetime()

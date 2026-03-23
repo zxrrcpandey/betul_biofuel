@@ -116,7 +116,7 @@ function _gwd_render(data, page) {
 		{ label: "Stock IN", value: s.stock_in, color: "#0ea5e9" },
 		{ label: "Stock OUT", value: s.stock_out, color: "#f97316" },
 		{ label: "Avg Turnaround", value: data.avg_turnaround + "m", color: "#f59e0b" },
-		{ label: "SLA Breaches", value: sla.count, color: sla.count > 0 ? "#ef4444" : "#22c55e" },
+		{ label: "Stuck Vehicles", value: sla.count, color: sla.count > 0 ? "#ef4444" : "#22c55e" },
 		{ label: "Visitors Inside", value: gp.total, color: "#6366f1" },
 	];
 	kpis.forEach((k) => {
@@ -149,9 +149,9 @@ function _gwd_render(data, page) {
 	// Two columns: SLA + Recent
 	html += '<div class="gwd-grid">';
 
-	// SLA Breaches
+	// Stuck Vehicles
 	html += '<div class="gwd-section">';
-	html += `<div class="gwd-section-title" style="color:${sla.count > 0 ? "#ef4444" : "#22c55e"};">SLA Breaches (>${sla.threshold}m) — ${sla.count}</div>`;
+	html += `<div class="gwd-section-title" style="color:${sla.count > 0 ? "#ef4444" : "#22c55e"};">Stuck Vehicles (>${sla.threshold}m) — ${sla.count}</div>`;
 	if (sla.items && sla.items.length) {
 		sla.items.slice(0, 10).forEach((b) => {
 			const cls = b.minutes > 120 ? "critical" : "warning";

@@ -74,7 +74,7 @@ function _gd_render_normal(data) {
 		{ label: "Entries Today", value: s.entries, color: "#10b981", bg: "#ecfdf5" },
 		{ label: "Exits Today", value: s.exits, color: "#8b5cf6", bg: "#faf5ff" },
 		{ label: "Avg Turnaround", value: data.avg_turnaround + "m", color: "#f59e0b", bg: "#fffbeb" },
-		{ label: "SLA Breaches", value: sla.count, color: sla.count > 0 ? "#ef4444" : "#10b981", bg: sla.count > 0 ? "#fef2f2" : "#ecfdf5" },
+		{ label: "Stuck Vehicles", value: sla.count, color: sla.count > 0 ? "#ef4444" : "#10b981", bg: sla.count > 0 ? "#fef2f2" : "#ecfdf5" },
 		{ label: "Visitors Inside", value: gp.total, color: "#6366f1", bg: "#eef2ff" },
 	];
 
@@ -104,10 +104,10 @@ function _gd_render_normal(data) {
 
 	html += "</div>";
 
-	// SLA Breaches
+	// Stuck Vehicles
 	if (sla.count > 0) {
 		html += '<div style="margin-top:20px;background:white;border:1px solid #fca5a5;border-radius:10px;padding:16px;">';
-		html += `<div style="font-weight:700;font-size:14px;color:#ef4444;margin-bottom:12px;">SLA Breaches (>${sla.threshold} min)</div>`;
+		html += `<div style="font-weight:700;font-size:14px;color:#ef4444;margin-bottom:12px;">Stuck Vehicles (>${sla.threshold} min)</div>`;
 		html += _gd_sla_table(sla.items);
 		html += "</div>";
 	}
@@ -317,7 +317,7 @@ function _gd_render_wall(data, page) {
 		{ label: "Stock IN", value: s.stock_in, color: "#0ea5e9" },
 		{ label: "Stock OUT", value: s.stock_out, color: "#f97316" },
 		{ label: "Avg Turnaround", value: data.avg_turnaround + "m", color: "#f59e0b" },
-		{ label: "SLA Breaches", value: sla.count, color: sla.count > 0 ? "#ef4444" : "#22c55e" },
+		{ label: "Stuck Vehicles", value: sla.count, color: sla.count > 0 ? "#ef4444" : "#22c55e" },
 		{ label: "Visitors Inside", value: gp.total, color: "#6366f1" },
 	];
 	kpis.forEach((k) => {
@@ -349,12 +349,12 @@ function _gd_render_wall(data, page) {
 		html += "</div>";
 	}
 
-	// Two columns: SLA Breaches + Recent Activity
+	// Two columns: Stuck Vehicles + Recent Activity
 	html += '<div class="gd-wall-grid">';
 
-	// SLA Breaches
+	// Stuck Vehicles
 	html += '<div class="gd-wall-section">';
-	html += `<div class="gd-wall-section-title" style="color:${sla.count > 0 ? '#ef4444' : '#22c55e'};">SLA Breaches (>${sla.threshold}m) — ${sla.count}</div>`;
+	html += `<div class="gd-wall-section-title" style="color:${sla.count > 0 ? '#ef4444' : '#22c55e'};">Stuck Vehicles (>${sla.threshold}m) — ${sla.count}</div>`;
 	if (sla.items && sla.items.length) {
 		html += '<div class="gd-wall-breaches">';
 		sla.items.slice(0, 8).forEach((b) => {

@@ -110,7 +110,7 @@ def _send_sla_alert(breaches, email, threshold):
 		rows += f"<tr><td>{b['token']}</td><td>{b['status']}</td><td>{b['minutes']} min</td></tr>"
 
 	message = f"""
-	<h3>SLA Breach Alert - Tokens exceeding {threshold} minutes</h3>
+	<h3>Stuck Vehicle Alert - Tokens exceeding {threshold} minutes (CTL Breach)</h3>
 	<table border="1" cellpadding="5" cellspacing="0">
 		<thead><tr><th>Token</th><th>Stage</th><th>Time at Stage</th></tr></thead>
 		<tbody>{rows}</tbody>
@@ -119,7 +119,7 @@ def _send_sla_alert(breaches, email, threshold):
 
 	frappe.sendmail(
 		recipients=[email],
-		subject=f"BBF Gate Entry - SLA Breach Alert ({len(breaches)} tokens)",
+		subject=f"BBF Gate Entry - Stuck Vehicle Alert ({len(breaches)} tokens)",
 		message=message
 	)
 

@@ -253,7 +253,7 @@ def create_custom_fields():
 			{
 				"fieldname": "bbf_last_sla_alert",
 				"fieldtype": "Datetime",
-				"label": "Last SLA Alert",
+				"label": "Last CTL Alert",
 				"insert_after": "bbf_amount_at_submission",
 				"read_only": 1,
 				"hidden": 1,
