@@ -55,7 +55,14 @@ function _do_refresh_matrix(page) {
 	const company = page.fields_dict.company?.get_value();
 	const view_mode = page.fields_dict.view_mode?.get_value() || "Summary";
 
-	if (!fiscal_year || !company) return;
+	if (!fiscal_year || !company) {
+		const $container = $("#budget-matrix-container");
+		let msg = "";
+		if (!fiscal_year) msg = "Please select a Fiscal Year. You can set the default in Setup → Settings → System Settings.";
+		else if (!company) msg = "Please select a Company.";
+		$container.html(`<div style="text-align:center;padding:40px;color:#f59e0b;">${msg}</div>`);
+		return;
+	}
 
 	const $container = $("#budget-matrix-container");
 	$container.html('<div style="text-align: center; padding: 40px; color: #9ca3af;">Loading...</div>');
