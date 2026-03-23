@@ -29,6 +29,7 @@
   "net_weight",
   "column_break_net",
   "weight_difference_percent",
+  "tare_percent",
   "audit_section",
   "cctv_gross_snapshot",
   "column_break_audit",
@@ -197,6 +198,14 @@
    "read_only": 1,
    "precision": "2",
    "description": "Variance from PO qty"
+  },
+  {
+   "fieldname": "tare_percent",
+   "fieldtype": "Float",
+   "label": "Tare % of Gross",
+   "read_only": 1,
+   "precision": "2",
+   "description": "(Tare Weight / Gross Weight) × 100"
   },
   {
    "fieldname": "audit_section",

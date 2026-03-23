@@ -56,6 +56,7 @@ class BBFWeighbridgeLog(Document):
 			if net < 0:
 				frappe.throw(f"Net weight cannot be negative ({net} KG). Tare weight ({self.tare_weight}) exceeds gross weight ({self.gross_weight}).")
 			self.net_weight = net
+			self.tare_percent = round((self.tare_weight / self.gross_weight) * 100, 2) if self.gross_weight else 0
 			self._calculate_weight_difference()
 
 	def _calculate_weight_difference(self):
