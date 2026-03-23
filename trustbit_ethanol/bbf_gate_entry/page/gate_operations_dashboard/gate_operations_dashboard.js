@@ -203,7 +203,7 @@ function _gd_render_hourly_chart(hours) {
 	const $el = document.getElementById("gd-hourly-chart");
 	if (!$el || !hours || !hours.length) return;
 
-	const labels = hours.map(h => h.hour + ":00");
+	const labels = hours.map(h => (h.hour < 10 ? "0" : "") + h.hour);
 	const values = hours.map(h => h.count);
 
 	new frappe.Chart($el, {
@@ -212,6 +212,7 @@ function _gd_render_hourly_chart(hours) {
 		height: 200,
 		colors: ["#3b82f6"],
 		barOptions: { spaceRatio: 0.3 },
+		tooltipOptions: { formatTooltipX: (d) => d + ":00" },
 	});
 }
 
