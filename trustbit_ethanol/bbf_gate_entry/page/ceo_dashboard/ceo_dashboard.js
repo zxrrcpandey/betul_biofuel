@@ -7,6 +7,10 @@ frappe.pages["ceo-dashboard"].on_page_load = function (wrapper) {
 
 	page.main.html('<div id="ceo-dash-container" style="padding: 15px;"></div>');
 
+	page.add_button(__("Wall Display"), () => {
+		frappe.set_route("ceo-wall-display");
+	}, { icon: "monitor" }).addClass("btn-dark");
+
 	page.add_field({
 		fieldname: "date_range",
 		label: __("Period"),
