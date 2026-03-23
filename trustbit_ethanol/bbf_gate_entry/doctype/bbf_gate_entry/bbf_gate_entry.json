@@ -7,6 +7,7 @@
  "field_order": [
   "naming_series",
   "token_number",
+  "stock_direction",
   "entry_date",
   "entry_time",
   "column_break_main",
@@ -20,6 +21,10 @@
   "column_break_po",
   "purchase_order",
   "supplier_name",
+  "si_section",
+  "sales_invoice",
+  "column_break_si",
+  "customer_name",
   "po_list_section",
   "po_list",
   "items_section",
@@ -55,6 +60,16 @@
    "in_standard_filter": 1
   },
   {
+   "fieldname": "stock_direction",
+   "fieldtype": "Select",
+   "label": "Stock Direction",
+   "options": "Stock IN\nStock OUT",
+   "default": "Stock IN",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
    "fieldname": "entry_date",
    "fieldtype": "Date",
    "label": "Entry Date",
@@ -83,7 +98,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Draft\nPO Linked\nSent to Weighbridge\nSent to Stores\nCompleted",
+   "options": "Draft\nPO Linked\nSI Linked\nSent to Weighbridge\nSent to Stores\nCompleted",
    "default": "Draft",
    "in_list_view": 1,
    "in_standard_filter": 1,
@@ -92,7 +107,8 @@
   {
    "fieldname": "po_section",
    "fieldtype": "Section Break",
-   "label": "Purchase Order Linking"
+   "label": "Purchase Order Linking",
+   "depends_on": "eval:doc.stock_direction==='Stock IN'"
   },
   {
    "fieldname": "po_search_id",
@@ -134,9 +150,34 @@
    "permlevel": 1
   },
   {
+   "fieldname": "si_section",
+   "fieldtype": "Section Break",
+   "label": "Sales Invoice Linking",
+   "depends_on": "eval:doc.stock_direction==='Stock OUT'"
+  },
+  {
+   "fieldname": "sales_invoice",
+   "fieldtype": "Link",
+   "label": "Sales Invoice",
+   "options": "Sales Invoice",
+   "mandatory_depends_on": "eval:doc.stock_direction==='Stock OUT'"
+  },
+  {
+   "fieldname": "column_break_si",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "fetch_from": "sales_invoice.customer_name",
+   "read_only": 1
+  },
+  {
    "fieldname": "po_list_section",
    "fieldtype": "Section Break",
-   "label": "Linked Purchase Orders"
+   "label": "Linked Purchase Orders",
+   "depends_on": "eval:doc.stock_direction==='Stock IN'"
   },
   {
    "fieldname": "po_list",

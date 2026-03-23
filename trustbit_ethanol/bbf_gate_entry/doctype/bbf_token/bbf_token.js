@@ -101,10 +101,10 @@ frappe.ui.form.on("BBF Token", {
 
 			// === MATERIAL TOKEN BUTTONS ===
 			if (!is_gate_pass) {
-				// Create GRN button - restricted roles
+				// Create GRN button - restricted roles (Stock IN only)
 				let grn_roles = ["Accounts Manager", "Accounts User", "Stores User", "IT Head", "System Manager"];
 				let can_create_grn = grn_roles.some(r => frappe.user.has_role(r));
-				if (frm.doc.status === "Tare Weighed" && !frm.doc.purchase_receipt && can_create_grn) {
+				if (frm.doc.status === "Tare Weighed" && !frm.doc.purchase_receipt && can_create_grn && frm.doc.stock_direction !== "Stock OUT") {
 					frm.add_custom_button(__("Create GRN"), function () {
 						frappe.confirm(
 							__("Create Purchase Receipt (GRN) for this token?<br><br>This will generate a Purchase Receipt against the linked Purchase Order with the net weight from the Weighbridge."),
@@ -130,10 +130,19 @@ frappe.ui.form.on("BBF Token", {
 					}, __("Actions"));
 				}
 
+				// View Delivery Note button (Stock OUT)
+				if (frm.doc.delivery_note) {
+					frm.add_custom_button(__("View Delivery Note"), function () {
+						frappe.set_route("Form", "Delivery Note", frm.doc.delivery_note);
+					}, __("Actions"));
+				}
+
 				// Mark Exit for Material tokens
 				let show_mark_exit = false;
 				if (frm.doc.status && frm.doc.status !== "Exited") {
-					if (frm.doc.purpose === "Raw Material") {
+					if (frm.doc.stock_direction === "Stock OUT") {
+						show_mark_exit = ["Gross Recorded", "Dispatch Ready"].includes(frm.doc.status);
+					} else if (frm.doc.purpose === "Raw Material") {
 						show_mark_exit = frm.doc.status === "GRN Created";
 					} else {
 						show_mark_exit = true;

@@ -13,6 +13,7 @@
   "entry_date",
   "entry_time",
   "purpose",
+  "stock_direction",
   "gate_pass_status",
   "vehicle_section",
   "vehicle_number",
@@ -65,6 +66,7 @@
   "wb_tare_time",
   "grn_time",
   "purchase_receipt",
+  "delivery_note",
   "g1_exit_time",
   "turnaround_section",
   "g1_to_g2_minutes",
@@ -111,7 +113,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Token Generated\nPO Linked\nGross Weighed\nQuality Done\nGraded\nUnloading\nTare Weighed\nGRN Created\nExited",
+   "options": "Token Generated\nPO Linked\nGross Weighed\nQuality Done\nGraded\nUnloading\nTare Weighed\nGRN Created\nExited\nSI Linked\nTare Recorded\nLoading Done\nGross Recorded\nDispatch Ready",
    "default": "Token Generated",
    "in_list_view": 1,
    "in_standard_filter": 1,
@@ -146,6 +148,15 @@
    "hidden": 1,
    "in_standard_filter": 1,
    "description": "Auto-set from Gate Entry material_flow on G2 submit. Not visible on Token form."
+  },
+  {
+   "fieldname": "stock_direction",
+   "fieldtype": "Select",
+   "label": "Stock Direction",
+   "options": "\nStock IN\nStock OUT",
+   "hidden": 1,
+   "in_standard_filter": 1,
+   "description": "Auto-set from Gate Entry stock_direction on G2 submit."
   },
   {
    "fieldname": "gate_pass_status",
@@ -466,7 +477,16 @@
    "fieldtype": "Link",
    "label": "Purchase Receipt (GRN)",
    "options": "Purchase Receipt",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.stock_direction!=='Stock OUT'"
+  },
+  {
+   "fieldname": "delivery_note",
+   "fieldtype": "Link",
+   "label": "Delivery Note",
+   "options": "Delivery Note",
+   "read_only": 1,
+   "depends_on": "eval:doc.stock_direction==='Stock OUT'"
   },
   {
    "fieldname": "g1_exit_time",

@@ -27,8 +27,31 @@ frappe.ui.form.on("BBF Gate Entry", {
 			}
 		}
 
-		// Add PO button (before submit)
-		if (!frm.doc.docstatus) {
+		// Stock OUT: hide PO sections, show SI section
+		if (frm.doc.stock_direction === "Stock OUT") {
+			frm.set_df_property("po_section", "hidden", 1);
+			frm.set_df_property("po_list_section", "hidden", 1);
+			frm.set_df_property("material_flow", "reqd", 0);
+			frm.set_df_property("purchase_order", "reqd", 0);
+		} else {
+			frm.set_df_property("si_section", "hidden", 1);
+		}
+
+		// Fetch SI Items button (Stock OUT, before submit)
+		if (!frm.doc.docstatus && frm.doc.stock_direction === "Stock OUT" && frm.doc.sales_invoice) {
+			frm.add_custom_button(__("Fetch SI Items"), function () {
+				frm.call("fetch_si_items").then(() => {
+					frm.refresh_fields();
+					frappe.show_alert({
+						message: __("Items fetched from Sales Invoice"),
+						indicator: "green"
+					});
+				});
+			}).addClass("btn-primary-dark");
+		}
+
+		// Add PO button (before submit, Stock IN only)
+		if (!frm.doc.docstatus && frm.doc.stock_direction !== "Stock OUT") {
 			frm.add_custom_button(__("Add Purchase Order"), function () {
 				// Determine supplier filter (must match first PO's supplier)
 				let supplier_filter = {};
@@ -99,6 +122,8 @@ frappe.ui.form.on("BBF Gate Entry", {
 		if (frm.doc.docstatus === 1) {
 			frm.set_df_property("token_number", "read_only", 1);
 			frm.set_df_property("purchase_order", "read_only", 1);
+			frm.set_df_property("sales_invoice", "read_only", 1);
+			frm.set_df_property("stock_direction", "read_only", 1);
 			frm.set_df_property("material_flow", "read_only", 1);
 			frm.set_df_property("transporter", "read_only", 1);
 			frm.set_df_property("lr_number", "read_only", 1);
@@ -113,6 +138,16 @@ frappe.ui.form.on("BBF Gate Entry", {
 				filters: {
 					status: ["in", ["Token Generated"]],
 					entry_type: "Material"
+				}
+			};
+		});
+
+		// Filter Sales Invoice for Stock OUT
+		frm.set_query("sales_invoice", function () {
+			return {
+				filters: {
+					docstatus: 1,
+					status: ["not in", ["Cancelled", "Credit Note Issued"]]
 				}
 			};
 		});
@@ -226,6 +261,21 @@ frappe.ui.form.on("BBF Gate Entry", {
 		// Legacy: when purchase_order is set directly, auto-add to po_list
 		if (frm.doc.purchase_order && (!frm.doc.po_list || frm.doc.po_list.length === 0)) {
 			frm.call("add_purchase_order", { po_name: frm.doc.purchase_order }).then(() => {
+				frm.refresh_fields();
+			});
+		}
+	},
+
+	stock_direction(frm) {
+		frm.trigger("refresh");
+		if (frm.doc.stock_direction === "Stock OUT") {
+			frm.set_value("route_to", "Weighbridge");
+		}
+	},
+
+	sales_invoice(frm) {
+		if (frm.doc.sales_invoice && frm.doc.stock_direction === "Stock OUT") {
+			frm.call("fetch_si_items").then(() => {
 				frm.refresh_fields();
 			});
 		}

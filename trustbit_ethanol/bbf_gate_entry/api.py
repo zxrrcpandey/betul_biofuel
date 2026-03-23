@@ -29,20 +29,28 @@ def get_purchase_orders(po_id=None, po_date=None, tentative_qty=None):
 
 @frappe.whitelist()
 def get_weighbridge_tokens(doctype, txt, searchfield, start, page_len, filters):
-	"""Return tokens eligible for weighbridge: Raw Material OR Non-RM with requires_weighing."""
+	"""Return tokens eligible for weighbridge:
+	- Stock IN: Raw Material OR Non-RM with requires_weighing (status=PO Linked)
+	- Stock OUT: SI Linked, Tare Recorded, or Loading Done
+	"""
 	return frappe.db.sql("""
-		SELECT t.name, t.token_number, t.purpose, t.entry_date
+		SELECT t.name, t.token_number, t.purpose, t.entry_date, t.stock_direction
 		FROM `tabBBF Token` t
-		WHERE t.status = 'PO Linked'
-		AND t.entry_type = 'Material'
+		WHERE t.entry_type = 'Material'
 		AND (
-			t.purpose = 'Raw Material'
-			OR EXISTS (
-				SELECT 1 FROM `tabBBF Gate Entry` ge
-				WHERE ge.token_number = t.name
-				AND ge.docstatus = 1
-				AND ge.requires_weighing = 1
-			)
+			/* Stock IN: PO Linked + (Raw Material OR requires_weighing) */
+			(t.status = 'PO Linked' AND (
+				t.purpose = 'Raw Material'
+				OR EXISTS (
+					SELECT 1 FROM `tabBBF Gate Entry` ge
+					WHERE ge.token_number = t.name
+					AND ge.docstatus = 1
+					AND ge.requires_weighing = 1
+				)
+			))
+			OR
+			/* Stock OUT: eligible statuses */
+			(t.stock_direction = 'Stock OUT' AND t.status IN ('SI Linked', 'Tare Recorded', 'Loading Done'))
 		)
 		AND (t.name LIKE %(txt)s OR t.token_number LIKE %(txt)s)
 		ORDER BY t.creation DESC
@@ -94,6 +102,11 @@ def _get_last_timestamp(token):
 		"Unloading": token.unload_start_time,
 		"Tare Weighed": token.wb_tare_time,
 		"GRN Created": token.grn_time,
+		# Stock OUT statuses
+		"SI Linked": token.g2_link_time,
+		"Tare Recorded": token.wb_tare_time,
+		"Gross Recorded": token.wb_gross_time,
+		"Dispatch Ready": token.wb_gross_time,
 	}
 	return timestamp_map.get(token.status)
 

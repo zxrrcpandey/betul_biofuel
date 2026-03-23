@@ -15,20 +15,28 @@ class BBFWeighbridgeLog(Document):
 		gate_entry = frappe.db.get_value(
 			"BBF Gate Entry",
 			{"token_number": self.token_number, "docstatus": 1},
-			["name", "purchase_order", "material_flow"],
+			["name", "purchase_order", "material_flow", "stock_direction", "sales_invoice"],
 			as_dict=True
 		)
 		if gate_entry:
 			self.gate_entry = gate_entry.name
 			self.purchase_order = gate_entry.purchase_order
 			self.material_flow = gate_entry.material_flow
+			self.stock_direction = gate_entry.stock_direction or "Stock IN"
 
 	def validate_token_status(self):
 		if not self.token_number:
 			return
-		token_status = frappe.db.get_value("BBF Token", self.token_number, "status")
-		if token_status not in ("PO Linked",):
-			frappe.throw(f"Token {self.token_number} is at stage '{token_status}'. Only tokens with status 'PO Linked' can be weighed.")
+		token = frappe.db.get_value("BBF Token", self.token_number, ["status", "stock_direction"], as_dict=True)
+		if not token:
+			return
+		if token.stock_direction == "Stock OUT":
+			# Stock OUT: accepted statuses
+			if token.status not in ("SI Linked", "Tare Recorded", "Loading Done"):
+				frappe.throw(f"Token {self.token_number} is at stage '{token.status}'. Stock OUT tokens need status 'SI Linked', 'Tare Recorded', or 'Loading Done'.")
+		else:
+			if token.status not in ("PO Linked",):
+				frappe.throw(f"Token {self.token_number} is at stage '{token.status}'. Only tokens with status 'PO Linked' can be weighed.")
 
 	def validate(self):
 		self.set_operators()
@@ -165,20 +173,53 @@ class BBFWeighbridgeLog(Document):
 			return bool(ge)
 		return False
 
+	def _is_stock_out(self):
+		"""Check if this weighbridge log is for a Stock OUT token."""
+		if hasattr(self, 'stock_direction') and self.stock_direction == "Stock OUT":
+			return True
+		if self.token_number:
+			sd = frappe.db.get_value("BBF Token", self.token_number, "stock_direction")
+			return sd == "Stock OUT"
+		return False
+
 	def update_status(self):
-		if self.tare_weight and self.gross_weight:
-			self.status = "Completed"
-		elif self.gross_weight and not self.tare_weight:
-			# Non-RM weighing: skip unloading, go straight to Awaiting Tare Weight
-			if self._is_non_rm_weighing() or self.unloading_complete:
-				self.status = "Awaiting Tare Weight"
+		if self._is_stock_out():
+			# Stock OUT: Tare first → Loading → Gross
+			if self.tare_weight and self.gross_weight:
+				self.status = "Completed"
+			elif self.tare_weight and not self.gross_weight:
+				self.status = "Awaiting Loading"
 			else:
-				self.status = "Awaiting Unloading"
+				self.status = "Awaiting Tare"
 		else:
-			self.status = "Gross Recorded"
+			# Stock IN: Gross first → Unloading → Tare
+			if self.tare_weight and self.gross_weight:
+				self.status = "Completed"
+			elif self.gross_weight and not self.tare_weight:
+				if self._is_non_rm_weighing() or self.unloading_complete:
+					self.status = "Awaiting Tare Weight"
+				else:
+					self.status = "Awaiting Unloading"
+			else:
+				self.status = "Gross Recorded"
 
 	def after_insert(self):
-		self.update_token_gross()
+		if self._is_stock_out():
+			self._update_token_tare_first()
+		else:
+			self.update_token_gross()
+
+	def _update_token_tare_first(self):
+		"""Stock OUT: tare weight is recorded first (empty vehicle)."""
+		if self.tare_weight and self.token_number:
+			self.db_set("tare_weight_time", now_datetime())
+			self.db_set("tare_operator", frappe.session.user)
+
+			token = frappe.get_doc("BBF Token", self.token_number)
+			token.db_set({
+				"wb_tare_time": now_datetime(),
+				"status": "Tare Recorded"
+			})
 
 	def update_token_gross(self):
 		if self.gross_weight and self.token_number:
@@ -192,12 +233,25 @@ class BBFWeighbridgeLog(Document):
 			})
 
 	def on_update(self):
-		if self.has_value_changed("tare_weight") and self.tare_weight:
-			self.db_set("tare_weight_time", now_datetime())
-			self.db_set("tare_operator", frappe.session.user)
+		if self._is_stock_out():
+			# Stock OUT: gross weight is the second weight
+			if self.has_value_changed("gross_weight") and self.gross_weight:
+				self.db_set("gross_weight_time", now_datetime())
+				self.db_set("gross_operator", frappe.session.user)
 
-			token = frappe.get_doc("BBF Token", self.token_number)
-			token.db_set({
-				"wb_tare_time": now_datetime(),
-				"status": "Tare Weighed"
-			})
+				token = frappe.get_doc("BBF Token", self.token_number)
+				token.db_set({
+					"wb_gross_time": now_datetime(),
+					"status": "Gross Recorded"
+				})
+		else:
+			# Stock IN: tare weight is the second weight
+			if self.has_value_changed("tare_weight") and self.tare_weight:
+				self.db_set("tare_weight_time", now_datetime())
+				self.db_set("tare_operator", frappe.session.user)
+
+				token = frappe.get_doc("BBF Token", self.token_number)
+				token.db_set({
+					"wb_tare_time": now_datetime(),
+					"status": "Tare Weighed"
+				})

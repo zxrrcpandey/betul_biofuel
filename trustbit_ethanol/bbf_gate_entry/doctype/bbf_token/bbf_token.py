@@ -161,6 +161,9 @@ class BBFToken(Document):
 		if self.entry_type == "Gate Pass":
 			frappe.throw("GRN cannot be created for Gate Pass entries")
 
+		if self.stock_direction == "Stock OUT":
+			frappe.throw("GRN cannot be created for Stock OUT entries. Use Mark Exit to create Delivery Note.")
+
 		allowed_roles = {"Accounts Manager", "Accounts User", "Stores User", "IT Head", "System Manager"}
 		if not allowed_roles.intersection(set(frappe.get_roles())):
 			frappe.throw("You do not have permission to create GRN")
@@ -354,16 +357,19 @@ class BBFToken(Document):
 			if not allowed_roles.intersection(set(frappe.get_roles())):
 				frappe.throw("You do not have permission to mark exit")
 
-		# Material tokens: exit restrictions based on purpose and weighing
+		# Material tokens: exit restrictions based on purpose, weighing, and stock direction
 		if self.entry_type == "Material":
 			if not self.purpose:
 				frappe.throw("This token has no purpose set. Gate Entry must be submitted at G2 before exit.")
 
-			if self.purpose == "Raw Material" and self.status != "GRN Created":
+			# Stock OUT: must have completed weighbridge (Gross Recorded or Dispatch Ready)
+			if self.stock_direction == "Stock OUT":
+				if self.status not in ("Gross Recorded", "Dispatch Ready"):
+					frappe.throw("Stock OUT vehicle must complete weighbridge (Tare + Loading + Gross) before exit.")
+			elif self.purpose == "Raw Material" and self.status != "GRN Created":
 				frappe.throw("Raw Material tokens can only be marked as exited after GRN is created")
-
-			# Non-RM with requires_weighing: must complete weighbridge (Tare Weighed or GRN Created)
-			if self.purpose != "Raw Material":
+			elif self.purpose != "Raw Material":
+				# Non-RM with requires_weighing: must complete weighbridge
 				requires_weighing = frappe.db.get_value(
 					"BBF Gate Entry",
 					{"token_number": self.name, "docstatus": 1},
@@ -388,6 +394,10 @@ class BBFToken(Document):
 			# Update BBF Visitor stats
 			self._update_visitor_stats(campus_minutes)
 		else:
+			# Stock OUT: create Delivery Note on exit
+			if self.stock_direction == "Stock OUT":
+				self._create_delivery_note()
+
 			self.status = "Exited"
 			self.db_set({
 				"g1_exit_time": exit_time,
@@ -498,6 +508,102 @@ class BBFToken(Document):
 		# 3. Known conversions fallback
 		known = {"Quintal": 100, "MT": 1000, "Ton": 1000, "Gram": 0.001}
 		return known.get(uom)
+
+	def _create_delivery_note(self):
+		"""Create Delivery Note for Stock OUT on exit."""
+		gate_entry = frappe.db.get_value(
+			"BBF Gate Entry",
+			{"token_number": self.name, "docstatus": 1},
+			["name", "sales_invoice"],
+			as_dict=True
+		)
+		if not gate_entry or not gate_entry.sales_invoice:
+			frappe.throw("No submitted Gate Entry with Sales Invoice found for this token")
+
+		si = frappe.get_doc("Sales Invoice", gate_entry.sales_invoice)
+
+		# Get weighbridge net weight
+		wb_log = frappe.db.get_value(
+			"BBF Weighbridge Log",
+			{"token_number": self.name},
+			["gross_weight", "tare_weight", "net_weight"],
+			as_dict=True
+		)
+
+		# Build DN items from SI items
+		dn_items = []
+		gate_entry_items = frappe.get_all(
+			"BBF Gate Entry Item",
+			filters={"parent": gate_entry.name},
+			fields=["item_code", "item_name", "ordered_qty", "uom"]
+		)
+
+		net_weight_kg = flt(wb_log.net_weight) if wb_log and wb_log.net_weight else 0
+
+		for ge_item in gate_entry_items:
+			# Proportional weight distribution
+			if len(gate_entry_items) == 1:
+				weight_kg = net_weight_kg
+			else:
+				total_ordered = sum(flt(i.ordered_qty) for i in gate_entry_items)
+				proportion = flt(ge_item.ordered_qty) / total_ordered if total_ordered else 1
+				weight_kg = net_weight_kg * proportion
+
+			item_uom = ge_item.uom or "Kg"
+			if item_uom == "Kg":
+				qty = weight_kg
+			else:
+				conversion_factor = self._get_uom_conversion_to_kg(ge_item.item_code, item_uom)
+				if conversion_factor and flt(conversion_factor) > 0:
+					qty = flt(weight_kg / conversion_factor, 3)
+				else:
+					qty = weight_kg
+					item_uom = "Kg"
+
+			# Find matching SI item for rate and reference
+			si_item = frappe.db.get_value(
+				"Sales Invoice Item",
+				{"parent": si.name, "item_code": ge_item.item_code},
+				["name", "rate", "warehouse"],
+				as_dict=True
+			)
+
+			dn_items.append({
+				"item_code": ge_item.item_code,
+				"item_name": ge_item.item_name,
+				"qty": qty if qty > 0 else flt(ge_item.ordered_qty),
+				"uom": item_uom,
+				"rate": flt(si_item.rate) if si_item else 0,
+				"warehouse": si_item.warehouse if si_item else None,
+				"against_sales_invoice": si.name,
+				"si_detail": si_item.name if si_item else None,
+			})
+
+		settings = frappe.get_single("BBF Settings")
+
+		dn = frappe.get_doc({
+			"doctype": "Delivery Note",
+			"customer": si.customer,
+			"customer_name": si.customer_name,
+			"posting_date": getdate(),
+			"company": si.company,
+			"currency": si.currency,
+			"selling_price_list": si.selling_price_list,
+			"set_warehouse": settings.default_warehouse,
+			"items": dn_items,
+		})
+
+		dn.flags.ignore_permissions = True
+		dn.insert()
+		dn.submit()
+
+		self.db_set("delivery_note", dn.name)
+
+		frappe.msgprint(
+			f"Delivery Note <b>{dn.name}</b> created and submitted",
+			title="Delivery Note Created",
+			indicator="green"
+		)
 
 	def _update_vehicle_master(self):
 		if not self.vehicle_number or not frappe.db.exists("BBF Vehicle Master", self.vehicle_number):

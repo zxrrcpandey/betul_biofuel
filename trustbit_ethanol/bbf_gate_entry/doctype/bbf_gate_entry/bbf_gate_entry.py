@@ -5,11 +5,14 @@ from frappe.utils import now_datetime, flt
 
 class BBFGateEntry(Document):
 	def validate(self):
-		self._sync_purchase_order_from_po_list()
-		self._validate_same_supplier()
+		if self.stock_direction == "Stock OUT":
+			self._validate_stock_out()
+		else:
+			self._sync_purchase_order_from_po_list()
+			self._validate_same_supplier()
+			self.validate_po_remaining_qty()
 		self.set_route()
 		self.validate_token_status()
-		self.validate_po_remaining_qty()
 
 	def _sync_purchase_order_from_po_list(self):
 		"""Keep purchase_order field in sync with first PO in po_list for backward compatibility."""
@@ -42,7 +45,19 @@ class BBFGateEntry(Document):
 		if len(suppliers) > 1:
 			frappe.throw("All Purchase Orders must be from the same supplier. Found multiple suppliers.")
 
+	def _validate_stock_out(self):
+		"""Validate Stock OUT gate entry."""
+		if not self.sales_invoice:
+			frappe.throw("Sales Invoice is required for Stock OUT entries")
+		si = frappe.get_doc("Sales Invoice", self.sales_invoice)
+		if si.docstatus != 1:
+			frappe.throw(f"Sales Invoice {self.sales_invoice} is not submitted")
+
 	def set_route(self):
+		if self.stock_direction == "Stock OUT":
+			self.route_to = "Weighbridge"
+			self.material_flow = self.material_flow or "Non-Raw Material"
+			return
 		if self.material_flow == "Raw Material":
 			self.route_to = "Weighbridge"
 		elif self.material_flow == "Non-Raw Material":
@@ -63,7 +78,7 @@ class BBFGateEntry(Document):
 			frappe.throw(f"Token {self.token_number} is already at stage '{token_status}'. Only tokens with status 'Token Generated' can be linked to a Gate Entry.")
 
 	def validate_po_remaining_qty(self):
-		if not self.po_list:
+		if self.stock_direction == "Stock OUT" or not self.po_list:
 			return
 		for row in self.po_list:
 			if not row.purchase_order:
@@ -75,17 +90,30 @@ class BBFGateEntry(Document):
 	def on_submit(self):
 		self.update_token_status()
 		self.set_gate_entry_status()
-		self._create_material_inspection()
+		if self.stock_direction != "Stock OUT":
+			self._create_material_inspection()
 
 	def update_token_status(self):
 		token = frappe.get_doc("BBF Token", self.token_number)
-		token.db_set({
-			"g2_link_time": now_datetime(),
-			"status": "PO Linked",
-			"purpose": self.material_flow
-		})
+		if self.stock_direction == "Stock OUT":
+			token.db_set({
+				"g2_link_time": now_datetime(),
+				"status": "SI Linked",
+				"purpose": self.material_flow,
+				"stock_direction": "Stock OUT"
+			})
+		else:
+			token.db_set({
+				"g2_link_time": now_datetime(),
+				"status": "PO Linked",
+				"purpose": self.material_flow,
+				"stock_direction": "Stock IN"
+			})
 
 	def set_gate_entry_status(self):
+		if self.stock_direction == "Stock OUT":
+			self.db_set("status", "Sent to Weighbridge")
+			return
 		if self.material_flow == "Raw Material" or self.requires_weighing:
 			self.db_set("status", "Sent to Weighbridge")
 		else:
@@ -167,6 +195,24 @@ class BBFGateEntry(Document):
 			self.supplier_name = po.supplier_name
 		if not self.purchase_order:
 			self.purchase_order = po_name
+
+	@frappe.whitelist()
+	def fetch_si_items(self):
+		"""Fetch items from Sales Invoice for Stock OUT."""
+		if not self.sales_invoice:
+			frappe.throw("Please select a Sales Invoice first")
+
+		si = frappe.get_doc("Sales Invoice", self.sales_invoice)
+		self.po_items = []
+		for item in si.items:
+			self.append("po_items", {
+				"item_code": item.item_code,
+				"item_name": item.item_name,
+				"ordered_qty": item.qty,
+				"uom": item.uom
+			})
+
+		self.customer_name = si.customer_name
 
 	def _create_material_inspection(self):
 		"""Auto-create material inspection for Non-RM gate entries."""
