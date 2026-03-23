@@ -39,14 +39,18 @@ frappe.ui.form.on("BBF Gate Entry", {
 		frm.set_df_property("material_flow", "reqd", is_stock_out ? 0 : 1);
 		// Transport section: hide for Stock OUT (no LR for outbound)
 		frm.set_df_property("transport_section", "hidden", is_stock_out ? 1 : 0);
-		// Items section label
-		if (is_stock_out) {
-			frm.fields_dict.items_section.df.label = "Sales Invoice Items";
-			frm.fields_dict.items_section.refresh();
-		} else {
-			frm.fields_dict.items_section.df.label = "PO Items";
-			frm.fields_dict.items_section.refresh();
+		// Items section label — use DOM since set_df_property doesn't work for Section Break labels
+		let items_section_el = frm.fields_dict.items_section;
+		if (items_section_el && items_section_el.$wrapper) {
+			items_section_el.$wrapper.find(".section-head, .control-label").text(
+				is_stock_out ? "Sales Invoice Items" : "PO Items"
+			);
 		}
+		// Hide "Purchase Order" column in items table for Stock OUT
+		frm.fields_dict.po_items.grid.update_docfield_property(
+			"purchase_order", "hidden", is_stock_out ? 1 : 0
+		);
+		frm.fields_dict.po_items.grid.refresh();
 		// Remove Add PO button for Stock OUT
 		if (is_stock_out) {
 			frm.remove_custom_button(__("Add Purchase Order"));
