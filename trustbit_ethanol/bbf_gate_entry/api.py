@@ -3,20 +3,13 @@ from frappe.utils import now_datetime, time_diff_in_seconds, getdate
 
 
 @frappe.whitelist()
-def get_purchase_orders(po_id=None, po_date=None, tentative_qty=None):
+def get_purchase_orders(po_id=None, po_date=None, **kwargs):
 	filters = {"docstatus": 1, "status": ["not in", ["Closed", "Cancelled", "Completed"]], "per_received": ["<", 100]}
 
 	if po_id:
 		filters["name"] = ["like", f"%{po_id}%"]
 	if po_date:
 		filters["transaction_date"] = po_date
-	if tentative_qty:
-		try:
-			tentative_qty = float(tentative_qty)
-		except (ValueError, TypeError):
-			tentative_qty = 0
-		if tentative_qty > 0:
-			filters["total_qty"] = ["between", [tentative_qty * 0.8, tentative_qty * 1.2]]
 
 	return frappe.get_all(
 		"Purchase Order",

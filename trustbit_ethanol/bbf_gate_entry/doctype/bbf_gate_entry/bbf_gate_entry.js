@@ -229,8 +229,7 @@ frappe.ui.form.on("BBF Gate Entry", {
 			method: "trustbit_ethanol.bbf_gate_entry.api.get_purchase_orders",
 			args: {
 				po_id: frm.doc.po_search_id || "",
-				po_date: frm.doc.po_search_date || "",
-				tentative_qty: frm.doc.po_search_qty || 0
+				po_date: frm.doc.po_search_date || ""
 			},
 			callback: function (r) {
 				if (r.message && r.message.length) {

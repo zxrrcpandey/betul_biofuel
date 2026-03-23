@@ -16,7 +16,6 @@
   "po_section",
   "po_search_id",
   "po_search_date",
-  "po_search_qty",
   "search_po_button",
   "column_break_po",
   "purchase_order",
@@ -123,11 +122,6 @@
    "fieldname": "po_search_date",
    "fieldtype": "Date",
    "label": "Search by PO Date"
-  },
-  {
-   "fieldname": "po_search_qty",
-   "fieldtype": "Float",
-   "label": "Search by Tentative Qty"
   },
   {
    "fieldname": "search_po_button",
