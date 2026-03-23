@@ -100,13 +100,13 @@ function _mwd_show_pin(page) {
 
 var _mwd_page_ref = null;
 
-function _mwd_submit_pin() {
+window._mwd_submit_pin = function _mwd_submit_pin() {
 	const pin = document.getElementById("mwd-pin-input")?.value;
 	if (!pin) return;
 	frappe.call({
 		method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
 		args: { pin },
-		async: false,
+
 		callback(r) {
 			const result = r && r.message;
 			if (result && result.valid) {

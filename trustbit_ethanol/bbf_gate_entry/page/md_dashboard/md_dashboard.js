@@ -80,7 +80,7 @@ function _md_show_pin_screen(page) {
 
 var _md_page_ref = null;
 
-function _md_submit_pin() {
+window._md_submit_pin = function _md_submit_pin() {
 	const pin = document.getElementById("md-pin-input")?.value;
 	if (!pin) return;
 	const errEl = document.getElementById("md-pin-error");
@@ -89,7 +89,7 @@ function _md_submit_pin() {
 	frappe.call({
 		method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
 		args: { pin },
-		async: false,
+
 		callback(r) {
 			const result = r && r.message;
 			if (result && result.valid) {
@@ -666,7 +666,7 @@ function _md_fmt_wait(hours) {
 
 function _md_esc(v) { return frappe.utils.escape_html(v || ""); }
 
-function _md_toggle_nbi() {
+window._md_toggle_nbi = function _md_toggle_nbi() {
 	const rows = document.querySelectorAll(".md-nbi-extra");
 	const btn = document.getElementById("md-nbi-toggle");
 	const showing = rows[0] && rows[0].style.display !== "none";
