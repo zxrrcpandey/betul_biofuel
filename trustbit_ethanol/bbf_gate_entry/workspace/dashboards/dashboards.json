@@ -1,0 +1,133 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Dashboards</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gate Operations Dashboard\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Wall Display\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Procurement Dashboard\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Control Matrix\",\"col\":4}}]",
+ "creation": "2026-03-23 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "dashboard",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Dashboards",
+ "links": [
+  {
+   "hidden": 0,
+   "label": "Gate Operations",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "Gate Operations Dashboard",
+   "link_to": "gate-operations-dashboard",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "Gate Wall Display",
+   "link_to": "gate-wall-display",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "Procurement",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "Procurement Dashboard",
+   "link_to": "procurement-dashboard",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "Budget Control Matrix",
+   "link_to": "budget-control-matrix",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "Reports",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "BBF Live Vehicle Tracker",
+   "link_to": "BBF Live Vehicle Tracker",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "BBF Vehicle Turnaround Report",
+   "link_to": "BBF Vehicle Turnaround Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-03-23 00:00:00",
+ "modified_by": "Administrator",
+ "module": "BBF Gate Entry",
+ "name": "Dashboards",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "Trustbit Ethanol",
+ "public": 1,
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "IT Head"},
+  {"role": "G1 Security"},
+  {"role": "G2 Gate Operator"},
+  {"role": "CEO"},
+  {"role": "MD"},
+  {"role": "Purchase Manager"},
+  {"role": "Grain Purchase Manager"},
+  {"role": "AVP"}
+ ],
+ "sequence_id": 9,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "label": "Gate Operations Dashboard",
+   "link_to": "gate-operations-dashboard",
+   "type": "Page"
+  },
+  {
+   "color": "Grey",
+   "label": "Wall Display",
+   "link_to": "gate-wall-display",
+   "type": "Page"
+  },
+  {
+   "color": "Green",
+   "label": "Procurement Dashboard",
+   "link_to": "procurement-dashboard",
+   "type": "Page"
+  },
+  {
+   "color": "Yellow",
+   "label": "Budget Control Matrix",
+   "link_to": "budget-control-matrix",
+   "type": "Page"
+  }
+ ],
+ "title": "Dashboards"
+}
