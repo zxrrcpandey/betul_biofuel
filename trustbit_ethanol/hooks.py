@@ -108,6 +108,11 @@ fixtures = [
 	}
 ]
 
+# Override standard DocType dashboards to show BBF connections
+override_doctype_dashboards = {
+	"Purchase Order": "trustbit_ethanol.bbf_gate_entry.dashboard_overrides.get_data_for_purchase_order"
+}
+
 # Inject JS into standard DocTypes for approval buttons
 doctype_js = {
 	"Purchase Order": "public/js/po_approval.js",
