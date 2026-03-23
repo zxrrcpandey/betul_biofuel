@@ -498,15 +498,15 @@ def _get_quality(start_date, end_date):
 
 	# Material Inspection (Non-RM) status
 	mi = frappe.db.sql("""
-		SELECT overall_status, COUNT(*) as cnt
+		SELECT status, COUNT(*) as cnt
 		FROM `tabBBF Material Inspection`
 		WHERE creation BETWEEN %s AND %s
-		GROUP BY overall_status
+		GROUP BY status
 	""", (start_date, end_date), as_dict=True)
 
 	mi_data = {}
 	for r in mi:
-		mi_data[r.overall_status] = r.cnt
+		mi_data[r.status] = r.cnt
 
 	return {
 		"qi": qi_data,
