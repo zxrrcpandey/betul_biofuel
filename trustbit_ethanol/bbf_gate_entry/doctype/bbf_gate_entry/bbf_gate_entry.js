@@ -29,18 +29,25 @@ frappe.ui.form.on("BBF Gate Entry", {
 
 		// Stock Direction toggle — show/hide sections
 		let is_stock_out = frm.doc.stock_direction === "Stock OUT";
-		// PO sections: hide for Stock OUT, show for Stock IN
+		// PO sections: hide for Stock OUT
 		frm.set_df_property("po_section", "hidden", is_stock_out ? 1 : 0);
 		frm.set_df_property("po_list_section", "hidden", is_stock_out ? 1 : 0);
-		// SI section: show for Stock OUT, hide for Stock IN
+		// SI section: show for Stock OUT only
 		frm.set_df_property("si_section", "hidden", is_stock_out ? 0 : 1);
-		// Material Flow: not required for Stock OUT
+		// Material Flow section: hide entirely for Stock OUT
+		frm.set_df_property("flow_section", "hidden", is_stock_out ? 1 : 0);
 		frm.set_df_property("material_flow", "reqd", is_stock_out ? 0 : 1);
-		frm.set_df_property("material_flow", "hidden", is_stock_out ? 1 : 0);
-		frm.set_df_property("requires_weighing", "hidden", is_stock_out ? 1 : 0);
-		// Items label
-		frm.set_df_property("items_section", "label", is_stock_out ? "Sales Invoice Items" : "PO Items");
-		// Add PO button only for Stock IN
+		// Transport section: hide for Stock OUT (no LR for outbound)
+		frm.set_df_property("transport_section", "hidden", is_stock_out ? 1 : 0);
+		// Items section label
+		if (is_stock_out) {
+			frm.fields_dict.items_section.df.label = "Sales Invoice Items";
+			frm.fields_dict.items_section.refresh();
+		} else {
+			frm.fields_dict.items_section.df.label = "PO Items";
+			frm.fields_dict.items_section.refresh();
+		}
+		// Remove Add PO button for Stock OUT
 		if (is_stock_out) {
 			frm.remove_custom_button(__("Add Purchase Order"));
 		}
