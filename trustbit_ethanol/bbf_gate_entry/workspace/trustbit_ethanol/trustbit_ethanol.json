@@ -211,7 +211,12 @@
   {"role": "Stores User"},
   {"role": "Accounts Manager"},
   {"role": "IT Head"},
-  {"role": "Admin Reception"}
+  {"role": "Admin Reception"},
+  {"role": "CEO"},
+  {"role": "MD"},
+  {"role": "Purchase Manager"},
+  {"role": "Grain Purchase Manager"},
+  {"role": "AVP"}
  ],
  "sequence_id": 0,
  "shortcuts": [

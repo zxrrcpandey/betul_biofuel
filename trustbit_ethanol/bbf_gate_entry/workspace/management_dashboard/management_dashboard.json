@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Vehicles Inside - Mgmt\",\"col\":3}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Today - Mgmt\",\"col\":3}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"SLA Breaches\",\"col\":3}},{\"id\":\"nc4\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Exited Today\",\"col\":3}},{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Access</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Tracker\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Turnaround Report\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"BBF Settings\",\"col\":4}}]",
+ "content": "[{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Vehicles Inside - Mgmt\",\"col\":3}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Today - Mgmt\",\"col\":3}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"SLA Breaches\",\"col\":3}},{\"id\":\"nc4\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Exited Today\",\"col\":3}},{\"id\":\"hd\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Dashboards</b></span>\",\"col\":12}},{\"id\":\"sd1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Procurement Dashboard\",\"col\":4}},{\"id\":\"sd2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gate Operations\",\"col\":4}},{\"id\":\"sd3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Matrix\",\"col\":4}},{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Access</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Tracker\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Turnaround Report\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"BBF Settings\",\"col\":4}}]",
  "creation": "2026-03-07 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -153,10 +153,33 @@
  "public": 1,
  "roles": [
   {"role": "IT Head"},
-  {"role": "System Manager"}
+  {"role": "System Manager"},
+  {"role": "CEO"},
+  {"role": "MD"},
+  {"role": "Purchase Manager"},
+  {"role": "Grain Purchase Manager"},
+  {"role": "AVP"}
  ],
  "sequence_id": 5,
  "shortcuts": [
+  {
+   "color": "Green",
+   "label": "Procurement Dashboard",
+   "link_to": "procurement-dashboard",
+   "type": "Page"
+  },
+  {
+   "color": "Blue",
+   "label": "Gate Operations",
+   "link_to": "gate-operations-dashboard",
+   "type": "Page"
+  },
+  {
+   "color": "Yellow",
+   "label": "Budget Matrix",
+   "link_to": "budget-control-matrix",
+   "type": "Page"
+  },
   {
    "color": "Red",
    "label": "Live Tracker",
