@@ -34,6 +34,10 @@
   "column_break_flow",
   "route_to",
   "requires_weighing",
+  "challan_section",
+  "challan_number",
+  "column_break_challan",
+  "challan_date",
   "transport_section",
   "transporter",
   "lr_number",
@@ -228,6 +232,26 @@
    "default": "0",
    "depends_on": "eval:doc.material_flow==='Non-Raw Material'",
    "description": "Check if this Non-Raw Material needs to be weighed (e.g., Steel, Chemical)"
+  },
+  {
+   "fieldname": "challan_section",
+   "fieldtype": "Section Break",
+   "label": "Invoice / Challan Details",
+   "depends_on": "eval:doc.stock_direction==='Stock IN'"
+  },
+  {
+   "fieldname": "challan_number",
+   "fieldtype": "Data",
+   "label": "Invoice / Challan Number"
+  },
+  {
+   "fieldname": "column_break_challan",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "challan_date",
+   "fieldtype": "Date",
+   "label": "Challan Date"
   },
   {
    "fieldname": "transport_section",
