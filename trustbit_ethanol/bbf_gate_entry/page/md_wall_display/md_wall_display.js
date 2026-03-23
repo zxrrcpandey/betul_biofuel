@@ -32,6 +32,7 @@ frappe.pages["md-wall-display"].on_page_hide = function () {
 };
 
 function _mwd_init(page) {
+	_mwd_page_ref = page;
 	const el = document.documentElement;
 	if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
 	else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
@@ -97,26 +98,26 @@ function _mwd_show_pin(page) {
 	setTimeout(() => document.getElementById("mwd-pin-input")?.focus(), 100);
 }
 
+var _mwd_page_ref = null;
+
 function _mwd_submit_pin() {
 	const pin = document.getElementById("mwd-pin-input")?.value;
 	if (!pin) return;
-	frappe.call({
-		method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
-		args: { pin },
-		callback(r) {
-			if (r.message && r.message.valid) {
-				sessionStorage.setItem("md_dash_unlocked", "1");
-				const page = $("[data-page-container]").find(".page-container").data("page");
-				_mwd_start(cur_page.page.page);
-			} else {
-				const err = document.getElementById("mwd-pin-error");
-				const inp = document.getElementById("mwd-pin-input");
-				if (err) err.style.display = "block";
-				if (inp) { inp.value = ""; inp.style.borderColor = "#ef4444"; inp.focus();
-					setTimeout(() => { inp.style.borderColor = "#334155"; }, 600);
-				}
+	frappe.xcall(
+		"trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
+		{ pin }
+	).then((result) => {
+		if (result && result.valid) {
+			sessionStorage.setItem("md_dash_unlocked", "1");
+			_mwd_start(_mwd_page_ref);
+		} else {
+			const err = document.getElementById("mwd-pin-error");
+			const inp = document.getElementById("mwd-pin-input");
+			if (err) err.style.display = "block";
+			if (inp) { inp.value = ""; inp.style.borderColor = "#ef4444"; inp.focus();
+				setTimeout(() => { inp.style.borderColor = "#334155"; }, 600);
 			}
-		},
+		}
 	});
 }
 
