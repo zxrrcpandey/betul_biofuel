@@ -103,21 +103,24 @@ var _mwd_page_ref = null;
 function _mwd_submit_pin() {
 	const pin = document.getElementById("mwd-pin-input")?.value;
 	if (!pin) return;
-	frappe.xcall(
-		"trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
-		{ pin }
-	).then((result) => {
-		if (result && result.valid) {
-			sessionStorage.setItem("md_dash_unlocked", "1");
-			_mwd_start(_mwd_page_ref);
-		} else {
-			const err = document.getElementById("mwd-pin-error");
-			const inp = document.getElementById("mwd-pin-input");
-			if (err) err.style.display = "block";
-			if (inp) { inp.value = ""; inp.style.borderColor = "#ef4444"; inp.focus();
-				setTimeout(() => { inp.style.borderColor = "#334155"; }, 600);
+	frappe.call({
+		method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
+		args: { pin },
+		async: false,
+		callback(r) {
+			const result = r && r.message;
+			if (result && result.valid) {
+				sessionStorage.setItem("md_dash_unlocked", "1");
+				_mwd_start(_mwd_page_ref);
+			} else {
+				const err = document.getElementById("mwd-pin-error");
+				const inp = document.getElementById("mwd-pin-input");
+				if (err) err.style.display = "block";
+				if (inp) { inp.value = ""; inp.style.borderColor = "#ef4444"; inp.focus();
+					setTimeout(() => { inp.style.borderColor = "#334155"; }, 600);
+				}
 			}
-		}
+		},
 	});
 }
 

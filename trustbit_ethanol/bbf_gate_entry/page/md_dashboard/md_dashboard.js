@@ -86,24 +86,30 @@ function _md_submit_pin() {
 	const errEl = document.getElementById("md-pin-error");
 	const inp = document.getElementById("md-pin-input");
 
-	frappe.xcall(
-		"trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
-		{ pin }
-	).then((result) => {
-		if (result && result.valid) {
-			sessionStorage.setItem("md_dash_unlocked", "1");
-			if (_md_page_ref) _md_page_ref._unlocked = true;
-			_md_refresh(_md_page_ref);
-		} else {
-			if (errEl) errEl.style.display = "block";
-			if (inp) {
-				inp.value = "";
-				inp.style.borderColor = "#ef4444";
-				inp.classList.add("md-shake");
-				setTimeout(() => { inp.classList.remove("md-shake"); inp.style.borderColor = "#e2e8f0"; }, 600);
-				inp.focus();
+	frappe.call({
+		method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
+		args: { pin },
+		async: false,
+		callback(r) {
+			const result = r && r.message;
+			if (result && result.valid) {
+				sessionStorage.setItem("md_dash_unlocked", "1");
+				if (_md_page_ref) _md_page_ref._unlocked = true;
+				_md_refresh(_md_page_ref);
+			} else {
+				if (errEl) errEl.style.display = "block";
+				if (inp) {
+					inp.value = "";
+					inp.style.borderColor = "#ef4444";
+					inp.classList.add("md-shake");
+					setTimeout(() => { inp.classList.remove("md-shake"); inp.style.borderColor = "#e2e8f0"; }, 600);
+					inp.focus();
+				}
 			}
-		}
+		},
+		error() {
+			frappe.msgprint("Error verifying PIN. Check console for details.");
+		},
 	});
 }
 
