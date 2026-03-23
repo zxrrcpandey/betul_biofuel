@@ -210,7 +210,7 @@ def _get_monthly_trend(filters, cat_filter):
 
 	return frappe.db.sql(f"""
 		SELECT
-			DATE_FORMAT(po.transaction_date, '%%Y-%%m') as month,
+			DATE_FORMAT(po.transaction_date, '%Y-%m') as month,
 			SUM(po.grand_total) as value,
 			COUNT(*) as cnt
 		FROM `tabPurchase Order` po

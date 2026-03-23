@@ -320,19 +320,19 @@ function _pd_render_monthly_chart(trend) {
 	}
 
 	const labels = trend.map((t) => t.month);
-	const values = trend.map((t) => t.value || 0);
+	const values = trend.map((t) => Math.round((t.value || 0) / 100000));
 
 	new frappe.Chart($el, {
 		data: {
 			labels: labels,
-			datasets: [{ name: "PO Value", values: values }],
+			datasets: [{ name: "PO Value (₹ Lakhs)", values: values }],
 		},
 		type: "bar",
 		height: 220,
 		colors: ["#3b82f6"],
 		barOptions: { spaceRatio: 0.4 },
 		tooltipOptions: {
-			formatTooltipY: (d) => format_currency(d),
+			formatTooltipY: (d) => "₹ " + d.toLocaleString("en-IN") + " L",
 		},
 	});
 }
