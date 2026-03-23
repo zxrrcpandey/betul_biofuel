@@ -82,9 +82,9 @@ function _mwd_show_pin(page) {
 				<input type="password" maxlength="6" id="mwd-pin-input" autocomplete="off"
 					style="width:220px;text-align:center;font-size:32px;letter-spacing:14px;padding:16px 24px;
 					background:#1e293b;border:2px solid #334155;border-radius:14px;color:#f8fafc;outline:none;
-					font-weight:700;" onkeydown="if(event.key==='Enter')_mwd_submit_pin()">
+					font-weight:700;">
 				<div style="margin-top:24px;">
-					<button onclick="_mwd_submit_pin()" style="background:linear-gradient(135deg,#1e40af,#7c3aed);
+					<button id="mwd-pin-btn" style="background:linear-gradient(135deg,#1e40af,#7c3aed);
 						border:none;padding:14px 56px;border-radius:12px;color:white;font-weight:700;font-size:15px;cursor:pointer;">
 						Unlock
 					</button>
@@ -95,33 +95,29 @@ function _mwd_show_pin(page) {
 			</div>
 		</div>
 	`);
-	setTimeout(() => document.getElementById("mwd-pin-input")?.focus(), 100);
-}
 
-var _mwd_page_ref = null;
-
-window._mwd_submit_pin = function _mwd_submit_pin() {
-	const pin = document.getElementById("mwd-pin-input")?.value;
-	if (!pin) return;
-	frappe.call({
-		method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
-		args: { pin },
-
-		callback(r) {
-			const result = r && r.message;
-			if (result && result.valid) {
-				sessionStorage.setItem("md_dash_unlocked", "1");
-				_mwd_start(_mwd_page_ref);
-			} else {
-				const err = document.getElementById("mwd-pin-error");
-				const inp = document.getElementById("mwd-pin-input");
-				if (err) err.style.display = "block";
-				if (inp) { inp.value = ""; inp.style.borderColor = "#ef4444"; inp.focus();
-					setTimeout(() => { inp.style.borderColor = "#334155"; }, 600);
+	function doUnlock() {
+		const pin = $("#mwd-pin-input").val();
+		if (!pin) return;
+		frappe.call({
+			method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
+			args: { pin },
+			callback(r) {
+				if (r.message && r.message.valid) {
+					sessionStorage.setItem("md_dash_unlocked", "1");
+					_mwd_start(page);
+				} else {
+					$("#mwd-pin-error").show();
+					$("#mwd-pin-input").val("").css("border-color", "#ef4444");
+					setTimeout(() => { $("#mwd-pin-input").css("border-color", "#334155").focus(); }, 600);
 				}
-			}
-		},
-	});
+			},
+		});
+	}
+
+	$("#mwd-pin-btn").on("click", doUnlock);
+	$("#mwd-pin-input").on("keydown", function(e) { if (e.key === "Enter") doUnlock(); });
+	setTimeout(() => $("#mwd-pin-input").focus(), 100);
 }
 
 function _mwd_exit(page) {
