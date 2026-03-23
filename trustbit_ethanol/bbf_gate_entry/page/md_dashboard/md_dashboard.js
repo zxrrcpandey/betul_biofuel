@@ -20,12 +20,91 @@ frappe.pages["md-dashboard"].on_page_load = function (wrapper) {
 		change() { _md_refresh(page); },
 	});
 
-	setTimeout(() => _md_refresh(page), 500);
+	page._unlocked = sessionStorage.getItem("md_dash_unlocked") === "1";
+	setTimeout(() => _md_check_pin(page), 300);
 };
 
 frappe.pages["md-dashboard"].refresh = function (wrapper) {
-	_md_refresh(wrapper.page);
+	if (wrapper.page._unlocked) _md_refresh(wrapper.page);
 };
+
+function _md_check_pin(page) {
+	if (page._unlocked) { _md_refresh(page); return; }
+	frappe.call({
+		method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.check_md_pin_required",
+		callback(r) {
+			if (r.message && r.message.pin_required) {
+				_md_show_pin_screen(page);
+			} else {
+				page._unlocked = true;
+				sessionStorage.setItem("md_dash_unlocked", "1");
+				_md_refresh(page);
+			}
+		},
+	});
+}
+
+function _md_show_pin_screen(page) {
+	const $c = $("#md-app");
+	$c.html(`
+		<div style="display:flex;align-items:center;justify-content:center;min-height:70vh;">
+			<div style="text-align:center;max-width:380px;width:100%;">
+				<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#1e40af,#7c3aed);margin:0 auto 24px;display:flex;align-items:center;justify-content:center;">
+					<span style="font-size:36px;color:white;">&#128274;</span>
+				</div>
+				<div style="font-size:22px;font-weight:800;color:#1e293b;margin-bottom:6px;">MD Dashboard</div>
+				<div style="font-size:13px;color:#64748b;margin-bottom:32px;">Enter PIN to access the dashboard</div>
+				<div style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;" id="md-pin-dots">
+					<input type="password" maxlength="6" id="md-pin-input" autocomplete="off"
+						style="width:200px;text-align:center;font-size:28px;letter-spacing:12px;padding:14px 20px;
+						border:2px solid #e2e8f0;border-radius:12px;outline:none;font-weight:700;
+						transition:border-color 0.2s;"
+						onfocus="this.style.borderColor='#7c3aed'"
+						onblur="this.style.borderColor='#e2e8f0'"
+						onkeydown="if(event.key==='Enter')_md_submit_pin()">
+				</div>
+				<button onclick="_md_submit_pin()" class="btn btn-primary btn-lg"
+					style="background:linear-gradient(135deg,#1e40af,#7c3aed);border:none;padding:12px 48px;
+					border-radius:10px;font-weight:700;font-size:14px;width:200px;">
+					Unlock
+				</button>
+				<div id="md-pin-error" style="margin-top:16px;color:#ef4444;font-size:13px;font-weight:600;display:none;">
+					Incorrect PIN. Please try again.
+				</div>
+			</div>
+		</div>
+	`);
+	setTimeout(() => document.getElementById("md-pin-input")?.focus(), 100);
+}
+
+function _md_submit_pin() {
+	const pin = document.getElementById("md-pin-input")?.value;
+	if (!pin) return;
+	const errEl = document.getElementById("md-pin-error");
+	const inp = document.getElementById("md-pin-input");
+
+	frappe.call({
+		method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
+		args: { pin },
+		callback(r) {
+			if (r.message && r.message.valid) {
+				const page = cur_page?.page?.page;
+				if (page) page._unlocked = true;
+				sessionStorage.setItem("md_dash_unlocked", "1");
+				_md_refresh(page || cur_page.page.page);
+			} else {
+				if (errEl) errEl.style.display = "block";
+				if (inp) {
+					inp.value = "";
+					inp.style.borderColor = "#ef4444";
+					inp.classList.add("md-shake");
+					setTimeout(() => { inp.classList.remove("md-shake"); inp.style.borderColor = "#e2e8f0"; }, 600);
+					inp.focus();
+				}
+			}
+		},
+	});
+}
 
 let _md_timeout = null;
 function _md_refresh(page) {

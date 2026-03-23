@@ -46,8 +46,78 @@ function _mwd_init(page) {
 	page._esc_handler = (e) => { if (e.key === "Escape") _mwd_exit(page); };
 	document.addEventListener("keydown", page._esc_handler);
 
+	// Check PIN
+	if (sessionStorage.getItem("md_dash_unlocked") === "1") {
+		_mwd_start(page);
+	} else {
+		frappe.call({
+			method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.check_md_pin_required",
+			callback(r) {
+				if (r.message && r.message.pin_required) {
+					_mwd_show_pin(page);
+				} else {
+					sessionStorage.setItem("md_dash_unlocked", "1");
+					_mwd_start(page);
+				}
+			},
+		});
+	}
+}
+
+function _mwd_start(page) {
 	_mwd_refresh(page);
 	page._refresh_interval = setInterval(() => _mwd_refresh(page), 30000);
+}
+
+function _mwd_show_pin(page) {
+	$("#mwd-container").html(`
+		<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;">
+			<div style="text-align:center;">
+				<div style="width:100px;height:100px;border-radius:50%;background:linear-gradient(135deg,#1e40af,#7c3aed);margin:0 auto 30px;display:flex;align-items:center;justify-content:center;">
+					<span style="font-size:48px;">&#128274;</span>
+				</div>
+				<div style="font-size:28px;font-weight:800;color:#f8fafc;margin-bottom:8px;">MD Wall Display</div>
+				<div style="font-size:14px;color:#64748b;margin-bottom:40px;">Enter PIN to unlock</div>
+				<input type="password" maxlength="6" id="mwd-pin-input" autocomplete="off"
+					style="width:220px;text-align:center;font-size:32px;letter-spacing:14px;padding:16px 24px;
+					background:#1e293b;border:2px solid #334155;border-radius:14px;color:#f8fafc;outline:none;
+					font-weight:700;" onkeydown="if(event.key==='Enter')_mwd_submit_pin()">
+				<div style="margin-top:24px;">
+					<button onclick="_mwd_submit_pin()" style="background:linear-gradient(135deg,#1e40af,#7c3aed);
+						border:none;padding:14px 56px;border-radius:12px;color:white;font-weight:700;font-size:15px;cursor:pointer;">
+						Unlock
+					</button>
+				</div>
+				<div id="mwd-pin-error" style="margin-top:20px;color:#ef4444;font-size:14px;font-weight:600;display:none;">
+					Incorrect PIN
+				</div>
+			</div>
+		</div>
+	`);
+	setTimeout(() => document.getElementById("mwd-pin-input")?.focus(), 100);
+}
+
+function _mwd_submit_pin() {
+	const pin = document.getElementById("mwd-pin-input")?.value;
+	if (!pin) return;
+	frappe.call({
+		method: "trustbit_ethanol.bbf_gate_entry.bbf_dashboard_md.verify_md_pin",
+		args: { pin },
+		callback(r) {
+			if (r.message && r.message.valid) {
+				sessionStorage.setItem("md_dash_unlocked", "1");
+				const page = $("[data-page-container]").find(".page-container").data("page");
+				_mwd_start(cur_page.page.page);
+			} else {
+				const err = document.getElementById("mwd-pin-error");
+				const inp = document.getElementById("mwd-pin-input");
+				if (err) err.style.display = "block";
+				if (inp) { inp.value = ""; inp.style.borderColor = "#ef4444"; inp.focus();
+					setTimeout(() => { inp.style.borderColor = "#334155"; }, 600);
+				}
+			}
+		},
+	});
 }
 
 function _mwd_exit(page) {

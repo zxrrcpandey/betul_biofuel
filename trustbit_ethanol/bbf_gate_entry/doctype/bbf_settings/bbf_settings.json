@@ -47,7 +47,10 @@
   "inspection_notify_it_head",
   "tab_print",
   "print_controls_section",
-  "g2_print_mode"
+  "g2_print_mode",
+  "tab_dashboard",
+  "dashboard_security_section",
+  "md_dashboard_pin"
  ],
  "fields": [
   {
@@ -313,6 +316,26 @@
    "default": "Slip Only",
    "permlevel": 1,
    "description": "Slip Only: G2 can print compact slip. Detailed + Slip: G2 can print both formats. Applies to Token and Gate Entry."
+  },
+  {
+   "fieldname": "tab_dashboard",
+   "fieldtype": "Tab Break",
+   "label": "Dashboard Security",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "dashboard_security_section",
+   "fieldtype": "Section Break",
+   "label": "MD Dashboard PIN Lock (IT Head Only)",
+   "description": "Set a secret PIN to protect the MD Dashboard and Wall Display. Leave blank to disable PIN lock.",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "md_dashboard_pin",
+   "fieldtype": "Password",
+   "label": "MD Dashboard PIN",
+   "permlevel": 1,
+   "description": "4-6 digit PIN required to access MD Dashboard and MD Wall Display. Only IT Head can set this."
   }
  ],
  "issingle": 1,

@@ -10,6 +10,30 @@ def _check_role():
 		frappe.throw("Not authorized to view this dashboard", frappe.PermissionError)
 
 
+@frappe.whitelist()
+def check_md_pin_required():
+	"""Check if MD Dashboard PIN lock is enabled."""
+	_check_role()
+	pin = frappe.db.get_single_value("BBF Settings", "md_dashboard_pin")
+	return {"pin_required": bool(pin)}
+
+
+@frappe.whitelist()
+def verify_md_pin(pin):
+	"""Verify PIN for MD Dashboard access."""
+	_check_role()
+	stored_pin = frappe.db.get_single_value("BBF Settings", "md_dashboard_pin")
+	if not stored_pin:
+		return {"valid": True}
+	if pin == stored_pin:
+		return {"valid": True}
+	frappe.log_error(
+		title="MD Dashboard PIN Failed",
+		message=f"Failed PIN attempt by {frappe.session.user} from {frappe.local.request_ip}"
+	)
+	return {"valid": False}
+
+
 def _resolve_dates(date_range, start=None, end=None):
 	t = getdate(today())
 	if date_range == "Today":
