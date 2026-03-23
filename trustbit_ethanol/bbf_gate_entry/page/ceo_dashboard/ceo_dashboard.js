@@ -509,16 +509,19 @@ function _cd_render_chart(trend) {
 		return;
 	}
 
+	// Convert to lakhs for readable Y-axis
+	const values = trend.map((t) => Math.round((t.value || 0) / 100000));
+
 	new frappe.Chart($el, {
 		data: {
 			labels: trend.map((t) => t.month),
-			datasets: [{ name: "PO Value", values: trend.map((t) => t.value || 0) }],
+			datasets: [{ name: "PO Value (₹ Lakhs)", values: values }],
 		},
 		type: "bar",
 		height: 220,
 		colors: ["#3b82f6"],
 		barOptions: { spaceRatio: 0.4 },
-		tooltipOptions: { formatTooltipY: (d) => format_currency(d) },
+		tooltipOptions: { formatTooltipY: (d) => "₹ " + d.toLocaleString("en-IN") + " L" },
 	});
 }
 
