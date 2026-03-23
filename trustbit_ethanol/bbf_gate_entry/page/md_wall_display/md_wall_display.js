@@ -133,6 +133,19 @@ function _mwd_render(data, page) {
 
 	html += "</div>";
 
+	// Non-Branded Items Alert
+	const nbi = data.non_branded_items;
+	if (nbi && nbi.count > 0) {
+		html += `<div class="mwd-card mwd-critical" style="border:2px solid #f59e0b;margin-bottom:16px;">
+			<div class="mwd-card-title" style="color:#fbbf24;">&#9888; Non-Branded Items &mdash; <span style="color:#ef4444;font-size:24px;font-weight:800;">${nbi.count}</span> items without brand</div>
+			<div style="display:flex;flex-wrap:wrap;gap:6px;max-height:80px;overflow:hidden;">`;
+		nbi.items.slice(0, 15).forEach((item) => {
+			html += `<span style="padding:4px 10px;background:#451a03;border:1px solid #92400e;border-radius:6px;font-size:11px;color:#fcd34d;">${frappe.utils.escape_html(item.name)}</span>`;
+		});
+		if (nbi.count > 15) html += `<span style="padding:4px 10px;font-size:11px;color:#f59e0b;">+${nbi.count - 15} more</span>`;
+		html += '</div></div>';
+	}
+
 	// Three column: Company cards + Quality
 	html += '<div class="mwd-grid-3">';
 

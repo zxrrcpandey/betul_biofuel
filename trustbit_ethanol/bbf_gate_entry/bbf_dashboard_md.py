@@ -56,6 +56,7 @@ def get_md_dashboard(date_range="This Month", start=None, end=None):
 		"quality": _get_quality(start_date, end_date),
 		"monthly_trend": _get_monthly_trend(),
 		"top_suppliers": _get_top_suppliers(start_date, end_date),
+		"non_branded_items": _get_non_branded_items(),
 		"filters_applied": {
 			"date_range": date_range,
 			"start": str(start_date),
@@ -518,3 +519,23 @@ def _get_top_suppliers(start_date, end_date):
 		GROUP BY supplier_name, company
 		ORDER BY total_value DESC LIMIT 10
 	""", (start_date, end_date), as_dict=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  NON-BRANDED ITEMS — items missing Brand field
+# ═══════════════════════════════════════════════════════════════════════
+
+def _get_non_branded_items():
+	items = frappe.db.sql("""
+		SELECT name, item_name, item_group, creation
+		FROM `tabItem`
+		WHERE disabled = 0
+		AND (brand IS NULL OR brand = '')
+		ORDER BY creation DESC
+		LIMIT 50
+	""", as_dict=True)
+
+	return {
+		"count": len(items),
+		"items": items,
+	}

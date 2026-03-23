@@ -106,6 +106,31 @@ function _md_render(data, $c) {
 		html += "</div>";
 	}
 
+	// ── Non-Branded Items Alert ──
+	const nbi = data.non_branded_items;
+	if (nbi && nbi.count > 0) {
+		html += '<div class="md-section md-animate md-animate-d2 md-flash-alert" style="border-left:4px solid #f59e0b;background:linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);">';
+		html += `<div class="md-section-head">
+			<div class="md-section-title" style="color:#92400e;">&#9888; Non-Branded Items</div>
+			<span class="md-section-badge md-flash-badge" style="background:#fef2f2;color:#dc2626;font-weight:700;">${nbi.count} items without brand</span>
+		</div>`;
+		html += '<div style="font-size:12px;color:#92400e;margin-bottom:10px;">These items have no Brand assigned. Please assign brands for proper categorization.</div>';
+		html += '<table class="md-action-table"><thead><tr>';
+		html += '<th>Item Code</th><th>Item Name</th><th>Item Group</th>';
+		html += '</tr></thead><tbody>';
+		nbi.items.slice(0, 20).forEach((item) => {
+			html += `<tr style="cursor:pointer;" onclick="frappe.set_route('item', '${_md_esc(item.name)}')">
+				<td style="font-weight:600;color:#1e40af;">${_md_esc(item.name)}</td>
+				<td>${_md_esc(item.item_name)}</td>
+				<td>${_md_esc(item.item_group)}</td>
+			</tr>`;
+		});
+		if (nbi.count > 20) {
+			html += `<tr><td colspan="3" style="text-align:center;color:#92400e;font-weight:600;">+ ${nbi.count - 20} more items</td></tr>`;
+		}
+		html += '</tbody></table></div>';
+	}
+
 	// ── Two Column: Gate Operations + Stage Distribution ──
 	html += '<div class="md-grid-2 md-animate md-animate-d3">';
 
