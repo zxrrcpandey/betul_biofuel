@@ -10,11 +10,20 @@ def _check_role():
 		frappe.throw("Not authorized to view this dashboard", frappe.PermissionError)
 
 
+def _get_md_pin():
+	"""Read the MD Dashboard PIN (Password field — must decrypt)."""
+	from frappe.utils.password import get_decrypted_password
+	try:
+		return get_decrypted_password("BBF Settings", "BBF Settings", "md_dashboard_pin")
+	except Exception:
+		return None
+
+
 @frappe.whitelist()
 def check_md_pin_required():
 	"""Check if MD Dashboard PIN lock is enabled."""
 	_check_role()
-	pin = frappe.db.get_single_value("BBF Settings", "md_dashboard_pin")
+	pin = _get_md_pin()
 	return {"pin_required": bool(pin)}
 
 
@@ -22,7 +31,7 @@ def check_md_pin_required():
 def verify_md_pin(pin):
 	"""Verify PIN for MD Dashboard access."""
 	_check_role()
-	stored_pin = frappe.db.get_single_value("BBF Settings", "md_dashboard_pin")
+	stored_pin = _get_md_pin()
 	if not stored_pin:
 		return {"valid": True}
 	if pin == stored_pin:
