@@ -122,3 +122,172 @@ def _send_sla_alert(breaches, email, threshold):
 		subject=f"BBF Gate Entry - SLA Breach Alert ({len(breaches)} tokens)",
 		message=message
 	)
+
+
+@frappe.whitelist()
+def get_po_lifecycle(po_name):
+	"""Return complete lifecycle data for all deliveries against a Purchase Order."""
+	if not po_name or not frappe.db.exists("Purchase Order", po_name):
+		return {"deliveries": [], "total": 0}
+
+	# Find gate entries linked to this PO
+	# 1. Via po_list child table (multi-PO support)
+	ge_from_child = frappe.db.get_all(
+		"BBF Gate Entry PO",
+		filters={"purchase_order": po_name, "docstatus": 1},
+		pluck="parent"
+	)
+	# 2. Via legacy purchase_order field
+	ge_from_legacy = frappe.db.get_all(
+		"BBF Gate Entry",
+		filters={"purchase_order": po_name, "docstatus": 1},
+		pluck="name"
+	)
+	ge_names = list(set(ge_from_child + ge_from_legacy))
+
+	if not ge_names:
+		return {"deliveries": [], "total": 0}
+
+	deliveries = []
+	for ge_name in ge_names:
+		ge = frappe.db.get_value("BBF Gate Entry", ge_name,
+			["name", "token_number", "stock_direction", "material_flow",
+			 "requires_weighing", "docstatus"],
+			as_dict=True)
+		if not ge or ge.docstatus != 1 or not ge.token_number:
+			continue
+
+		token = frappe.db.get_value("BBF Token", ge.token_number,
+			["name", "token_number", "status", "vehicle_number", "entry_date",
+			 "g1_entry_time", "g1_exit_time", "stock_direction", "purpose",
+			 "purchase_receipt", "delivery_note"],
+			as_dict=True)
+		if not token:
+			continue
+
+		# Downstream documents
+		wb = frappe.db.get_all("BBF Weighbridge Log",
+			filters={"token_number": token.name},
+			fields=["name", "status", "gross_weight", "tare_weight", "net_weight"],
+			limit=1)
+		qi = frappe.db.get_all("BBF Quality Inspection",
+			filters={"token_number": token.name},
+			fields=["name", "status", "grade"],
+			limit=1)
+		ds = frappe.db.get_all("BBF Deduction Sheet",
+			filters={"token_number": token.name},
+			fields=["name", "status"],
+			limit=1)
+		ue = frappe.db.get_all("BBF Unloading Entry",
+			filters={"token_number": token.name},
+			fields=["name", "status"],
+			limit=1)
+		mi = frappe.db.get_all("BBF Material Inspection",
+			filters={"token_number": token.name},
+			fields=["name", "status"],
+			limit=1)
+		pr = frappe.db.get_all("Purchase Receipt",
+			filters={"bbf_token": token.name, "docstatus": ["!=", 2]},
+			fields=["name", "status"],
+			limit=1)
+
+		steps = _build_lifecycle_steps(
+			token.status,
+			ge.stock_direction or "Stock IN",
+			ge.material_flow or token.purpose,
+			ge.requires_weighing
+		)
+
+		delivery = {
+			"gate_entry": ge.name,
+			"token": token.name,
+			"token_number": token.token_number,
+			"token_status": token.status,
+			"vehicle_number": token.vehicle_number or "",
+			"stock_direction": ge.stock_direction or "Stock IN",
+			"material_flow": ge.material_flow or token.purpose or "",
+			"entry_date": str(token.entry_date) if token.entry_date else "",
+			"g1_entry_time": str(token.g1_entry_time) if token.g1_entry_time else "",
+			"steps": steps,
+			"docs": {
+				"gate_entry": {"name": ge.name},
+				"weighbridge": wb[0] if wb else None,
+				"quality_inspection": qi[0] if qi else None,
+				"deduction_sheet": ds[0] if ds else None,
+				"unloading": ue[0] if ue else None,
+				"material_inspection": mi[0] if mi else None,
+				"purchase_receipt": pr[0] if pr else None,
+				"delivery_note": {"name": token.delivery_note} if token.delivery_note else None,
+			}
+		}
+		deliveries.append(delivery)
+
+	deliveries.sort(key=lambda d: d.get("g1_entry_time", ""), reverse=True)
+	return {"deliveries": deliveries, "total": len(deliveries)}
+
+
+def _build_lifecycle_steps(token_status, stock_direction, material_flow, requires_weighing):
+	"""Build lifecycle step definitions with completion status."""
+	if stock_direction == "Stock OUT":
+		steps = [
+			{"label": "G1 Entry", "short": "G1"},
+			{"label": "SI Linked", "short": "G2"},
+			{"label": "Tare Recorded", "short": "Tare"},
+			{"label": "Loading Done", "short": "Loading"},
+			{"label": "Gross Recorded", "short": "Gross"},
+			{"label": "Dispatch Ready", "short": "Dispatch"},
+			{"label": "Exited", "short": "Exit"},
+		]
+		order = ["Token Generated", "SI Linked", "Tare Recorded",
+				 "Loading Done", "Gross Recorded", "Dispatch Ready", "Exited"]
+	elif material_flow == "Raw Material":
+		steps = [
+			{"label": "G1 Entry", "short": "G1"},
+			{"label": "PO Linked", "short": "G2"},
+			{"label": "Gross Weighed", "short": "Gross"},
+			{"label": "Quality Done", "short": "QI"},
+			{"label": "Graded", "short": "Grade"},
+			{"label": "Unloading", "short": "Unload"},
+			{"label": "Tare Weighed", "short": "Tare"},
+			{"label": "GRN Created", "short": "GRN"},
+			{"label": "Exited", "short": "Exit"},
+		]
+		order = ["Token Generated", "PO Linked", "Gross Weighed",
+				 "Quality Done", "Graded", "Unloading",
+				 "Tare Weighed", "GRN Created", "Exited"]
+	elif requires_weighing:
+		# Non-RM with weighing
+		steps = [
+			{"label": "G1 Entry", "short": "G1"},
+			{"label": "PO Linked", "short": "G2"},
+			{"label": "Gross Weighed", "short": "Gross"},
+			{"label": "Tare Weighed", "short": "Tare"},
+			{"label": "GRN Created", "short": "GRN"},
+			{"label": "Exited", "short": "Exit"},
+		]
+		order = ["Token Generated", "PO Linked", "Gross Weighed",
+				 "Tare Weighed", "GRN Created", "Exited"]
+	else:
+		# Non-RM without weighing
+		steps = [
+			{"label": "G1 Entry", "short": "G1"},
+			{"label": "PO Linked", "short": "G2"},
+			{"label": "GRN Created", "short": "GRN"},
+			{"label": "Exited", "short": "Exit"},
+		]
+		order = ["Token Generated", "PO Linked", "GRN Created", "Exited"]
+
+	status_map = {s: i for i, s in enumerate(order)}
+	current_idx = status_map.get(token_status, 0)
+
+	for i, step in enumerate(steps):
+		if token_status == "Exited":
+			step["status"] = "done"
+		elif i < current_idx:
+			step["status"] = "done"
+		elif i == current_idx:
+			step["status"] = "current"
+		else:
+			step["status"] = "pending"
+
+	return steps

@@ -4,6 +4,7 @@ frappe.ui.form.on("Purchase Order", {
 		if (frm.is_new()) return;
 		_load_approval_context(frm);
 		_load_budget_indicator(frm);
+		_load_lifecycle_tracker(frm);
 	},
 	cost_center(frm) {
 		if (!frm.is_new()) _load_budget_indicator(frm);
@@ -475,4 +476,196 @@ function _render_timeline(frm) {
 	if ($section.length) {
 		$section.prepend(html);
 	}
+}
+
+/* ── Delivery Lifecycle Tracker ─────────────────────────────────────── */
+
+function _load_lifecycle_tracker(frm) {
+	// Only for submitted/cancelled POs (deliveries require submitted PO)
+	if (frm.doc.docstatus < 1) return;
+
+	frappe.call({
+		method: "trustbit_ethanol.bbf_gate_entry.api.get_po_lifecycle",
+		args: { po_name: frm.doc.name },
+		callback(r) {
+			if (!r.message) return;
+			_render_lifecycle(frm, r.message);
+		},
+		error() {} // Silent fail
+	});
+}
+
+function _render_lifecycle(frm, data) {
+	$(frm.page.wrapper).find(".bbf-lifecycle-tracker").remove();
+
+	const deliveries = data.deliveries || [];
+	if (!deliveries.length) return;
+
+	// Inject pulse animation for lifecycle (amber)
+	if (!document.getElementById("bbf-lifecycle-pulse-style")) {
+		const style = document.createElement("style");
+		style.id = "bbf-lifecycle-pulse-style";
+		style.textContent = `
+			@keyframes bbf-lc-pulse {
+				0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+				50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+			}
+		`;
+		document.head.appendChild(style);
+	}
+
+	const exited = deliveries.filter(d => d.token_status === "Exited").length;
+	const active = deliveries.length - exited;
+
+	let html = '<div class="bbf-lifecycle-tracker" style="margin: 10px 15px 15px; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: white;">';
+
+	// Header
+	html += '<div style="padding: 10px 15px; background: #f0f9ff; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">';
+	html += `<div style="font-weight: 700; font-size: 13px; color: #0f172a;">Deliveries <span style="font-weight: 400; color: #64748b; font-size: 12px;">(${deliveries.length})</span></div>`;
+	if (deliveries.length > 0) {
+		let summary = [];
+		if (exited) summary.push(`<span style="color: #10b981;">${exited} completed</span>`);
+		if (active) summary.push(`<span style="color: #f59e0b;">${active} in progress</span>`);
+		html += `<div style="font-size: 11px; color: #64748b;">${summary.join(" &middot; ")}</div>`;
+	}
+	html += "</div>";
+
+	deliveries.forEach((d, idx) => {
+		const isLast = idx === deliveries.length - 1;
+		html += `<div style="padding: 14px 15px; ${!isLast ? "border-bottom: 1px solid #f1f5f9;" : ""}">`;
+
+		// Row 1: Token + Vehicle | Status + Date
+		html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">';
+		html += '<div style="display: flex; align-items: center; gap: 10px;">';
+		html += `<a href="/app/bbf-token/${encodeURIComponent(d.token)}" style="font-weight: 700; font-size: 13px; color: #1d4ed8; text-decoration: none;">${_lc_esc(d.token_number)}</a>`;
+		if (d.vehicle_number) {
+			html += `<span style="font-size: 12px; color: #475569; background: #f1f5f9; padding: 1px 8px; border-radius: 4px;">${_lc_esc(d.vehicle_number)}</span>`;
+		}
+		html += "</div>";
+		html += '<div style="display: flex; align-items: center; gap: 8px;">';
+		const sc = _lc_status_color(d.token_status);
+		html += `<span style="font-size: 11px; padding: 2px 10px; border-radius: 12px; background: ${sc.bg}; color: ${sc.text}; font-weight: 600;">${_lc_esc(d.token_status)}</span>`;
+		if (d.entry_date) {
+			html += `<span style="font-size: 11px; color: #94a3b8;">${_lc_esc(d.entry_date)}</span>`;
+		}
+		html += "</div></div>";
+
+		// Row 2: Flow type + Weight summary
+		html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">';
+		html += `<span style="font-size: 11px; color: #94a3b8;">${_lc_esc(d.stock_direction)} &middot; ${_lc_esc(d.material_flow)}</span>`;
+		const wb = d.docs.weighbridge;
+		if (wb && (wb.gross_weight || wb.tare_weight)) {
+			html += '<span style="font-size: 11px; color: #64748b;">';
+			if (wb.gross_weight) html += `Gross: ${_lc_fmt_wt(wb.gross_weight)}`;
+			if (wb.tare_weight) html += ` | Tare: ${_lc_fmt_wt(wb.tare_weight)}`;
+			if (wb.net_weight) html += ` | <strong>Net: ${_lc_fmt_wt(wb.net_weight)}</strong>`;
+			html += "</span>";
+		}
+		html += "</div>";
+
+		// Row 3: Progress stepper
+		html += '<div style="display: flex; align-items: center; margin: 12px 0 10px; padding: 0 5px;">';
+		d.steps.forEach((step, si) => {
+			let cc = "#d1d5db", content = si + 1, lc = "#94a3b8", pulse = "";
+			if (step.status === "done") {
+				cc = "#10b981"; content = "&#10003;"; lc = "#10b981";
+			} else if (step.status === "current") {
+				cc = "#f59e0b"; pulse = "animation: bbf-lc-pulse 2s infinite;"; lc = "#f59e0b";
+			}
+
+			html += '<div style="display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 0;">';
+			html += `<div style="width: 26px; height: 26px; border-radius: 50%; background: ${cc}; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 10px; ${pulse}">${content}</div>`;
+			html += `<div style="font-size: 9px; color: ${lc}; margin-top: 3px; text-align: center; font-weight: 500;">${_lc_esc(step.short)}</div>`;
+			html += "</div>";
+
+			if (si < d.steps.length - 1) {
+				const lineColor = step.status === "done" ? "#10b981" : "#e5e7eb";
+				html += `<div style="flex: 0.5; height: 2px; border-top: 2px solid ${lineColor}; margin-bottom: 16px;"></div>`;
+			}
+		});
+		html += "</div>";
+
+		// Row 4: Document links
+		html += '<div style="display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; padding-top: 6px; border-top: 1px solid #f1f5f9;">';
+		const links = _lc_get_doc_links(d);
+		links.forEach(dl => {
+			if (dl.doc) {
+				const url = `/app/${_lc_slug(dl.dt)}/${encodeURIComponent(dl.doc.name)}`;
+				html += `<span><span style="color: #94a3b8;">${dl.label}:</span> <a href="${url}" style="color: #1d4ed8; text-decoration: none; font-weight: 500;">${_lc_esc(dl.doc.name)}</a>`;
+				if (dl.doc.status) {
+					html += ` <span style="color: ${_lc_doc_status_color(dl.doc.status)}; font-size: 10px;">(${_lc_esc(dl.doc.status)})</span>`;
+				}
+				html += "</span>";
+			} else {
+				html += `<span style="color: #d1d5db;">${dl.label}: &mdash;</span>`;
+			}
+		});
+		html += "</div>";
+
+		html += "</div>"; // end delivery card
+	});
+
+	html += "</div>"; // end tracker
+
+	// Insert before form-layout (between dashboard and form fields)
+	const $layout = $(frm.layout.wrapper);
+	if ($layout.length) {
+		$layout.before(html);
+	}
+}
+
+function _lc_esc(v) {
+	return frappe.utils.escape_html(v || "");
+}
+
+function _lc_fmt_wt(val) {
+	if (!val) return "&mdash;";
+	return parseFloat(val).toLocaleString("en-IN", { maximumFractionDigits: 2 }) + " KG";
+}
+
+function _lc_slug(doctype) {
+	return doctype.toLowerCase().replace(/ /g, "-");
+}
+
+function _lc_status_color(status) {
+	if (status === "Exited") return { bg: "#d1fae5", text: "#065f46" };
+	if (status === "GRN Created" || status === "Dispatch Ready") return { bg: "#dcfce7", text: "#166534" };
+	if (status === "Token Generated") return { bg: "#f1f5f9", text: "#475569" };
+	return { bg: "#fef3c7", text: "#92400e" };
+}
+
+function _lc_doc_status_color(status) {
+	if (["Completed", "Approved", "Submitted"].includes(status)) return "#10b981";
+	if (["Pending", "Pending Inspection", "Draft"].includes(status)) return "#f59e0b";
+	if (["Rejected", "Cancelled"].includes(status)) return "#ef4444";
+	return "#94a3b8";
+}
+
+function _lc_get_doc_links(d) {
+	const docs = d.docs;
+	const links = [
+		{ label: "Gate Entry", dt: "BBF Gate Entry", doc: docs.gate_entry },
+	];
+
+	if (d.material_flow === "Raw Material") {
+		links.push({ label: "Weighbridge", dt: "BBF Weighbridge Log", doc: docs.weighbridge });
+		links.push({ label: "Quality", dt: "BBF Quality Inspection", doc: docs.quality_inspection });
+		links.push({ label: "Deduction", dt: "BBF Deduction Sheet", doc: docs.deduction_sheet });
+		links.push({ label: "Unloading", dt: "BBF Unloading Entry", doc: docs.unloading });
+	} else {
+		if (docs.weighbridge) {
+			links.push({ label: "Weighbridge", dt: "BBF Weighbridge Log", doc: docs.weighbridge });
+		}
+		if (docs.material_inspection) {
+			links.push({ label: "Inspection", dt: "BBF Material Inspection", doc: docs.material_inspection });
+		}
+	}
+
+	if (d.stock_direction === "Stock OUT") {
+		links.push({ label: "Delivery Note", dt: "Delivery Note", doc: docs.delivery_note });
+	} else {
+		links.push({ label: "GRN", dt: "Purchase Receipt", doc: docs.purchase_receipt });
+	}
+
+	return links;
 }
