@@ -2,6 +2,10 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime, flt, cint, add_to_date, time_diff_in_hours, format_datetime
 from trustbit_ethanol.bbf_gate_entry.bbf_budget import validate_budget_on_po_submit
+from trustbit_ethanol.bbf_gate_entry.doctype.bbf_cc_approval_config.bbf_cc_approval_config import (
+	get_cc_config, get_cc_users_for_step, get_cc_approvers_for_step,
+	get_cc_creators, get_cc_notify_only_users,
+)
 
 
 ALLOWED_DOCTYPES = ("Purchase Order", "Material Request")
@@ -282,6 +286,120 @@ def resubmit_document(doctype, docname, mode="restart"):
 	return {"status": "resubmitted", "next_state": next_state}
 
 
+@frappe.whitelist()
+def hold_mr(docname, reason):
+	"""Put an MR on hold. Only Reviewers (HOD) can hold."""
+	reason = (reason or "")[:2000]
+	if not reason:
+		frappe.throw(_("Hold reason is mandatory"))
+
+	doc = frappe.get_doc("Material Request", docname, for_update=True)
+	status = doc.bbf_mr_status or ""
+
+	if not status.startswith("Pending"):
+		frappe.throw(_("Only pending MRs can be put on hold (status: {0})").format(status))
+
+	_validate_user_can_act_on_mr(doc)
+
+	route_name = doc.bbf_mr_approval_route
+	if not route_name:
+		frappe.throw(_("This MR has no approval route set."))
+
+	route_doc = frappe.get_doc("BBF MR Approval Route", route_name)
+	steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
+	current_step_order = cint(doc.bbf_mr_current_step)
+	current_step = next((s for s in steps if s.step_order == current_step_order), None)
+
+	if not current_step:
+		frappe.throw(_("Current MR approval step not found"))
+
+	# Only Review steps (HOD) can hold — Final Approvers should approve or reject
+	if current_step.action_type != "Review":
+		frappe.throw(_("Hold is only available for Review steps (not {0})").format(current_step.action_type))
+
+	role_display = current_step.role_label or current_step.role
+	current_state = doc.bbf_mr_status
+	hold_state = f"On Hold - {role_display}"
+
+	_log_mr_action(doc, "Held", current_state, hold_state,
+		comment=reason, step_order=current_step_order,
+		purchase_category=route_name)
+
+	doc.db_set({
+		"bbf_mr_status": hold_state,
+		"bbf_mr_hold_reason": reason,
+		"bbf_mr_held_by": f"{frappe.session.user} ({role_display})",
+		"bbf_mr_held_at_step": current_step_order,
+	}, update_modified=True)
+
+	# Notify creator
+	recipients = [doc.owner]
+	mr_submitted_by = doc.bbf_mr_submitted_by if hasattr(doc, "bbf_mr_submitted_by") else None
+	if mr_submitted_by and mr_submitted_by not in recipients:
+		recipients.append(mr_submitted_by)
+
+	_send_approval_notification(doc, "mr_held", recipients,
+		extra={"held_by": role_display, "reason": reason})
+
+	return {"status": "held", "hold_state": hold_state}
+
+
+@frappe.whitelist()
+def resume_mr(docname, comment=""):
+	"""Resume a held MR. Returns it to Pending at the same step."""
+	comment = (comment or "")[:2000]
+	doc = frappe.get_doc("Material Request", docname, for_update=True)
+	status = doc.bbf_mr_status or ""
+
+	if not status.startswith("On Hold"):
+		frappe.throw(_("Only held MRs can be resumed (status: {0})").format(status))
+
+	_validate_user_can_act_on_mr(doc)
+
+	route_name = doc.bbf_mr_approval_route
+	if not route_name:
+		frappe.throw(_("This MR has no approval route set."))
+
+	route_doc = frappe.get_doc("BBF MR Approval Route", route_name)
+	steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
+
+	# Restore to the step where it was held
+	held_step_order = cint(doc.bbf_mr_held_at_step) if hasattr(doc, "bbf_mr_held_at_step") else cint(doc.bbf_mr_current_step)
+	held_step = next((s for s in steps if s.step_order == held_step_order), None)
+
+	if not held_step:
+		frappe.throw(_("Cannot find the approval step to resume at"))
+
+	role_display = held_step.role_label or held_step.role
+	pending_state = f"Pending {role_display}"
+
+	_log_mr_action(doc, "Resumed", status, pending_state,
+		comment=comment, step_order=held_step_order,
+		purchase_category=route_name)
+
+	doc.db_set({
+		"bbf_mr_status": pending_state,
+		"bbf_mr_current_step": held_step_order,
+		"bbf_mr_hold_reason": "",
+		"bbf_mr_held_by": "",
+		"bbf_mr_held_at_step": 0,
+	}, update_modified=True)
+
+	# Notify the step's approvers so they know it's back
+	cost_center = _get_mr_cost_center(doc)
+	cc_config = get_cc_config(cost_center)
+	recipients = []
+	if cc_config:
+		recipients = get_cc_users_for_step(cc_config, held_step_order)
+	if not recipients:
+		recipients = _get_role_users(held_step.role)
+
+	_send_approval_notification(doc, "mr_pending", recipients,
+		extra={"next_role": role_display, "resumed": True})
+
+	return {"status": "resumed", "pending_state": pending_state}
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  PO-SPECIFIC HANDLERS
 # ═══════════════════════════════════════════════════════════════════════
@@ -491,8 +609,16 @@ def _submit_mr_for_approval(doc):
 		"bbf_mr_self_skip_impossible": 1 if self_skip_impossible else 0,
 	}, update_modified=True)
 
-	_send_approval_notification(doc, "mr_pending",
-		_get_role_users(target.role),
+	# CC-aware notification: notify only mapped users if CC config exists
+	cost_center = _get_mr_cost_center(doc)
+	cc_config = get_cc_config(cost_center)
+	recipients = []
+	if cc_config:
+		recipients = get_cc_users_for_step(cc_config, target.step_order)
+	if not recipients:
+		recipients = _get_role_users(target.role)
+
+	_send_approval_notification(doc, "mr_pending", recipients,
 		extra={"next_role": target.role_label or target.role})
 
 	return next_state
@@ -553,8 +679,17 @@ def _approve_mr(doc, comment=""):
 		doc.reload()
 		doc.submit()
 
-		# Notify owner
-		_send_approval_notification(doc, "mr_approved", [doc.owner],
+		# Notify owner + CC Notify Only users (Purchase team for MR→PO conversion)
+		mr_approved_recipients = [doc.owner]
+		cost_center = _get_mr_cost_center(doc)
+		cc_config = get_cc_config(cost_center)
+		if cc_config:
+			notify_only = get_cc_notify_only_users(cc_config)
+			mr_approved_recipients.extend(notify_only)
+		# Also notify all Purchase Users + Purchase Head for MR→PO conversion
+		purchase_users = _get_role_users("Purchase Manager") + _get_role_users("Purchase User")
+		mr_approved_recipients.extend(purchase_users)
+		_send_approval_notification(doc, "mr_approved", mr_approved_recipients,
 			extra={"approved_by": role_display})
 		_send_post_approval_notification(doc, "mr_approval")
 
@@ -577,8 +712,16 @@ def _approve_mr(doc, comment=""):
 			"bbf_mr_current_step": next_step.step_order,
 		}, update_modified=True)
 
-		_send_approval_notification(doc, "mr_pending",
-			_get_role_users(next_step.role),
+		# CC-aware notification (with fallback to role-based)
+		cost_center = _get_mr_cost_center(doc)
+		cc_config = get_cc_config(cost_center)
+		recipients = []
+		if cc_config:
+			recipients = get_cc_users_for_step(cc_config, next_step.step_order)
+		if not recipients:
+			recipients = _get_role_users(next_step.role)
+
+		_send_approval_notification(doc, "mr_pending", recipients,
 			extra={"forwarded_by": role_display, "next_role": next_label})
 
 		return {"status": "forwarded", "next_state": next_state}
@@ -675,8 +818,14 @@ def _resubmit_mr(doc):
 		"bbf_mr_revision_reason": "",
 	}, update_modified=True)
 
-	_send_approval_notification(doc, "mr_pending",
-		_get_role_users(target.role),
+	# CC-aware notification (with fallback to role-based)
+	cc_config = get_cc_config(cost_center)
+	recipients = []
+	if cc_config:
+		recipients = get_cc_users_for_step(cc_config, target.step_order)
+	if not recipients:
+		recipients = _get_role_users(target.role)
+	_send_approval_notification(doc, "mr_pending", recipients,
 		extra={"next_role": target.role_label or target.role, "resubmitted": True})
 
 	return {"status": "resubmitted"}
@@ -896,20 +1045,44 @@ def _validate_user_can_act_on_po(doc):
 
 
 def _validate_user_can_act_on_mr(doc):
-	"""Validate user has a role that can act on the MR at its current step."""
+	"""Validate user has a role that can act on the MR at its current step.
+	If CC config exists, also validate user is in the config for this step.
+	"""
 	if not doc.bbf_mr_approval_route:
 		return
 
 	route = frappe.get_doc("BBF MR Approval Route", doc.bbf_mr_approval_route)
 	steps = sorted(route.approval_steps, key=lambda s: s.step_order)
-	current_step_order = cint(doc.bbf_mr_current_step)
+	# For On Hold MRs, use the held step (stored in bbf_mr_held_at_step)
+	status = doc.bbf_mr_status or ""
+	if status.startswith("On Hold"):
+		current_step_order = cint(doc.bbf_mr_held_at_step) if hasattr(doc, "bbf_mr_held_at_step") else cint(doc.bbf_mr_current_step)
+	else:
+		current_step_order = cint(doc.bbf_mr_current_step)
 	user_roles = frappe.get_roles(frappe.session.user)
 
+	# Standard role check (>= for higher-level override)
+	role_ok = False
 	for step in steps:
 		if step.step_order >= current_step_order and step.role in user_roles:
-			return
+			role_ok = True
+			break
+	if not role_ok:
+		frappe.throw(_("You don't have permission to act on this MR at this step"))
 
-	frappe.throw(_("You don't have permission to act on this MR at this step"))
+	# CC config check — if config exists, verify user is mapped for this step
+	cost_center = _get_mr_cost_center(doc)
+	cc_config = get_cc_config(cost_center)
+	if cc_config:
+		cc_approvers = get_cc_approvers_for_step(cc_config, current_step_order)
+		if cc_approvers and frappe.session.user not in cc_approvers:
+			# Allow higher-level override: check if user is approver at ANY higher step
+			all_higher_approvers = []
+			for step in steps:
+				if step.step_order > current_step_order:
+					all_higher_approvers.extend(get_cc_approvers_for_step(cc_config, step.step_order))
+			if frappe.session.user not in all_higher_approvers:
+				frappe.throw(_("You are not configured as an approver for {0} at this step").format(cost_center))
 
 
 def _validate_resubmit_permission(doc):
@@ -1059,6 +1232,8 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 		"mr_approved": f"[Approved] MR {doc.name} — Approved",
 		"mr_revised": f"[Revision Required] MR {doc.name} sent back for revision",
 		"mr_rejected": f"[Rejected] MR {doc.name} — Rejected",
+		"mr_held": f"[On Hold] MR {doc.name} — Put on Hold",
+		"mr_resumed": f"[Resumed] MR {doc.name} — Resumed from Hold",
 		"sla_breach": f"[CTL Alert] {doc_label} {doc.name} stuck at approval step",
 	}
 	subject = subjects.get(action, f"{doc_label} {doc.name} — Approval Update")
@@ -1301,10 +1476,11 @@ def _get_mr_approval_context(doc, settings):
 	"""Build approval context for MR form JS."""
 	status = doc.bbf_mr_status or ""
 	is_pending = status.startswith("Pending")
+	is_on_hold = status.startswith("On Hold")
 	current_step = cint(doc.bbf_mr_current_step) if hasattr(doc, "bbf_mr_current_step") else 0
 	mr_submitted_by = doc.bbf_mr_submitted_by if hasattr(doc, "bbf_mr_submitted_by") else None
 	mr_self_skip_impossible = cint(doc.bbf_mr_self_skip_impossible) if hasattr(doc, "bbf_mr_self_skip_impossible") else 0
-	is_self_submitted = (is_pending and (
+	is_self_submitted = ((is_pending or is_on_hold) and (
 		doc.owner == frappe.session.user or
 		(mr_submitted_by and mr_submitted_by == frappe.session.user)
 	))
@@ -1321,12 +1497,16 @@ def _get_mr_approval_context(doc, settings):
 		"can_review": False,
 		"can_approve": False,
 		"can_final_approve": False,
+		"can_hold": False,
+		"can_resume": False,
 		"can_revise": False,
 		"can_reject": False,
 		"can_resubmit": (status == "Revised" and frappe.session.user in (
 			doc.owner, mr_submitted_by or "", "Administrator"
 		)),
 		"is_pending": is_pending,
+		"is_on_hold": is_on_hold,
+		"hold_reason": (doc.bbf_mr_hold_reason if hasattr(doc, "bbf_mr_hold_reason") else "") or "",
 		"approval_chain": [],
 	}
 
@@ -1337,21 +1517,22 @@ def _get_mr_approval_context(doc, settings):
 			route_doc = frappe.get_doc("BBF MR Approval Route", route_name)
 			ctx["approval_chain"] = _build_mr_approval_chain(doc, route_doc)
 
+			# CC config for user-level validation
+			cost_center = _get_mr_cost_center(doc)
+			cc_config = get_cc_config(cost_center)
+
 			if is_pending:
 				steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
 				user_roles = frappe.get_roles(frappe.session.user)
 				current_step_obj = next((s for s in steps if s.step_order == current_step), None)
 
 				if current_step_obj:
-					can_act = False
-					for step in steps:
-						if step.step_order >= current_step and step.role in user_roles:
-							can_act = True
-							break
+					can_act = _check_user_can_act(steps, current_step, user_roles, cc_config, effective_mr_self_block)
 
-					if can_act and not effective_mr_self_block:
+					if can_act:
 						if current_step_obj.action_type == "Review":
 							ctx["can_review"] = True
+							ctx["can_hold"] = True  # Reviewers can hold
 						elif current_step_obj.action_type == "Final Approve":
 							ctx["can_final_approve"] = True
 
@@ -1359,10 +1540,49 @@ def _get_mr_approval_context(doc, settings):
 							ctx["can_revise"] = True
 						if current_step_obj.can_reject:
 							ctx["can_reject"] = True
+
+			elif is_on_hold:
+				# Only the HOD who held (or higher) can resume
+				held_step_order = cint(doc.bbf_mr_held_at_step) if hasattr(doc, "bbf_mr_held_at_step") else current_step
+				steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
+				user_roles = frappe.get_roles(frappe.session.user)
+				can_act = _check_user_can_act(steps, held_step_order, user_roles, cc_config, effective_mr_self_block)
+				if can_act:
+					ctx["can_resume"] = True
+
 		except Exception:
 			frappe.log_error(title="Approval Context Error", message=frappe.get_traceback())
 
 	return ctx
+
+
+def _check_user_can_act(steps, current_step_order, user_roles, cc_config, effective_self_block):
+	"""Check if current user can act at the given step, considering role + CC config + self-block."""
+	if effective_self_block:
+		return False
+
+	# Standard role check (>= for higher-level override)
+	role_ok = False
+	for step in steps:
+		if step.step_order >= current_step_order and step.role in user_roles:
+			role_ok = True
+			break
+	if not role_ok:
+		return False
+
+	# CC config check
+	if cc_config:
+		cc_approvers = get_cc_approvers_for_step(cc_config, current_step_order)
+		if cc_approvers and frappe.session.user not in cc_approvers:
+			# Check higher steps
+			for step in steps:
+				if step.step_order > current_step_order:
+					higher_approvers = get_cc_approvers_for_step(cc_config, step.step_order)
+					if frappe.session.user in higher_approvers:
+						return True
+			return False
+
+	return True
 
 
 def _build_po_approval_chain(doc, rule):
@@ -1495,7 +1715,11 @@ def po_on_amend(doc, method):
 
 
 def po_before_save(doc, method):
-	"""Prevent amount changes while PO is in approval chain."""
+	"""Prevent amount changes while PO is in approval chain + block duplicate PO from MR."""
+	# ── Duplicate PO from MR block ──
+	if doc.is_new():
+		_check_duplicate_po_from_mr(doc)
+
 	if not doc.bbf_approval_status:
 		return
 
@@ -1510,13 +1734,42 @@ def po_before_save(doc, method):
 			)
 
 
+def _check_duplicate_po_from_mr(doc):
+	"""Block creating a PO if another non-cancelled PO already references the same MR."""
+	mr_names = set()
+	for item in (doc.get("items") or []):
+		if item.material_request:
+			mr_names.add(item.material_request)
+
+	if not mr_names:
+		return
+
+	for mr_name in mr_names:
+		existing = frappe.db.sql("""
+			SELECT DISTINCT poi.parent
+			FROM `tabPurchase Order Item` poi
+			INNER JOIN `tabPurchase Order` po ON po.name = poi.parent
+			WHERE poi.material_request = %s
+				AND po.docstatus < 2
+				AND po.name != %s
+		""", (mr_name, doc.name or ""), as_dict=True)
+
+		if existing:
+			po_names = ", ".join(e.parent for e in existing)
+			frappe.throw(
+				_("A Purchase Order ({0}) already exists for Material Request {1}. "
+				  "Cannot create a duplicate PO from the same MR.").format(po_names, mr_name),
+				title=_("Duplicate PO from MR"),
+			)
+
+
 def mr_before_save(doc, method):
 	"""Prevent changes while MR is in approval chain."""
 	if not hasattr(doc, "bbf_mr_status") or not doc.bbf_mr_status:
 		return
 
 	status = doc.bbf_mr_status
-	if status.startswith("Pending") or status in ("Rejected", "Revised"):
+	if status.startswith("Pending") or status.startswith("On Hold") or status in ("Rejected", "Revised"):
 		if not doc.is_new() and doc.has_value_changed("items"):
 			frappe.throw(
 				_("Cannot modify MR items while it is in the approval chain (status: {0}). "

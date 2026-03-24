@@ -163,6 +163,7 @@ def _get_mr_pipeline(start_date, end_date, filters):
 			CASE
 				WHEN mr.bbf_mr_status IN ('', 'Draft') OR mr.bbf_mr_status IS NULL THEN 'Draft'
 				WHEN mr.bbf_mr_status LIKE 'Pending%%' THEN 'Pending'
+				WHEN mr.bbf_mr_status LIKE 'On Hold%%' THEN 'On Hold'
 				WHEN mr.bbf_mr_status = 'Approved' THEN 'Approved'
 				WHEN mr.bbf_mr_status = 'Rejected' THEN 'Rejected'
 				WHEN mr.bbf_mr_status = 'Revised' THEN 'Revised'
@@ -176,7 +177,7 @@ def _get_mr_pipeline(start_date, end_date, filters):
 		GROUP BY status_group
 	""", (start_date, end_date), as_dict=True)
 
-	result = {"Draft": 0, "Pending": 0, "Approved": 0, "Rejected": 0, "Revised": 0}
+	result = {"Draft": 0, "Pending": 0, "On Hold": 0, "Approved": 0, "Rejected": 0, "Revised": 0}
 	for r in rows:
 		result[r.status_group] = r.cnt
 	result["total"] = sum(result.values())

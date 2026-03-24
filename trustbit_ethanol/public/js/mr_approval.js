@@ -1,16 +1,53 @@
-// BBF MR Approval v2.0 — Cost-center-based routing with stepper
+// BBF MR Approval v2.5 — Cost-center-based routing with stepper, Hold/Resume, CC config
 frappe.ui.form.on("Material Request", {
 	refresh(frm) {
-		// Show all Cost Centers (not filtered by company) for approval routing
-		frm.set_query("cost_center", function() {
-			return {
-				filters: { "is_group": 0 }
-			};
-		});
+		// CC filter: show only CCs where user is Creator (if CC config exists)
+		_setup_cc_filter(frm);
 		if (frm.is_new()) return;
 		_load_mr_context(frm);
+	},
+	cost_center(frm) {
+		// Check if selected CC is Direct PO
+		if (frm.doc.cost_center) {
+			frappe.call({
+				method: "trustbit_ethanol.bbf_gate_entry.doctype.bbf_cc_approval_config.bbf_cc_approval_config.check_direct_po_cc",
+				args: { cost_center: frm.doc.cost_center },
+				callback(r) {
+					if (r.message && r.message.is_direct_po) {
+						frappe.msgprint({
+							title: __("Direct PO Cost Center"),
+							indicator: "orange",
+							message: r.message.message,
+						});
+					}
+				}
+			});
+		}
 	}
 });
+
+function _setup_cc_filter(frm) {
+	frappe.call({
+		method: "trustbit_ethanol.bbf_gate_entry.doctype.bbf_cc_approval_config.bbf_cc_approval_config.get_user_allowed_cost_centers",
+		async: false,
+		callback(r) {
+			const allowed_ccs = r.message || [];
+			if (allowed_ccs.length > 0) {
+				// User has CC restriction — filter dropdown
+				frm.set_query("cost_center", function() {
+					return {
+						filters: { "is_group": 0, "name": ["in", allowed_ccs] }
+					};
+				});
+			} else {
+				// No restriction (unrestricted role or no CC configs) — show all
+				frm.set_query("cost_center", function() {
+					return { filters: { "is_group": 0 } };
+				});
+			}
+		}
+	});
+}
 
 function _load_mr_context(frm) {
 	frappe.call({
@@ -45,11 +82,19 @@ function _render_mr_status(frm, ctx) {
 
 	let color = colors[status];
 	if (!color) {
-		if (status.startsWith("Pending")) color = "blue";
+		if (status.startsWith("On Hold")) color = "orange";
+		else if (status.startsWith("Pending")) color = "blue";
 		else color = "blue";
 	}
 
 	frm.page.set_indicator(status, color);
+
+	// Show hold reason banner
+	if (ctx.is_on_hold && ctx.hold_reason) {
+		frm.dashboard.set_headline(
+			`<span style="color: #f59e0b;">⏸ On Hold</span> — ${frappe.utils.escape_html(ctx.hold_reason)}`
+		);
+	}
 }
 
 function _hide_standard_submit(frm, ctx) {
@@ -239,6 +284,49 @@ function _render_mr_buttons(frm, ctx) {
 		}, null).addClass("bbf-mr-btn");
 	}
 
+	if (ctx.can_hold) {
+		frm.add_custom_button(__("Hold"), () => {
+			const d = new frappe.ui.Dialog({
+				title: __("Put MR On Hold"),
+				fields: [
+					{ fieldtype: "Small Text", fieldname: "reason", label: __("Hold Reason"), reqd: 1,
+					  description: __("Explain why this MR is being put on hold") }
+				],
+				primary_action_label: __("Put On Hold"),
+				primary_action(values) {
+					d.hide();
+					frappe.call({
+						method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.hold_mr",
+						args: { docname: frm.doc.name, reason: values.reason },
+						freeze: true,
+						freeze_message: __("Putting on hold..."),
+						callback() { frm.reload_doc(); },
+						error() { frm.reload_doc(); }
+					});
+				}
+			});
+			d.show();
+		}, null).addClass("bbf-mr-btn").css({"background-color": "#f59e0b", "color": "white"});
+	}
+
+	if (ctx.can_resume) {
+		frm.add_custom_button(__("Resume"), () => {
+			frappe.confirm(
+				__("Resume this MR from hold? It will return to pending approval."),
+				() => {
+					frappe.call({
+						method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.resume_mr",
+						args: { docname: frm.doc.name },
+						freeze: true,
+						freeze_message: __("Resuming..."),
+						callback() { frm.reload_doc(); },
+						error() { frm.reload_doc(); }
+					});
+				}
+			);
+		}, null).addClass("btn-primary bbf-mr-btn");
+	}
+
 	if (ctx.can_resubmit) {
 		frm.add_custom_button(__("Resubmit for Approval"), () => {
 			frappe.confirm(
@@ -277,7 +365,7 @@ function _call_mr_action(frm, method, args) {
 
 function _lock_mr_fields(frm, ctx) {
 	const status = ctx.status || "";
-	const should_lock = ctx.is_pending || status === "Rejected" || status === "Revised";
+	const should_lock = ctx.is_pending || ctx.is_on_hold || status === "Rejected" || status === "Revised";
 	if (!should_lock) return;
 
 	const fields_to_lock = [
@@ -311,6 +399,8 @@ function _render_mr_timeline(frm) {
 			"Revised": "#f97316",
 			"Rejected": "#ef4444",
 			"Resubmitted": "#6366f1",
+			"Held": "#f59e0b",
+			"Resumed": "#3b82f6",
 		};
 		const color = colors[log.action] || "#6b7280";
 		const date = log.action_date ? frappe.datetime.str_to_user(log.action_date) : "";

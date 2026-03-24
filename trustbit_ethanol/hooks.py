@@ -103,7 +103,11 @@ fixtures = [
 			"Material Request-bbf_mr_current_step",
 			"Material Request-bbf_mr_total_steps",
 			"Material Request-bbf_mr_self_skip_impossible",
-			"Material Request-bbf_mr_submitted_by"
+			"Material Request-bbf_mr_submitted_by",
+			"Material Request-bbf_mr_hold_section",
+			"Material Request-bbf_mr_hold_reason",
+			"Material Request-bbf_mr_held_by",
+			"Material Request-bbf_mr_held_at_step"
 		]]]
 	}
 ]
@@ -135,7 +139,9 @@ doc_events = {
 after_migrate = [
 	"trustbit_ethanol.bbf_gate_entry.setup.create_custom_fields",
 	"trustbit_ethanol.bbf_gate_entry.setup.seed_gate_pass_destinations",
-	"trustbit_ethanol.bbf_gate_entry.setup.seed_visiting_companies"
+	"trustbit_ethanol.bbf_gate_entry.setup.seed_visiting_companies",
+	"trustbit_ethanol.bbf_gate_entry.setup.migrate_store1_route",
+	"trustbit_ethanol.bbf_gate_entry.setup.seed_cc_approval_configs"
 ]
 
 # Scheduled Tasks

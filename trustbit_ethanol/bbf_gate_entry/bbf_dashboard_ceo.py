@@ -85,7 +85,8 @@ def _get_kpis(today_date, start_date, end_date, company, fiscal_year, fy_start, 
 		SELECT COUNT(*) as cnt FROM `tabMaterial Request`
 		WHERE docstatus = 0
 		AND (bbf_mr_status LIKE 'Pending CEO%%'
-			OR bbf_mr_status LIKE 'Pending MD%%')
+			OR bbf_mr_status LIKE 'Pending MD%%'
+			OR bbf_mr_status LIKE 'On Hold%%')
 	""")[0][0] or 0
 
 	# Today's inward
@@ -231,7 +232,8 @@ def _get_action_items():
 		FROM `tabMaterial Request`
 		WHERE docstatus = 0
 		AND (bbf_mr_status LIKE 'Pending CEO%%'
-			OR bbf_mr_status LIKE 'Pending MD%%')
+			OR bbf_mr_status LIKE 'Pending MD%%'
+			OR bbf_mr_status LIKE 'On Hold%%')
 		ORDER BY modified ASC
 		LIMIT 20
 	""", as_dict=True)

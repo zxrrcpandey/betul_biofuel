@@ -420,6 +420,42 @@ def create_custom_fields():
 				"read_only": 1,
 				"no_copy": 1
 			},
+			# ── v2.5 Hold Fields (inserted AFTER log section, not revision) ──
+			{
+				"fieldname": "bbf_mr_hold_section",
+				"fieldtype": "Section Break",
+				"label": "Hold Info",
+				"insert_after": "bbf_mr_log",
+				"collapsible": 1,
+				"depends_on": "eval:doc.bbf_mr_status && doc.bbf_mr_status.startsWith('On Hold')"
+			},
+			{
+				"fieldname": "bbf_mr_hold_reason",
+				"fieldtype": "Small Text",
+				"label": "Hold Reason",
+				"insert_after": "bbf_mr_hold_section",
+				"read_only": 1,
+				"no_copy": 1,
+			},
+			{
+				"fieldname": "bbf_mr_held_by",
+				"fieldtype": "Data",
+				"label": "Held By",
+				"insert_after": "bbf_mr_hold_reason",
+				"read_only": 1,
+				"no_copy": 1,
+				"hidden": 1
+			},
+			{
+				"fieldname": "bbf_mr_held_at_step",
+				"fieldtype": "Int",
+				"label": "Held At Step",
+				"insert_after": "bbf_mr_held_by",
+				"read_only": 1,
+				"no_copy": 1,
+				"hidden": 1,
+				"description": "Step order when MR was put on hold (for Resume to restore)"
+			},
 			{
 				"fieldname": "bbf_mr_log_section",
 				"fieldtype": "Section Break",
@@ -756,6 +792,272 @@ def seed_visiting_companies():
 		doc = frappe.new_doc("BBF Visiting Company")
 		doc.update(d)
 		doc.insert(ignore_permissions=True)
+
+	frappe.db.commit()
+
+
+def migrate_store1_route():
+	"""Remove 'Store 1' MR route and move its CCs to 'AVP MR App'.
+	Idempotent: if Store 1 doesn't exist, skip.
+	"""
+	if not frappe.db.exists("BBF MR Approval Route", "Store 1"):
+		return
+
+	store1 = frappe.get_doc("BBF MR Approval Route", "Store 1")
+	store1_ccs = [c.cost_center for c in store1.cost_centers]
+
+	if store1_ccs and frappe.db.exists("BBF MR Approval Route", "AVP MR App"):
+		avp_route = frappe.get_doc("BBF MR Approval Route", "AVP MR App")
+		existing_ccs = {c.cost_center for c in avp_route.cost_centers}
+
+		for cc in store1_ccs:
+			if cc not in existing_ccs:
+				avp_route.append("cost_centers", {"cost_center": cc})
+
+		avp_route.flags.ignore_permissions = True
+		avp_route.save()
+
+	# Delete Store 1 route
+	frappe.delete_doc("BBF MR Approval Route", "Store 1", ignore_permissions=True)
+	frappe.db.commit()
+
+
+def seed_cc_approval_configs():
+	"""Seed BBF CC Approval Config records from CCA.xlsx indent matrix.
+	Idempotent: skips CCs that already have a config.
+	"""
+	if frappe.db.count("BBF CC Approval Config") > 0:
+		return  # Already seeded
+
+	# Map of CC → {route, flow_type, users: [{action_type, user, role, step_order}]}
+	# Based on CCA.xlsx Indent Matrix provided by IT Head
+	configs = [
+		# ── Standard CCs (MR → Approval → PO) ──
+		{"cc": "Civil - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "rupesh.dhote@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "hr.navaahar@betulbiofuel.com", "role": "department user"},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		], "notes": "No HOD — skips to AVP"},
+		{"cc": "Boiler ( Bed Material, Charcoal & Consumable ) - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "powerhouse@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "jayesh.bhardwaj@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "powerhouse@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		], "notes": "Akash Jain is both Creator and HOD"},
+		{"cc": "HR, safety & and Furniture Material - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "hr.navaahar@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "hr.navaahar@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		], "notes": "Ashish Sharma is both Creator and HOD"},
+		{"cc": "IT Hardware + Services - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "it_helpdesk@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "it_helpdesk@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		], "notes": "Kr Dhotte IT Head is own HOD"},
+		{"cc": "Mechanical + Services - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "mechanical@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "dgm.operation@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "Mechanical Boiler + Services - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "powerhouse@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "jayesh.bhardwaj@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "powerhouse@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "DG Fuel + Electricity bill - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "purchase@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "purchase@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "Process ( WTP/CPU, BIOLOGICAL) - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "dgm.operation@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "dgm.operation@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		], "notes": "S.N. Shukla is both Creator and HOD"},
+		{"cc": "Electrical+ Services - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "electricalinstrument@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "dilip.arya@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "electricalinstrument@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "CF- Production - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "takshak.sambare@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "production.navaahar@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "production.navaahar@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "CBG-Farming - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "hr.navaahar@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "cbg.agriculture@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "hr.navaahar@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "BOILER THERMAX - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "powerhouse@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "powerhouse@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "TRIVENI TURBINE - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "powerhouse@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "powerhouse@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "LIASING - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "purchasemanager@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "hr.navaahar@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "purchase@betulbiofuel.com", "role": "department user"},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		], "notes": "No HOD — skips to AVP"},
+		{"cc": "Bhopal Office - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "purchase@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "purchase@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "MISCELLANEOUS - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "hr.navaahar@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "hr.navaahar@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		# Process sub-CCs — all HOD = S.N. Shukla
+		{"cc": "PROCESS ISGEK - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "dgm.operation@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "dgm.operation@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "PROCESS MILLING - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "dgm.operation@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "dgm.operation@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "PROCESS STRUCTURE - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "dgm.operation@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "dgm.operation@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "PROCESS ACC - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "dgm.operation@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "dgm.operation@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "PROCESS WTP/CPU - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "dgm.operation@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "dgm.operation@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "PROCESS DRYER - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "dgm.operation@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "dgm.operation@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "PROCESS BOP - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "dgm.operation@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "dgm.operation@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		# Boiler sub-CCs — all HOD = Akash Jain
+		{"cc": "BOILER THERMEX - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "powerhouse@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "powerhouse@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "BOILER ESP - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "powerhouse@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "powerhouse@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "BOILER TRIVENI - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "powerhouse@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "powerhouse@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "BOILER BOP - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "powerhouse@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "powerhouse@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		{"cc": "BOILER FUEL/ASH - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "powerhouse@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "powerhouse@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		]},
+		# CCs that go to CEO (not AVP) — need a CEO route
+		{"cc": "CF- MARKETING - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "sales.navaahar@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "sales.navaahar@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		], "notes": "IT Head to update route to CEO route when created"},
+		{"cc": "CF- Raw Material - BBPL", "route": "AVP MR App", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "takshak.sambare@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "production.navaahar@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "production.navaahar@betulbiofuel.com", "role": "Department Head", "step": 2},
+			{"type": "Final Approver", "user": "generalmanager@betulbiofuel.com", "role": "AVP", "step": 3},
+		], "notes": "IT Head to update route to CEO route when created"},
+		# ── CAPEX CCs ──
+		{"cc": "Capex - BBPL", "route": "CAPEX", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "purchasemanager@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "sheikh.mubsshir@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "purchase@betulbiofuel.com", "role": "department user"},
+			{"type": "Final Approver", "user": "pradeep.modi@betulbiofuel.com", "role": "CEO", "step": 1},
+		], "notes": "CAPEX route — CEO final approve"},
+		{"cc": "CBG CAPEX - BBPL", "route": "CAPEX", "flow": "Standard", "users": [
+			{"type": "Creator", "user": "purchasemanager@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "sheikh.mubsshir@betulbiofuel.com", "role": "department user"},
+			{"type": "Creator", "user": "purchase@betulbiofuel.com", "role": "department user"},
+			{"type": "Reviewer", "user": "dgm.operation@betulbiofuel.com", "role": "Department Head", "step": 1},
+			{"type": "Final Approver", "user": "pradeep.modi@betulbiofuel.com", "role": "CEO", "step": 1},
+		], "notes": "CAPEX with DGM as HOD"},
+		# ── Direct PO CCs (no MR needed) ──
+		{"cc": "Coal - BBPL", "route": "", "flow": "Direct PO", "users": [
+			{"type": "Creator", "user": "purchasemanager@betulbiofuel.com", "role": "Purchase Manager"},
+		], "notes": "Coal direct PO, MD Akram creates"},
+		{"cc": "Machinery - BBPL", "route": "", "flow": "Direct PO", "users": [
+			{"type": "Creator", "user": "purchase@betulbiofuel.com", "role": "Purchase Manager"},
+		], "notes": "Direct PO"},
+		{"cc": "DDGS - BBPL", "route": "", "flow": "Direct PO", "users": [
+			{"type": "Creator", "user": "grain.manager@betulbiofuel.com", "role": "Grain Purchase Manager"},
+		], "notes": "Direct PO, Grain Manager creates"},
+		{"cc": "CIVIL MATERIAL - BBPL", "route": "", "flow": "Direct PO", "users": [
+			{"type": "Creator", "user": "rupesh.dhote@betulbiofuel.com", "role": "department user"},
+		], "notes": "Direct PO"},
+		{"cc": "CIVIL BOP - BBPL", "route": "", "flow": "Direct PO", "users": [
+			{"type": "Creator", "user": "rupesh.dhote@betulbiofuel.com", "role": "department user"},
+		], "notes": "Direct PO"},
+	]
+
+	for cfg in configs:
+		cc = cfg["cc"]
+		# Skip if CC doesn't exist on this site
+		if not frappe.db.exists("Cost Center", cc):
+			continue
+		# Skip if config already exists
+		if frappe.db.exists("BBF CC Approval Config", cc):
+			continue
+
+		doc = frappe.new_doc("BBF CC Approval Config")
+		doc.cost_center = cc
+		doc.mr_approval_route = cfg.get("route") or ""
+		doc.flow_type = cfg.get("flow", "Standard")
+		doc.is_active = 1
+		doc.notes = cfg.get("notes", "")
+
+		for u in cfg.get("users", []):
+			# Skip if user doesn't exist
+			if u.get("user") and not frappe.db.exists("User", u["user"]):
+				continue
+			doc.append("users", {
+				"action_type": u["type"],
+				"user": u.get("user", ""),
+				"role": u.get("role", ""),
+				"step_order": u.get("step", 0),
+				"can_create_mr": 1 if u["type"] == "Creator" else 0,
+				"can_approve": 1 if u["type"] in ("Reviewer", "Final Approver") else 0,
+				"gets_notified": 1,
+			})
+
+		if doc.users:
+			doc.flags.ignore_permissions = True
+			doc.insert()
 
 	frappe.db.commit()
 
