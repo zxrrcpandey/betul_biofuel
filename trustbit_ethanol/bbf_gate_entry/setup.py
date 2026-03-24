@@ -797,21 +797,28 @@ def seed_visiting_companies():
 
 
 def migrate_store1_route():
-	"""Remove 'Store 1' MR route and move its CCs to 'AVP MR App'.
-	Idempotent: if Store 1 doesn't exist, skip.
-	Must delete Store 1 FIRST to avoid duplicate CC validation error.
+	"""Deactivate 'Store 1' MR route and move its CCs to 'AVP MR App'.
+	Idempotent: if Store 1 doesn't exist or is already inactive, skip.
+	Cannot delete Store 1 because existing MRs reference it — deactivate instead.
 	"""
 	if not frappe.db.exists("BBF MR Approval Route", "Store 1"):
 		return
 
 	store1 = frappe.get_doc("BBF MR Approval Route", "Store 1")
+	if not store1.is_active:
+		return  # Already migrated
+
 	store1_ccs = [c.cost_center for c in store1.cost_centers]
 
-	# Delete Store 1 FIRST (avoids "CC already mapped to active route" validation)
-	frappe.delete_doc("BBF MR Approval Route", "Store 1", ignore_permissions=True)
+	# Deactivate Store 1 (can't delete — linked MRs reference it)
+	# Remove CCs from Store 1 so they don't conflict with AVP MR App
+	store1.cost_centers = []
+	store1.is_active = 0
+	store1.flags.ignore_permissions = True
+	store1.save()
 	frappe.db.commit()
 
-	# THEN add CCs to AVP MR App
+	# Add CCs to AVP MR App
 	if store1_ccs and frappe.db.exists("BBF MR Approval Route", "AVP MR App"):
 		avp_route = frappe.get_doc("BBF MR Approval Route", "AVP MR App")
 		existing_ccs = {c.cost_center for c in avp_route.cost_centers}
