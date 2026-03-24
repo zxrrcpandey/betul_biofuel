@@ -321,21 +321,21 @@
    "fieldname": "tab_dashboard",
    "fieldtype": "Tab Break",
    "label": "Dashboard Security",
-   "permlevel": 1
+   "permlevel": 2
   },
   {
    "fieldname": "dashboard_security_section",
    "fieldtype": "Section Break",
-   "label": "MD Dashboard PIN Lock (IT Head Only)",
-   "description": "Set a secret PIN to protect the MD Dashboard and Wall Display. Leave blank to disable PIN lock.",
-   "permlevel": 1
+   "label": "MD Dashboard PIN Lock (System Manager Only)",
+   "description": "Set a secret PIN to protect the MD Dashboard and Wall Display. Leave blank to disable PIN lock. Only System Manager can change this.",
+   "permlevel": 2
   },
   {
    "fieldname": "md_dashboard_pin",
    "fieldtype": "Password",
    "label": "MD Dashboard PIN",
-   "permlevel": 1,
-   "description": "4-6 digit PIN required to access MD Dashboard and MD Wall Display. Only IT Head can set this."
+   "permlevel": 2,
+   "description": "4-6 digit PIN required to access MD Dashboard and MD Wall Display. Only System Manager can set this."
   }
  ],
  "issingle": 1,
@@ -370,6 +370,12 @@
   {
    "read": 1,
    "role": "G1 Security"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "System Manager",
+   "permlevel": 2
   }
  ],
  "sort_field": "modified",
