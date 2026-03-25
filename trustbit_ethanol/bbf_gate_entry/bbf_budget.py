@@ -879,3 +879,66 @@ def _get_role_users(role):
 			AND u.enabled = 1
 			AND hr.parent != 'Administrator'
 	""", role)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  CC BUDGET STATUS — for MR form warning banner
+# ═══════════════════════════════════════════════════════════════════════
+
+@frappe.whitelist()
+def get_cc_budget_status(cost_center):
+	"""Return monthly budget status for a Cost Center — used in MR form warning."""
+	from frappe.utils import getdate, get_first_day, get_last_day, nowdate, flt
+
+	if not cost_center:
+		return {"has_budget": False}
+
+	today = getdate(nowdate())
+	month_start = get_first_day(today)
+	month_end = get_last_day(today)
+	month_name = today.strftime("%B %Y")
+
+	# Find budget for this CC in current FY
+	fiscal_year = frappe.db.get_default("fiscal_year")
+	if not fiscal_year:
+		return {"has_budget": False}
+
+	budget = frappe.get_all("Budget",
+		filters={
+			"cost_center": cost_center,
+			"fiscal_year": fiscal_year,
+			"docstatus": 1,
+		},
+		limit=1)
+
+	if not budget:
+		return {"has_budget": False}
+
+	budget_doc = frappe.get_doc("Budget", budget[0].name)
+	annual_amount = sum(flt(a.budget_amount) for a in budget_doc.accounts)
+
+	# Calculate monthly amount (equal distribution = annual / 12)
+	monthly_amount = annual_amount / 12
+
+	# Calculate PO committed amount for this CC this month
+	used = flt(frappe.db.sql("""
+		SELECT COALESCE(SUM(poi.amount), 0)
+		FROM `tabPurchase Order Item` poi
+		JOIN `tabPurchase Order` po ON po.name = poi.parent
+		WHERE po.docstatus = 1
+		AND poi.cost_center = %s
+		AND po.transaction_date BETWEEN %s AND %s
+	""", (cost_center, month_start, month_end))[0][0])
+
+	remaining = monthly_amount - used
+
+	return {
+		"has_budget": True,
+		"cost_center": cost_center,
+		"month_name": month_name,
+		"budget_monthly": monthly_amount,
+		"budget_annual": annual_amount,
+		"used": used,
+		"remaining": remaining,
+		"exceeded": used > monthly_amount,
+	}

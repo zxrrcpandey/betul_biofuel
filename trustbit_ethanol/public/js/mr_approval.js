@@ -5,26 +5,29 @@ frappe.ui.form.on("Material Request", {
 		_setup_cc_filter(frm);
 		// Show stock availability columns in items table
 		_setup_stock_columns(frm);
+		// Show budget warning if CC is set
+		if (frm.doc.cost_center) _check_cc_budget(frm);
 		if (frm.is_new()) return;
 		_load_mr_context(frm);
 	},
 	cost_center(frm) {
+		if (!frm.doc.cost_center) return;
 		// Check if selected CC is Direct PO
-		if (frm.doc.cost_center) {
-			frappe.call({
-				method: "trustbit_ethanol.bbf_gate_entry.doctype.bbf_cc_approval_config.bbf_cc_approval_config.check_direct_po_cc",
-				args: { cost_center: frm.doc.cost_center },
-				callback(r) {
-					if (r.message && r.message.is_direct_po) {
-						frappe.msgprint({
-							title: __("Direct PO Cost Center"),
-							indicator: "orange",
-							message: r.message.message,
-						});
-					}
+		frappe.call({
+			method: "trustbit_ethanol.bbf_gate_entry.doctype.bbf_cc_approval_config.bbf_cc_approval_config.check_direct_po_cc",
+			args: { cost_center: frm.doc.cost_center },
+			callback(r) {
+				if (r.message && r.message.is_direct_po) {
+					frappe.msgprint({
+						title: __("Direct PO Cost Center"),
+						indicator: "orange",
+						message: r.message.message,
+					});
 				}
-			});
-		}
+			}
+		});
+		// Show budget status warning
+		_check_cc_budget(frm);
 	}
 });
 
@@ -521,3 +524,65 @@ frappe.ui.form.on("Material Request Item", {
 		setTimeout(() => _colorize_stock_rows(frm), 300);
 	}
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+//  BUDGET WARNING ON MR (informational only, no block)
+// ═══════════════════════════════════════════════════════════════
+
+function _check_cc_budget(frm) {
+	if (!frm.doc.cost_center) return;
+
+	frappe.call({
+		method: "trustbit_ethanol.bbf_gate_entry.bbf_budget.get_cc_budget_status",
+		args: { cost_center: frm.doc.cost_center },
+		callback(r) {
+			// Remove old budget banner
+			$(frm.page.wrapper).find(".bbf-budget-banner").remove();
+
+			if (!r.message || !r.message.has_budget) return;
+
+			const d = r.message;
+			const pct = d.budget_monthly > 0 ? (d.used / d.budget_monthly * 100) : 0;
+
+			let color, icon, status_text;
+			if (d.used > d.budget_monthly) {
+				color = "#ef4444"; icon = "⛔"; status_text = "EXCEEDED";
+			} else if (pct > 80) {
+				color = "#f59e0b"; icon = "⚠️"; status_text = "Nearing Limit";
+			} else {
+				color = "#10b981"; icon = "✅"; status_text = "Within Budget";
+			}
+
+			const fmt = (v) => "₹" + Math.round(v).toLocaleString("en-IN");
+
+			const html = `
+				<div class="bbf-budget-banner" style="
+					background: ${d.used > d.budget_monthly ? '#fef2f2' : pct > 80 ? '#fffbeb' : '#ecfdf5'};
+					border: 1px solid ${color};
+					border-radius: 8px;
+					padding: 10px 16px;
+					margin: 8px 0;
+					font-size: 12px;
+				">
+					<div style="font-weight:bold;color:${color};margin-bottom:4px;">
+						${icon} Budget Status: ${status_text} (${d.month_name})
+					</div>
+					<table style="border:none;width:100%;font-size:11px;">
+						<tr>
+							<td style="border:none;padding:2px 8px;">Monthly Budget: <strong>${fmt(d.budget_monthly)}</strong></td>
+							<td style="border:none;padding:2px 8px;">Used (PO committed): <strong style="color:${pct > 100 ? '#ef4444' : '#374151'}">${fmt(d.used)}</strong></td>
+							<td style="border:none;padding:2px 8px;">Remaining: <strong style="color:${d.remaining < 0 ? '#ef4444' : '#10b981'}">${fmt(d.remaining)}</strong></td>
+							<td style="border:none;padding:2px 8px;">Utilization: <strong>${pct.toFixed(1)}%</strong></td>
+						</tr>
+					</table>
+				</div>`;
+
+			// Insert after cost_center field
+			const $cc_field = $(frm.fields_dict.cost_center?.wrapper);
+			if ($cc_field.length) {
+				$cc_field.after(html);
+			}
+		}
+	});
+}
