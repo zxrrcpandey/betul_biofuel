@@ -368,7 +368,7 @@ function _call_mr_action(frm, method, args) {
 
 function _lock_mr_fields(frm, ctx) {
 	const status = ctx.status || "";
-	const should_lock = ctx.is_pending || ctx.is_on_hold || status === "Rejected" || status === "Revised";
+	const should_lock = ctx.is_pending || ctx.is_on_hold || status === "Rejected";
 	if (!should_lock) return;
 
 	const fields_to_lock = [
