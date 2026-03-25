@@ -112,7 +112,6 @@ function _hide_standard_submit(frm, ctx) {
 	// Always hide standard Submit when approval system is active.
 	// Users must use "Submit for Approval" or "Resubmit for Approval" instead.
 	frm.page.clear_primary_action();
-	// For Revised: allow Save (user edits items, saves, then Resubmit appears)
 	// For Rejected: disable save entirely
 	if (ctx.status === "Rejected") {
 		frm.disable_save();
@@ -121,6 +120,18 @@ function _hide_standard_submit(frm, ctx) {
 		frm.dashboard.clear_headline();
 	}
 	$(frm.page.wrapper).find(".form-message.blue").hide();
+
+	// Aggressively hide Submit button — Frappe may re-add it after async calls
+	// Keep checking for 2 seconds to catch any late re-renders
+	let checks = 0;
+	const interval = setInterval(() => {
+		const $submit = $(frm.page.wrapper).find('.btn-primary-dark:contains("Submit")').not(':contains("Approval")');
+		if ($submit.length) {
+			$submit.hide();
+		}
+		checks++;
+		if (checks > 10) clearInterval(interval);
+	}, 200);
 }
 
 function _render_mr_stepper(frm, ctx) {
