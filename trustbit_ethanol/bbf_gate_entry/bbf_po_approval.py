@@ -1801,7 +1801,7 @@ def mr_before_save(doc, method):
 		return
 
 	status = doc.bbf_mr_status
-	if status.startswith("Pending") or status.startswith("On Hold") or status in ("Rejected", "Revised"):
+	if status.startswith("Pending") or status.startswith("On Hold") or status in ("Rejected",):
 		if not doc.is_new() and doc.has_value_changed("items"):
 			frappe.throw(
 				_("Cannot modify MR items while it is in the approval chain (status: {0}). "
