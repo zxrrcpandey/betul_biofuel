@@ -67,14 +67,17 @@ function _load_mr_context(frm) {
 			if (!ctx.approval_enabled) return;
 
 			_render_mr_status(frm, ctx);
-			_hide_standard_submit(frm, ctx);
 			_render_mr_stepper(frm, ctx);
 			_render_mr_info(frm, ctx);
-			_render_mr_buttons(frm, ctx);
 			_lock_mr_fields(frm, ctx);
 			_render_mr_timeline(frm);
+			// Delay button rendering to ensure Frappe's own render cycle is complete
+			setTimeout(() => {
+				_hide_standard_submit(frm, ctx);
+				_render_mr_buttons(frm, ctx);
+			}, 200);
 		},
-		error() {}
+		error() { console.warn("BBF: MR approval context failed"); }
 	});
 }
 
