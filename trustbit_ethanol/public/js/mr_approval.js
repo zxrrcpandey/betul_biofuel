@@ -99,8 +99,12 @@ function _render_mr_status(frm, ctx) {
 
 function _hide_standard_submit(frm, ctx) {
 	// Always hide standard Submit when approval system is active.
-	// Users must use "Submit for Approval" instead.
+	// Users must use "Submit for Approval" or "Resubmit for Approval" instead.
 	frm.page.clear_primary_action();
+	// Hide Save button for Revised/Rejected — user should use Resubmit, not Save
+	if (ctx.status === "Revised" || ctx.status === "Rejected") {
+		frm.disable_save();
+	}
 	if (ctx.status && ctx.status !== "Draft" && ctx.status !== "") {
 		frm.dashboard.clear_headline();
 	}
