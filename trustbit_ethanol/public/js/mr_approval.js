@@ -101,16 +101,10 @@ function _hide_standard_submit(frm, ctx) {
 	// Always hide standard Submit when approval system is active.
 	// Users must use "Submit for Approval" or "Resubmit for Approval" instead.
 	frm.page.clear_primary_action();
-	// Hide Save button for Rejected — user should use Resubmit, not Save
-	// For Revised: keep save enabled (Resubmit calls save internally) but hide the button
+	// For Revised: allow Save (user edits items, saves, then Resubmit appears)
+	// For Rejected: disable save entirely
 	if (ctx.status === "Rejected") {
 		frm.disable_save();
-	}
-	if (ctx.status === "Revised") {
-		// Hide Save button visually but keep save() working for Resubmit
-		$(frm.page.wrapper).find('.btn-primary-dark[data-original-title="Save"]').hide();
-		$(frm.page.wrapper).find('.primary-action[data-original-title="Save"]').hide();
-		frm.page.clear_primary_action();
 	}
 	if (ctx.status && ctx.status !== "Draft" && ctx.status !== "") {
 		frm.dashboard.clear_headline();
@@ -342,17 +336,20 @@ function _render_mr_buttons(frm, ctx) {
 	}
 
 	if (ctx.can_resubmit) {
-		frm.add_custom_button(__("Resubmit for Approval"), () => {
-			frappe.confirm(
-				__("Resubmit this MR for approval?"),
-				() => {
-					// Save first to persist any edits, then resubmit
-					frm.save().then(() => {
-						_call_mr_action(frm, "resubmit_document", { doctype: "Material Request", docname: frm.doc.name });
-					});
-				}
+		// Only show Resubmit when form is saved (not dirty)
+		if (frm.is_dirty()) {
+			// Form has unsaved changes — show message instead of button
+			frm.dashboard.set_headline(
+				'<span style="color: #f59e0b;">Save your changes first, then Resubmit for Approval will appear.</span>'
 			);
-		}, null).addClass("btn-primary bbf-mr-btn");
+		} else {
+			frm.add_custom_button(__("Resubmit for Approval"), () => {
+				frappe.confirm(
+					__("Resubmit this MR for approval?"),
+					() => _call_mr_action(frm, "resubmit_document", { doctype: "Material Request", docname: frm.doc.name })
+				);
+			}, null).addClass("btn-primary bbf-mr-btn");
+		}
 	}
 }
 
