@@ -472,17 +472,14 @@ function _render_mr_timeline(frm) {
 // ═══════════════════════════════════════════════════════════════
 
 function _setup_stock_columns(frm) {
-	// Make actual_qty visible in items list view with color formatting
-	const grid = frm.fields_dict.items?.grid;
-	if (!grid) return;
-
-	// Ensure actual_qty column is visible in the grid
-	frm.set_df_property("actual_qty", "in_list_view", 1, frm.doc.name, "items");
-	frm.set_df_property("actual_qty", "columns", 1, frm.doc.name, "items");
-	frm.set_df_property("actual_qty", "label", "Available", frm.doc.name, "items");
-
-	// Color-code existing rows
-	_colorize_stock_rows(frm);
+	try {
+		const grid = frm.fields_dict.items?.grid;
+		if (!grid) return;
+		// Color-code existing rows (actual_qty column visibility handled via Property Setter)
+		_colorize_stock_rows(frm);
+	} catch(e) {
+		// Silently fail — stock columns are cosmetic, don't break approval flow
+	}
 }
 
 function _colorize_stock_rows(frm) {
