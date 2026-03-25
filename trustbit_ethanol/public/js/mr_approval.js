@@ -3,6 +3,8 @@ frappe.ui.form.on("Material Request", {
 	refresh(frm) {
 		// CC filter: show only CCs where user is Creator (if CC config exists)
 		_setup_cc_filter(frm);
+		// Show stock availability columns in items table
+		_setup_stock_columns(frm);
 		if (frm.is_new()) return;
 		_load_mr_context(frm);
 	},
@@ -443,3 +445,79 @@ function _render_mr_timeline(frm) {
 		$section.prepend(html);
 	}
 }
+
+
+// ═══════════════════════════════════════════════════════════════
+//  STOCK AVAILABILITY IN MR ITEMS TABLE
+// ═══════════════════════════════════════════════════════════════
+
+function _setup_stock_columns(frm) {
+	// Make actual_qty visible in items list view with color formatting
+	const grid = frm.fields_dict.items?.grid;
+	if (!grid) return;
+
+	// Ensure actual_qty column is visible in the grid
+	frm.set_df_property("actual_qty", "in_list_view", 1, frm.doc.name, "items");
+	frm.set_df_property("actual_qty", "columns", 1, frm.doc.name, "items");
+	frm.set_df_property("actual_qty", "label", "Available", frm.doc.name, "items");
+
+	// Color-code existing rows
+	_colorize_stock_rows(frm);
+}
+
+function _colorize_stock_rows(frm) {
+	// Add color indicators to actual_qty cells in the grid
+	setTimeout(() => {
+		const grid = frm.fields_dict.items?.grid;
+		if (!grid) return;
+
+		grid.grid_rows.forEach(row => {
+			const qty = flt(row.doc.qty);
+			const actual = flt(row.doc.actual_qty);
+			const $row = $(row.row);
+
+			// Find the actual_qty cell
+			const $cell = $row.find('[data-fieldname="actual_qty"]');
+			if (!$cell.length) return;
+
+			// Remove old badges
+			$cell.find(".stock-badge").remove();
+
+			if (!row.doc.item_code) return;
+
+			let color, label;
+			if (actual <= 0) {
+				color = "#ef4444"; label = "Out of Stock";
+			} else if (actual < qty) {
+				color = "#f59e0b"; label = "Low Stock";
+			} else {
+				color = "#10b981"; label = "In Stock";
+			}
+
+			$cell.find(".static-area, .like-disabled-input").css("color", color).css("font-weight", "bold");
+			$cell.append(
+				'<span class="stock-badge" style="font-size:9px;color:' + color +
+				';display:block;margin-top:-2px;">' + label + '</span>'
+			);
+		});
+	}, 300);
+}
+
+// Refresh stock colors when item or warehouse changes
+frappe.ui.form.on("Material Request Item", {
+	item_code(frm) {
+		setTimeout(() => _colorize_stock_rows(frm), 500);
+	},
+	warehouse(frm) {
+		setTimeout(() => _colorize_stock_rows(frm), 500);
+	},
+	qty(frm) {
+		setTimeout(() => _colorize_stock_rows(frm), 300);
+	},
+	items_add(frm) {
+		setTimeout(() => _colorize_stock_rows(frm), 500);
+	},
+	items_remove(frm) {
+		setTimeout(() => _colorize_stock_rows(frm), 300);
+	}
+});
