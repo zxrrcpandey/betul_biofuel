@@ -5,10 +5,13 @@ frappe.ui.form.on("Material Request", {
 		_setup_cc_filter(frm);
 		// Show stock availability columns in items table
 		_setup_stock_columns(frm);
-		// Show budget warning if CC is set
-		if (frm.doc.cost_center) _check_cc_budget(frm);
 		if (frm.is_new()) return;
+		// Load approval context first (adds buttons), then budget banner
 		_load_mr_context(frm);
+		// Show budget warning if CC is set (after approval context)
+		if (frm.doc.cost_center) {
+			setTimeout(() => _check_cc_budget(frm), 500);
+		}
 	},
 	cost_center(frm) {
 		if (!frm.doc.cost_center) return;
