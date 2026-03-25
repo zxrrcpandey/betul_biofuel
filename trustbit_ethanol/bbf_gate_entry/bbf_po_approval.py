@@ -51,7 +51,7 @@ def get_submit_target(doctype, docname=None):
 				route_doc = frappe.get_doc("BBF MR Approval Route", route)
 				steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
 				if steps:
-					target = _get_target_step_with_skip(steps, frappe.session.user)
+					target = _get_target_step_for_mr(steps, frappe.session.user, cost_center)
 					return {"target_label": target.role_label or target.role}
 		return {"target_label": "Department Head"}
 
@@ -589,8 +589,8 @@ def _submit_mr_for_approval(doc):
 	route_doc = frappe.get_doc("BBF MR Approval Route", route_name)
 	steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
 
-	# Self-skip
-	target = _get_target_step_with_skip(steps, frappe.session.user)
+	# Self-skip (role-based) + CC config skip (no Reviewer for step)
+	target = _get_target_step_for_mr(steps, frappe.session.user, cost_center)
 	next_state = f"Pending {target.role_label or target.role}"
 
 	# Track if self-skip was impossible (single-step route where submitter has the role)
@@ -950,6 +950,7 @@ def _find_mr_route(cost_center):
 def _get_target_step_with_skip(steps, user):
 	"""Get the first step where user does NOT have the role (self-skip).
 	Skips ALL consecutive steps where the submitter holds the role.
+	Used for PO approval (no CC config awareness).
 	"""
 	if not steps:
 		frappe.throw(_("No approval steps configured"))
@@ -961,6 +962,37 @@ def _get_target_step_with_skip(steps, user):
 			return step
 
 	# User has roles for ALL steps — return last step with self_skip_impossible
+	return steps[-1]
+
+
+def _get_target_step_for_mr(steps, user, cost_center):
+	"""Get target step for MR with both role-based self-skip AND CC config skip.
+	Skips steps where:
+	  1. User has the step's role (self-skip), OR
+	  2. CC config has no Reviewer/approver for that step (no HOD = skip)
+	"""
+	if not steps:
+		frappe.throw(_("No approval steps configured"))
+
+	user_roles = frappe.get_roles(user)
+	cc_config = get_cc_config(cost_center) if cost_center else None
+
+	for step in steps:
+		# Check 1: Role-based self-skip (user has this step's role)
+		if step.role in user_roles:
+			continue
+
+		# Check 2: CC config skip — if CC config exists and has NO users for this step,
+		# skip it (e.g., Civil CC has no Reviewer/HOD → skip Dept Head step)
+		if cc_config and step.action_type == "Review":
+			step_users = get_cc_approvers_for_step(cc_config, step.step_order)
+			if not step_users:
+				continue
+
+		# This step has a valid approver and user doesn't hold the role — stop here
+		return step
+
+	# User has roles for ALL steps (or all skipped) — return last step
 	return steps[-1]
 
 
