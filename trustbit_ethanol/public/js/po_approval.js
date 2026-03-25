@@ -61,9 +61,12 @@ function _override_po_indicator(frm, ctx) {
 }
 
 function _hide_po_standard_submit(frm, ctx) {
-	if (!ctx.status || ctx.status === "Draft" || ctx.status === "") return;
+	// Always hide standard Submit when approval system is active.
+	// Users must use "Submit for Approval" instead.
 	frm.page.clear_primary_action();
-	frm.dashboard.clear_headline();
+	if (ctx.status && ctx.status !== "Draft" && ctx.status !== "") {
+		frm.dashboard.clear_headline();
+	}
 	$(frm.page.wrapper).find(".form-message.blue").hide();
 }
 
