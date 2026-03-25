@@ -22,13 +22,20 @@ class BBFCCApprovalConfig(Document):
 		self._auto_set_flags()
 
 	def after_insert(self):
-		self._sync_user_permissions()
+		# User Permission sync DISABLED — CC restrictions via User Permissions
+		# blocked MR/PO creation because Frappe applies CC restriction to ALL doctypes
+		# when applicable_for is empty. Notifications + approval validation via CC config
+		# work correctly without User Permissions.
+		# TODO: Re-enable with proper applicable_for scoping per doctype
+		pass
 
 	def on_update(self):
-		self._sync_user_permissions()
+		# User Permission sync DISABLED — see after_insert comment
+		pass
 
 	def on_trash(self):
-		self._remove_user_permissions()
+		# User Permission sync DISABLED — see after_insert comment
+		pass
 
 	def _validate_users(self):
 		"""Validate user mapping."""
