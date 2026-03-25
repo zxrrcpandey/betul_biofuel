@@ -14,6 +14,10 @@ UNRESTRICTED_ROLES = {
 # Custom field name on User Permission to tag auto-generated ones
 UP_MARKER_FIELD = "bbf_cc_auto_generated"
 
+# DocTypes to isolate by Cost Center — one User Permission per doctype per user per CC
+# MUST be explicit per-doctype (never empty applicable_for — that restricts ALL doctypes)
+ISOLATED_DOCTYPES = ["Material Request", "Budget", "BBF Budget Proposal"]
+
 
 class BBFCCApprovalConfig(Document):
 	def validate(self):
@@ -22,20 +26,13 @@ class BBFCCApprovalConfig(Document):
 		self._auto_set_flags()
 
 	def after_insert(self):
-		# User Permission sync DISABLED — CC restrictions via User Permissions
-		# blocked MR/PO creation because Frappe applies CC restriction to ALL doctypes
-		# when applicable_for is empty. Notifications + approval validation via CC config
-		# work correctly without User Permissions.
-		# TODO: Re-enable with proper applicable_for scoping per doctype
-		pass
+		self._sync_user_permissions()
 
 	def on_update(self):
-		# User Permission sync DISABLED — see after_insert comment
-		pass
+		self._sync_user_permissions()
 
 	def on_trash(self):
-		# User Permission sync DISABLED — see after_insert comment
-		pass
+		self._remove_user_permissions()
 
 	def _validate_users(self):
 		"""Validate user mapping."""
@@ -151,7 +148,9 @@ class BBFCCApprovalConfig(Document):
 
 		# Get existing auto-generated permissions for this CC
 		existing = self._get_auto_permissions()
-		existing_users = {e.user: e.name for e in existing}
+		existing_users = {}  # user -> list of perm names
+		for e in existing:
+			existing_users.setdefault(e.user, []).append(e.name)
 
 		# Create permissions for users who need them
 		for user in config_users:
@@ -165,9 +164,9 @@ class BBFCCApprovalConfig(Document):
 				self._create_user_permission(user)
 
 		# Remove permissions for users no longer in this config
-		for user, perm_name in existing_users.items():
+		for user, perm_names in existing_users.items():
 			if user not in config_users:
-				# Only remove THIS CC's permission if user has no other active CC configs
+				# Only remove THIS CC's permissions if user has no other active CC configs for same CC
 				other_cc_count = frappe.db.sql("""
 					SELECT COUNT(DISTINCT ccu.parent) as cnt
 					FROM `tabBBF CC Approval User` ccu
@@ -180,7 +179,8 @@ class BBFCCApprovalConfig(Document):
 				""", (user, self.name, self.cost_center))[0][0] or 0
 
 				if other_cc_count == 0:
-					frappe.delete_doc("User Permission", perm_name, ignore_permissions=True)
+					for perm_name in perm_names:
+						frappe.delete_doc("User Permission", perm_name, ignore_permissions=True)
 
 	def _get_auto_permissions(self):
 		"""Get auto-generated User Permissions for this CC.
@@ -211,36 +211,41 @@ class BBFCCApprovalConfig(Document):
 		return auto_perms
 
 	def _create_user_permission(self, user):
-		"""Create a User Permission for Cost Center access."""
-		# Check if already exists (any — not just auto-generated)
-		exists = frappe.db.exists(
-			"User Permission",
-			{
+		"""Create per-doctype User Permissions for Cost Center access.
+		Creates one User Permission for EACH doctype in ISOLATED_DOCTYPES.
+		NEVER creates with empty applicable_for (that restricts ALL doctypes).
+		"""
+		for dt in ISOLATED_DOCTYPES:
+			# Check if already exists for this user + CC + doctype
+			exists = frappe.db.exists(
+				"User Permission",
+				{
+					"user": user,
+					"allow": "Cost Center",
+					"for_value": self.cost_center,
+					"applicable_for": dt,
+				},
+			)
+			if exists:
+				continue
+
+			up = frappe.get_doc({
+				"doctype": "User Permission",
 				"user": user,
 				"allow": "Cost Center",
 				"for_value": self.cost_center,
-			},
-		)
-		if exists:
-			return
-
-		up = frappe.get_doc({
-			"doctype": "User Permission",
-			"user": user,
-			"allow": "Cost Center",
-			"for_value": self.cost_center,
-			"apply_to_all_doctypes": 0,
-			"applicable_for": "",
-		})
-		up.insert(ignore_permissions=True)
-		# Tag with marker comment
-		frappe.get_doc({
-			"doctype": "Comment",
-			"comment_type": "Comment",
-			"reference_doctype": "User Permission",
-			"reference_name": up.name,
-			"content": UP_MARKER_FIELD,
-		}).insert(ignore_permissions=True)
+				"apply_to_all_doctypes": 0,
+				"applicable_for": dt,
+			})
+			up.insert(ignore_permissions=True)
+			# Tag with marker comment for cleanup tracking
+			frappe.get_doc({
+				"doctype": "Comment",
+				"comment_type": "Comment",
+				"reference_doctype": "User Permission",
+				"reference_name": up.name,
+				"content": UP_MARKER_FIELD,
+			}).insert(ignore_permissions=True)
 
 	def _remove_user_permissions(self):
 		"""Remove auto-generated User Permissions for this CC."""
