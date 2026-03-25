@@ -336,20 +336,20 @@ function _render_mr_buttons(frm, ctx) {
 	}
 
 	if (ctx.can_resubmit) {
-		// Only show Resubmit when form is saved (not dirty)
-		if (frm.is_dirty()) {
-			// Form has unsaved changes — show message instead of button
-			frm.dashboard.set_headline(
-				'<span style="color: #f59e0b;">Save your changes first, then Resubmit for Approval will appear.</span>'
+		frm.add_custom_button(__("Resubmit for Approval"), () => {
+			if (frm.is_dirty()) {
+				frappe.msgprint({
+					title: __("Unsaved Changes"),
+					message: __("Please save your changes first, then click Resubmit for Approval."),
+					indicator: "orange"
+				});
+				return;
+			}
+			frappe.confirm(
+				__("Resubmit this MR for approval?"),
+				() => _call_mr_action(frm, "resubmit_document", { doctype: "Material Request", docname: frm.doc.name })
 			);
-		} else {
-			frm.add_custom_button(__("Resubmit for Approval"), () => {
-				frappe.confirm(
-					__("Resubmit this MR for approval?"),
-					() => _call_mr_action(frm, "resubmit_document", { doctype: "Material Request", docname: frm.doc.name })
-				);
-			}, null).addClass("btn-primary bbf-mr-btn");
-		}
+		}, null).addClass("btn-primary bbf-mr-btn");
 	}
 }
 
