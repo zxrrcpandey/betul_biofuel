@@ -12,6 +12,14 @@ frappe.ui.form.on("Material Request", {
 		if (frm.doc.cost_center) {
 			setTimeout(() => _check_cc_budget(frm), 500);
 		}
+		// Service Request: allow PO creation (same as Purchase)
+		if (frm.doc.material_request_type === "Service Request"
+			&& frm.doc.docstatus === 1
+			&& frm.doc.per_ordered < 100) {
+			frm.add_custom_button(__("Purchase Order"),
+				() => frm.events.make_purchase_order(frm),
+				__("Create"));
+		}
 	},
 	cost_center(frm) {
 		if (!frm.doc.cost_center) return;
