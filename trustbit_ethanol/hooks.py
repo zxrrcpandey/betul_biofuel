@@ -123,6 +123,11 @@ doctype_js = {
 	"Material Request": "public/js/mr_approval.js"
 }
 
+doctype_list_js = {
+	"Purchase Order": "public/js/po_list.js",
+	"Material Request": "public/js/mr_list.js"
+}
+
 # Doc Events — PO lifecycle hooks for approval state management
 doc_events = {
 	"Purchase Order": {
