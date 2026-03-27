@@ -12,7 +12,10 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/trustbit_ethanol/css/trustbit_ethanol.css"
-# app_include_js = "/assets/trustbit_ethanol/js/trustbit_ethanol.js"
+app_include_js = [
+	"/assets/trustbit_ethanol/js/po_list.js",
+	"/assets/trustbit_ethanol/js/mr_list.js"
+]
 
 # Module-workspace mapping for correct breadcrumbs
 module_app_map = {
@@ -123,10 +126,6 @@ doctype_js = {
 	"Material Request": "public/js/mr_approval.js"
 }
 
-doctype_list_js = {
-	"Purchase Order": "public/js/po_list.js",
-	"Material Request": "public/js/mr_list.js"
-}
 
 # Doc Events — PO lifecycle hooks for approval state management
 doc_events = {

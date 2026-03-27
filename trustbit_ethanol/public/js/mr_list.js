@@ -1,21 +1,29 @@
-// BBF MR List View — reorder Approval Status before Status
-frappe.listview_settings["Material Request"] = Object.assign(
-	frappe.listview_settings["Material Request"] || {},
-	{
-		onload(listview) {
-			_reorder_mr_columns(listview, "bbf_mr_status", "status");
-		},
-		refresh(listview) {
-			_reorder_mr_columns(listview, "bbf_mr_status", "status");
-		}
+// BBF MR List — Override indicator to show Approval Status
+$(document).on("page-change", function() {
+	if (cur_list && cur_list.doctype === "Material Request") {
+		_patch_mr_list(cur_list);
 	}
-);
+});
 
-function _reorder_mr_columns(listview, move_field, before_field) {
-	if (!listview || !listview.columns) return;
-	const move_idx = listview.columns.findIndex(c => c.df && c.df.fieldname === move_field);
-	const before_idx = listview.columns.findIndex(c => c.df && c.df.fieldname === before_field);
-	if (move_idx < 0 || before_idx < 0 || move_idx <= before_idx) return;
-	const col = listview.columns.splice(move_idx, 1)[0];
-	listview.columns.splice(before_idx, 0, col);
+function _patch_mr_list(listview) {
+	if (listview._bbf_patched) return;
+	listview._bbf_patched = true;
+
+	const orig = listview.settings.get_indicator;
+
+	listview.settings.get_indicator = function(doc) {
+		const bbf = doc.bbf_mr_status;
+		if (bbf && bbf !== "Approved") {
+			if (bbf.startsWith("Pending")) return [bbf, "orange", "bbf_mr_status,like,Pending%"];
+			if (bbf === "Rejected") return [bbf, "red", "bbf_mr_status,=,Rejected"];
+			if (bbf === "Revised") return [bbf, "orange", "bbf_mr_status,=,Revised"];
+			if (bbf.startsWith("On Hold")) return [bbf, "yellow", "bbf_mr_status,like,On Hold%"];
+		}
+		if (orig) return orig(doc);
+	};
+
+	if (!listview.settings.add_fields) listview.settings.add_fields = [];
+	if (!listview.settings.add_fields.includes("bbf_mr_status")) {
+		listview.settings.add_fields.push("bbf_mr_status");
+	}
 }

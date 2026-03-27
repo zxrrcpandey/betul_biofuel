@@ -1,21 +1,33 @@
-// BBF PO List View — reorder Approval Status before Status
-frappe.listview_settings["Purchase Order"] = Object.assign(
-	frappe.listview_settings["Purchase Order"] || {},
-	{
-		onload(listview) {
-			_reorder_columns(listview, "bbf_approval_status", "status");
-		},
-		refresh(listview) {
-			_reorder_columns(listview, "bbf_approval_status", "status");
-		}
+// BBF PO List — Override indicator to show Approval Status
+$(document).on("page-change", function() {
+	if (cur_list && cur_list.doctype === "Purchase Order") {
+		_patch_po_list(cur_list);
 	}
-);
+});
 
-function _reorder_columns(listview, move_field, before_field) {
-	if (!listview || !listview.columns) return;
-	const move_idx = listview.columns.findIndex(c => c.df && c.df.fieldname === move_field);
-	const before_idx = listview.columns.findIndex(c => c.df && c.df.fieldname === before_field);
-	if (move_idx < 0 || before_idx < 0 || move_idx <= before_idx) return;
-	const col = listview.columns.splice(move_idx, 1)[0];
-	listview.columns.splice(before_idx, 0, col);
+function _patch_po_list(listview) {
+	if (listview._bbf_patched) return;
+	listview._bbf_patched = true;
+
+	// Store original get_indicator
+	const orig = listview.settings.get_indicator;
+
+	listview.settings.get_indicator = function(doc) {
+		const bbf = doc.bbf_approval_status;
+		if (bbf && bbf !== "Approved") {
+			// Show BBF status as primary indicator for non-approved
+			if (bbf.startsWith("Pending")) return [bbf, "orange", "bbf_approval_status,like,Pending%"];
+			if (bbf === "Rejected") return [bbf, "red", "bbf_approval_status,=,Rejected"];
+			if (bbf === "Revised") return [bbf, "orange", "bbf_approval_status,=,Revised"];
+			if (bbf.startsWith("On Hold")) return [bbf, "yellow", "bbf_approval_status,like,On Hold%"];
+		}
+		// For Approved or no BBF status, use original ERPNext indicator
+		if (orig) return orig(doc);
+	};
+
+	// Add bbf_approval_status to fetched fields
+	if (!listview.settings.add_fields) listview.settings.add_fields = [];
+	if (!listview.settings.add_fields.includes("bbf_approval_status")) {
+		listview.settings.add_fields.push("bbf_approval_status");
+	}
 }
