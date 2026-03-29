@@ -1,0 +1,164 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-03-07 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "token_number",
+  "gate_entry",
+  "status",
+  "column_break_main",
+  "item_code",
+  "item_name",
+  "expected_qty",
+  "warehouse",
+  "unloading_section",
+  "unloading_start",
+  "unloading_end",
+  "column_break_unload",
+  "unloading_duration_minutes",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "BBF-UL-.YYYY.-.#####",
+   "default": "BBF-UL-.YYYY.-.#####",
+   "hidden": 1
+  },
+  {
+   "fieldname": "token_number",
+   "fieldtype": "Link",
+   "label": "Token Number",
+   "options": "TS Token",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "gate_entry",
+   "fieldtype": "Link",
+   "label": "Gate Entry",
+   "options": "TS Gate Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nUnloading\nCompleted",
+   "default": "Pending",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item Code",
+   "options": "Item",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "fetch_from": "item_code.item_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "expected_qty",
+   "fieldtype": "Float",
+   "label": "Expected Qty (KG)",
+   "read_only": 1,
+   "precision": "2"
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "unloading_section",
+   "fieldtype": "Section Break",
+   "label": "Unloading Times"
+  },
+  {
+   "fieldname": "unloading_start",
+   "fieldtype": "Datetime",
+   "label": "Unloading Start",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unloading_end",
+   "fieldtype": "Datetime",
+   "label": "Unloading End",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_unload",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "unloading_duration_minutes",
+   "fieldtype": "Float",
+   "label": "Unloading Duration (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "links": [],
+ "modified": "2026-03-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Unloading Entry",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Stores User"
+  },
+  {
+   "read": 1,
+   "role": "Weighbridge Operator"
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "read": 1,
+   "role": "IT Head"
+  }
+ ],
+ "search_fields": "token_number, status",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "token_number",
+ "track_changes": 1
+}

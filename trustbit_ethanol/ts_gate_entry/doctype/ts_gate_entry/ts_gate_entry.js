@@ -1,0 +1,382 @@
+frappe.ui.form.on("TS Gate Entry", {
+	refresh(frm) {
+		// Print button with format selection
+		if (frm.doc.docstatus === 1 && frm.doc.token_number) {
+			let _open_ge_print = function (format) {
+				window.open(
+					frappe.urllib.get_full_url(
+						"/printview?doctype=TS%20Gate%20Entry&name=" +
+						encodeURIComponent(frm.doc.name) +
+						"&format=" + encodeURIComponent(format)
+					), "_blank"
+				);
+			};
+			let is_g2_only = frappe.user.has_role("G2 Gate Operator")
+				&& !frappe.user.has_role("IT Head")
+				&& !frappe.user.has_role("System Manager");
+			if (is_g2_only) {
+				frappe.db.get_single_value("TS Settings", "g2_print_mode").then(mode => {
+					if (mode === "Detailed + Slip") {
+						frm.add_custom_button(__("Detailed"), () => _open_ge_print("TS Gate Entry Detailed"), __("Print"));
+					}
+					frm.add_custom_button(__("Slip"), () => _open_ge_print("TS Gate Entry Slip"), __("Print"));
+				});
+			} else {
+				frm.add_custom_button(__("Detailed"), () => _open_ge_print("TS Gate Entry Detailed"), __("Print"));
+				frm.add_custom_button(__("Slip"), () => _open_ge_print("TS Gate Entry Slip"), __("Print"));
+			}
+		}
+
+		// Stock Direction toggle — show/hide sections
+		let is_stock_out = frm.doc.stock_direction === "Stock OUT";
+		// PO sections: hide for Stock OUT
+		frm.set_df_property("po_section", "hidden", is_stock_out ? 1 : 0);
+		frm.set_df_property("po_list_section", "hidden", is_stock_out ? 1 : 0);
+		// SI section: show for Stock OUT only
+		frm.set_df_property("si_section", "hidden", is_stock_out ? 0 : 1);
+		// Material Flow section: hide entirely for Stock OUT
+		frm.set_df_property("flow_section", "hidden", is_stock_out ? 1 : 0);
+		frm.set_df_property("material_flow", "reqd", is_stock_out ? 0 : 1);
+		// Transport section: hide for Stock OUT (no LR for outbound)
+		frm.set_df_property("transport_section", "hidden", is_stock_out ? 1 : 0);
+		// Items section: hide for Stock OUT (items auto-fetched from SI, read-only)
+		if (is_stock_out) {
+			let has_items = frm.doc.po_items && frm.doc.po_items.length > 0;
+			frm.set_df_property("items_section", "hidden", has_items ? 0 : 1);
+			if (has_items) {
+				let el = frm.fields_dict.items_section;
+				if (el && el.$wrapper) {
+					el.$wrapper.find(".section-head, .control-label").text("Sales Invoice Items");
+				}
+				frm.fields_dict.po_items.grid.update_docfield_property("purchase_order", "hidden", 1);
+				frm.fields_dict.po_items.grid.df.read_only = 1;
+				frm.fields_dict.po_items.grid.refresh();
+			}
+		} else {
+			frm.set_df_property("items_section", "hidden", 0);
+			frm.fields_dict.po_items.grid.update_docfield_property("purchase_order", "hidden", 0);
+			frm.fields_dict.po_items.grid.df.read_only = 0;
+			frm.fields_dict.po_items.grid.refresh();
+		}
+		// Remove Add PO button for Stock OUT
+		if (is_stock_out) {
+			frm.remove_custom_button(__("Add Purchase Order"));
+		}
+
+		// Fetch SI Items button (Stock OUT, before submit)
+		if (!frm.doc.docstatus && frm.doc.stock_direction === "Stock OUT" && frm.doc.sales_invoice) {
+			frm.add_custom_button(__("Fetch SI Items"), function () {
+				frm.call("fetch_si_items").then(() => {
+					frm.refresh_fields();
+					frappe.show_alert({
+						message: __("Items fetched from Sales Invoice"),
+						indicator: "green"
+					});
+				});
+			}).addClass("btn-primary-dark");
+		}
+
+		// Add PO button (before submit, Stock IN only)
+		if (!frm.doc.docstatus && frm.doc.stock_direction !== "Stock OUT") {
+			frm.add_custom_button(__("Add Purchase Order"), function () {
+				// Determine supplier filter (must match first PO's supplier)
+				let supplier_filter = {};
+				if (frm.doc.po_list && frm.doc.po_list.length > 0) {
+					let first_supplier = frm.doc.po_list[0].supplier_name;
+					if (first_supplier) {
+						supplier_filter.supplier_name = first_supplier;
+					}
+				}
+
+				// Get already-added POs to exclude
+				let existing_pos = (frm.doc.po_list || []).map(r => r.purchase_order);
+
+				let d = new frappe.ui.Dialog({
+					title: __("Select Purchase Order"),
+					fields: [
+						{
+							fieldname: "purchase_order",
+							fieldtype: "Link",
+							label: "Purchase Order",
+							options: "Purchase Order",
+							reqd: 1,
+							get_query: function () {
+								let filters = {
+									docstatus: 1,
+									status: ["not in", ["Closed", "Cancelled", "Completed"]],
+									per_received: ["<", 100],
+									name: ["not in", existing_pos]
+								};
+								if (supplier_filter.supplier_name) {
+									filters.supplier_name = supplier_filter.supplier_name;
+								}
+								return { filters: filters };
+							}
+						}
+					],
+					primary_action_label: __("Add"),
+					primary_action(values) {
+						frm.call("add_purchase_order", { po_name: values.purchase_order }).then(() => {
+							frm.refresh_fields();
+							frm.dirty();
+							frappe.show_alert({
+								message: __("PO {0} added with items", [values.purchase_order]),
+								indicator: "green"
+							});
+						});
+						d.hide();
+					}
+				});
+				d.show();
+			}).addClass("btn-primary-dark");
+
+			// Fetch All PO Items button
+			if (frm.doc.po_list && frm.doc.po_list.length > 0) {
+				frm.add_custom_button(__("Refresh PO Items"), function () {
+					frm.call("fetch_po_items").then(() => {
+						frm.refresh_fields();
+						frappe.show_alert({
+							message: __("PO Items refreshed from all linked POs"),
+							indicator: "green"
+						});
+					});
+				});
+			}
+		}
+
+		// Lock fields after submit
+		if (frm.doc.docstatus === 1) {
+			frm.set_df_property("token_number", "read_only", 1);
+			frm.set_df_property("purchase_order", "read_only", 1);
+			frm.set_df_property("sales_invoice", "read_only", 1);
+			frm.set_df_property("stock_direction", "read_only", 1);
+			frm.set_df_property("material_flow", "read_only", 1);
+			frm.set_df_property("transporter", "read_only", 1);
+			frm.set_df_property("lr_number", "read_only", 1);
+			frm.set_df_property("lr_date", "read_only", 1);
+			frm.set_df_property("vehicle_master", "read_only", 1);
+			frm.set_df_property("driver", "read_only", 1);
+		}
+	},
+
+	setup(frm) {
+		// Filter token_number to only show tokens at "Token Generated" stage
+		frm.set_query("token_number", function () {
+			return {
+				filters: {
+					status: ["in", ["Token Generated"]],
+					entry_type: "Material"
+				}
+			};
+		});
+
+		// Filter Sales Invoice for Stock OUT
+		frm.set_query("sales_invoice", function () {
+			return {
+				filters: {
+					docstatus: 1,
+					status: ["not in", ["Cancelled", "Credit Note Issued"]]
+				}
+			};
+		});
+
+		// Filter vehicle_master to hide blacklisted
+		frm.set_query("vehicle_master", function () {
+			return { filters: { is_blacklisted: 0 } };
+		});
+
+		// Filter driver to hide blacklisted
+		frm.set_query("driver", function () {
+			return { filters: { is_blacklisted: 0 } };
+		});
+
+		// Filter purchase_order (legacy field) to only show open POs
+		frm.set_query("purchase_order", function () {
+			let filters = {
+				docstatus: 1,
+				status: ["not in", ["Closed", "Cancelled", "Completed"]],
+				per_received: ["<", 100]
+			};
+			if (frm.doc.supplier_name) {
+				filters.supplier_name = frm.doc.supplier_name;
+			}
+			return { filters: filters };
+		});
+
+		// Filter PO in child table to same supplier
+		frm.set_query("purchase_order", "po_list", function () {
+			let filters = {
+				docstatus: 1,
+				status: ["not in", ["Closed", "Cancelled", "Completed"]],
+				per_received: ["<", 100]
+			};
+			if (frm.doc.supplier_name) {
+				filters.supplier_name = frm.doc.supplier_name;
+			}
+			return { filters: filters };
+		});
+	},
+
+	token_number(frm) {
+		if (frm.doc.token_number) {
+			// Check if token already has a gate entry
+			frappe.db.get_list("TS Gate Entry", {
+				filters: {
+					token_number: frm.doc.token_number,
+					docstatus: ["!=", 2],
+					name: ["!=", frm.doc.name || ""]
+				},
+				limit: 1
+			}).then(r => {
+				if (r && r.length) {
+					frappe.msgprint(__("This token already has a Gate Entry: {0}", [r[0].name]));
+					frm.set_value("token_number", "");
+					return;
+				}
+
+				// Check vehicle registration + auto-fill vehicle_master
+				frappe.db.get_value("TS Token", frm.doc.token_number, "vehicle_number").then(v => {
+					let vn = v.message && v.message.vehicle_number;
+					if (!vn) return;
+					frappe.db.exists("TS Vehicle Master", vn).then(exists => {
+						if (exists) {
+							frm.set_value("vehicle_master", vn);
+						} else {
+							frappe.msgprint({
+								title: __("Vehicle Not Registered"),
+								message: __("Vehicle <b>{0}</b> is not registered in Vehicle Master. Please <a href='/app/bbf-vehicle-master/new?vehicle_number={0}' target='_blank'>create Vehicle Master</a> before submitting.", [vn]),
+								indicator: "orange"
+							});
+						}
+					});
+				});
+			});
+		}
+	},
+
+	vehicle_master(frm) {
+		// Warn if vehicle_master doesn't match token's vehicle_number
+		if (frm.doc.vehicle_master && frm.doc.vehicle_number_display) {
+			if (frm.doc.vehicle_master !== frm.doc.vehicle_number_display) {
+				frappe.msgprint({
+					title: __("Vehicle Mismatch"),
+					message: __("Vehicle Master <b>{0}</b> does not match the vehicle number <b>{1}</b> entered at G1.", [frm.doc.vehicle_master, frm.doc.vehicle_number_display]),
+					indicator: "orange"
+				});
+			}
+		}
+	},
+
+	driver(frm) {
+		// Just trigger refresh to clear any warnings
+		if (frm.doc.driver) {
+			frm.refresh_fields();
+		}
+	},
+
+	search_po_button(frm) {
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.api.get_purchase_orders",
+			args: {
+				po_id: frm.doc.po_search_id || "",
+				po_date: frm.doc.po_search_date || ""
+			},
+			callback: function (r) {
+				if (r.message && r.message.length) {
+					let d = new frappe.ui.Dialog({
+						title: __("Select Purchase Order"),
+						fields: [
+							{
+								fieldname: "po_list_html",
+								fieldtype: "HTML"
+							}
+						]
+					});
+
+					let esc = frappe.utils.escape_html;
+					let html = '<table class="table table-bordered">';
+					html += "<thead><tr><th>PO</th><th>Supplier</th><th>Date</th><th>Total Qty</th><th>Received %</th><th>Action</th></tr></thead><tbody>";
+					r.message.forEach(po => {
+						html += `<tr>
+							<td>${esc(po.name)}</td>
+							<td>${esc(po.supplier_name || "")}</td>
+							<td>${esc(po.transaction_date || "")}</td>
+							<td>${esc(po.total_qty || "")}</td>
+							<td>${esc(po.per_received || 0)}%</td>
+							<td><button class="btn btn-xs btn-primary select-po">Add</button></td>
+						</tr>`;
+					});
+					html += "</tbody></table>";
+
+					d.fields_dict.po_list_html.$wrapper.html(html);
+					d.fields_dict.po_list_html.$wrapper.find(".select-po").each(function (i) {
+						$(this).data("po", r.message[i].name);
+					});
+					d.fields_dict.po_list_html.$wrapper.find(".select-po").on("click", function () {
+						let po_name = $(this).data("po");
+						frm.call("add_purchase_order", { po_name: po_name }).then(() => {
+							frm.refresh_fields();
+							frm.dirty();
+							frappe.show_alert({
+								message: __("PO {0} added", [po_name]),
+								indicator: "green"
+							});
+						});
+						d.hide();
+					});
+					d.show();
+				} else {
+					frappe.msgprint(__("No matching Purchase Orders found"));
+				}
+			}
+		});
+	},
+
+	purchase_order(frm) {
+		// Legacy: when purchase_order is set directly, auto-add to po_list
+		if (frm.doc.purchase_order && (!frm.doc.po_list || frm.doc.po_list.length === 0)) {
+			frm.call("add_purchase_order", { po_name: frm.doc.purchase_order }).then(() => {
+				frm.refresh_fields();
+			});
+		}
+	},
+
+	stock_direction(frm) {
+		if (frm.doc.stock_direction === "Stock OUT") {
+			frm.set_value("route_to", "Weighbridge");
+			frm.set_value("material_flow", "Non-Raw Material");
+		}
+		frm.trigger("refresh");
+	},
+
+	sales_invoice(frm) {
+		if (frm.doc.sales_invoice && frm.doc.stock_direction === "Stock OUT") {
+			frm.call("fetch_si_items").then(() => {
+				frm.refresh_fields();
+			});
+		}
+	},
+
+	material_flow(frm) {
+		if (frm.doc.material_flow === "Raw Material") {
+			frm.set_value("route_to", "Weighbridge");
+			frm.set_value("requires_weighing", 0);
+		} else if (frm.doc.material_flow === "Non-Raw Material") {
+			if (frm.doc.requires_weighing) {
+				frm.set_value("route_to", "Weighbridge");
+			} else {
+				frm.set_value("route_to", "Stores/Department");
+			}
+		}
+	},
+
+	requires_weighing(frm) {
+		if (frm.doc.material_flow === "Non-Raw Material") {
+			if (frm.doc.requires_weighing) {
+				frm.set_value("route_to", "Weighbridge");
+			} else {
+				frm.set_value("route_to", "Stores/Department");
+			}
+		}
+	}
+});

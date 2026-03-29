@@ -1,4 +1,4 @@
-// BBF PO Approval v2.0 — Category-based routing with dynamic stepper
+// TS PO Approval v2.0 — Category-based routing with dynamic stepper
 frappe.ui.form.on("Purchase Order", {
 	refresh(frm) {
 		if (frm.is_new()) return;
@@ -19,7 +19,7 @@ frappe.ui.form.on("Purchase Order", {
 
 function _load_approval_context(frm) {
 	frappe.call({
-		method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.get_approval_context",
+		method: "trustbit_ethanol.ts_gate_entry.ts_po_approval.get_approval_context",
 		args: { doctype: "Purchase Order", docname: frm.doc.name },
 		callback(r) {
 			if (!r.message) return;
@@ -72,7 +72,7 @@ function _hide_po_standard_submit(frm, ctx) {
 
 function _render_stepper(frm, ctx) {
 	// Remove old stepper
-	$(frm.fields_dict.bbf_approval_section?.wrapper || frm.page.wrapper)
+	$(frm.fields_dict.ts_approval_section?.wrapper || frm.page.wrapper)
 		.find(".bbf-stepper").remove();
 
 	const chain = ctx.approval_chain || [];
@@ -161,7 +161,7 @@ function _render_stepper(frm, ctx) {
 	}
 
 	// Insert stepper
-	const $section = $(frm.fields_dict.bbf_approval_section?.wrapper);
+	const $section = $(frm.fields_dict.ts_approval_section?.wrapper);
 	if ($section.length) {
 		$section.prepend(html);
 	}
@@ -190,7 +190,7 @@ function _render_buttons(frm, ctx) {
 	if (ctx.can_submit_for_approval) {
 		frm.add_custom_button(__("Submit for Approval"), () => {
 			frappe.call({
-				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.get_submit_target",
+				method: "trustbit_ethanol.ts_gate_entry.ts_po_approval.get_submit_target",
 				args: { doctype: "Purchase Order", docname: frm.doc.name },
 				freeze: true,
 				freeze_message: __("Checking..."),
@@ -242,7 +242,7 @@ function _render_buttons(frm, ctx) {
 				() => {
 					_show_comment_dialog(frm, "Comment for MD", (comment) => {
 						frappe.call({
-							method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.send_to_md",
+							method: "trustbit_ethanol.ts_gate_entry.ts_po_approval.send_to_md",
 							args: { docname: frm.doc.name, comment },
 							freeze: true,
 							freeze_message: __("Sending to MD..."),
@@ -332,7 +332,7 @@ function _show_reject_dialog(frm) {
 
 function _call_action(frm, method, args) {
 	frappe.call({
-		method: `trustbit_ethanol.bbf_gate_entry.bbf_po_approval.${method}`,
+		method: `trustbit_ethanol.ts_gate_entry.ts_po_approval.${method}`,
 		args,
 		freeze: true,
 		freeze_message: __("Processing..."),
@@ -345,14 +345,14 @@ function _load_budget_indicator(frm) {
 	if (frm.is_new() || !frm.doc.cost_center) return;
 
 	frappe.call({
-		method: "trustbit_ethanol.bbf_gate_entry.bbf_budget.check_budget_for_po",
+		method: "trustbit_ethanol.ts_gate_entry.ts_budget.check_budget_for_po",
 		args: { docname: frm.doc.name },
 		callback(r) {
 			if (!r.message) return;
 			const b = r.message;
 
 			// Remove old indicator
-			$(frm.fields_dict.bbf_approval_section?.wrapper || frm.page.wrapper)
+			$(frm.fields_dict.ts_approval_section?.wrapper || frm.page.wrapper)
 				.find(".bbf-budget-indicator").remove();
 
 			if (b.status === "no_cc" || b.status === "no_budget") return;
@@ -397,7 +397,7 @@ function _load_budget_indicator(frm) {
 
 			html += `</div>`;
 
-			const $section = $(frm.fields_dict.bbf_approval_section?.wrapper);
+			const $section = $(frm.fields_dict.ts_approval_section?.wrapper);
 			if ($section.length) {
 				$section.find(".bbf-budget-indicator").remove();
 				$section.prepend(html);
@@ -431,9 +431,9 @@ function _lock_fields(frm, ctx) {
 
 function _render_timeline(frm) {
 	// Remove old timeline
-	$(frm.fields_dict.bbf_approval_log_section?.wrapper).find(".bbf-timeline").remove();
+	$(frm.fields_dict.ts_approval_log_section?.wrapper).find(".bbf-timeline").remove();
 
-	const logs = frm.doc.bbf_approval_log || [];
+	const logs = frm.doc.ts_approval_log || [];
 	if (!logs.length) return;
 
 	let html = '<div class="bbf-timeline" style="padding: 10px 0;">';
@@ -475,7 +475,7 @@ function _render_timeline(frm) {
 
 	html += '</div>';
 
-	const $section = $(frm.fields_dict.bbf_approval_log_section?.wrapper);
+	const $section = $(frm.fields_dict.ts_approval_log_section?.wrapper);
 	if ($section.length) {
 		$section.prepend(html);
 	}
@@ -488,7 +488,7 @@ function _load_lifecycle_tracker(frm) {
 	if (frm.doc.docstatus < 1) return;
 
 	frappe.call({
-		method: "trustbit_ethanol.bbf_gate_entry.api.get_po_lifecycle",
+		method: "trustbit_ethanol.ts_gate_entry.api.get_po_lifecycle",
 		args: { po_name: frm.doc.name },
 		callback(r) {
 			if (!r.message) return;
@@ -647,20 +647,20 @@ function _lc_doc_status_color(status) {
 function _lc_get_doc_links(d) {
 	const docs = d.docs;
 	const links = [
-		{ label: "Gate Entry", dt: "BBF Gate Entry", doc: docs.gate_entry },
+		{ label: "Gate Entry", dt: "TS Gate Entry", doc: docs.gate_entry },
 	];
 
 	if (d.material_flow === "Raw Material") {
-		links.push({ label: "Weighbridge", dt: "BBF Weighbridge Log", doc: docs.weighbridge });
-		links.push({ label: "Quality", dt: "BBF Quality Inspection", doc: docs.quality_inspection });
-		links.push({ label: "Deduction", dt: "BBF Deduction Sheet", doc: docs.deduction_sheet });
-		links.push({ label: "Unloading", dt: "BBF Unloading Entry", doc: docs.unloading });
+		links.push({ label: "Weighbridge", dt: "TS Weighbridge Log", doc: docs.weighbridge });
+		links.push({ label: "Quality", dt: "TS Quality Inspection", doc: docs.quality_inspection });
+		links.push({ label: "Deduction", dt: "TS Deduction Sheet", doc: docs.deduction_sheet });
+		links.push({ label: "Unloading", dt: "TS Unloading Entry", doc: docs.unloading });
 	} else {
 		if (docs.weighbridge) {
-			links.push({ label: "Weighbridge", dt: "BBF Weighbridge Log", doc: docs.weighbridge });
+			links.push({ label: "Weighbridge", dt: "TS Weighbridge Log", doc: docs.weighbridge });
 		}
 		if (docs.material_inspection) {
-			links.push({ label: "Inspection", dt: "BBF Material Inspection", doc: docs.material_inspection });
+			links.push({ label: "Inspection", dt: "TS Material Inspection", doc: docs.material_inspection });
 		}
 	}
 

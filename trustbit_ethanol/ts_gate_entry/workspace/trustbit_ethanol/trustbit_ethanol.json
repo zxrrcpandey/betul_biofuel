@@ -1,0 +1,275 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Betul Bio Fuel Pvt. Ltd. - Ethanol Division</b></span>\",\"col\":12}},{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Vehicles Inside - Main\",\"col\":3}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Today - Main\",\"col\":3}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Exited Today - Main\",\"col\":3}},{\"id\":\"nc4\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Unloading - Main\",\"col\":3}},{\"id\":\"h2\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Gate Entry Operations</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Token\",\"col\":3}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Gate Entry\",\"col\":3}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Weighbridge Log\",\"col\":3}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Unloading Entry\",\"col\":3}},{\"id\":\"h3\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Reports</b></span>\",\"col\":12}},{\"id\":\"s5\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Tracker - Main\",\"col\":4}},{\"id\":\"s6\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Turnaround Report - Main\",\"col\":4}},{\"id\":\"s7\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Settings - Main\",\"col\":4}},{\"id\":\"h4\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Item Management</b></span>\",\"col\":12}},{\"id\":\"s8\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Item Creator\",\"col\":4}},{\"id\":\"s9\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Item Creator\",\"col\":4}}]",
+ "creation": "2026-03-07 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "organization",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Trustbit Ethanol",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Gate Entry Operations",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "TS Token",
+   "link_to": "TS Token",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "TS Gate Entry",
+   "link_to": "TS Gate Entry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "TS Weighbridge Log",
+   "link_to": "TS Weighbridge Log",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "TS Unloading Entry",
+   "link_to": "TS Unloading Entry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Quality & Deductions",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Quality Inspection",
+   "link_to": "TS Quality Inspection",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Deduction Sheet",
+   "link_to": "TS Deduction Sheet",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Master Data",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "TS Transport Master",
+   "link_to": "TS Transport Master",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "TS Vehicle Master",
+   "link_to": "TS Vehicle Master",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Item Management",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "Item Creator (Wizard)",
+   "link_to": "item-creator",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Item Creator",
+   "link_to": "TS Item Creator",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Item Code Settings",
+   "link_to": "TS Item Code Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Variant",
+   "link_to": "TS Variant",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Settings & Reports",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "TS Settings",
+   "link_to": "TS Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "TS Live Vehicle Tracker",
+   "link_to": "TS Live Vehicle Tracker",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "TS Vehicle Turnaround Report",
+   "link_to": "TS Vehicle Turnaround Report",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-03-09 20:30:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "Trustbit Ethanol",
+ "number_cards": [
+  {
+   "number_card_name": "Vehicles Inside - Main"
+  },
+  {
+   "number_card_name": "Total Today - Main"
+  },
+  {
+   "number_card_name": "Exited Today - Main"
+  },
+  {
+   "number_card_name": "Active Unloading - Main"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "G1 Security"},
+  {"role": "G2 Gate Operator"},
+  {"role": "Weighbridge Operator"},
+  {"role": "Stores User"},
+  {"role": "Accounts Manager"},
+  {"role": "IT Head"},
+  {"role": "Admin Reception"},
+  {"role": "CEO"},
+  {"role": "MD"},
+  {"role": "Purchase Manager"},
+  {"role": "Grain Purchase Manager"},
+  {"role": "AVP"}
+ ],
+ "sequence_id": 0,
+ "shortcuts": [
+  {
+   "doc_view": "List",
+   "label": "TS Token",
+   "link_to": "TS Token",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "TS Gate Entry",
+   "link_to": "TS Gate Entry",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "TS Weighbridge Log",
+   "link_to": "TS Weighbridge Log",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "TS Unloading Entry",
+   "link_to": "TS Unloading Entry",
+   "type": "DocType"
+  },
+  {
+   "label": "Live Tracker - Main",
+   "link_to": "TS Live Vehicle Tracker",
+   "type": "Report"
+  },
+  {
+   "label": "Turnaround Report - Main",
+   "link_to": "TS Vehicle Turnaround Report",
+   "type": "Report"
+  },
+  {
+   "label": "TS Settings - Main",
+   "link_to": "TS Settings",
+   "type": "DocType"
+  },
+  {
+   "label": "Item Creator",
+   "link_to": "item-creator",
+   "type": "Page"
+  },
+  {
+   "doc_view": "List",
+   "label": "TS Item Creator",
+   "link_to": "TS Item Creator",
+   "type": "DocType"
+  }
+ ],
+ "title": "Trustbit Ethanol"
+}

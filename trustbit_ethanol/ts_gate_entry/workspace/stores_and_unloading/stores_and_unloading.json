@@ -1,0 +1,104 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Pending Unloading\",\"col\":4}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Currently Unloading\",\"col\":4}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Completed Unloading Today\",\"col\":4}},{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Actions</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Quality Inspection\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Unloading Entry\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Active Unloading\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Completed Unloading\",\"col\":4}}]",
+ "creation": "2026-03-07 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "stock",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Stores and Unloading",
+ "links": [
+  {
+   "hidden": 0,
+   "label": "Unloading Operations",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Unloading Entry",
+   "link_to": "TS Unloading Entry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Quality Inspection",
+   "link_to": "TS Quality Inspection",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Deduction Sheet",
+   "link_to": "TS Deduction Sheet",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Token",
+   "link_to": "TS Token",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-03-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "Stores and Unloading",
+ "number_cards": [
+  {"number_card_name": "Pending Unloading"},
+  {"number_card_name": "Currently Unloading"},
+  {"number_card_name": "Completed Unloading Today"}
+ ],
+ "owner": "Administrator",
+ "parent_page": "Trustbit Ethanol",
+ "public": 1,
+ "roles": [
+  {"role": "Stores User"},
+  {"role": "System Manager"}
+ ],
+ "sequence_id": 4,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "New",
+   "label": "New Quality Inspection",
+   "link_to": "TS Quality Inspection",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "New",
+   "label": "New Unloading Entry",
+   "link_to": "TS Unloading Entry",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Active Unloading",
+   "link_to": "TS Unloading Entry",
+   "stats_filter": "[[\"TS Unloading Entry\",\"status\",\"=\",\"Unloading\"]]",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Completed Unloading",
+   "link_to": "TS Unloading Entry",
+   "stats_filter": "[[\"TS Unloading Entry\",\"status\",\"=\",\"Completed\"]]",
+   "type": "DocType"
+  }
+ ],
+ "title": "Stores and Unloading"
+}

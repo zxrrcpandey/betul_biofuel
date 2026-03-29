@@ -1,0 +1,25 @@
+{
+ "content": null,
+ "creation": "2026-03-17 00:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-03-17 12:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "budget-control-matrix",
+ "owner": "Administrator",
+ "page_name": "budget-control-matrix",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "IT Head"},
+  {"role": "CEO"},
+  {"role": "MD"},
+  {"role": "Accounts Manager"}
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Budget Control Matrix"
+}

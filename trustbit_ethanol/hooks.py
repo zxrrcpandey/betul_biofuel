@@ -19,7 +19,7 @@ app_include_js = [
 
 # Module-workspace mapping for correct breadcrumbs
 module_app_map = {
-	"BBF Gate Entry": "trustbit_ethanol"
+	"TS Gate Entry": "trustbit_ethanol"
 }
 
 # Fixtures for roles and custom fields
@@ -46,78 +46,78 @@ fixtures = [
 	{
 		"doctype": "Print Format",
 		"filters": [["name", "in", [
-			"BBF Token Print",
-			"BBF Token Slip",
-			"BBF Gate Pass",
-			"BBF Gate Entry Detailed",
-			"BBF Gate Entry Slip"
+			"TS Token Print",
+			"TS Token Slip",
+			"TS Gate Pass",
+			"TS Gate Entry Detailed",
+			"TS Gate Entry Slip"
 		]]]
 	},
 	{
 		"doctype": "Custom Field",
 		"filters": [["name", "in", [
-			"Purchase Receipt-bbf_token",
-			"Purchase Receipt-bbf_gate_entry",
+			"Purchase Receipt-ts_token",
+			"Purchase Receipt-ts_gate_entry",
 			"Company-company_code",
 			"Company-company_num_code",
 			"Item Group-category_code",
 			"Item Group-category_num_code",
 			"Brand-brand_code",
-			"Purchase Order-bbf_approval_section",
-			"Purchase Order-bbf_approval_status",
-			"Purchase Order-bbf_current_level",
-			"Purchase Order-bbf_required_level",
-			"Purchase Order-bbf_approval_col1",
-			"Purchase Order-bbf_approved_by",
-			"Purchase Order-bbf_approved_date",
-			"Purchase Order-bbf_revision_count",
-			"Purchase Order-bbf_last_action",
-			"Purchase Order-bbf_submitted_by",
-			"Purchase Order-bbf_revision_section",
-			"Purchase Order-bbf_revision_reason",
-			"Purchase Order-bbf_revised_by",
-			"Purchase Order-bbf_revision_col1",
-			"Purchase Order-bbf_resubmit_mode",
-			"Purchase Order-bbf_approval_log_section",
-			"Purchase Order-bbf_approval_log",
-			"Purchase Order-bbf_amount_at_submission",
-			"Purchase Order-bbf_last_sla_alert",
-			"Purchase Order-bbf_purchase_category",
-			"Purchase Order-bbf_approval_rule",
-			"Purchase Order-bbf_current_step",
-			"Purchase Order-bbf_total_steps",
-			"Purchase Order-bbf_self_skip_impossible",
-			"Purchase Order-bbf_can_send_to_md",
-			"Purchase Order-bbf_budget_overridden",
-			"Purchase Order-bbf_budget_override_log_section",
-			"Purchase Order-bbf_budget_override_log",
+			"Purchase Order-ts_approval_section",
+			"Purchase Order-ts_approval_status",
+			"Purchase Order-ts_current_level",
+			"Purchase Order-ts_required_level",
+			"Purchase Order-ts_approval_col1",
+			"Purchase Order-ts_approved_by",
+			"Purchase Order-ts_approved_date",
+			"Purchase Order-ts_revision_count",
+			"Purchase Order-ts_last_action",
+			"Purchase Order-ts_submitted_by",
+			"Purchase Order-ts_revision_section",
+			"Purchase Order-ts_revision_reason",
+			"Purchase Order-ts_revised_by",
+			"Purchase Order-ts_revision_col1",
+			"Purchase Order-ts_resubmit_mode",
+			"Purchase Order-ts_approval_log_section",
+			"Purchase Order-ts_approval_log",
+			"Purchase Order-ts_amount_at_submission",
+			"Purchase Order-ts_last_sla_alert",
+			"Purchase Order-ts_purchase_category",
+			"Purchase Order-ts_approval_rule",
+			"Purchase Order-ts_current_step",
+			"Purchase Order-ts_total_steps",
+			"Purchase Order-ts_self_skip_impossible",
+			"Purchase Order-ts_can_send_to_md",
+			"Purchase Order-ts_budget_overridden",
+			"Purchase Order-ts_budget_override_log_section",
+			"Purchase Order-ts_budget_override_log",
 			"Material Request-cost_center",
-			"Material Request-bbf_mr_section",
-			"Material Request-bbf_mr_status",
-			"Material Request-bbf_mr_col1",
-			"Material Request-bbf_mr_approved_by",
-			"Material Request-bbf_mr_approved_date",
-			"Material Request-bbf_mr_revision_section",
-			"Material Request-bbf_mr_revision_reason",
-			"Material Request-bbf_mr_log_section",
-			"Material Request-bbf_mr_log",
-			"Material Request-bbf_mr_route",
-			"Material Request-bbf_mr_approval_route",
-			"Material Request-bbf_mr_current_step",
-			"Material Request-bbf_mr_total_steps",
-			"Material Request-bbf_mr_self_skip_impossible",
-			"Material Request-bbf_mr_submitted_by",
-			"Material Request-bbf_mr_hold_section",
-			"Material Request-bbf_mr_hold_reason",
-			"Material Request-bbf_mr_held_by",
-			"Material Request-bbf_mr_held_at_step"
+			"Material Request-ts_mr_section",
+			"Material Request-ts_mr_status",
+			"Material Request-ts_mr_col1",
+			"Material Request-ts_mr_approved_by",
+			"Material Request-ts_mr_approved_date",
+			"Material Request-ts_mr_revision_section",
+			"Material Request-ts_mr_revision_reason",
+			"Material Request-ts_mr_log_section",
+			"Material Request-ts_mr_log",
+			"Material Request-ts_mr_route",
+			"Material Request-ts_mr_approval_route",
+			"Material Request-ts_mr_current_step",
+			"Material Request-ts_mr_total_steps",
+			"Material Request-ts_mr_self_skip_impossible",
+			"Material Request-ts_mr_submitted_by",
+			"Material Request-ts_mr_hold_section",
+			"Material Request-ts_mr_hold_reason",
+			"Material Request-ts_mr_held_by",
+			"Material Request-ts_mr_held_at_step"
 		]]]
 	}
 ]
 
-# Override standard DocType dashboards to show BBF connections
+# Override standard DocType dashboards to show TS connections
 override_doctype_dashboards = {
-	"Purchase Order": "trustbit_ethanol.bbf_gate_entry.dashboard_overrides.get_data_for_purchase_order"
+	"Purchase Order": "trustbit_ethanol.ts_gate_entry.dashboard_overrides.get_data_for_purchase_order"
 }
 
 # Inject JS into standard DocTypes for approval buttons
@@ -130,22 +130,22 @@ doctype_js = {
 # Doc Events — PO lifecycle hooks for approval state management
 doc_events = {
 	"Purchase Order": {
-		"on_cancel": "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.po_on_cancel",
-		"before_insert": "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.po_on_amend",
-		"before_save": "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.po_before_save",
+		"on_cancel": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_cancel",
+		"before_insert": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_amend",
+		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_before_save",
 	},
 	"Material Request": {
-		"before_save": "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.mr_before_save",
+		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
 	}
 }
 
 # Setup custom fields on Purchase Receipt, Purchase Order, Material Request, Company, Item Group, Brand
 after_migrate = [
-	"trustbit_ethanol.bbf_gate_entry.setup.create_custom_fields",
-	"trustbit_ethanol.bbf_gate_entry.setup.seed_gate_pass_destinations",
-	"trustbit_ethanol.bbf_gate_entry.setup.seed_visiting_companies",
-	"trustbit_ethanol.bbf_gate_entry.setup.migrate_store1_route",
-	"trustbit_ethanol.bbf_gate_entry.setup.seed_cc_approval_configs"
+	"trustbit_ethanol.ts_gate_entry.setup.create_custom_fields",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_gate_pass_destinations",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_visiting_companies",
+	"trustbit_ethanol.ts_gate_entry.setup.migrate_store1_route",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_cc_approval_configs"
 ]
 
 # Scheduled Tasks
@@ -154,11 +154,11 @@ after_migrate = [
 scheduler_events = {
 	"cron": {
 		"*/5 * * * *": [
-			"trustbit_ethanol.bbf_gate_entry.api.check_sla_breaches"
+			"trustbit_ethanol.ts_gate_entry.api.check_sla_breaches"
 		],
 		"*/30 * * * *": [
-			"trustbit_ethanol.bbf_gate_entry.bbf_po_approval.check_approval_sla",
-			"trustbit_ethanol.bbf_gate_entry.doctype.bbf_material_inspection.bbf_material_inspection.check_inspection_sla"
+			"trustbit_ethanol.ts_gate_entry.ts_po_approval.check_approval_sla",
+			"trustbit_ethanol.ts_gate_entry.doctype.ts_material_inspection.ts_material_inspection.check_inspection_sla"
 		]
 	}
 }

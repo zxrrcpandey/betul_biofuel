@@ -1,0 +1,687 @@
+{
+ "actions": [],
+ "autoname": "field:token_number",
+ "creation": "2026-03-07 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "entry_type",
+  "token_number",
+  "barcode",
+  "status",
+  "column_break_main",
+  "entry_date",
+  "entry_time",
+  "purpose",
+  "stock_direction",
+  "gate_pass_status",
+  "vehicle_section",
+  "vehicle_number",
+  "vehicle_type",
+  "column_break_vehicle",
+  "driver",
+  "driver_name",
+  "driver_mobile",
+  "driver_license_number",
+  "gate_pass_visitor_section",
+  "visitor",
+  "visitor_name",
+  "visitor_company",
+  "contact_number",
+  "number_of_visitors",
+  "column_break_gp_visitor",
+  "id_proof_type",
+  "id_proof_number",
+  "visitor_photo",
+  "gate_pass_visit_section",
+  "visit_purpose",
+  "visiting_company",
+  "purpose_detail",
+  "destination",
+  "destination_detail",
+  "column_break_gp_visit",
+  "host_name",
+  "host_department",
+  "expected_duration",
+  "vehicle_in_gate_pass",
+  "gate_pass_g2_section",
+  "g2_entry_time_gp",
+  "g2_entry_by",
+  "column_break_gp_g2",
+  "g2_exit_time_gp",
+  "g2_exit_by",
+  "gate_pass_timing_section",
+  "total_campus_time",
+  "column_break_gp_timing",
+  "total_plant_time",
+  "timestamps_section",
+  "g1_entry_time",
+  "g2_link_time",
+  "wb_gross_time",
+  "quality_time",
+  "grading_time",
+  "column_break_ts",
+  "unload_start_time",
+  "unload_end_time",
+  "wb_tare_time",
+  "grn_time",
+  "purchase_receipt",
+  "delivery_note",
+  "g1_exit_time",
+  "turnaround_section",
+  "g1_to_g2_minutes",
+  "g2_to_wb_minutes",
+  "wb_to_quality_minutes",
+  "quality_to_grading_minutes",
+  "grading_to_unload_minutes",
+  "unloading_duration_minutes",
+  "column_break_ta",
+  "unload_to_tare_minutes",
+  "tare_to_grn_minutes",
+  "total_turnaround_minutes",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "entry_type",
+   "fieldtype": "Select",
+   "label": "Entry Type",
+   "options": "Material\nGate Pass",
+   "default": "Material",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "token_number",
+   "fieldtype": "Data",
+   "label": "Token Number",
+   "read_only": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "barcode",
+   "fieldtype": "Barcode",
+   "label": "Barcode",
+   "options": "token_number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Token Generated\nPO Linked\nGross Weighed\nQuality Done\nGraded\nUnloading\nTare Weighed\nGRN Created\nExited\nSI Linked\nTare Recorded\nLoading Done\nGross Recorded\nDispatch Ready",
+   "default": "Token Generated",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "entry_date",
+   "fieldtype": "Date",
+   "label": "Entry Date",
+   "default": "Today",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "entry_time",
+   "fieldtype": "Time",
+   "label": "Entry Time",
+   "default": "Now",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Select",
+   "label": "Purpose",
+   "options": "\nRaw Material\nNon-Raw Material",
+   "reqd": 0,
+   "hidden": 1,
+   "in_standard_filter": 1,
+   "description": "Auto-set from Gate Entry material_flow on G2 submit. Not visible on Token form."
+  },
+  {
+   "fieldname": "stock_direction",
+   "fieldtype": "Select",
+   "label": "Stock Direction",
+   "options": "\nStock IN\nStock OUT",
+   "hidden": 1,
+   "in_standard_filter": 1,
+   "description": "Auto-set from Gate Entry stock_direction on G2 submit."
+  },
+  {
+   "fieldname": "gate_pass_status",
+   "fieldtype": "Select",
+   "label": "Gate Pass Status",
+   "options": "\nInside Campus\nInside Plant\nExited",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "depends_on": "eval:doc.entry_type==='Gate Pass'",
+   "bold": 1
+  },
+  {
+   "fieldname": "vehicle_section",
+   "fieldtype": "Section Break",
+   "label": "Vehicle Details",
+   "depends_on": "eval:doc.entry_type==='Material'"
+  },
+  {
+   "fieldname": "vehicle_number",
+   "fieldtype": "Data",
+   "label": "Vehicle Number",
+   "reqd": 0,
+   "mandatory_depends_on": "eval:doc.entry_type==='Material'",
+   "description": "Enter vehicle registration number (e.g., MP48AB1234)"
+  },
+  {
+   "fieldname": "vehicle_type",
+   "fieldtype": "Data",
+   "label": "Vehicle Type",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "Auto-filled from Gate Entry at G2"
+  },
+  {
+   "fieldname": "column_break_vehicle",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "label": "Driver",
+   "options": "TS Driver Master",
+   "read_only": 1,
+   "hidden": 1,
+   "depends_on": "eval:doc.entry_type==='Material'",
+   "description": "Set from Gate Entry at G2"
+  },
+  {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Driver Name",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "driver_mobile",
+   "fieldtype": "Data",
+   "label": "Driver Mobile",
+   "options": "Phone",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "driver_license_number",
+   "fieldtype": "Data",
+   "label": "Driver License Number",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "gate_pass_visitor_section",
+   "fieldtype": "Section Break",
+   "label": "Visitor Details",
+   "depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "visitor",
+   "fieldtype": "Link",
+   "label": "Returning Visitor",
+   "options": "TS Visitor",
+   "description": "Select existing visitor to auto-fill details, or leave blank for new visitor"
+  },
+  {
+   "fieldname": "visitor_name",
+   "fieldtype": "Data",
+   "label": "Visitor Name",
+   "mandatory_depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "visitor_company",
+   "fieldtype": "Data",
+   "label": "Visitor Company"
+  },
+  {
+   "fieldname": "contact_number",
+   "fieldtype": "Data",
+   "label": "Contact Number",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "number_of_visitors",
+   "fieldtype": "Int",
+   "label": "Number of Visitors",
+   "default": "1"
+  },
+  {
+   "fieldname": "column_break_gp_visitor",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "id_proof_type",
+   "fieldtype": "Select",
+   "label": "ID Proof Type",
+   "options": "\nAadhaar\nDriving License\nCompany ID\nOther"
+  },
+  {
+   "fieldname": "id_proof_number",
+   "fieldtype": "Data",
+   "label": "ID Proof Number"
+  },
+  {
+   "fieldname": "visitor_photo",
+   "fieldtype": "Attach Image",
+   "label": "Visitor Photo"
+  },
+  {
+   "fieldname": "gate_pass_visit_section",
+   "fieldtype": "Section Break",
+   "label": "Visit Details",
+   "depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "visit_purpose",
+   "fieldtype": "Select",
+   "label": "Visit Purpose",
+   "options": "\nVisitor\nAdmin\nMaintenance\nElectrician\nContractor\nDelivery\nOther",
+   "mandatory_depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "visiting_company",
+   "fieldtype": "Link",
+   "label": "Visiting Company",
+   "options": "TS Visiting Company",
+   "depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "purpose_detail",
+   "fieldtype": "Small Text",
+   "label": "Purpose Detail"
+  },
+  {
+   "fieldname": "destination",
+   "fieldtype": "Link",
+   "label": "Destination",
+   "options": "TS Gate Pass Destination",
+   "mandatory_depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "destination_detail",
+   "fieldtype": "Data",
+   "label": "Destination Detail",
+   "description": "Specific location or area within the destination"
+  },
+  {
+   "fieldname": "column_break_gp_visit",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "host_name",
+   "fieldtype": "Data",
+   "label": "Host Name"
+  },
+  {
+   "fieldname": "host_department",
+   "fieldtype": "Data",
+   "label": "Host Department"
+  },
+  {
+   "fieldname": "expected_duration",
+   "fieldtype": "Data",
+   "label": "Expected Duration",
+   "description": "e.g., 2 hours, Full day, 30 minutes"
+  },
+  {
+   "fieldname": "vehicle_in_gate_pass",
+   "fieldtype": "Data",
+   "label": "Vehicle Number",
+   "description": "If visitor has a vehicle"
+  },
+  {
+   "fieldname": "gate_pass_g2_section",
+   "fieldtype": "Section Break",
+   "label": "G2 Checkpoint",
+   "depends_on": "eval:doc.entry_type==='Gate Pass' && doc.destination",
+   "description": "G2 entry/exit tracking for destinations inside the plant"
+  },
+  {
+   "fieldname": "g2_entry_time_gp",
+   "fieldtype": "Datetime",
+   "label": "G2 Entry Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "g2_entry_by",
+   "fieldtype": "Data",
+   "label": "G2 Entry By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_gp_g2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "g2_exit_time_gp",
+   "fieldtype": "Datetime",
+   "label": "G2 Exit Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "g2_exit_by",
+   "fieldtype": "Data",
+   "label": "G2 Exit By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gate_pass_timing_section",
+   "fieldtype": "Section Break",
+   "label": "Gate Pass Duration",
+   "depends_on": "eval:doc.entry_type==='Gate Pass'"
+  },
+  {
+   "fieldname": "total_campus_time",
+   "fieldtype": "Data",
+   "label": "Total Campus Time",
+   "read_only": 1,
+   "description": "Total time inside campus (G1 entry to G1 exit)"
+  },
+  {
+   "fieldname": "column_break_gp_timing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_plant_time",
+   "fieldtype": "Data",
+   "label": "Total Plant Time",
+   "read_only": 1,
+   "description": "Time inside plant (G2 entry to G2 exit)"
+  },
+  {
+   "fieldname": "timestamps_section",
+   "fieldtype": "Section Break",
+   "label": "Turnaround Timestamps",
+   "depends_on": "eval:doc.entry_type==='Material'"
+  },
+  {
+   "fieldname": "g1_entry_time",
+   "fieldtype": "Datetime",
+   "label": "G1 Entry Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "g2_link_time",
+   "fieldtype": "Datetime",
+   "label": "G2 Link Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wb_gross_time",
+   "fieldtype": "Datetime",
+   "label": "Weighbridge Gross Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unload_start_time",
+   "fieldtype": "Datetime",
+   "label": "Unloading Start Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unload_end_time",
+   "fieldtype": "Datetime",
+   "label": "Unloading End Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "wb_tare_time",
+   "fieldtype": "Datetime",
+   "label": "Weighbridge Tare Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "quality_time",
+   "fieldtype": "Datetime",
+   "label": "Quality Inspection Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "grading_time",
+   "fieldtype": "Datetime",
+   "label": "Grading/Deduction Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "grn_time",
+   "fieldtype": "Datetime",
+   "label": "GRN Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "purchase_receipt",
+   "fieldtype": "Link",
+   "label": "Purchase Receipt (GRN)",
+   "options": "Purchase Receipt",
+   "read_only": 1,
+   "depends_on": "eval:doc.stock_direction!=='Stock OUT'"
+  },
+  {
+   "fieldname": "delivery_note",
+   "fieldtype": "Link",
+   "label": "Delivery Note",
+   "options": "Delivery Note",
+   "read_only": 1,
+   "depends_on": "eval:doc.stock_direction==='Stock OUT'"
+  },
+  {
+   "fieldname": "g1_exit_time",
+   "fieldtype": "Datetime",
+   "label": "G1 Exit Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "turnaround_section",
+   "fieldtype": "Section Break",
+   "label": "Turnaround Summary",
+   "depends_on": "eval:doc.entry_type==='Material'"
+  },
+  {
+   "fieldname": "g1_to_g2_minutes",
+   "fieldtype": "Float",
+   "label": "G1 to G2 (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "g2_to_wb_minutes",
+   "fieldtype": "Float",
+   "label": "G2 to Weighbridge (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "wb_to_quality_minutes",
+   "fieldtype": "Float",
+   "label": "Weighbridge to Quality (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "quality_to_grading_minutes",
+   "fieldtype": "Float",
+   "label": "Quality to Grading (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "grading_to_unload_minutes",
+   "fieldtype": "Float",
+   "label": "Grading to Unloading (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "unloading_duration_minutes",
+   "fieldtype": "Float",
+   "label": "Unloading Duration (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "column_break_ta",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "unload_to_tare_minutes",
+   "fieldtype": "Float",
+   "label": "Unloading to Tare (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "tare_to_grn_minutes",
+   "fieldtype": "Float",
+   "label": "Tare to GRN (min)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "total_turnaround_minutes",
+   "fieldtype": "Float",
+   "label": "Total Turnaround (min)",
+   "read_only": 1,
+   "precision": "1",
+   "bold": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "TS Token",
+   "read_only": 1,
+   "no_copy": 1,
+   "hidden": 1
+  }
+ ],
+ "links": [
+  {
+   "link_doctype": "TS Gate Entry",
+   "link_fieldname": "token_number"
+  },
+  {
+   "link_doctype": "TS Weighbridge Log",
+   "link_fieldname": "token_number"
+  },
+  {
+   "link_doctype": "TS Unloading Entry",
+   "link_fieldname": "token_number"
+  },
+  {
+   "link_doctype": "TS Quality Inspection",
+   "link_fieldname": "token_number"
+  },
+  {
+   "link_doctype": "TS Deduction Sheet",
+   "link_fieldname": "token_number"
+  },
+  {
+   "link_doctype": "Purchase Receipt",
+   "link_fieldname": "ts_token"
+  }
+ ],
+ "modified": "2026-03-20 12:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Token",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "System Manager",
+   "permlevel": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "G1 Security",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "G1 Security",
+   "permlevel": 1
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "G2 Gate Operator",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "role": "Weighbridge Operator",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "role": "Stores User",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "IT Head",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "role": "IT Head",
+   "permlevel": 1
+  },
+  {
+   "read": 1,
+   "role": "Quality Inspector",
+   "permlevel": 0
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Admin Reception",
+   "permlevel": 0
+  }
+ ],
+ "search_fields": "token_number, status, entry_date, entry_type",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "token_number",
+ "track_changes": 1
+}

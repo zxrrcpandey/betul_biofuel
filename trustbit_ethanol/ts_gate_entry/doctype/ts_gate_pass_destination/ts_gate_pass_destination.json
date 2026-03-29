@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "autoname": "field:destination_name",
+ "creation": "2026-03-19 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "destination_name",
+  "enabled",
+  "column_break_1",
+  "has_g2_checkpoint",
+  "default_host",
+  "section_break_desc",
+  "description"
+ ],
+ "fields": [
+  {
+   "fieldname": "destination_name",
+   "fieldtype": "Data",
+   "label": "Destination Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "e.g., Admin Office, TS Plant, Warehouse, Substation"
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "has_g2_checkpoint",
+   "fieldtype": "Check",
+   "label": "Has G2 Checkpoint",
+   "default": "0",
+   "in_list_view": 1,
+   "description": "If checked, G2 entry/exit tracking will be enabled for visitors going to this destination"
+  },
+  {
+   "fieldname": "default_host",
+   "fieldtype": "Data",
+   "label": "Default Host / Contact Person",
+   "description": "Auto-filled as host name when this destination is selected"
+  },
+  {
+   "fieldname": "section_break_desc",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  }
+ ],
+ "links": [],
+ "modified": "2026-03-19 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Gate Pass Destination",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "read": 1,
+   "role": "G1 Security"
+  },
+  {
+   "read": 1,
+   "role": "G2 Gate Operator"
+  }
+ ],
+ "quick_entry": 1,
+ "search_fields": "destination_name",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "title_field": "destination_name",
+ "track_changes": 1
+}

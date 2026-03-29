@@ -1,0 +1,407 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-03-08 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "token_number",
+  "quality_inspection",
+  "gate_entry",
+  "purchase_order",
+  "status",
+  "column_break_ref",
+  "supplier_name",
+  "item_code",
+  "item_name",
+  "item_category",
+  "weight_section",
+  "invoice_qty",
+  "item_rate",
+  "invoice_value",
+  "column_break_wt",
+  "weight_deduction",
+  "net_weight",
+  "mrn_amount",
+  "quality_section",
+  "qi_impurity_percent",
+  "column_break_qi_grain",
+  "qi_moisture_percent",
+  "coal_quality_section",
+  "qi_po_gcv",
+  "qi_actual_gcv",
+  "hold_on_gcv",
+  "column_break_qi_coal",
+  "qi_po_moisture",
+  "qi_actual_moisture",
+  "hold_on_moisture",
+  "rates_section",
+  "unloading_rate_per_bag",
+  "dhalta_rate_gm_per_qtl",
+  "column_break_rates",
+  "brokerage_rate_per_mt",
+  "calculate_deductions_button",
+  "deductions_section",
+  "deductions",
+  "summary_section",
+  "total_deduction",
+  "net_payable",
+  "column_break_summary",
+  "decision",
+  "decision_remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "BBF-DED-.YYYY.-.#####",
+   "default": "BBF-DED-.YYYY.-.#####",
+   "hidden": 1
+  },
+  {
+   "fieldname": "token_number",
+   "fieldtype": "Link",
+   "label": "Token Number",
+   "options": "TS Token",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "quality_inspection",
+   "fieldtype": "Link",
+   "label": "Quality Inspection",
+   "options": "TS Quality Inspection",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "gate_entry",
+   "fieldtype": "Link",
+   "label": "Gate Entry",
+   "options": "TS Gate Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "purchase_order",
+   "fieldtype": "Link",
+   "label": "Purchase Order",
+   "options": "Purchase Order",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nCalculated\nApproved",
+   "default": "Draft",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ref",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "supplier_name",
+   "fieldtype": "Data",
+   "label": "Supplier",
+   "read_only": 1
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item Code",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "item_category",
+   "fieldtype": "Select",
+   "label": "Item Category",
+   "options": "\nGrain\nCoal\nOther",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weight_section",
+   "fieldtype": "Section Break",
+   "label": "Invoice & Weight Details"
+  },
+  {
+   "fieldname": "invoice_qty",
+   "fieldtype": "Float",
+   "label": "Invoice Qty",
+   "precision": "2"
+  },
+  {
+   "fieldname": "item_rate",
+   "fieldtype": "Currency",
+   "label": "Item Rate",
+   "precision": "2"
+  },
+  {
+   "fieldname": "invoice_value",
+   "fieldtype": "Currency",
+   "label": "Invoice Value",
+   "read_only": 1,
+   "precision": "2",
+   "description": "Invoice Qty x Item Rate"
+  },
+  {
+   "fieldname": "column_break_wt",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "weight_deduction",
+   "fieldtype": "Float",
+   "label": "Weight Deduction",
+   "precision": "2",
+   "description": "Difference between Invoice Qty and actual weighbridge net weight"
+  },
+  {
+   "fieldname": "net_weight",
+   "fieldtype": "Float",
+   "label": "Net Weight",
+   "read_only": 1,
+   "precision": "2",
+   "bold": 1,
+   "description": "Invoice Qty - Weight Deduction"
+  },
+  {
+   "fieldname": "mrn_amount",
+   "fieldtype": "Currency",
+   "label": "MRN Amount",
+   "read_only": 1,
+   "precision": "2",
+   "bold": 1,
+   "description": "Net Weight x Item Rate"
+  },
+  {
+   "fieldname": "quality_section",
+   "fieldtype": "Section Break",
+   "label": "Quality Results - Grain",
+   "depends_on": "eval:doc.item_category=='Grain'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "qi_impurity_percent",
+   "fieldtype": "Float",
+   "label": "Impurity %",
+   "read_only": 1,
+   "precision": "2"
+  },
+  {
+   "fieldname": "column_break_qi_grain",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "qi_moisture_percent",
+   "fieldtype": "Float",
+   "label": "Moisture %",
+   "read_only": 1,
+   "precision": "2"
+  },
+  {
+   "fieldname": "coal_quality_section",
+   "fieldtype": "Section Break",
+   "label": "Quality Results - Coal",
+   "depends_on": "eval:doc.item_category=='Coal'",
+   "read_only": 1
+  },
+  {
+   "fieldname": "qi_po_gcv",
+   "fieldtype": "Float",
+   "label": "PO GCV",
+   "read_only": 1,
+   "precision": "2"
+  },
+  {
+   "fieldname": "qi_actual_gcv",
+   "fieldtype": "Float",
+   "label": "Actual GCV",
+   "read_only": 1,
+   "precision": "2"
+  },
+  {
+   "fieldname": "hold_on_gcv",
+   "fieldtype": "Check",
+   "label": "Hold on GCV",
+   "read_only": 1,
+   "description": "Auto: Actual GCV < PO GCV"
+  },
+  {
+   "fieldname": "column_break_qi_coal",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "qi_po_moisture",
+   "fieldtype": "Float",
+   "label": "PO Moisture %",
+   "read_only": 1,
+   "precision": "3"
+  },
+  {
+   "fieldname": "qi_actual_moisture",
+   "fieldtype": "Float",
+   "label": "Actual Moisture %",
+   "read_only": 1,
+   "precision": "3"
+  },
+  {
+   "fieldname": "hold_on_moisture",
+   "fieldtype": "Check",
+   "label": "Hold on Moisture",
+   "read_only": 1,
+   "description": "Auto: Actual Moisture > PO Moisture"
+  },
+  {
+   "fieldname": "rates_section",
+   "fieldtype": "Section Break",
+   "label": "Deduction Rates (from PO Terms)",
+   "depends_on": "eval:doc.item_category=='Grain'"
+  },
+  {
+   "fieldname": "unloading_rate_per_bag",
+   "fieldtype": "Currency",
+   "label": "Unloading Rate (Rs/Bag)",
+   "precision": "2",
+   "description": "From PO terms"
+  },
+  {
+   "fieldname": "dhalta_rate_gm_per_qtl",
+   "fieldtype": "Float",
+   "label": "Dhalta (gm per Qtl)",
+   "precision": "1",
+   "default": "500",
+   "description": "Spillage allowance, default 500g per quintal"
+  },
+  {
+   "fieldname": "column_break_rates",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "brokerage_rate_per_mt",
+   "fieldtype": "Currency",
+   "label": "Brokerage Rate (Rs/MT)",
+   "precision": "2",
+   "description": "From PO terms"
+  },
+  {
+   "fieldname": "calculate_deductions_button",
+   "fieldtype": "Button",
+   "label": "Calculate Deductions",
+   "depends_on": "eval:doc.status=='Draft' || doc.status=='Calculated'"
+  },
+  {
+   "fieldname": "deductions_section",
+   "fieldtype": "Section Break",
+   "label": "Deduction Lines"
+  },
+  {
+   "fieldname": "deductions",
+   "fieldtype": "Table",
+   "label": "Deductions",
+   "options": "TS Deduction Line"
+  },
+  {
+   "fieldname": "summary_section",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "total_deduction",
+   "fieldtype": "Currency",
+   "label": "Total Deduction",
+   "read_only": 1,
+   "precision": "2",
+   "bold": 1
+  },
+  {
+   "fieldname": "net_payable",
+   "fieldtype": "Currency",
+   "label": "Net Payable",
+   "read_only": 1,
+   "precision": "2",
+   "bold": 1
+  },
+  {
+   "fieldname": "column_break_summary",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "decision",
+   "fieldtype": "Select",
+   "label": "Decision",
+   "options": "\nAccept\nHold\nReject",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "decision_remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "links": [],
+ "modified": "2026-03-08 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Deduction Sheet",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Stores User"
+  },
+  {
+   "read": 1,
+   "role": "G1 Security"
+  },
+  {
+   "read": 1,
+   "role": "G2 Gate Operator"
+  },
+  {
+   "read": 1,
+   "role": "Weighbridge Operator"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "read": 1,
+   "role": "Quality Inspector"
+  }
+ ],
+ "search_fields": "token_number, item_category, status",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "token_number",
+ "track_changes": 1
+}

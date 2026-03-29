@@ -1,0 +1,202 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Vehicles Inside - Mgmt\",\"col\":3}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Today - Mgmt\",\"col\":3}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Stuck Vehicles\",\"col\":3}},{\"id\":\"nc4\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Exited Today\",\"col\":3}},{\"id\":\"hd\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Dashboards</b></span>\",\"col\":12}},{\"id\":\"sd1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Procurement Dashboard\",\"col\":4}},{\"id\":\"sd2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gate Operations\",\"col\":4}},{\"id\":\"sd3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Matrix\",\"col\":4}},{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Access</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Tracker\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Turnaround Report\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Settings\",\"col\":4}}]",
+ "creation": "2026-03-07 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "dashboard",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Management Dashboard",
+ "links": [
+  {
+   "hidden": 0,
+   "label": "All DocTypes",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Token",
+   "link_to": "TS Token",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Gate Entry",
+   "link_to": "TS Gate Entry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Weighbridge Log",
+   "link_to": "TS Weighbridge Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Unloading Entry",
+   "link_to": "TS Unloading Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "Master Data",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Transport Master",
+   "link_to": "TS Transport Master",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Vehicle Master",
+   "link_to": "TS Vehicle Master",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Settings",
+   "link_to": "TS Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "Item Management",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Item Creator",
+   "link_to": "TS Item Creator",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Item Code Settings",
+   "link_to": "TS Item Code Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Variant",
+   "link_to": "TS Variant",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "Reports",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "TS Live Vehicle Tracker",
+   "link_to": "TS Live Vehicle Tracker",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "TS Vehicle Turnaround Report",
+   "link_to": "TS Vehicle Turnaround Report",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-03-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "Management Dashboard",
+ "number_cards": [
+  {"number_card_name": "Vehicles Inside - Mgmt"},
+  {"number_card_name": "Total Today - Mgmt"},
+  {"number_card_name": "Stuck Vehicles"},
+  {"number_card_name": "Exited Today"}
+ ],
+ "owner": "Administrator",
+ "parent_page": "Trustbit Ethanol",
+ "public": 1,
+ "roles": [
+  {"role": "IT Head"},
+  {"role": "System Manager"},
+  {"role": "CEO"},
+  {"role": "MD"},
+  {"role": "Purchase Manager"},
+  {"role": "Grain Purchase Manager"},
+  {"role": "AVP"}
+ ],
+ "sequence_id": 5,
+ "shortcuts": [
+  {
+   "color": "Green",
+   "label": "Procurement Dashboard",
+   "link_to": "procurement-dashboard",
+   "type": "Page"
+  },
+  {
+   "color": "Blue",
+   "label": "Gate Operations",
+   "link_to": "gate-operations-dashboard",
+   "type": "Page"
+  },
+  {
+   "color": "Yellow",
+   "label": "Budget Matrix",
+   "link_to": "budget-control-matrix",
+   "type": "Page"
+  },
+  {
+   "color": "Red",
+   "label": "Live Tracker",
+   "link_to": "TS Live Vehicle Tracker",
+   "type": "Report"
+  },
+  {
+   "color": "Blue",
+   "label": "Turnaround Report",
+   "link_to": "TS Vehicle Turnaround Report",
+   "type": "Report"
+  },
+  {
+   "label": "TS Settings",
+   "link_to": "TS Settings",
+   "type": "DocType"
+  }
+ ],
+ "title": "Management Dashboard"
+}

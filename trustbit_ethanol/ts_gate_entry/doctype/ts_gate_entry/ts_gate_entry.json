@@ -1,0 +1,407 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-03-07 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "token_number",
+  "stock_direction",
+  "entry_date",
+  "entry_time",
+  "column_break_main",
+  "vehicle_type",
+  "status",
+  "po_section",
+  "po_search_id",
+  "po_search_date",
+  "search_po_button",
+  "column_break_po",
+  "purchase_order",
+  "supplier_name",
+  "si_section",
+  "sales_invoice",
+  "column_break_si",
+  "customer_name",
+  "po_list_section",
+  "po_list",
+  "items_section",
+  "po_items",
+  "flow_section",
+  "material_flow",
+  "column_break_flow",
+  "route_to",
+  "requires_weighing",
+  "vehicle_driver_section",
+  "vehicle_number_display",
+  "vehicle_master",
+  "column_break_vd",
+  "driver",
+  "driver_name",
+  "driver_mobile",
+  "challan_section",
+  "challan_number",
+  "column_break_challan",
+  "challan_date",
+  "transport_section",
+  "transporter",
+  "lr_number",
+  "column_break_transport",
+  "lr_date",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "BBF-GE-.YYYY.-.#####",
+   "default": "BBF-GE-.YYYY.-.#####",
+   "hidden": 1
+  },
+  {
+   "fieldname": "token_number",
+   "fieldtype": "Link",
+   "label": "Token Number",
+   "options": "TS Token",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "stock_direction",
+   "fieldtype": "Select",
+   "label": "Stock Direction",
+   "options": "Stock IN\nStock OUT",
+   "default": "Stock IN",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "entry_date",
+   "fieldtype": "Date",
+   "label": "Entry Date",
+   "fetch_from": "token_number.entry_date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "entry_time",
+   "fieldtype": "Time",
+   "label": "Entry Time",
+   "fetch_from": "token_number.entry_time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vehicle_type",
+   "fieldtype": "Data",
+   "label": "Vehicle Type",
+   "fetch_from": "token_number.vehicle_type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nPO Linked\nSI Linked\nSent to Weighbridge\nSent to Stores\nCompleted",
+   "default": "Draft",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "po_section",
+   "fieldtype": "Section Break",
+   "label": "Purchase Order Linking",
+   "depends_on": "eval:doc.stock_direction==='Stock IN'"
+  },
+  {
+   "fieldname": "po_search_id",
+   "fieldtype": "Data",
+   "label": "Search by PO ID"
+  },
+  {
+   "fieldname": "po_search_date",
+   "fieldtype": "Date",
+   "label": "Search by PO Date"
+  },
+  {
+   "fieldname": "search_po_button",
+   "fieldtype": "Button",
+   "label": "Search Purchase Orders"
+  },
+  {
+   "fieldname": "column_break_po",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "purchase_order",
+   "fieldtype": "Link",
+   "label": "Purchase Order",
+   "options": "Purchase Order",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "supplier_name",
+   "fieldtype": "Data",
+   "label": "Supplier Name",
+   "fetch_from": "purchase_order.supplier_name",
+   "read_only": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "si_section",
+   "fieldtype": "Section Break",
+   "label": "Sales Invoice Linking",
+   "depends_on": "eval:doc.stock_direction==='Stock OUT'"
+  },
+  {
+   "fieldname": "sales_invoice",
+   "fieldtype": "Link",
+   "label": "Sales Invoice",
+   "options": "Sales Invoice",
+   "mandatory_depends_on": "eval:doc.stock_direction==='Stock OUT'"
+  },
+  {
+   "fieldname": "column_break_si",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "fetch_from": "sales_invoice.customer_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "po_list_section",
+   "fieldtype": "Section Break",
+   "label": "Linked Purchase Orders",
+   "depends_on": "eval:doc.stock_direction==='Stock IN'"
+  },
+  {
+   "fieldname": "po_list",
+   "fieldtype": "Table",
+   "label": "Purchase Orders",
+   "options": "TS Gate Entry PO",
+   "description": "Add one or more Purchase Orders. All must be from the same supplier."
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "PO Items"
+  },
+  {
+   "fieldname": "po_items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "TS Gate Entry Item"
+  },
+  {
+   "fieldname": "flow_section",
+   "fieldtype": "Section Break",
+   "label": "Material Flow"
+  },
+  {
+   "fieldname": "material_flow",
+   "fieldtype": "Select",
+   "label": "Material Flow",
+   "options": "\nRaw Material\nNon-Raw Material",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_flow",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "route_to",
+   "fieldtype": "Data",
+   "label": "Route To",
+   "read_only": 1
+  },
+  {
+   "fieldname": "requires_weighing",
+   "fieldtype": "Check",
+   "label": "Requires Weighing",
+   "default": "0",
+   "depends_on": "eval:doc.material_flow==='Non-Raw Material'",
+   "description": "Check if this Non-Raw Material needs to be weighed (e.g., Steel, Chemical)"
+  },
+  {
+   "fieldname": "vehicle_driver_section",
+   "fieldtype": "Section Break",
+   "label": "Vehicle & Driver Registration"
+  },
+  {
+   "fieldname": "vehicle_number_display",
+   "fieldtype": "Data",
+   "label": "Vehicle Number",
+   "fetch_from": "token_number.vehicle_number",
+   "read_only": 1,
+   "description": "Vehicle number entered at G1"
+  },
+  {
+   "fieldname": "vehicle_master",
+   "fieldtype": "Link",
+   "label": "Vehicle Master",
+   "options": "TS Vehicle Master",
+   "description": "Link to registered vehicle. Create new if not registered."
+  },
+  {
+   "fieldname": "column_break_vd",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "label": "Driver",
+   "options": "TS Driver Master",
+   "description": "Select or create driver record"
+  },
+  {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Driver Name",
+   "fetch_from": "driver.driver_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "driver_mobile",
+   "fieldtype": "Data",
+   "label": "Driver Mobile",
+   "fetch_from": "driver.mobile_number",
+   "read_only": 1,
+   "options": "Phone"
+  },
+  {
+   "fieldname": "challan_section",
+   "fieldtype": "Section Break",
+   "label": "Invoice / Challan Details",
+   "depends_on": "eval:doc.stock_direction==='Stock IN'"
+  },
+  {
+   "fieldname": "challan_number",
+   "fieldtype": "Data",
+   "label": "Invoice / Challan Number"
+  },
+  {
+   "fieldname": "column_break_challan",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "challan_date",
+   "fieldtype": "Date",
+   "label": "Challan Date"
+  },
+  {
+   "fieldname": "transport_section",
+   "fieldtype": "Section Break",
+   "label": "Transport Details"
+  },
+  {
+   "fieldname": "transporter",
+   "fieldtype": "Link",
+   "label": "Transporter",
+   "options": "TS Transport Master",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "lr_number",
+   "fieldtype": "Data",
+   "label": "LR Number"
+  },
+  {
+   "fieldname": "column_break_transport",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lr_date",
+   "fieldtype": "Date",
+   "label": "LR Date"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "TS Gate Entry",
+   "read_only": 1,
+   "no_copy": 1,
+   "hidden": 1
+  }
+ ],
+ "links": [
+  {
+   "link_doctype": "TS Weighbridge Log",
+   "link_fieldname": "gate_entry"
+  },
+  {
+   "link_doctype": "TS Unloading Entry",
+   "link_fieldname": "gate_entry"
+  }
+ ],
+ "modified": "2026-03-19 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Gate Entry",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "submit": 1,
+   "role": "System Manager",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "System Manager",
+   "permlevel": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "submit": 1,
+   "role": "G2 Gate Operator",
+   "permlevel": 0
+  },
+  {
+   "read": 1,
+   "role": "G1 Security"
+  },
+  {
+   "read": 1,
+   "role": "Weighbridge Operator"
+  },
+  {
+   "read": 1,
+   "role": "Stores User"
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "IT Head",
+   "permlevel": 0
+  }
+ ],
+ "is_submittable": 1,
+ "search_fields": "token_number, purchase_order, status",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "token_number",
+ "track_changes": 1
+}

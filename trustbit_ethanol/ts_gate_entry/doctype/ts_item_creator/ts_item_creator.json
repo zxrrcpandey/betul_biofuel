@@ -1,0 +1,372 @@
+{
+ "actions": [],
+ "autoname": "format:BIC-{####}",
+ "creation": "2026-03-09 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "builder_section",
+  "company",
+  "company_code_type",
+  "company_code",
+  "column_break_company",
+  "item_group",
+  "category_code_type",
+  "category_code",
+  "serial_section",
+  "serial_number",
+  "column_break_serial",
+  "has_variant",
+  "variant_section",
+  "variant_source",
+  "brand",
+  "brand_code",
+  "column_break_variant",
+  "variant",
+  "variant_code",
+  "variants_section",
+  "variants",
+  "preview_section",
+  "generated_item_code",
+  "details_section",
+  "item_name",
+  "gst_hsn_code",
+  "column_break_details",
+  "stock_uom",
+  "item_tax_template",
+  "stock_section",
+  "maintain_stock",
+  "valuation_rate",
+  "standard_rate",
+  "column_break_stock",
+  "opening_stock",
+  "opening_warehouse",
+  "description_section",
+  "description",
+  "result_section",
+  "item_created",
+  "template_item",
+  "column_break_result",
+  "status"
+ ],
+ "fields": [
+  {
+   "fieldname": "builder_section",
+   "fieldtype": "Section Break",
+   "label": "Item Code Builder"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "company_code_type",
+   "fieldtype": "Select",
+   "label": "Company Code Type",
+   "options": "Character\nNumerical",
+   "default": "Character",
+   "reqd": 1
+  },
+  {
+   "fieldname": "company_code",
+   "fieldtype": "Data",
+   "label": "Company Code",
+   "read_only": 1,
+   "description": "Auto-fetched from Company master based on code type"
+  },
+  {
+   "fieldname": "column_break_company",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Item Group / Category",
+   "options": "Item Group",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "category_code_type",
+   "fieldtype": "Select",
+   "label": "Category Code Type",
+   "options": "Character\nNumerical",
+   "default": "Character",
+   "reqd": 1
+  },
+  {
+   "fieldname": "category_code",
+   "fieldtype": "Data",
+   "label": "Category Code",
+   "read_only": 1,
+   "description": "Auto-fetched from Item Group master based on code type"
+  },
+  {
+   "fieldname": "serial_section",
+   "fieldtype": "Section Break",
+   "label": "Serial & Variant"
+  },
+  {
+   "fieldname": "serial_number",
+   "fieldtype": "Data",
+   "label": "Serial Number",
+   "read_only": 1,
+   "description": "Auto-incremented per Company + Category combination"
+  },
+  {
+   "fieldname": "column_break_serial",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "has_variant",
+   "fieldtype": "Check",
+   "label": "Has Variant",
+   "default": "0"
+  },
+  {
+   "fieldname": "variant_section",
+   "fieldtype": "Section Break",
+   "label": "Variant Selection",
+   "depends_on": "eval:doc.has_variant",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "variant_source",
+   "fieldtype": "Select",
+   "label": "Variant Source",
+   "options": "Brand\nCustom Variant",
+   "default": "Brand",
+   "depends_on": "eval:doc.has_variant",
+   "description": "Brand (from ERPNext Brand master) or Custom Variant (from TS Variant master)"
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Brand",
+   "depends_on": "eval:doc.has_variant && doc.variant_source=='Brand'"
+  },
+  {
+   "fieldname": "brand_code",
+   "fieldtype": "Data",
+   "label": "Brand Code",
+   "read_only": 1,
+   "fetch_from": "brand.brand_code",
+   "depends_on": "eval:doc.has_variant && doc.variant_source=='Brand'"
+  },
+  {
+   "fieldname": "column_break_variant",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "variant",
+   "fieldtype": "Link",
+   "label": "Custom Variant",
+   "options": "TS Variant",
+   "depends_on": "eval:doc.has_variant && doc.variant_source=='Custom Variant'"
+  },
+  {
+   "fieldname": "variant_code",
+   "fieldtype": "Data",
+   "label": "Variant Code",
+   "read_only": 1,
+   "fetch_from": "variant.variant_code",
+   "depends_on": "eval:doc.has_variant && doc.variant_source=='Custom Variant'"
+  },
+  {
+   "fieldname": "variants_section",
+   "fieldtype": "Section Break",
+   "label": "Variant Items",
+   "depends_on": "eval:doc.has_variant",
+   "description": "Add multiple variant items to create in one go"
+  },
+  {
+   "fieldname": "variants",
+   "fieldtype": "Table",
+   "label": "Variants",
+   "options": "TS Item Creator Variant",
+   "depends_on": "eval:doc.has_variant"
+  },
+  {
+   "fieldname": "preview_section",
+   "fieldtype": "Section Break",
+   "label": "Generated Item Code"
+  },
+  {
+   "fieldname": "generated_item_code",
+   "fieldtype": "Data",
+   "label": "Generated Item Code",
+   "read_only": 1,
+   "bold": 1,
+   "in_list_view": 1,
+   "description": "This will be the Item Code in ERPNext"
+  },
+  {
+   "fieldname": "details_section",
+   "fieldtype": "Section Break",
+   "label": "Item Details"
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "description": "Optional human-readable name. If empty, Item Code will be used as name"
+  },
+  {
+   "fieldname": "gst_hsn_code",
+   "fieldtype": "Link",
+   "label": "HSN/SAC Code",
+   "options": "GST HSN Code",
+   "reqd": 1,
+   "description": "GST HSN/SAC code (minimum 6 digits)"
+  },
+  {
+   "fieldname": "column_break_details",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "Stock UOM",
+   "options": "UOM",
+   "reqd": 1,
+   "default": "Kg"
+  },
+  {
+   "fieldname": "item_tax_template",
+   "fieldtype": "Link",
+   "label": "Item Tax Template",
+   "options": "Item Tax Template"
+  },
+  {
+   "fieldname": "stock_section",
+   "fieldtype": "Section Break",
+   "label": "Stock & Valuation",
+   "description": "For standalone items. Variant items have per-variant stock settings."
+  },
+  {
+   "fieldname": "maintain_stock",
+   "fieldtype": "Check",
+   "label": "Maintain Stock",
+   "default": "1"
+  },
+  {
+   "fieldname": "valuation_rate",
+   "fieldtype": "Currency",
+   "label": "Valuation Rate",
+   "depends_on": "eval:!doc.has_variant",
+   "description": "Rate at which this item is valued in stock"
+  },
+  {
+   "fieldname": "standard_rate",
+   "fieldtype": "Currency",
+   "label": "Standard Selling Rate",
+   "depends_on": "eval:!doc.has_variant",
+   "description": "Default selling rate for this item"
+  },
+  {
+   "fieldname": "column_break_stock",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "opening_stock",
+   "fieldtype": "Float",
+   "label": "Opening Stock",
+   "depends_on": "eval:doc.maintain_stock",
+   "description": "Initial stock quantity"
+  },
+  {
+   "fieldname": "opening_warehouse",
+   "fieldtype": "Link",
+   "label": "Opening Warehouse",
+   "options": "Warehouse",
+   "depends_on": "eval:doc.maintain_stock && doc.opening_stock",
+   "description": "Warehouse for opening stock"
+  },
+  {
+   "fieldname": "description_section",
+   "fieldtype": "Section Break",
+   "label": "Description",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Text Editor",
+   "label": "Description"
+  },
+  {
+   "fieldname": "result_section",
+   "fieldtype": "Section Break",
+   "label": "Result"
+  },
+  {
+   "fieldname": "item_created",
+   "fieldtype": "Link",
+   "label": "Created Item",
+   "options": "Item",
+   "read_only": 1,
+   "description": "Link to the created Item (populated after creation)"
+  },
+  {
+   "fieldname": "template_item",
+   "fieldtype": "Link",
+   "label": "Template Item",
+   "options": "Item",
+   "read_only": 1,
+   "depends_on": "eval:doc.has_variant && doc.template_item",
+   "description": "Template item (parent) for variant items"
+  },
+  {
+   "fieldname": "column_break_result",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nCreated",
+   "default": "Draft",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-03-09 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Item Creator",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Stores User"
+  }
+ ],
+ "search_fields": "generated_item_code, company, item_group",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "title_field": "generated_item_code",
+ "track_changes": 1
+}

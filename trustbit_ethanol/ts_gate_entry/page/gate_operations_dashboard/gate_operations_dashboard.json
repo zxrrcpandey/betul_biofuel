@@ -1,0 +1,26 @@
+{
+ "content": null,
+ "creation": "2026-03-23 00:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-03-23 12:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "gate-operations-dashboard",
+ "owner": "Administrator",
+ "page_name": "gate-operations-dashboard",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "IT Head"},
+  {"role": "G1 Security"},
+  {"role": "G2 Gate Operator"},
+  {"role": "CEO"},
+  {"role": "MD"}
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Gate Operations Dashboard"
+}

@@ -1,4 +1,4 @@
-// BBF MR Approval v2.5 — Cost-center-based routing with stepper, Hold/Resume, CC config
+// TS MR Approval v2.5 — Cost-center-based routing with stepper, Hold/Resume, CC config
 frappe.ui.form.on("Material Request", {
 	refresh(frm) {
 		// CC filter: show only CCs where user is Creator (if CC config exists)
@@ -25,7 +25,7 @@ frappe.ui.form.on("Material Request", {
 		if (!frm.doc.cost_center) return;
 		// Check if selected CC is Direct PO
 		frappe.call({
-			method: "trustbit_ethanol.bbf_gate_entry.doctype.bbf_cc_approval_config.bbf_cc_approval_config.check_direct_po_cc",
+			method: "trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config.check_direct_po_cc",
 			args: { cost_center: frm.doc.cost_center },
 			callback(r) {
 				if (r.message && r.message.is_direct_po) {
@@ -44,7 +44,7 @@ frappe.ui.form.on("Material Request", {
 
 function _setup_cc_filter(frm) {
 	frappe.call({
-		method: "trustbit_ethanol.bbf_gate_entry.doctype.bbf_cc_approval_config.bbf_cc_approval_config.get_user_allowed_cost_centers",
+		method: "trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config.get_user_allowed_cost_centers",
 		async: false,
 		callback(r) {
 			const allowed_ccs = r.message || [];
@@ -67,7 +67,7 @@ function _setup_cc_filter(frm) {
 
 function _load_mr_context(frm) {
 	frappe.call({
-		method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.get_approval_context",
+		method: "trustbit_ethanol.ts_gate_entry.ts_po_approval.get_approval_context",
 		args: { doctype: "Material Request", docname: frm.doc.name },
 		callback(r) {
 			if (!r.message) return;
@@ -85,7 +85,7 @@ function _load_mr_context(frm) {
 				_render_mr_buttons(frm, ctx);
 			}, 200);
 		},
-		error() { console.warn("BBF: MR approval context failed"); }
+		error() { console.warn("TS: MR approval context failed"); }
 	});
 }
 
@@ -144,7 +144,7 @@ function _hide_standard_submit(frm, ctx) {
 
 function _render_mr_stepper(frm, ctx) {
 	// Remove old stepper
-	$(frm.fields_dict.bbf_mr_section?.wrapper || frm.page.wrapper)
+	$(frm.fields_dict.ts_mr_section?.wrapper || frm.page.wrapper)
 		.find(".bbf-mr-stepper").remove();
 
 	const chain = ctx.approval_chain || [];
@@ -214,7 +214,7 @@ function _render_mr_stepper(frm, ctx) {
 		</style>`;
 	}
 
-	const $section = $(frm.fields_dict.bbf_mr_section?.wrapper);
+	const $section = $(frm.fields_dict.ts_mr_section?.wrapper);
 	if ($section.length) {
 		$section.prepend(html);
 	}
@@ -243,7 +243,7 @@ function _render_mr_buttons(frm, ctx) {
 	if (ctx.can_submit_for_approval) {
 		frm.add_custom_button(__("Submit for Approval"), () => {
 			frappe.call({
-				method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.get_submit_target",
+				method: "trustbit_ethanol.ts_gate_entry.ts_po_approval.get_submit_target",
 				args: { doctype: "Material Request", docname: frm.doc.name },
 				freeze: true,
 				freeze_message: __("Checking..."),
@@ -334,7 +334,7 @@ function _render_mr_buttons(frm, ctx) {
 				primary_action(values) {
 					d.hide();
 					frappe.call({
-						method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.hold_mr",
+						method: "trustbit_ethanol.ts_gate_entry.ts_po_approval.hold_mr",
 						args: { docname: frm.doc.name, reason: values.reason },
 						freeze: true,
 						freeze_message: __("Putting on hold..."),
@@ -353,7 +353,7 @@ function _render_mr_buttons(frm, ctx) {
 				__("Resume this MR from hold? It will return to pending approval."),
 				() => {
 					frappe.call({
-						method: "trustbit_ethanol.bbf_gate_entry.bbf_po_approval.resume_mr",
+						method: "trustbit_ethanol.ts_gate_entry.ts_po_approval.resume_mr",
 						args: { docname: frm.doc.name },
 						freeze: true,
 						freeze_message: __("Resuming..."),
@@ -400,7 +400,7 @@ function _show_mr_comment_dialog(frm, title, callback) {
 
 function _call_mr_action(frm, method, args) {
 	frappe.call({
-		method: `trustbit_ethanol.bbf_gate_entry.bbf_po_approval.${method}`,
+		method: `trustbit_ethanol.ts_gate_entry.ts_po_approval.${method}`,
 		args,
 		freeze: true,
 		freeze_message: __("Processing..."),
@@ -426,9 +426,9 @@ function _lock_mr_fields(frm, ctx) {
 }
 
 function _render_mr_timeline(frm) {
-	$(frm.fields_dict.bbf_mr_log_section?.wrapper).find(".bbf-mr-timeline").remove();
+	$(frm.fields_dict.ts_mr_log_section?.wrapper).find(".bbf-mr-timeline").remove();
 
-	const logs = frm.doc.bbf_mr_log || [];
+	const logs = frm.doc.ts_mr_log || [];
 	if (!logs.length) return;
 
 	let html = '<div class="bbf-mr-timeline" style="padding: 10px 0;">';
@@ -468,7 +468,7 @@ function _render_mr_timeline(frm) {
 
 	html += '</div>';
 
-	const $section = $(frm.fields_dict.bbf_mr_log_section?.wrapper);
+	const $section = $(frm.fields_dict.ts_mr_log_section?.wrapper);
 	if ($section.length) {
 		$section.prepend(html);
 	}
@@ -556,7 +556,7 @@ function _check_cc_budget(frm) {
 	if (!frm.doc.cost_center) return;
 
 	frappe.call({
-		method: "trustbit_ethanol.bbf_gate_entry.bbf_budget.get_cc_budget_status",
+		method: "trustbit_ethanol.ts_gate_entry.ts_budget.get_cc_budget_status",
 		args: { cost_center: frm.doc.cost_center },
 		callback(r) {
 			// Remove old budget banner
