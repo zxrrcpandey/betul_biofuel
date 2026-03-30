@@ -2,13 +2,13 @@
 
 /* Light mode: colored Trustbit logo */
 .navbar .navbar-home img.app-logo {
-    content: url("/files/trustbit_light.png") !important;
+    content: url("/files/trustbit-light.png") !important;
     height: 24px;
     width: auto;
 }
 
 .page-card .app-logo {
-    content: url("/files/trustbit_light.png") !important;
+    content: url("/files/trustbit-light.png") !important;
     max-height: 40px;
 }
 
