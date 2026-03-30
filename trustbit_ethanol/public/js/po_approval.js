@@ -1,6 +1,7 @@
 // TS PO Approval v2.0 — Category-based routing with dynamic stepper
 frappe.ui.form.on("Purchase Order", {
 	refresh(frm) {
+		_force_po_grid_columns(frm);
 		if (frm.is_new()) return;
 		_load_approval_context(frm);
 		_load_budget_indicator(frm);
@@ -671,4 +672,19 @@ function _lc_get_doc_links(d) {
 	}
 
 	return links;
+}
+
+function _force_po_grid_columns(frm) {
+	try {
+		const grid = frm.fields_dict.items?.grid;
+		if (!grid) return;
+		const row = grid.grid_rows.length ? grid.grid_rows[0] : null;
+		if (!row) return;
+		const dl = row.docfields.find(f => f.fieldname === "ts_delivery_location");
+		if (dl) {
+			dl.in_list_view = 1;
+			dl.columns = 2;
+		}
+		grid.refresh();
+	} catch(e) {}
 }
