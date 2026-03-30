@@ -483,7 +483,25 @@ function _setup_stock_columns(frm) {
 	try {
 		const grid = frm.fields_dict.items?.grid;
 		if (!grid) return;
-		// Color-code existing rows (actual_qty column visibility handled via Property Setter)
+
+		// Force Delivery Location column visible (Frappe __UserSettings may hide it)
+		const dl_field = grid.grid_rows.length ? grid.grid_rows[0].docfields.find(f => f.fieldname === "ts_delivery_location") : null;
+		if (dl_field) {
+			dl_field.in_list_view = 1;
+			dl_field.columns = 2;
+		}
+
+		// Force actual_qty column visible
+		const aq_field = grid.grid_rows.length ? grid.grid_rows[0].docfields.find(f => f.fieldname === "actual_qty") : null;
+		if (aq_field) {
+			aq_field.in_list_view = 1;
+			aq_field.columns = 2;
+		}
+
+		// Refresh grid to pick up changes
+		grid.refresh();
+
+		// Color-code existing rows
 		_colorize_stock_rows(frm);
 	} catch(e) {
 		// Silently fail — stock columns are cosmetic, don't break approval flow
