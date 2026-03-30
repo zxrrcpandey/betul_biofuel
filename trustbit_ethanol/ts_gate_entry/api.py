@@ -291,3 +291,49 @@ def _build_lifecycle_steps(token_status, stock_direction, material_flow, require
 			step["status"] = "pending"
 
 	return steps
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  WEIGHBRIDGE INTEGRATION — Fetch weight from local weighbridge
+# ═══════════════════════════════════════════════════════════════════════
+
+@frappe.whitelist()
+def fetch_weighbridge_weight():
+	"""Fetch current weight reading from the weighbridge hardware.
+	Reads from the URL configured in TS Settings → Weighbridge URL.
+	Returns weight in KG as a float.
+	"""
+	import requests
+	import re
+
+	settings = frappe.get_single("TS Settings")
+	url = settings.weighbridge_url
+	if not url:
+		frappe.throw("Weighbridge URL not configured. Go to TS Settings → Weighbridge tab.")
+
+	timeout = int(settings.weighbridge_timeout or 5)
+
+	try:
+		response = requests.get(url, timeout=timeout)
+		response.raise_for_status()
+	except requests.ConnectionError:
+		frappe.throw("Cannot connect to weighbridge at {}. Check if the device is online.".format(
+			frappe.utils.escape_html(url)))
+	except requests.Timeout:
+		frappe.throw("Weighbridge did not respond within {} seconds.".format(timeout))
+	except requests.RequestException as e:
+		frappe.throw("Weighbridge error: {}".format(frappe.utils.escape_html(str(e))))
+
+	# Parse weight from response (HTML or plain text)
+	raw = response.text.strip()
+
+	# Extract numbers from response (handles HTML like "<html><body>012500</body></html>")
+	numbers = re.findall(r'[\d.]+', raw)
+	if not numbers:
+		frappe.throw("Could not read weight from weighbridge response: {}".format(
+			frappe.utils.escape_html(raw[:100])))
+
+	# Take the largest number (the weight) — handles cases with multiple numbers
+	weight = max(float(n) for n in numbers)
+
+	return {"weight_kg": weight, "raw": raw[:50]}

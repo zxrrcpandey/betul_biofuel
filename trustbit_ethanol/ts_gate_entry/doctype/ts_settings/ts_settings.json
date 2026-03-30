@@ -50,7 +50,12 @@
   "g2_print_mode",
   "tab_dashboard",
   "dashboard_security_section",
-  "md_dashboard_pin"
+  "md_dashboard_pin",
+  "tab_weighbridge",
+  "weighbridge_section",
+  "weighbridge_url",
+  "column_break_weighbridge",
+  "weighbridge_timeout"
  ],
  "fields": [
   {
@@ -336,6 +341,34 @@
    "label": "MD Dashboard PIN",
    "permlevel": 2,
    "description": "4-6 digit PIN required to access MD Dashboard and MD Wall Display. Only System Manager can set this."
+  },
+  {
+   "fieldname": "tab_weighbridge",
+   "fieldtype": "Tab Break",
+   "label": "Weighbridge"
+  },
+  {
+   "fieldname": "weighbridge_section",
+   "fieldtype": "Section Break",
+   "label": "Weighbridge Integration"
+  },
+  {
+   "fieldname": "weighbridge_url",
+   "fieldtype": "Data",
+   "label": "Weighbridge URL",
+   "default": "http://122.186.18.59:5001/read",
+   "description": "URL of the weighbridge weight reading endpoint (e.g., http://122.186.18.59:5001/read)"
+  },
+  {
+   "fieldname": "column_break_weighbridge",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "weighbridge_timeout",
+   "fieldtype": "Int",
+   "label": "Timeout (seconds)",
+   "default": "5",
+   "description": "Maximum time to wait for weighbridge response"
   }
  ],
  "issingle": 1,

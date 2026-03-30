@@ -37,6 +37,9 @@ frappe.ui.form.on("TS Weighbridge Log", {
 			frm.set_df_property("tare_weight", "read_only", 0);
 			frm.set_df_property("tare_weight", "description", "");
 		}
+
+		// ── Fetch Weight Buttons ──
+		_add_fetch_weight_buttons(frm);
 	},
 
 	setup(frm) {
@@ -63,3 +66,76 @@ frappe.ui.form.on("TS Weighbridge Log", {
 		}
 	}
 });
+
+
+function _add_fetch_weight_buttons(frm) {
+	// Remove old buttons
+	$(frm.page.wrapper).find(".ts-fetch-weight-btn").remove();
+
+	// Fetch Gross Weight button — show when gross_weight is editable (not yet recorded)
+	if (!frm.doc.gross_weight || frm.is_new()) {
+		const $gross_field = $(frm.fields_dict.gross_weight?.wrapper);
+		if ($gross_field.length) {
+			$('<button class="btn btn-xs btn-primary ts-fetch-weight-btn" style="margin-top:5px;">'
+				+ '<i class="fa fa-download"></i> Fetch Gross Weight from Weighbridge'
+				+ '</button>')
+				.appendTo($gross_field)
+				.on("click", function() {
+					_fetch_weight(frm, "gross_weight", $(this));
+				});
+		}
+	}
+
+	// Fetch Tare Weight button — show when tare_weight is editable
+	const tare_readonly = frm.fields_dict.tare_weight?.df?.read_only;
+	if (!frm.doc.tare_weight && !tare_readonly) {
+		const $tare_field = $(frm.fields_dict.tare_weight?.wrapper);
+		if ($tare_field.length) {
+			$('<button class="btn btn-xs btn-success ts-fetch-weight-btn" style="margin-top:5px;">'
+				+ '<i class="fa fa-download"></i> Fetch Tare Weight from Weighbridge'
+				+ '</button>')
+				.appendTo($tare_field)
+				.on("click", function() {
+					_fetch_weight(frm, "tare_weight", $(this));
+				});
+		}
+	}
+}
+
+function _fetch_weight(frm, target_field, $btn) {
+	const label = target_field === "gross_weight" ? "Gross" : "Tare";
+
+	$btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Reading...');
+
+	frappe.call({
+		method: "trustbit_ethanol.ts_gate_entry.api.fetch_weighbridge_weight",
+		freeze: false,
+		callback(r) {
+			if (r.message && r.message.weight_kg !== undefined) {
+				const weight = r.message.weight_kg;
+
+				if (weight <= 0) {
+					frappe.msgprint({
+						title: __("Zero Weight"),
+						message: __("Weighbridge returned 0 KG. Please ensure the vehicle is on the weighbridge and try again."),
+						indicator: "orange"
+					});
+					$btn.prop("disabled", false).html('<i class="fa fa-download"></i> Fetch ' + label + ' Weight from Weighbridge');
+					return;
+				}
+
+				frm.set_value(target_field, weight);
+				frappe.show_alert({
+					message: __(label + " Weight: {0} KG fetched from weighbridge", [weight.toLocaleString()]),
+					indicator: "green"
+				}, 5);
+
+				$btn.removeClass("btn-primary btn-success").addClass("btn-default")
+					.html('<i class="fa fa-check"></i> ' + weight.toLocaleString() + ' KG');
+			}
+		},
+		error() {
+			$btn.prop("disabled", false).html('<i class="fa fa-download"></i> Fetch ' + label + ' Weight from Weighbridge');
+		}
+	});
+}
