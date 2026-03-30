@@ -1,17 +1,25 @@
-/* TS Theme — Dark mode logo swap */
+/* TS Theme — Logo swap for light/dark mode */
 
-/* Dark mode: replace navbar logo with white Trustbit logo */
-[data-theme="dark"] .navbar .navbar-home img.app-logo,
-[data-theme="dark"] .navbar .navbar-home .erpnext-icon {
+/* Light mode: colored Trustbit logo */
+.navbar .navbar-home img.app-logo {
+    content: url("/files/trustbit_light.png") !important;
+    height: 24px;
+    width: auto;
+}
+
+.page-card .app-logo {
+    content: url("/files/trustbit_light.png") !important;
+    max-height: 40px;
+}
+
+/* Dark mode: white Trustbit logo */
+[data-theme="dark"] .navbar .navbar-home img.app-logo {
     content: url("/files/trustbit.png") !important;
     height: 24px;
     width: auto;
 }
 
-/* Dark mode: login page logo */
 [data-theme="dark"] .page-card .app-logo {
     content: url("/files/trustbit.png") !important;
     max-height: 40px;
 }
-
-/* Light mode: use default ERPNext logo (no override needed) */
