@@ -1,0 +1,17 @@
+/* TS Login Page — "Powered by Trustbit" below login card */
+
+/* Show powered-by text after the login section */
+section.for-login::after {
+    content: "Powered by Trustbit Technologies Pvt. Ltd.";
+    display: block;
+    text-align: center;
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 20px;
+    padding-bottom: 20px;
+    letter-spacing: 0.5px;
+}
+
+[data-theme="dark"] section.for-login::after {
+    color: #6b7280;
+}
