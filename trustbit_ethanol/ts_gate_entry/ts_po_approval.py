@@ -1747,10 +1747,14 @@ def po_on_amend(doc, method):
 
 
 def po_before_save(doc, method):
-	"""Prevent amount changes while PO is in approval chain + block duplicate PO from MR."""
+	"""Prevent amount changes while PO is in approval chain + block duplicate PO from MR + copy project from MR."""
 	# ── Duplicate PO from MR block ──
 	if doc.is_new():
 		_check_duplicate_po_from_mr(doc)
+
+	# ── Copy project from MR to PO ──
+	if not doc.project:
+		_copy_project_from_mr(doc)
 
 	if not doc.ts_approval_status:
 		return
@@ -1793,6 +1797,16 @@ def _check_duplicate_po_from_mr(doc):
 				  "Cannot create a duplicate PO from the same MR.").format(po_names, mr_name),
 				title=_("Duplicate PO from MR"),
 			)
+
+
+def _copy_project_from_mr(doc):
+	"""Auto-copy project from linked MR to PO when PO is created from MR."""
+	for item in (doc.get("items") or []):
+		if item.material_request:
+			project = frappe.db.get_value("Material Request", item.material_request, "ts_project")
+			if project:
+				doc.project = project
+				return
 
 
 def mr_before_save(doc, method):
