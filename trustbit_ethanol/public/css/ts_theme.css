@@ -1,25 +1,93 @@
-/* TS Theme — Logo swap for light/dark mode */
+/* TS Theme — Dual Logo: Client (BBF) + Trustbit branding */
 
-/* Light mode: colored Trustbit logo */
-.navbar .navbar-home img.app-logo {
-    content: url("/files/trustbit-light.png") !important;
-    height: 24px;
-    width: auto;
+/* ══════════════════════════════════════════════
+   NAVBAR: Client logo left + Trustbit small right
+   ══════════════════════════════════════════════ */
+
+/* Client logo is set via Navbar Settings (app_logo) — no CSS override needed */
+
+/* Add small Trustbit logo after navbar-home */
+.navbar .navbar-home::after {
+    content: "";
+    display: inline-block;
+    background-image: url("/files/trustbit-light.png");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    width: 60px;
+    height: 14px;
+    margin-left: 8px;
+    vertical-align: bottom;
+    opacity: 0.6;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
 }
 
-.page-card .app-logo {
-    content: url("/files/trustbit-light.png") !important;
-    max-height: 40px;
+/* Dark mode: swap to white Trustbit logo */
+[data-theme="dark"] .navbar .navbar-home::after {
+    background-image: url("/files/trustbit.png");
+    opacity: 0.7;
 }
 
-/* Dark mode: white Trustbit logo */
-[data-theme="dark"] .navbar .navbar-home img.app-logo {
-    content: url("/files/trustbit.png") !important;
-    height: 24px;
-    width: auto;
+/* ══════════════════════════════════════════════
+   LOGIN PAGE: Client center + "Powered by Trustbit"
+   ══════════════════════════════════════════════ */
+
+/* "Powered by Trustbit" below login card */
+.page-card::after {
+    content: "Powered by Trustbit Technologies";
+    display: block;
+    text-align: center;
+    font-size: 10px;
+    color: #9ca3af;
+    margin-top: 12px;
+    letter-spacing: 0.5px;
 }
 
-[data-theme="dark"] .page-card .app-logo {
-    content: url("/files/trustbit.png") !important;
-    max-height: 40px;
+[data-theme="dark"] .page-card::after {
+    color: #6b7280;
+}
+
+/* ══════════════════════════════════════════════
+   SIDEBAR: Trustbit small at bottom
+   ══════════════════════════════════════════════ */
+
+.desk-sidebar::after {
+    content: "";
+    display: block;
+    background-image: url("/files/trustbit-light.png");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    width: 70px;
+    height: 16px;
+    margin: 10px auto;
+    opacity: 0.4;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+[data-theme="dark"] .desk-sidebar::after {
+    background-image: url("/files/trustbit.png");
+    opacity: 0.5;
+}
+
+/* ══════════════════════════════════════════════
+   FOOTER: "Powered by Trustbit Technologies"
+   ══════════════════════════════════════════════ */
+
+.web-footer::after,
+footer::after {
+    content: "Powered by Trustbit Technologies Pvt. Ltd.";
+    display: block;
+    text-align: center;
+    font-size: 10px;
+    color: #9ca3af;
+    padding: 8px 0;
+    letter-spacing: 0.3px;
+}
+
+[data-theme="dark"] .web-footer::after,
+[data-theme="dark"] footer::after {
+    color: #6b7280;
 }
