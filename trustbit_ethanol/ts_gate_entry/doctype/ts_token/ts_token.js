@@ -3,21 +3,17 @@ frappe.ui.form.on("TS Token", {
 		let is_gate_pass = frm.doc.entry_type === "Gate Pass";
 		let is_admin_reception = frappe.user.has_role("Admin Reception") && !frappe.user.has_role("G1 Security");
 
-		// Force show driver_name for Material tokens (Frappe hides it due to old hidden=1 in JSON)
+		// Force show driver_name for Material tokens
+		// Frappe's depends_on section evaluation sets disp_status="None" on fields
+		// that were previously hidden, even after unhiding. Must force after Frappe completes.
 		if (!is_gate_pass) {
-			// Must retry — Frappe re-applies hide-control after refresh
-			function _force_show_driver() {
+			setTimeout(function() {
 				if (frm.fields_dict.driver_name) {
-					$(frm.fields_dict.driver_name.wrapper).removeClass("hide-control").show();
 					frm.fields_dict.driver_name.disp_status = "Write";
 					frm.fields_dict.driver_name.refresh();
+					$(frm.fields_dict.driver_name.wrapper).removeClass("hide-control").show();
 				}
-			}
-			_force_show_driver();
-			setTimeout(_force_show_driver, 100);
-			setTimeout(_force_show_driver, 300);
-			setTimeout(_force_show_driver, 500);
-			setTimeout(_force_show_driver, 1000);
+			}, 200);
 		}
 
 		// Hide Connections sidebar for Gate Pass (material-only links)
