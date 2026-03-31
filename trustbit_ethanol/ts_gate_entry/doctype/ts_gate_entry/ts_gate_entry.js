@@ -226,17 +226,17 @@ frappe.ui.form.on("TS Gate Entry", {
 					return;
 				}
 
-				// Vehicle Master check removed — driver details now entered at G1 Token
+				// Fetch G1 driver details from Token (without fetch_from to keep fields editable)
+				frappe.db.get_value("TS Token", frm.doc.token_number,
+					["ts_driver_name_g1", "ts_driver_license_g1", "ts_driver_mobile_g1"]
+				).then(t => {
+					if (t.message) {
+						if (t.message.ts_driver_name_g1) frm.set_value("ts_g1_driver_name", t.message.ts_driver_name_g1);
+						if (t.message.ts_driver_license_g1) frm.set_value("ts_g1_driver_license", t.message.ts_driver_license_g1);
+						if (t.message.ts_driver_mobile_g1) frm.set_value("ts_g1_driver_mobile", t.message.ts_driver_mobile_g1);
+					}
+				});
 			});
-		}
-	},
-
-	// vehicle_master handler removed — Vehicle Master no longer used at G2
-
-	driver(frm) {
-		// Just trigger refresh to clear any warnings
-		if (frm.doc.driver) {
-			frm.refresh_fields();
 		}
 	},
 
