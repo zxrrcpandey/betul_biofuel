@@ -7,21 +7,36 @@
 /* No Trustbit branding in navbar — client logo only */
 
 /* ══════════════════════════════════════════════
-   LOGIN PAGE: Client center + "Powered by Trustbit"
+   LOGIN PAGE: "Powered by Trustbit" below login card
    ══════════════════════════════════════════════ */
 
-/* "Powered by Trustbit" below login card */
+/* Target the login page container — shows below the login card */
 .page-card::after {
-    content: "Powered by Trustbit Technologies";
+    content: "Powered by Trustbit Technologies Pvt. Ltd.";
     display: block;
     text-align: center;
-    font-size: 10px;
+    font-size: 12px;
     color: #9ca3af;
-    margin-top: 12px;
+    margin-top: 16px;
     letter-spacing: 0.5px;
 }
 
-[data-theme="dark"] .page-card::after {
+/* Also target the login form wrapper for broader compatibility */
+.login-content::after,
+.page-card-head + .page-card-body + .page-card-actions::after,
+.for-login .page-card::after {
+    content: "Powered by Trustbit Technologies Pvt. Ltd.";
+    display: block;
+    text-align: center;
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 16px;
+    letter-spacing: 0.5px;
+}
+
+[data-theme="dark"] .page-card::after,
+[data-theme="dark"] .login-content::after,
+[data-theme="dark"] .for-login .page-card::after {
     color: #6b7280;
 }
 
