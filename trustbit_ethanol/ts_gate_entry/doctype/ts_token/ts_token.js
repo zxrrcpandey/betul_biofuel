@@ -3,6 +3,11 @@ frappe.ui.form.on("TS Token", {
 		let is_gate_pass = frm.doc.entry_type === "Gate Pass";
 		let is_admin_reception = frappe.user.has_role("Admin Reception") && !frappe.user.has_role("G1 Security");
 
+		// Force show driver_name for Material tokens (Frappe hides it due to old hidden=1 in JSON)
+		if (!is_gate_pass) {
+			$(frm.fields_dict.driver_name?.wrapper).removeClass("hide-control").show();
+		}
+
 		// Hide Connections sidebar for Gate Pass (material-only links)
 		if (is_gate_pass && frm.dashboard && frm.dashboard.wrapper) {
 			frm.dashboard.wrapper.find(".form-links, .form-heatmap, .form-graph").hide();
