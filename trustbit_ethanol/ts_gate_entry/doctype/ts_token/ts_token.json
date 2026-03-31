@@ -17,10 +17,10 @@
   "gate_pass_status",
   "vehicle_section",
   "vehicle_number",
+  "driver_name",
   "vehicle_type",
   "column_break_vehicle",
   "driver",
-  "driver_name",
   "driver_mobile",
   "driver_license_number",
   "gate_pass_visitor_section",
@@ -183,6 +183,13 @@
    "description": "Enter vehicle registration number (e.g., MP48AB1234)"
   },
   {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Driver Name",
+   "read_only": 1,
+   "hidden": 0
+  },
+  {
    "fieldname": "vehicle_type",
    "fieldtype": "Data",
    "label": "Vehicle Type",
@@ -203,13 +210,6 @@
    "hidden": 1,
    "depends_on": "eval:doc.entry_type==='Material'",
    "description": "Set from Gate Entry at G2"
-  },
-  {
-   "fieldname": "driver_name",
-   "fieldtype": "Data",
-   "label": "Driver Name",
-   "read_only": 1,
-   "hidden": 0
   },
   {
    "fieldname": "driver_mobile",
