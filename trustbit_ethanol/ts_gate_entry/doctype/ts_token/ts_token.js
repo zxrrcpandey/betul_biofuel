@@ -5,7 +5,19 @@ frappe.ui.form.on("TS Token", {
 
 		// Force show driver_name for Material tokens (Frappe hides it due to old hidden=1 in JSON)
 		if (!is_gate_pass) {
-			$(frm.fields_dict.driver_name?.wrapper).removeClass("hide-control").show();
+			// Must retry — Frappe re-applies hide-control after refresh
+			function _force_show_driver() {
+				if (frm.fields_dict.driver_name) {
+					$(frm.fields_dict.driver_name.wrapper).removeClass("hide-control").show();
+					frm.fields_dict.driver_name.disp_status = "Write";
+					frm.fields_dict.driver_name.refresh();
+				}
+			}
+			_force_show_driver();
+			setTimeout(_force_show_driver, 100);
+			setTimeout(_force_show_driver, 300);
+			setTimeout(_force_show_driver, 500);
+			setTimeout(_force_show_driver, 1000);
 		}
 
 		// Hide Connections sidebar for Gate Pass (material-only links)
