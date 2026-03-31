@@ -209,7 +209,7 @@
    "fieldtype": "Data",
    "label": "Driver Name",
    "read_only": 1,
-   "hidden": 1
+   "hidden": 0
   },
   {
    "fieldname": "driver_mobile",
