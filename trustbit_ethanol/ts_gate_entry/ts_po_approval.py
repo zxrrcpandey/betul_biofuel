@@ -1800,12 +1800,16 @@ def _check_duplicate_po_from_mr(doc):
 
 
 def _copy_project_from_mr(doc):
-	"""Auto-copy project from linked MR to PO when PO is created from MR."""
+	"""Auto-copy project + is_new_project from linked MR to PO when PO is created from MR."""
 	for item in (doc.get("items") or []):
 		if item.material_request:
-			project = frappe.db.get_value("Material Request", item.material_request, "ts_project")
-			if project:
-				doc.project = project
+			mr_data = frappe.db.get_value("Material Request", item.material_request,
+				["ts_project", "ts_is_new_project"], as_dict=True)
+			if mr_data:
+				if mr_data.ts_project:
+					doc.project = mr_data.ts_project
+				if mr_data.ts_is_new_project:
+					doc.ts_is_new_project = mr_data.ts_is_new_project
 				return
 
 
