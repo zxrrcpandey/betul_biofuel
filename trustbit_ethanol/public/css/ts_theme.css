@@ -1,33 +1,10 @@
 /* TS Theme — Dual Logo: Client (BBF) + Trustbit branding */
 
 /* ══════════════════════════════════════════════
-   NAVBAR: Client logo left + Trustbit small right
+   NAVBAR: Client logo only (set via Navbar Settings)
    ══════════════════════════════════════════════ */
 
-/* Client logo is set via Navbar Settings (app_logo) — no CSS override needed */
-
-/* Add small Trustbit logo after navbar-home */
-.navbar .navbar-home::after {
-    content: "";
-    display: inline-block;
-    background-image: url("/files/trustbit-light.png");
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    width: 60px;
-    height: 14px;
-    margin-left: 8px;
-    vertical-align: bottom;
-    opacity: 0.6;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-}
-
-/* Dark mode: swap to white Trustbit logo */
-[data-theme="dark"] .navbar .navbar-home::after {
-    background-image: url("/files/trustbit.png");
-    opacity: 0.7;
-}
+/* No Trustbit branding in navbar — client logo only */
 
 /* ══════════════════════════════════════════════
    LOGIN PAGE: Client center + "Powered by Trustbit"
