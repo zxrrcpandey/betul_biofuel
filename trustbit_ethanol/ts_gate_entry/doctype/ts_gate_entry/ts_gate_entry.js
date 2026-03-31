@@ -180,15 +180,7 @@ frappe.ui.form.on("TS Gate Entry", {
 			};
 		});
 
-		// Filter vehicle_master to hide blacklisted
-		frm.set_query("vehicle_master", function () {
-			return { filters: { is_blacklisted: 0 } };
-		});
-
-		// Filter driver to hide blacklisted
-		frm.set_query("driver", function () {
-			return { filters: { is_blacklisted: 0 } };
-		});
+		// Vehicle Master + Driver Master filters removed — fields hidden at G2
 
 		// Filter purchase_order (legacy field) to only show open POs
 		frm.set_query("purchase_order", function () {
@@ -234,38 +226,12 @@ frappe.ui.form.on("TS Gate Entry", {
 					return;
 				}
 
-				// Check vehicle registration + auto-fill vehicle_master
-				frappe.db.get_value("TS Token", frm.doc.token_number, "vehicle_number").then(v => {
-					let vn = v.message && v.message.vehicle_number;
-					if (!vn) return;
-					frappe.db.exists("TS Vehicle Master", vn).then(exists => {
-						if (exists) {
-							frm.set_value("vehicle_master", vn);
-						} else {
-							frappe.msgprint({
-								title: __("Vehicle Not Registered"),
-								message: __("Vehicle <b>{0}</b> is not registered in Vehicle Master. Please <a href='/app/bbf-vehicle-master/new?vehicle_number={0}' target='_blank'>create Vehicle Master</a> before submitting.", [vn]),
-								indicator: "orange"
-							});
-						}
-					});
-				});
+				// Vehicle Master check removed — driver details now entered at G1 Token
 			});
 		}
 	},
 
-	vehicle_master(frm) {
-		// Warn if vehicle_master doesn't match token's vehicle_number
-		if (frm.doc.vehicle_master && frm.doc.vehicle_number_display) {
-			if (frm.doc.vehicle_master !== frm.doc.vehicle_number_display) {
-				frappe.msgprint({
-					title: __("Vehicle Mismatch"),
-					message: __("Vehicle Master <b>{0}</b> does not match the vehicle number <b>{1}</b> entered at G1.", [frm.doc.vehicle_master, frm.doc.vehicle_number_display]),
-					indicator: "orange"
-				});
-			}
-		}
-	},
+	// vehicle_master handler removed — Vehicle Master no longer used at G2
 
 	driver(frm) {
 		// Just trigger refresh to clear any warnings
