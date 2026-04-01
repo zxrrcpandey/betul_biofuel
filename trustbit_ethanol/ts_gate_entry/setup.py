@@ -1251,11 +1251,14 @@ def seed_cc_approval_configs():
 
 		for u in cfg.get("users", []):
 			# Skip if user doesn't exist
-			if u.get("user") and not frappe.db.exists("User", u["user"]):
+			user_email = u.get("user", "")
+			if user_email and not frappe.db.exists("User", user_email):
 				continue
+			full_name = frappe.db.get_value("User", user_email, "full_name") if user_email else ""
 			doc.append("users", {
 				"action_type": u["type"],
-				"user": u.get("user", ""),
+				"user": user_email,
+				"user_full_name": full_name or "",
 				"role": u.get("role", ""),
 				"step_order": u.get("step", 0),
 				"can_create_mr": 1 if u["type"] == "Creator" else 0,
