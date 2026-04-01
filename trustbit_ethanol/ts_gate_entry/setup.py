@@ -518,7 +518,199 @@ def create_custom_fields():
 				"description": "3-letter code for item coding (e.g., CAR, ADM, MCL)"
 			},
 		],
+
+		# ── v2.6.0+ Additional Fields ──────────────────────────────────
+		"Material Request Item": [
+			{
+				"fieldname": "ts_delivery_location",
+				"fieldtype": "Data",
+				"label": "Define Use Location",
+				"insert_after": "warehouse",
+				"in_list_view": 1,
+				"columns": 2,
+			},
+			{
+				"fieldname": "ts_item_remark",
+				"fieldtype": "Data",
+				"label": "Item Remark",
+				"insert_after": "ts_delivery_location",
+				"in_list_view": 1,
+				"columns": 2,
+			},
+		],
+		"Purchase Order Item": [
+			{
+				"fieldname": "ts_delivery_location",
+				"fieldtype": "Data",
+				"label": "Define Use Location",
+				"insert_after": "uom",
+				"in_list_view": 1,
+				"columns": 2,
+				"fetch_from": "material_request_item.ts_delivery_location",
+			},
+			{
+				"fieldname": "ts_item_remark",
+				"fieldtype": "Data",
+				"label": "Item Remark",
+				"insert_after": "ts_delivery_location",
+				"in_list_view": 1,
+				"columns": 2,
+				"fetch_from": "material_request_item.ts_item_remark",
+			},
+		],
+		"Purchase Receipt Item": [
+			{
+				"fieldname": "ts_delivery_location",
+				"fieldtype": "Data",
+				"label": "Define Use Location",
+				"insert_after": "uom",
+				"fetch_from": "purchase_order_item.ts_delivery_location",
+			},
+			{
+				"fieldname": "ts_item_remark",
+				"fieldtype": "Data",
+				"label": "Item Remark",
+				"insert_after": "ts_delivery_location",
+				"fetch_from": "purchase_order_item.ts_item_remark",
+			},
+		],
+		"Purchase Invoice Item": [
+			{
+				"fieldname": "ts_delivery_location",
+				"fieldtype": "Data",
+				"label": "Define Use Location",
+				"insert_after": "uom",
+				"fetch_from": "po_detail.ts_delivery_location",
+			},
+			{
+				"fieldname": "ts_item_remark",
+				"fieldtype": "Data",
+				"label": "Item Remark",
+				"insert_after": "ts_delivery_location",
+				"fetch_from": "po_detail.ts_item_remark",
+			},
+		],
 	}
+
+	# ── v2.6.0+ Priority, Remark, Project fields on MR and PO ──
+	custom_fields["Material Request"].extend([
+		{
+			"fieldname": "ts_priority",
+			"fieldtype": "Select",
+			"label": "Priority",
+			"options": "\nLow\nMedium\nHigh\nUrgent",
+			"insert_after": "schedule_date",
+		},
+		{
+			"fieldname": "ts_remark",
+			"fieldtype": "Small Text",
+			"label": "Remark",
+			"insert_after": "ts_priority",
+		},
+		{
+			"fieldname": "ts_project",
+			"fieldtype": "Link",
+			"label": "Project",
+			"options": "Project",
+			"insert_after": "cost_center",
+		},
+		{
+			"fieldname": "ts_is_new_project",
+			"fieldtype": "Check",
+			"label": "Is this a New Project?",
+			"insert_after": "ts_project",
+		},
+	])
+
+	custom_fields["Purchase Order"].extend([
+		{
+			"fieldname": "ts_priority",
+			"fieldtype": "Select",
+			"label": "Priority",
+			"options": "\nLow\nMedium\nHigh\nUrgent",
+			"insert_after": "schedule_date",
+		},
+		{
+			"fieldname": "ts_remark",
+			"fieldtype": "Small Text",
+			"label": "Remark",
+			"insert_after": "ts_priority",
+		},
+		{
+			"fieldname": "ts_project",
+			"fieldtype": "Link",
+			"label": "Project",
+			"options": "Project",
+			"insert_after": "cost_center",
+		},
+		{
+			"fieldname": "ts_is_new_project",
+			"fieldtype": "Check",
+			"label": "Is this a New Project?",
+			"insert_after": "ts_project",
+		},
+	])
+
+	# ── v2.6.1 G1 Driver Details on TS Token (Custom Fields) ──
+	custom_fields["TS Token"] = [
+		{
+			"fieldname": "ts_driver_name_g1",
+			"fieldtype": "Data",
+			"label": "Driver Name",
+			"insert_after": "vehicle_number",
+			"depends_on": "eval:doc.entry_type=='Material'",
+		},
+		{
+			"fieldname": "ts_driver_license_g1",
+			"fieldtype": "Data",
+			"label": "Driver License Number",
+			"insert_after": "ts_driver_name_g1",
+			"depends_on": "eval:doc.entry_type=='Material'",
+		},
+		{
+			"fieldname": "ts_driver_mobile_g1",
+			"fieldtype": "Data",
+			"label": "Driver Mobile",
+			"insert_after": "ts_driver_license_g1",
+			"depends_on": "eval:doc.entry_type=='Material'",
+		},
+		{
+			"fieldname": "ts_g1_operator_name",
+			"fieldtype": "Data",
+			"label": "G1 Operator Name",
+			"insert_after": "ts_driver_mobile_g1",
+			"read_only": 1,
+		},
+	]
+
+	# ── v2.6.1 G1 Driver Info + G2 Operator on TS Gate Entry (Custom Fields) ──
+	custom_fields["TS Gate Entry"] = [
+		{
+			"fieldname": "ts_g1_driver_name",
+			"fieldtype": "Data",
+			"label": "G1 Driver Name",
+			"insert_after": "vehicle_number_display",
+		},
+		{
+			"fieldname": "ts_g1_driver_license",
+			"fieldtype": "Data",
+			"label": "G1 Driver License",
+			"insert_after": "ts_g1_driver_name",
+		},
+		{
+			"fieldname": "ts_g1_driver_mobile",
+			"fieldtype": "Data",
+			"label": "G1 Driver Mobile",
+			"insert_after": "ts_g1_driver_license",
+		},
+		{
+			"fieldname": "ts_g2_operator_name",
+			"fieldtype": "Data",
+			"label": "G2 Operator Name",
+			"insert_after": "ts_g1_driver_mobile",
+			"read_only": 1,
+		},
+	]
 
 	_create_custom_fields(custom_fields)
 	_setup_purchase_receipt_permissions()
@@ -1136,5 +1328,61 @@ def _seed_default_approval_limits():
 		doc = frappe.new_doc("TS Approval Limit")
 		doc.update(d)
 		doc.insert(ignore_permissions=True)
+
+	frappe.db.commit()
+
+
+def seed_number_cards():
+	"""Create Number Cards used by TS Gate Entry workspaces if they don't exist."""
+	cards = [
+		{"name": "Active Unloading - Main", "label": "Active Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Unloading"]]'},
+		{"name": "Approved Quality", "label": "Approved Quality", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "status", "=", "Approved"]]', "color": "#10b981", "module": "TS Gate Entry"},
+		{"name": "Awaiting Gross Weight", "label": "Awaiting Gross", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "PO Linked"]]'},
+		{"name": "Awaiting PO Link", "label": "Awaiting PO Link", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Token Generated"]]'},
+		{"name": "Awaiting Tare Weight", "label": "Awaiting Tare", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "=", "Awaiting Unloading"]]'},
+		{"name": "Completed Today WB", "label": "Completed Today", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "=", "Completed"], ["TS Weighbridge Log", "creation", "Timespan", "today"]]'},
+		{"name": "Completed Unloading Today", "label": "Completed Today", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Completed"], ["TS Unloading Entry", "creation", "Timespan", "today"]]'},
+		{"name": "Currently Unloading", "label": "Currently Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Unloading"]]'},
+		{"name": "Exited Today", "label": "Exited Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Exited"], ["TS Token", "g1_exit_time", "Timespan", "today"]]'},
+		{"name": "Exited Today - Main", "label": "Exited Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Exited"], ["TS Token", "creation", "Timespan", "today"]]'},
+		{"name": "GRN Created Today", "label": "GRN Created Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "GRN Created"]]'},
+		{"name": "Pending Deductions", "label": "Pending Deductions", "document_type": "TS Deduction Sheet", "filters_json": '[["TS Deduction Sheet", "status", "=", "Calculated"]]', "color": "#f59e0b", "module": "TS Gate Entry"},
+		{"name": "Pending Exit", "label": "Pending Exit", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "in", ["GRN Created", "Tare Weighed"]]]'},
+		{"name": "Pending GRN", "label": "Pending GRN", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Tare Weighed"]]', "color": "#f59e0b"},
+		{"name": "Pending Material Inspections", "label": "Pending Material Inspections", "document_type": "TS Material Inspection", "filters_json": '[["TS Material Inspection", "status", "=", "Pending"]]', "color": "#ef4444", "module": "TS Gate Entry"},
+		{"name": "Pending Quality", "label": "Pending Quality", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Tare Weighed"]]'},
+		{"name": "Pending Quality-1", "label": "Pending Quality", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "status", "=", "Pending"]]', "color": "#f59e0b", "module": "TS Gate Entry"},
+		{"name": "Pending Unloading", "label": "Pending Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Pending"]]'},
+		{"name": "Sent to Stores", "label": "Sent to Stores", "document_type": "TS Gate Entry", "filters_json": '[["TS Gate Entry", "status", "=", "Sent to Stores"], ["TS Gate Entry", "docstatus", "=", 1]]'},
+		{"name": "Sent to Weighbridge", "label": "Sent to Weighbridge", "document_type": "TS Gate Entry", "filters_json": '[["TS Gate Entry", "status", "=", "Sent to Weighbridge"], ["TS Gate Entry", "docstatus", "=", 1]]'},
+		{"name": "SLA Breaches", "label": "SLA Breaches", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]'},
+		{"name": "Stuck Vehicles", "label": "Stuck Vehicles", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]'},
+		{"name": "Tare Weighed Today", "label": "Tare Weighed Today", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "in", ["Tare Recorded", "Completed"]], ["TS Weighbridge Log", "creation", "Timespan", "today"]]'},
+		{"name": "Todays Deductions", "label": "Today's Deductions", "document_type": "TS Deduction Sheet", "filters_json": '[["TS Deduction Sheet", "creation", "Timespan", "today"]]', "color": "#3b82f6", "module": "TS Gate Entry"},
+		{"name": "Todays Quality Checks", "label": "Today's Quality Checks", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "creation", "Timespan", "today"]]', "color": "#3b82f6", "module": "TS Gate Entry"},
+		{"name": "Total Today - Main", "label": "Total Today", "document_type": "TS Token", "filters_json": '[["TS Token", "creation", "Timespan", "today"]]'},
+		{"name": "Total Today - Mgmt", "label": "Total Today", "document_type": "TS Token", "filters_json": '[["TS Token", "creation", "Timespan", "today"]]'},
+		{"name": "Vehicles Inside - Main", "label": "Vehicles Inside", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]'},
+		{"name": "Vehicles Inside - Mgmt", "label": "Vehicles Inside", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]'},
+		{"name": "Vehicles Inside Plant", "label": "Vehicles Inside Plant", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]'},
+		{"name": "Vehicles Today", "label": "Vehicles Today", "document_type": "TS Token", "filters_json": '[["TS Token", "creation", "Timespan", "today"]]'},
+	]
+
+	for nc in cards:
+		if frappe.db.exists("Number Card", nc["name"]):
+			continue
+		doc = frappe.get_doc({
+			"doctype": "Number Card",
+			"label": nc["label"],
+			"document_type": nc["document_type"],
+			"function": "Count",
+			"filters_json": nc["filters_json"],
+			"is_standard": 0,
+			"type": "Document Type",
+			"color": nc.get("color"),
+			"module": nc.get("module"),
+			"owner": "Administrator",
+		})
+		doc.insert(ignore_permissions=True, set_name=nc["name"])
 
 	frappe.db.commit()

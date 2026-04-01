@@ -1,0 +1,138 @@
+{
+ "charts": [],
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Quality Lab</b></span>\", \"col\": 12}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Pending Quality-1\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Pending Deductions\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Pending Material Inspections\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Todays Quality Checks\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Todays Deductions\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Approved Quality\", \"col\": 4}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h6\\\">Quick Access</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Quality Inspection\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"All Quality Inspections\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Material Inspections\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Deduction Sheet\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"All Deduction Sheets\", \"col\": 4}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h6\\\">Reports & Masters</span>\", \"col\": 12}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Quality Operations\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Deductions\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Material Inspection\", \"col\": 4}}]",
+ "creation": "2026-04-01 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Quality Lab",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Quality Operations",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Quality Inspection",
+   "link_to": "TS Quality Inspection",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Settings",
+   "link_to": "TS Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Deductions",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Deduction Sheet",
+   "link_to": "TS Deduction Sheet",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Material Inspection",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Material Inspection",
+   "link_to": "TS Material Inspection",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-04-01 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "Quality Lab",
+ "number_cards": [
+  {
+   "number_card_name": "Pending Quality-1"
+  },
+  {
+   "number_card_name": "Pending Deductions"
+  },
+  {
+   "number_card_name": "Pending Material Inspections"
+  },
+  {
+   "number_card_name": "Todays Quality Checks"
+  },
+  {
+   "number_card_name": "Todays Deductions"
+  },
+  {
+   "number_card_name": "Approved Quality"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "BBPL Ethanol",
+ "public": 1,
+ "roles": [
+  {"role": "Quality Inspector"},
+  {"role": "IT Head"},
+  {"role": "System Manager"},
+  {"role": "CEO"},
+  {"role": "MD"},
+  {"role": "AVP"},
+  {"role": "G2 Gate Operator"}
+ ],
+ "sequence_id": 0,
+ "shortcuts": [
+  {
+   "label": "New Quality Inspection",
+   "link_to": "TS Quality Inspection",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "All Quality Inspections",
+   "link_to": "TS Quality Inspection",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "Material Inspections",
+   "link_to": "TS Material Inspection",
+   "type": "DocType"
+  },
+  {
+   "label": "New Deduction Sheet",
+   "link_to": "TS Deduction Sheet",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "All Deduction Sheets",
+   "link_to": "TS Deduction Sheet",
+   "type": "DocType"
+  }
+ ],
+ "title": "Quality Lab"
+}

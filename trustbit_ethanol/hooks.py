@@ -146,7 +146,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup.seed_gate_pass_destinations",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_visiting_companies",
 	"trustbit_ethanol.ts_gate_entry.setup.migrate_store1_route",
-	"trustbit_ethanol.ts_gate_entry.setup.seed_cc_approval_configs"
+	"trustbit_ethanol.ts_gate_entry.setup.seed_cc_approval_configs",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_number_cards"
 ]
 
 # Scheduled Tasks
