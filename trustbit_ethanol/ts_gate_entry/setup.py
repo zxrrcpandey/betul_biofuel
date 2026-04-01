@@ -1388,48 +1388,6 @@ def seed_number_cards():
 	frappe.db.commit()
 
 
-def seed_po_approval_rules():
-	"""Create PO Approval Rules (category + amount routing) if none exist."""
-	if frappe.db.count("TS PO Approval Rule") > 0:
-		return
-
-	rules = [
-		{"name": "Store-Under 1L", "category": "Store", "min_amount": 0, "max_amount": 99999, "is_active": 1,
-		 "steps": [{"step_order": 1, "role": "CEO", "action_type": "Final Approve"}]},
-		{"name": "Store-1L to 6L", "category": "Store", "min_amount": 100000, "max_amount": 599999, "is_active": 1,
-		 "steps": [{"step_order": 1, "role": "Purchase Manager", "action_type": "Review"},
-		           {"step_order": 2, "role": "CEO", "action_type": "Final Approve"}]},
-		{"name": "Store-Above 6L", "category": "Store", "min_amount": 600000, "max_amount": 0, "is_active": 1,
-		 "steps": [{"step_order": 1, "role": "Purchase Manager", "action_type": "Review"},
-		           {"step_order": 2, "role": "CEO", "action_type": "Review"},
-		           {"step_order": 3, "role": "MD", "action_type": "Final Approve"}]},
-		{"name": "Grain-Under 6L", "category": "Grain", "min_amount": 0, "max_amount": 599999, "is_active": 1,
-		 "steps": [{"step_order": 1, "role": "Grain Purchase Manager", "action_type": "Review"},
-		           {"step_order": 2, "role": "CEO", "action_type": "Final Approve"}]},
-		{"name": "Grain-Above 6L", "category": "Grain", "min_amount": 600000, "max_amount": 0, "is_active": 1,
-		 "steps": [{"step_order": 1, "role": "Grain Purchase Manager", "action_type": "Review"},
-		           {"step_order": 2, "role": "CEO", "action_type": "Review"},
-		           {"step_order": 3, "role": "MD", "action_type": "Final Approve"}]},
-		{"name": "Coal-Under 30L", "category": "Coal", "min_amount": 0, "max_amount": 2999999, "is_active": 1,
-		 "steps": [{"step_order": 1, "role": "CEO", "action_type": "Final Approve"}]},
-		{"name": "Coal-Above 30L", "category": "Coal", "min_amount": 3000000, "max_amount": 0, "is_active": 1,
-		 "steps": [{"step_order": 1, "role": "CEO", "action_type": "Review"},
-		           {"step_order": 2, "role": "MD", "action_type": "Final Approve"}]},
-	]
-
-	for r in rules:
-		doc = frappe.new_doc("TS PO Approval Rule")
-		doc.category = r["category"]
-		doc.min_amount = r["min_amount"]
-		doc.max_amount = r["max_amount"]
-		doc.is_active = r["is_active"]
-		for s in r["steps"]:
-			doc.append("steps", s)
-		doc.insert(ignore_permissions=True, set_name=r["name"])
-
-	frappe.db.commit()
-
-
 def seed_purchase_categories():
 	"""Create Purchase Categories (Store, Grain, Coal) with item group mappings if none exist."""
 	if frappe.db.count("TS Purchase Category") > 0:
@@ -1453,8 +1411,51 @@ def seed_purchase_categories():
 		doc.category_name = cat_name
 		for ig in item_groups:
 			if frappe.db.exists("Item Group", ig):
-				doc.append("items", {"item_group": ig})
+				doc.append("item_groups", {"item_group": ig})
 		doc.insert(ignore_permissions=True, set_name=cat_name)
+
+	frappe.db.commit()
+
+
+def seed_po_approval_rules():
+	"""Create PO Approval Rules (category + amount routing) if none exist.
+	Must run AFTER seed_purchase_categories (categories are Link targets)."""
+	if frappe.db.count("TS PO Approval Rule") > 0:
+		return
+
+	rules = [
+		{"name": "Store-Under 1L", "purchase_category": "Store", "min_amount": 0, "max_amount": 99999, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "CEO", "action_type": "Final Approve"}]},
+		{"name": "Store-1L to 6L", "purchase_category": "Store", "min_amount": 100000, "max_amount": 599999, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "Purchase Manager", "action_type": "Review"},
+		           {"step_order": 2, "role": "CEO", "action_type": "Final Approve"}]},
+		{"name": "Store-Above 6L", "purchase_category": "Store", "min_amount": 600000, "max_amount": 0, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "Purchase Manager", "action_type": "Review"},
+		           {"step_order": 2, "role": "CEO", "action_type": "Review"},
+		           {"step_order": 3, "role": "MD", "action_type": "Final Approve"}]},
+		{"name": "Grain-Under 6L", "purchase_category": "Grain", "min_amount": 0, "max_amount": 599999, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "Grain Purchase Manager", "action_type": "Review"},
+		           {"step_order": 2, "role": "CEO", "action_type": "Final Approve"}]},
+		{"name": "Grain-Above 6L", "purchase_category": "Grain", "min_amount": 600000, "max_amount": 0, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "Grain Purchase Manager", "action_type": "Review"},
+		           {"step_order": 2, "role": "CEO", "action_type": "Review"},
+		           {"step_order": 3, "role": "MD", "action_type": "Final Approve"}]},
+		{"name": "Coal-Under 30L", "purchase_category": "Coal", "min_amount": 0, "max_amount": 2999999, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "CEO", "action_type": "Final Approve"}]},
+		{"name": "Coal-Above 30L", "purchase_category": "Coal", "min_amount": 3000000, "max_amount": 0, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "CEO", "action_type": "Review"},
+		           {"step_order": 2, "role": "MD", "action_type": "Final Approve"}]},
+	]
+
+	for r in rules:
+		doc = frappe.new_doc("TS PO Approval Rule")
+		doc.purchase_category = r["purchase_category"]
+		doc.min_amount = r["min_amount"]
+		doc.max_amount = r["max_amount"]
+		doc.is_active = r["is_active"]
+		for s in r["steps"]:
+			doc.append("approval_steps", s)
+		doc.insert(ignore_permissions=True, set_name=r["name"])
 
 	frappe.db.commit()
 
@@ -1519,7 +1520,7 @@ def seed_mr_approval_routes():
 		doc.route_name = r["route_name"]
 		doc.is_active = r["is_active"]
 		for s in r["steps"]:
-			doc.append("steps", s)
+			doc.append("approval_steps", s)
 		for cc in r["cost_centers"]:
 			if frappe.db.exists("Cost Center", cc):
 				doc.append("cost_centers", {"cost_center": cc})
@@ -1563,6 +1564,8 @@ def seed_ts_settings():
 
 def seed_locations():
 	"""Create 20 physical locations if none exist."""
+	if not frappe.db.exists("DocType", "TS Location"):
+		return
 	if frappe.db.count("TS Location") > 0:
 		return
 
