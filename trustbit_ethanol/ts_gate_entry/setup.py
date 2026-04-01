@@ -1685,3 +1685,113 @@ def seed_property_setters():
 		doc.insert(ignore_permissions=True)
 
 	frappe.db.commit()
+
+
+def seed_global_defaults():
+	"""Set Global Defaults — default company, fiscal year, country, currency."""
+	gd = frappe.get_doc("Global Defaults")
+	changed = False
+
+	if not gd.default_company:
+		company = frappe.db.get_value("Company", {"abbr": "BBPL"}, "name")
+		if company:
+			gd.default_company = company
+			changed = True
+
+	if not gd.current_fiscal_year:
+		fy = frappe.get_all("Fiscal Year", filters={"disabled": 0}, fields=["name"], order_by="year_start_date desc", limit=1)
+		if fy:
+			gd.current_fiscal_year = fy[0].name
+			changed = True
+
+	if not gd.country:
+		gd.country = "India"
+		changed = True
+
+	if changed:
+		gd.save(ignore_permissions=True)
+		frappe.db.commit()
+
+
+def seed_navbar_website_settings():
+	"""Set Navbar logo and Website Settings (app name, footer, branding)."""
+	ns = frappe.get_doc("Navbar Settings")
+	if not ns.app_logo:
+		ns.app_logo = "/files/client_logo.png"
+		ns.save(ignore_permissions=True)
+
+	ws = frappe.get_doc("Website Settings")
+	changed = False
+	if not ws.app_name:
+		ws.app_name = "Betul Biofuel Pvt. Ltd."
+		changed = True
+	if not ws.banner_image:
+		ws.banner_image = "/files/client_logo.png"
+		changed = True
+	if not ws.footer_powered:
+		ws.footer_powered = "Trustbit Technologies Pvt. Ltd."
+		changed = True
+	if changed:
+		ws.save(ignore_permissions=True)
+
+	frappe.db.commit()
+
+
+def seed_fiscal_years():
+	"""Create Fiscal Years 2025-2026 and 2026-2027 if not exist."""
+	fiscal_years = [
+		{"name": "2025-2026", "start": "2025-04-01", "end": "2026-03-31"},
+		{"name": "2026-2027", "start": "2026-04-01", "end": "2027-03-31"},
+	]
+
+	for fy in fiscal_years:
+		if frappe.db.exists("Fiscal Year", fy["name"]):
+			continue
+		doc = frappe.get_doc({
+			"doctype": "Fiscal Year",
+			"year": fy["name"],
+			"year_start_date": fy["start"],
+			"year_end_date": fy["end"],
+			"disabled": 0,
+		})
+		doc.insert(ignore_permissions=True, set_name=fy["name"])
+
+	frappe.db.commit()
+
+
+def seed_monthly_distributions():
+	"""Create Monthly Distributions for budget control if not exist."""
+	months = ["January", "February", "March", "April", "May", "June",
+	          "July", "August", "September", "October", "November", "December"]
+
+	distributions = {
+		"FY 25-26": {"fiscal_year": "2025-2026", "pcts": [8.33] * 12},
+		"Grain Seasonal Distribution": {"fiscal_year": "2025-2026", "pcts": [5.0, 5.0, 8.0, 10.0, 12.0, 12.0, 12.0, 10.0, 8.0, 8.0, 5.0, 5.0]},
+	}
+
+	for name, config in distributions.items():
+		if frappe.db.exists("Monthly Distribution", name):
+			continue
+		if not frappe.db.exists("Fiscal Year", config["fiscal_year"]):
+			continue
+		doc = frappe.new_doc("Monthly Distribution")
+		doc.distribution_id = name
+		doc.fiscal_year = config["fiscal_year"]
+		for i, month in enumerate(months):
+			doc.append("percentages", {"month": month, "percentage_allocation": config["pcts"][i]})
+		doc.insert(ignore_permissions=True, set_name=name)
+
+	frappe.db.commit()
+
+
+def seed_brands():
+	"""Create Brand records if not exist."""
+	brands = ["Apple", "Cisco", "D-Link", "Eurotherm", "Exide",
+	          "Jindal", "PROMECON", "SKF/FAG", "TP-Link", "Xoptix Limited (UK)"]
+
+	for brand_name in brands:
+		if frappe.db.exists("Brand", brand_name):
+			continue
+		frappe.get_doc({"doctype": "Brand", "brand": brand_name}).insert(ignore_permissions=True)
+
+	frappe.db.commit()

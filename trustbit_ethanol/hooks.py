@@ -156,6 +156,11 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup.seed_list_view_settings",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_custom_docperm",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_property_setters",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_fiscal_years",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_monthly_distributions",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_brands",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_global_defaults",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_navbar_website_settings",
 ]
 
 # Scheduled Tasks
