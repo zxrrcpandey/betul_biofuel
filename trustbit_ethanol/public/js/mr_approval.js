@@ -484,19 +484,24 @@ function _setup_stock_columns(frm) {
 		const grid = frm.fields_dict.items?.grid;
 		if (!grid) return;
 
-		// Force Delivery Location column visible (Frappe __UserSettings may hide it)
-		const dl_field = grid.grid_rows.length ? grid.grid_rows[0].docfields.find(f => f.fieldname === "ts_delivery_location") : null;
-		if (dl_field) {
-			dl_field.in_list_view = 1;
-			dl_field.columns = 2;
-		}
+		// Force columns on grid meta (works even with 0 rows)
+		const meta_fields = grid.meta?.fields || grid.df?.fields || [];
+		meta_fields.forEach(f => {
+			if (["ts_delivery_location", "ts_item_remark", "actual_qty"].includes(f.fieldname)) {
+				f.in_list_view = 1;
+				f.columns = 2;
+			}
+		});
 
-		// Force actual_qty column visible
-		const aq_field = grid.grid_rows.length ? grid.grid_rows[0].docfields.find(f => f.fieldname === "actual_qty") : null;
-		if (aq_field) {
-			aq_field.in_list_view = 1;
-			aq_field.columns = 2;
-		}
+		// Also force on existing rows
+		(grid.grid_rows || []).forEach(row => {
+			(row.docfields || []).forEach(f => {
+				if (["ts_delivery_location", "ts_item_remark", "actual_qty"].includes(f.fieldname)) {
+					f.in_list_view = 1;
+					f.columns = 2;
+				}
+			});
+		});
 
 		// Refresh grid to pick up changes
 		grid.refresh();

@@ -124,7 +124,9 @@ override_doctype_dashboards = {
 # Inject JS into standard DocTypes for approval buttons
 doctype_js = {
 	"Purchase Order": "public/js/po_approval.js",
-	"Material Request": "public/js/mr_approval.js"
+	"Material Request": "public/js/mr_approval.js",
+	"Purchase Receipt": "public/js/pr_pi_columns.js",
+	"Purchase Invoice": "public/js/pr_pi_columns.js",
 }
 
 

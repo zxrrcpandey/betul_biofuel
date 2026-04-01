@@ -679,21 +679,23 @@ function _force_po_grid_columns(frm) {
 		const grid = frm.fields_dict.items?.grid;
 		if (!grid) return;
 
-		// Force column on grid meta (works even with 0 rows)
+		// Force columns on grid meta (works even with 0 rows)
 		const meta_fields = grid.meta?.fields || grid.df?.fields || [];
-		if (meta_fields.length) {
-			meta_fields.forEach(f => {
-				if (f.fieldname === "ts_delivery_location") {
+		meta_fields.forEach(f => {
+			if (["ts_delivery_location", "ts_item_remark"].includes(f.fieldname)) {
+				f.in_list_view = 1;
+				f.columns = 2;
+			}
+		});
+
+		// Also force on existing rows
+		(grid.grid_rows || []).forEach(row => {
+			(row.docfields || []).forEach(f => {
+				if (["ts_delivery_location", "ts_item_remark"].includes(f.fieldname)) {
 					f.in_list_view = 1;
 					f.columns = 2;
 				}
 			});
-		}
-
-		// Also force on existing rows
-		(grid.grid_rows || []).forEach(row => {
-			const dl = (row.docfields || []).find(f => f.fieldname === "ts_delivery_location");
-			if (dl) { dl.in_list_view = 1; dl.columns = 2; }
 		});
 
 		grid.refresh();
