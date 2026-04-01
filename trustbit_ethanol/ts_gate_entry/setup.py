@@ -1526,6 +1526,7 @@ def seed_mr_approval_routes():
 			if frappe.db.exists("Cost Center", cc):
 				doc.append("cost_centers", {"cost_center": cc})
 		doc.flags.ignore_validate = True
+		doc.flags.ignore_links = True
 		doc.insert(ignore_permissions=True, set_name=r["name"])
 
 	frappe.db.commit()
