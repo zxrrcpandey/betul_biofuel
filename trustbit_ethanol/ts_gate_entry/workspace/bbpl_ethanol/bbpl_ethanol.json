@@ -9,7 +9,7 @@
  "icon": "organization",
  "idx": 0,
  "is_hidden": 0,
- "label": "Trustbit Ethanol",
+ "label": "BBPL Ethanol",
  "links": [
   {
    "hidden": 0,
@@ -185,7 +185,7 @@
  "modified": "2026-03-09 20:30:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
- "name": "Trustbit Ethanol",
+ "name": "BBPL Ethanol",
  "number_cards": [
   {
    "number_card_name": "Vehicles Inside - Main"
@@ -204,19 +204,45 @@
  "parent_page": "",
  "public": 1,
  "roles": [
-  {"role": "System Manager"},
-  {"role": "G1 Security"},
-  {"role": "G2 Gate Operator"},
-  {"role": "Weighbridge Operator"},
-  {"role": "Stores User"},
-  {"role": "Accounts Manager"},
-  {"role": "IT Head"},
-  {"role": "Admin Reception"},
-  {"role": "CEO"},
-  {"role": "MD"},
-  {"role": "Purchase Manager"},
-  {"role": "Grain Purchase Manager"},
-  {"role": "AVP"}
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "G1 Security"
+  },
+  {
+   "role": "G2 Gate Operator"
+  },
+  {
+   "role": "Weighbridge Operator"
+  },
+  {
+   "role": "Stores User"
+  },
+  {
+   "role": "Accounts Manager"
+  },
+  {
+   "role": "IT Head"
+  },
+  {
+   "role": "Admin Reception"
+  },
+  {
+   "role": "CEO"
+  },
+  {
+   "role": "MD"
+  },
+  {
+   "role": "Purchase Manager"
+  },
+  {
+   "role": "Grain Purchase Manager"
+  },
+  {
+   "role": "AVP"
+  }
  ],
  "sequence_id": 0,
  "shortcuts": [
