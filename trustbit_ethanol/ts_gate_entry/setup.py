@@ -584,8 +584,6 @@ def create_custom_fields():
 				"fieldtype": "Data",
 				"label": "Define Use Location",
 				"insert_after": "uom",
-				"in_list_view": 1,
-				"columns": 2,
 				"fetch_from": "po_detail.ts_delivery_location",
 			},
 			{
