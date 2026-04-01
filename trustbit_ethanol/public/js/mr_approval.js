@@ -5,6 +5,8 @@ frappe.ui.form.on("Material Request", {
 		_setup_cc_filter(frm);
 		// Show stock availability columns in items table
 		_setup_stock_columns(frm);
+		// Override item filter: allow non-stock items for Service Request
+		_setup_item_query(frm);
 		if (frm.is_new()) return;
 		// Load approval context first (adds buttons), then budget banner
 		_load_mr_context(frm);
@@ -472,6 +474,24 @@ function _render_mr_timeline(frm) {
 	if ($section.length) {
 		$section.prepend(html);
 	}
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  ITEM QUERY — allow non-stock items for Service Request
+// ═══════════════════════════════════════════════════════════════
+
+function _setup_item_query(frm) {
+	frm.set_query("item_code", "items", function(doc) {
+		if (doc.material_request_type === "Service Request") {
+			return {
+				query: "erpnext.controllers.queries.item_query",
+				filters: { is_purchase_item: 1 },
+			};
+		}
+		// Default: let ERPNext handle it (stock items for Stock, purchase items for Purchase)
+		return {};
+	});
 }
 
 
