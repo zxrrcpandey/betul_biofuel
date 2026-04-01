@@ -192,4 +192,6 @@ PROPERTY_SETTERS = [
 	{"doc_type": "TS Unloading Entry", "field_name": "naming_series", "property": "options", "property_type": "Text", "value": "BBF-UL-.YYYY.-.#####", "doctype_or_field": "DocField"},
 	{"doc_type": "TS Weighbridge Log", "field_name": "naming_series", "property": "default", "property_type": "Text", "value": "BBF-WB-.YYYY.-.#####", "doctype_or_field": "DocField"},
 	{"doc_type": "TS Weighbridge Log", "field_name": "naming_series", "property": "options", "property_type": "Text", "value": "BBF-WB-.YYYY.-.#####", "doctype_or_field": "DocField"},
+	{"doc_type": "Supplier", "field_name": "supplier_type", "property": "options", "property_type": "Text", "value": "Company\nIndividual\nPartnership\nHUF\nFirm\nPerson\nArtificial & Judicial Person", "doctype_or_field": "DocField"},
+	{"doc_type": "Customer", "field_name": "customer_type", "property": "options", "property_type": "Text", "value": "Company\nIndividual\nPartnership\nHUF\nFirm\nPerson\nArtificial & Judicial Person", "doctype_or_field": "DocField"},
 ]
