@@ -171,6 +171,7 @@ PROPERTY_SETTERS = [
 	{"doc_type": "Purchase Order", "field_name": "in_words", "property": "hidden", "property_type": "Check", "value": "0", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order Item", "field_name": "schedule_date", "property": "in_list_view", "property_type": "Check", "value": "0", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order Item", "field_name": "warehouse", "property": "in_list_view", "property_type": "Check", "value": "0", "doctype_or_field": "DocField"},
+	{"doc_type": "Purchase Order Item", "field_name": "warehouse", "property": "columns", "property_type": "Int", "value": "2", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Receipt", "field_name": "lr_date", "property": "label", "property_type": "Data", "value": "Transport Receipt Date", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Receipt", "field_name": "lr_no", "property": "label", "property_type": "Data", "value": "Transport Receipt No", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Receipt", "field_name": "rounded_total", "property": "hidden", "property_type": "Check", "value": "0", "doctype_or_field": "DocField"},
