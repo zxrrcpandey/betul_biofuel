@@ -1449,6 +1449,7 @@ def seed_po_approval_rules():
 
 	for r in rules:
 		doc = frappe.new_doc("TS PO Approval Rule")
+		doc.rule_name = r["name"]
 		doc.purchase_category = r["purchase_category"]
 		doc.min_amount = r["min_amount"]
 		doc.max_amount = r["max_amount"]
