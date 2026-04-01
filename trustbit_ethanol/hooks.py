@@ -147,7 +147,15 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup.seed_visiting_companies",
 	"trustbit_ethanol.ts_gate_entry.setup.migrate_store1_route",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_cc_approval_configs",
-	"trustbit_ethanol.ts_gate_entry.setup.seed_number_cards"
+	"trustbit_ethanol.ts_gate_entry.setup.seed_number_cards",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_po_approval_rules",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_purchase_categories",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_mr_approval_routes",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_ts_settings",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_locations",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_list_view_settings",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_custom_docperm",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_property_setters",
 ]
 
 # Scheduled Tasks

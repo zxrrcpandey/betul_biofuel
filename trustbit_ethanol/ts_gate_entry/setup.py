@@ -1386,3 +1386,296 @@ def seed_number_cards():
 		doc.insert(ignore_permissions=True, set_name=nc["name"])
 
 	frappe.db.commit()
+
+
+def seed_po_approval_rules():
+	"""Create PO Approval Rules (category + amount routing) if none exist."""
+	if frappe.db.count("TS PO Approval Rule") > 0:
+		return
+
+	rules = [
+		{"name": "Store-Under 1L", "category": "Store", "min_amount": 0, "max_amount": 99999, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "CEO", "action_type": "Final Approve"}]},
+		{"name": "Store-1L to 6L", "category": "Store", "min_amount": 100000, "max_amount": 599999, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "Purchase Manager", "action_type": "Review"},
+		           {"step_order": 2, "role": "CEO", "action_type": "Final Approve"}]},
+		{"name": "Store-Above 6L", "category": "Store", "min_amount": 600000, "max_amount": 0, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "Purchase Manager", "action_type": "Review"},
+		           {"step_order": 2, "role": "CEO", "action_type": "Review"},
+		           {"step_order": 3, "role": "MD", "action_type": "Final Approve"}]},
+		{"name": "Grain-Under 6L", "category": "Grain", "min_amount": 0, "max_amount": 599999, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "Grain Purchase Manager", "action_type": "Review"},
+		           {"step_order": 2, "role": "CEO", "action_type": "Final Approve"}]},
+		{"name": "Grain-Above 6L", "category": "Grain", "min_amount": 600000, "max_amount": 0, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "Grain Purchase Manager", "action_type": "Review"},
+		           {"step_order": 2, "role": "CEO", "action_type": "Review"},
+		           {"step_order": 3, "role": "MD", "action_type": "Final Approve"}]},
+		{"name": "Coal-Under 30L", "category": "Coal", "min_amount": 0, "max_amount": 2999999, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "CEO", "action_type": "Final Approve"}]},
+		{"name": "Coal-Above 30L", "category": "Coal", "min_amount": 3000000, "max_amount": 0, "is_active": 1,
+		 "steps": [{"step_order": 1, "role": "CEO", "action_type": "Review"},
+		           {"step_order": 2, "role": "MD", "action_type": "Final Approve"}]},
+	]
+
+	for r in rules:
+		doc = frappe.new_doc("TS PO Approval Rule")
+		doc.category = r["category"]
+		doc.min_amount = r["min_amount"]
+		doc.max_amount = r["max_amount"]
+		doc.is_active = r["is_active"]
+		for s in r["steps"]:
+			doc.append("steps", s)
+		doc.insert(ignore_permissions=True, set_name=r["name"])
+
+	frappe.db.commit()
+
+
+def seed_purchase_categories():
+	"""Create Purchase Categories (Store, Grain, Coal) with item group mappings if none exist."""
+	if frappe.db.count("TS Purchase Category") > 0:
+		return
+
+	categories = {
+		"Coal": ["Raw Material - Coal", "Coal A", "Coal B"],
+		"Grain": ["Raw Material - Grain", "Rice", "Maize", "Raw Material"],
+		"Store": [
+			"Mechanical", "PUSH ELBOW", "PUSH", "T MANIFOLD", "VOLT METER", "GLASS FUSE",
+			"LAB MOTOR", "Patch Code", "Cable Manager", "Ash Silo", "Conveyor Belt Idlers",
+			"Plant Cleaning", "Steam line", "AHP", "Boiler", "STRUCTURE", "Sub Assemblies",
+			"Services", "IT", "Battery", "GENRAL", "Biological Chemical",
+			"PIPE FITTING & VALVE", "FASTENERS", "Electrical", "Tools", "SPARE",
+			"Consumable", "Products", "All Item Groups",
+		],
+	}
+
+	for cat_name, item_groups in categories.items():
+		doc = frappe.new_doc("TS Purchase Category")
+		doc.category_name = cat_name
+		for ig in item_groups:
+			if frappe.db.exists("Item Group", ig):
+				doc.append("items", {"item_group": ig})
+		doc.insert(ignore_permissions=True, set_name=cat_name)
+
+	frappe.db.commit()
+
+
+def seed_mr_approval_routes():
+	"""Create MR Approval Routes (AVP MR App, CAPEX, IT, Store 1) if none exist."""
+	if frappe.db.count("TS MR Approval Route") > 0:
+		return
+
+	routes = [
+		{
+			"name": "AVP MR App", "route_name": "AVP MR App", "is_active": 1,
+			"steps": [
+				{"step_order": 1, "role": "Stock User", "action_type": "Review"},
+				{"step_order": 2, "role": "Department Head", "action_type": "Review"},
+				{"step_order": 3, "role": "AVP", "action_type": "Final Approve"},
+			],
+			"cost_centers": [
+				"Boiler (Bed Material) - BBPL", "BOILER BOP - BBPL", "BOILER ESP - BBPL",
+				"BOILER FUEL-ASH - BBPL", "BOILER THERMAX - BBPL", "BOILER TRIVENI - BBPL",
+				"CBG-Farming - BBPL", "CF- MARKETING - BBPL", "CF- Production - BBPL",
+				"CF- Raw Material - BBPL", "Civil - BBPL", "DG Fuel - BBPL",
+				"Electrical+ Services - BBPL", "HR, safety & and Furniture Material - BBPL",
+				"LIASING - BBPL", "Main - BBPL", "Mechanical + Services - BBPL",
+				"Mechanical Boiler - BBPL", "MISCELLANEOUS - BBPL",
+				"Process (WTP/CPU BIOLOGICAL) - BBPL", "PROCESS ACC - BBPL",
+				"PROCESS BOP - BBPL", "PROCESS DRYER - BBPL", "PROCESS ISGEK - BBPL",
+				"PROCESS MILLING - BBPL", "PROCESS STRUCTURE - BBPL",
+				"PROCESS WTP-CPU - BBPL", "TRIVENI TURBINE - BBPL",
+				"Bhopal Office - BBPL", "RTS Betul - BBPL",
+			],
+		},
+		{
+			"name": "CAPEX", "route_name": "CAPEX", "is_active": 1,
+			"steps": [
+				{"step_order": 1, "role": "CEO", "action_type": "Final Approve"},
+			],
+			"cost_centers": [
+				"CF- Capex - BBPL", "CBG CAPEX - BBPL", "NEW VALLEY CAPEX - BBPL",
+				"BAC Capex - BBPL", "Capex - BBPL", "Delhi Office - BBPL",
+			],
+		},
+		{
+			"name": "IT", "route_name": "IT", "is_active": 1,
+			"steps": [
+				{"step_order": 1, "role": "AVP", "action_type": "Final Approve"},
+			],
+			"cost_centers": ["IT Hardware + Services - BBPL"],
+		},
+		{
+			"name": "Store 1", "route_name": "Store 1", "is_active": 0,
+			"steps": [
+				{"step_order": 1, "role": "Production Head", "action_type": "Review"},
+				{"step_order": 2, "role": "AVP", "action_type": "Final Approve"},
+			],
+			"cost_centers": [],
+		},
+	]
+
+	for r in routes:
+		doc = frappe.new_doc("TS MR Approval Route")
+		doc.route_name = r["route_name"]
+		doc.is_active = r["is_active"]
+		for s in r["steps"]:
+			doc.append("steps", s)
+		for cc in r["cost_centers"]:
+			if frappe.db.exists("Cost Center", cc):
+				doc.append("cost_centers", {"cost_center": cc})
+		doc.insert(ignore_permissions=True, set_name=r["name"])
+
+	frappe.db.commit()
+
+
+def seed_ts_settings():
+	"""Set TS Settings defaults if not already configured."""
+	if not frappe.db.exists("TS Settings", "TS Settings"):
+		return
+
+	doc = frappe.get_doc("TS Settings")
+	changed = False
+
+	defaults = {
+		"sla_threshold_minutes": 120,
+		"token_suffix_digits": 5,
+		"default_warehouse": "Stores - BBPL",
+		"default_accepted_warehouse": "Stores - BBPL",
+		"auto_submit_grn": 1,
+		"enable_po_approval": 1,
+		"enable_mr_approval": 1,
+		"enable_budget_check": 1,
+		"default_monthly_distribution": "FY 25-26",
+		"g2_print_mode": "Slip Only",
+		"weighbridge_url": "http://122.186.18.59:5001/read",
+		"weighbridge_timeout": 5,
+	}
+
+	for field, value in defaults.items():
+		if hasattr(doc, field) and not doc.get(field):
+			doc.set(field, value)
+			changed = True
+
+	if changed:
+		doc.save(ignore_permissions=True)
+		frappe.db.commit()
+
+
+def seed_locations():
+	"""Create 20 physical locations if none exist."""
+	if frappe.db.count("TS Location") > 0:
+		return
+
+	locations = [
+		"Admin Office", "Bhopal Office", "Boiler Area", "CBG Agriculture", "CBG Plant",
+		"CF Marketing", "CF Production", "CF Store", "Civil Works", "Coal Yard",
+		"Electrical Section", "HR Office", "IT Department", "Labour Quarter", "Main Store",
+		"Mechanical Boiler", "Mechanical Workshop", "Power House", "Process Plant", "Weighbridge",
+	]
+
+	for loc in locations:
+		doc = frappe.new_doc("TS Location")
+		doc.location_name = loc
+		doc.insert(ignore_permissions=True)
+
+	frappe.db.commit()
+
+
+def seed_list_view_settings():
+	"""Create List View Settings for Material Request and Purchase Order."""
+	settings = {
+		"Material Request": {
+			"fields": '[{"fieldname":"subject","width":2},{"fieldname":"status","width":2},{"fieldname":"ts_mr_status","width":2},{"fieldname":"schedule_date","width":2},{"fieldname":"cost_center","width":2},{"fieldname":"name","width":2}]',
+		},
+		"Purchase Order": {
+			"fields": '[{"fieldname":"supplier_name","width":2},{"fieldname":"status","width":2},{"fieldname":"ts_approval_status","width":2},{"fieldname":"transaction_date","width":2},{"fieldname":"grand_total","width":2},{"fieldname":"name","width":2}]',
+		},
+	}
+
+	for dt, config in settings.items():
+		if frappe.db.exists("List View Settings", dt):
+			continue
+		doc = frappe.get_doc({
+			"doctype": "List View Settings",
+			"name": dt,
+			"fields": config["fields"],
+		})
+		doc.insert(ignore_permissions=True, set_name=dt)
+
+	frappe.db.commit()
+
+
+def seed_custom_docperm():
+	"""Create Custom DocPerm entries for TS and standard DocTypes if not already set."""
+	from trustbit_ethanol.ts_gate_entry.seed_data import CUSTOM_DOCPERM
+
+	for entry in CUSTOM_DOCPERM:
+		parent = entry["parent"]
+		role = entry["role"]
+		permlevel = entry.get("permlevel", 0)
+
+		# Skip if already exists
+		existing = frappe.db.exists("Custom DocPerm", {
+			"parent": parent, "role": role, "permlevel": permlevel
+		})
+		if existing:
+			continue
+
+		# Skip if role doesn't exist
+		if not frappe.db.exists("Role", role):
+			continue
+
+		doc = frappe.get_doc({
+			"doctype": "Custom DocPerm",
+			"parent": parent,
+			"parenttype": "DocType",
+			"parentfield": "permissions",
+			"role": role,
+			"permlevel": permlevel,
+			"read": entry.get("read", 0),
+			"write": entry.get("write", 0),
+			"create": entry.get("create", 0),
+			"delete": entry.get("delete", 0),
+			"submit": entry.get("submit", 0),
+			"cancel": entry.get("cancel", 0),
+			"amend": entry.get("amend", 0),
+			"report": entry.get("report", 0),
+			"export": entry.get("export", 0),
+			"share": entry.get("share", 0),
+			"print": entry.get("print", 0),
+			"email": entry.get("email", 0),
+		})
+		doc.db_insert()
+
+	frappe.db.commit()
+
+
+def seed_property_setters():
+	"""Create Property Setters for TS and standard DocTypes if not already set."""
+	from trustbit_ethanol.ts_gate_entry.seed_data import PROPERTY_SETTERS
+
+	for entry in PROPERTY_SETTERS:
+		doc_type = entry["doc_type"]
+		field_name = entry.get("field_name")
+		prop = entry["property"]
+
+		# Check if already exists
+		filters = {"doc_type": doc_type, "property": prop}
+		if field_name:
+			filters["field_name"] = field_name
+
+		if frappe.db.exists("Property Setter", filters):
+			continue
+
+		doc = frappe.get_doc({
+			"doctype": "Property Setter",
+			"doc_type": doc_type,
+			"field_name": field_name,
+			"property": prop,
+			"property_type": entry.get("property_type"),
+			"value": entry.get("value"),
+			"doctype_or_field": entry.get("doctype_or_field", "DocField"),
+		})
+		doc.insert(ignore_permissions=True)
+
+	frappe.db.commit()
