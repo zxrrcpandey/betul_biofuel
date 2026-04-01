@@ -481,17 +481,17 @@ function _render_mr_timeline(frm) {
 
 function _setup_stock_columns(frm) {
 	try {
-		const grid = frm.fields_dict.items?.grid;
-		if (!grid) return;
-
-		// Force columns on grid meta (works even with 0 rows)
-		const meta_fields = grid.meta?.fields || grid.df?.fields || [];
-		meta_fields.forEach(f => {
-			if (["ts_delivery_location", "ts_item_remark", "actual_qty"].includes(f.fieldname)) {
-				f.in_list_view = 1;
-				f.columns = 2;
+		// Force columns via frappe.meta (the canonical way — survives __UserSettings)
+		["ts_delivery_location", "ts_item_remark", "actual_qty"].forEach(fn => {
+			let df = frappe.meta.get_docfield("Material Request Item", fn, frm.doc.name);
+			if (df) {
+				df.in_list_view = 1;
+				df.columns = 2;
 			}
 		});
+
+		const grid = frm.fields_dict.items?.grid;
+		if (!grid) return;
 
 		// Also force on existing rows
 		(grid.grid_rows || []).forEach(row => {
@@ -503,10 +503,7 @@ function _setup_stock_columns(frm) {
 			});
 		});
 
-		// Refresh grid to pick up changes
 		grid.refresh();
-
-		// Color-code existing rows
 		_colorize_stock_rows(frm);
 	} catch(e) {
 		// Silently fail — stock columns are cosmetic, don't break approval flow
