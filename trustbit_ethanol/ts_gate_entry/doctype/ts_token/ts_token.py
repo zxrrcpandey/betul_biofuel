@@ -124,10 +124,8 @@ class TSToken(Document):
 	def validate(self):
 		# Post-dated entry: validate date is within approved range
 		if self.entry_date and getdate(self.entry_date) < getdate():
-			from trustbit_ethanol.ts_gate_entry.ts_post_dated import validate_post_dated_date, add_post_dated_comment
-			req_name = validate_post_dated_date("TS Token", self.entry_date)
-			if req_name and self.is_new():
-				add_post_dated_comment(self, req_name, getdate())
+			from trustbit_ethanol.ts_gate_entry.ts_post_dated import validate_post_dated_date
+			validate_post_dated_date("TS Token", self.entry_date)
 
 		if self.entry_type == "Material":
 			self.calculate_turnaround()
