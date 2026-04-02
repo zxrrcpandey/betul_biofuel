@@ -5,8 +5,8 @@ from frappe.utils import now_datetime, flt, getdate
 
 class TSGateEntry(Document):
 	def validate(self):
-		# Post-dated entry validation
-		if self.entry_date and getdate(self.entry_date) < getdate():
+		# Post-dated entry validation (past dates need approval, future dates blocked)
+		if self.entry_date and getdate(self.entry_date) != getdate():
 			from trustbit_ethanol.ts_gate_entry.ts_post_dated import validate_post_dated_date
 			validate_post_dated_date("TS Gate Entry", self.entry_date, self.token_number)
 

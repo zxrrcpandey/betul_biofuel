@@ -221,7 +221,7 @@ def validate_post_dated_date(doctype, date_value, token_number=None):
 			frappe.throw(_("Future dates are not allowed. Cannot set date to {0}.").format(entry_date))
 		return None
 
-	# Date is in the past — check if post-dated entry is enabled
+	# Date is in the past — check ALL active requests/pre-enable for one that covers this date
 	access = check_post_dated_access(doctype, token_number)
 
 	if not access.get("enabled"):
@@ -230,21 +230,48 @@ def validate_post_dated_date(doctype, date_value, token_number=None):
 			  "Contact IT Head to request post-dated entry access.").format(entry_date)
 		)
 
-	# Check date is within allowed range
+	# Check if this specific date falls within the returned range
 	allowed_from = getdate(access["from_date"])
 	allowed_to = getdate(access["to_date"])
 
-	if entry_date < allowed_from or entry_date > allowed_to:
-		frappe.throw(
-			_("Backdating to {0} is not allowed. The approved range is {1} to {2}{3}.").format(
-				entry_date,
-				allowed_from,
-				allowed_to,
-				" (Request {0})".format(access["request_name"]) if access.get("request_name") else "",
-			)
-		)
+	if allowed_from <= entry_date <= allowed_to:
+		return access.get("request_name")
 
-	return access.get("request_name")
+	# The first match didn't cover the date — check ALL active requests
+	now = now_datetime()
+	all_requests = frappe.get_all(
+		"TS Post Dated Entry Request",
+		filters={"status": "Active", "valid_until": [">=", now]},
+		fields=["name", "request_type", "from_date", "to_date", "valid_until", "valid_from", "token_number"],
+		order_by="valid_until desc",
+	)
+
+	for req in all_requests:
+		if req.valid_from and get_datetime(req.valid_from) > now:
+			continue
+
+		req_from = getdate(req.from_date)
+		req_to = getdate(req.to_date)
+
+		if not (req_from <= entry_date <= req_to):
+			continue
+
+		# Check scope
+		if req.request_type in ("Day-wise", "Pre-Enable All"):
+			return req.name
+		elif req.request_type == "Transaction-wise":
+			if token_number and req.token_number == token_number:
+				return req.name
+		elif req.request_type == "DocType-wise":
+			allowed = frappe.get_all("TS Post Dated DocType", filters={"parent": req.name, "enabled": 1}, pluck="doctype_name")
+			if doctype in allowed:
+				return req.name
+
+	frappe.throw(
+		_("Backdating to {0} is not allowed. No active request covers this date for {1}.").format(
+			entry_date, doctype
+		)
+	)
 
 
 def add_post_dated_comment(doc, request_name, original_date):

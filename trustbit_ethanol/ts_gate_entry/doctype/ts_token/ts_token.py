@@ -122,8 +122,8 @@ class TSToken(Document):
 		frappe.throw("Could not generate unique token number. Please try again.")
 
 	def validate(self):
-		# Post-dated entry: validate date is within approved range
-		if self.entry_date and getdate(self.entry_date) < getdate():
+		# Post-dated entry: validate date (past dates need approval, future dates blocked)
+		if self.entry_date and getdate(self.entry_date) != getdate():
 			from trustbit_ethanol.ts_gate_entry.ts_post_dated import validate_post_dated_date
 			validate_post_dated_date("TS Token", self.entry_date)
 
