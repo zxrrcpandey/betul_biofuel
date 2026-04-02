@@ -397,8 +397,7 @@
    "label": "Require CEO Approval for Post-Dated Entry",
    "default": "1",
    "bold": 1,
-   "permlevel": 2,
-   "description": "When ON: IT Head submits request, CEO must approve. When OFF: IT Head's request auto-activates immediately (no CEO approval needed). Only MD, CEO can change this setting."
+   "description": "When ON: IT Head submits request, CEO must approve. When OFF: IT Head's request auto-activates immediately. Only MD, CEO, System Manager can change this."
   },
   {
    "fieldname": "post_dated_section",
