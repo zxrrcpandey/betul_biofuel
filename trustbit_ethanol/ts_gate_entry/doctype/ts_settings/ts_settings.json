@@ -389,8 +389,7 @@
   {
    "fieldname": "post_dated_approval_section",
    "fieldtype": "Section Break",
-   "label": "Approval Settings",
-   "permlevel": 2
+   "label": "Approval Settings"
   },
   {
    "fieldname": "require_ceo_approval_post_dated",
