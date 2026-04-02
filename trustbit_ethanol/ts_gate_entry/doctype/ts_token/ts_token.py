@@ -8,9 +8,13 @@ class TSToken(Document):
 	def before_insert(self):
 		self._check_blacklist()
 		self.generate_token_number()
-		self.g1_entry_time = now_datetime()
-		self.entry_date = getdate()
-		self.entry_time = nowtime()
+		# Post-dated entry: use user-provided dates if set, otherwise current
+		if not self.entry_date:
+			self.entry_date = getdate()
+		if not self.entry_time:
+			self.entry_time = nowtime()
+		if not self.g1_entry_time:
+			self.g1_entry_time = now_datetime()
 		self.status = "Token Generated"
 
 		# Gate Pass: set initial status
@@ -118,6 +122,13 @@ class TSToken(Document):
 		frappe.throw("Could not generate unique token number. Please try again.")
 
 	def validate(self):
+		# Post-dated entry: validate date is within approved range
+		if self.entry_date and getdate(self.entry_date) < getdate():
+			from trustbit_ethanol.ts_gate_entry.ts_post_dated import validate_post_dated_date, add_post_dated_comment
+			req_name = validate_post_dated_date("TS Token", self.entry_date)
+			if req_name and self.is_new():
+				add_post_dated_comment(self, req_name, getdate())
+
 		if self.entry_type == "Material":
 			self.calculate_turnaround()
 

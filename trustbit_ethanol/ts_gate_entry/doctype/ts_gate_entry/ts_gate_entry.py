@@ -1,10 +1,15 @@
 import frappe
 from frappe.model.document import Document
-from frappe.utils import now_datetime, flt
+from frappe.utils import now_datetime, flt, getdate
 
 
 class TSGateEntry(Document):
 	def validate(self):
+		# Post-dated entry validation
+		if self.entry_date and getdate(self.entry_date) < getdate():
+			from trustbit_ethanol.ts_gate_entry.ts_post_dated import validate_post_dated_date
+			validate_post_dated_date("TS Gate Entry", self.entry_date, self.token_number)
+
 		if self.stock_direction == "Stock OUT":
 			self._validate_stock_out()
 		else:

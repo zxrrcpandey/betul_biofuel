@@ -15,7 +15,8 @@ app_include_css = "/assets/trustbit_ethanol/css/ts_theme.css"
 web_include_css = "/assets/trustbit_ethanol/css/ts_login.css"
 app_include_js = [
 	"/assets/trustbit_ethanol/js/po_list.js",
-	"/assets/trustbit_ethanol/js/mr_list.js"
+	"/assets/trustbit_ethanol/js/mr_list.js",
+	"/assets/trustbit_ethanol/js/ts_post_dated.js",
 ]
 
 # Module-workspace mapping for correct breadcrumbs
@@ -171,7 +172,8 @@ after_migrate = [
 scheduler_events = {
 	"cron": {
 		"*/5 * * * *": [
-			"trustbit_ethanol.ts_gate_entry.api.check_sla_breaches"
+			"trustbit_ethanol.ts_gate_entry.api.check_sla_breaches",
+			"trustbit_ethanol.ts_gate_entry.ts_post_dated.expire_post_dated_requests",
 		],
 		"*/30 * * * *": [
 			"trustbit_ethanol.ts_gate_entry.ts_po_approval.check_approval_sla",
