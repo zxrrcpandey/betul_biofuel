@@ -9,6 +9,11 @@ class TSPostDatedEntryRequest(frappe.model.document.Document):
 		self._validate_request_type()
 
 	def before_insert(self):
+		# Only IT Head or System Manager can create
+		user_roles = frappe.get_roles()
+		if "IT Head" not in user_roles and "System Manager" not in user_roles:
+			frappe.throw(_("Only IT Head can create Post-Dated Entry Requests"))
+
 		self.requested_by = frappe.session.user
 		self.request_date = now_datetime()
 		self.status = "Draft"
@@ -25,10 +30,12 @@ class TSPostDatedEntryRequest(frappe.model.document.Document):
 		if self.from_date and getdate(self.from_date) > getdate():
 			frappe.throw(_("From Date cannot be a future date"))
 
-		# Check max backdate days
+		# Check max backdate days (0 = unlimited)
 		settings = frappe.get_cached_doc("TS Settings")
-		max_days = settings.get("max_backdate_days") or 30
-		if self.from_date and max_days:
+		max_days = settings.get("max_backdate_days")
+		if max_days is None:
+			max_days = 30
+		if self.from_date and max_days > 0:
 			from frappe.utils import date_diff
 			days_back = date_diff(getdate(), getdate(self.from_date))
 			if days_back > max_days:

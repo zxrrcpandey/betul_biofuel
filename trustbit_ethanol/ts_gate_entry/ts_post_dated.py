@@ -22,7 +22,7 @@ def check_post_dated_access(doctype, token_number=None):
 	if settings.get("enable_pre_post_dated"):
 		pre_from = settings.get("pre_post_dated_from")
 		pre_to = settings.get("pre_post_dated_to")
-		if pre_from and pre_to and getdate(pre_from) <= today <= getdate(pre_to):
+		if pre_from and pre_to:
 			return {
 				"enabled": True,
 				"from_date": str(pre_from),
@@ -127,9 +127,16 @@ def approve_request(request_name):
 	if doc.status != "Pending Approval":
 		frappe.throw(_("Only Pending Approval requests can be approved"))
 
-	# Validate CEO role
-	if "CEO" not in frappe.get_roles() and "System Manager" not in frappe.get_roles():
+	# Validate CEO role (IT Head cannot approve even if they have other roles)
+	user_roles = frappe.get_roles()
+	is_ceo = "CEO" in user_roles or "MD" in user_roles
+	is_sm = "System Manager" in user_roles and frappe.session.user == "Administrator"
+	if not is_ceo and not is_sm:
 		frappe.throw(_("Only CEO can approve post-dated entry requests"))
+
+	# Self-approval prevention
+	if doc.requested_by == frappe.session.user:
+		frappe.throw(_("You cannot approve your own request"))
 
 	now = now_datetime()
 	doc.db_set("approved_by", frappe.session.user)
@@ -166,7 +173,10 @@ def reject_request(request_name, reason=""):
 	if doc.status != "Pending Approval":
 		frappe.throw(_("Only Pending Approval requests can be rejected"))
 
-	if "CEO" not in frappe.get_roles() and "System Manager" not in frappe.get_roles():
+	user_roles = frappe.get_roles()
+	is_ceo = "CEO" in user_roles or "MD" in user_roles
+	is_sm = "System Manager" in user_roles and frappe.session.user == "Administrator"
+	if not is_ceo and not is_sm:
 		frappe.throw(_("Only CEO can reject post-dated entry requests"))
 
 	if not reason:
