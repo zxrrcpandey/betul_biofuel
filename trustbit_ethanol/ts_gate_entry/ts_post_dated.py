@@ -88,7 +88,7 @@ def _build_access_result(req):
 
 @frappe.whitelist()
 def submit_request(request_name):
-	"""IT Head submits request for CEO approval."""
+	"""IT Head submits request. Auto-activates if CEO approval not required."""
 	doc = frappe.get_doc("TS Post Dated Entry Request", request_name)
 
 	if doc.status != "Draft":
@@ -97,26 +97,41 @@ def submit_request(request_name):
 	if not frappe.has_permission("TS Post Dated Entry Request", "write"):
 		frappe.throw(_("You don't have permission to submit this request"))
 
-	doc.db_set("status", "Pending Approval")
+	# Check if CEO approval is required
+	settings = frappe.get_cached_doc("TS Settings")
+	require_approval = settings.get("require_ceo_approval_post_dated")
 
-	# Notify CEO
-	_send_notification(
-		doc,
-		action="Pending Approval",
-		recipients=_get_ceo_users(),
-		subject=_("Post-Dated Entry Request — Pending Your Approval"),
-		message=_("{0} ({1}) has requested {2} post-dated entry access for {3} to {4}. Valid until {5}.\n\nReason: {6}").format(
-			frappe.get_value("User", doc.requested_by, "full_name"),
-			"IT Head",
-			doc.request_type,
-			doc.from_date,
-			doc.to_date,
-			doc.valid_until,
-			doc.reason,
-		),
-	)
+	if require_approval:
+		# Standard flow: send to CEO for approval
+		doc.db_set("status", "Pending Approval")
 
-	frappe.msgprint(_("Request submitted for CEO approval"), indicator="blue")
+		_send_notification(
+			doc,
+			action="Pending Approval",
+			recipients=_get_ceo_users(),
+			subject=_("Post-Dated Entry Request — Pending Your Approval"),
+			message=_("{0} ({1}) has requested {2} post-dated entry access for {3} to {4}. Valid until {5}.\n\nReason: {6}").format(
+				frappe.get_value("User", doc.requested_by, "full_name"),
+				"IT Head",
+				doc.request_type,
+				doc.from_date,
+				doc.to_date,
+				doc.valid_until,
+				doc.reason,
+			),
+		)
+
+		frappe.msgprint(_("Request submitted for CEO approval"), indicator="blue")
+	else:
+		# Auto-activate: no CEO approval needed
+		now = now_datetime()
+		doc.db_set("status", "Active")
+		doc.db_set("approved_by", frappe.session.user)
+		doc.db_set("approved_date", now)
+		if not doc.valid_from:
+			doc.db_set("valid_from", now)
+
+		frappe.msgprint(_("Post-dated entry activated (CEO approval not required)"), indicator="green")
 
 
 @frappe.whitelist()

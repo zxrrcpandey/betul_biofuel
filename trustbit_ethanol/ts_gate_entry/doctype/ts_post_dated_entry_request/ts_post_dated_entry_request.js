@@ -14,18 +14,23 @@ frappe.ui.form.on("TS Post Dated Entry Request", {
 
 		// ── IT Head buttons ──
 		if (frm.doc.status === "Draft" && !frm.is_new()) {
-			frm.add_custom_button(__("Submit for CEO Approval"), () => {
-				frappe.confirm(
-					__("Submit this request for CEO approval?"),
-					() => {
+			frappe.db.get_single_value("TS Settings", "require_ceo_approval_post_dated").then(val => {
+				const require_approval = cint(val);
+				const btn_label = require_approval ? __("Submit for CEO Approval") : __("Activate Now");
+				const confirm_msg = require_approval
+					? __("Submit this request for CEO approval?")
+					: __("Activate post-dated entry now? (No CEO approval required)");
+
+				frm.add_custom_button(btn_label, () => {
+					frappe.confirm(confirm_msg, () => {
 						frappe.call({
 							method: "trustbit_ethanol.ts_gate_entry.ts_post_dated.submit_request",
 							args: { request_name: frm.doc.name },
 							callback: () => frm.reload_doc(),
 						});
-					}
-				);
-			}, null).addClass("btn-primary");
+					});
+				}, null).addClass("btn-primary");
+			});
 		}
 
 		// ── CEO buttons ──
