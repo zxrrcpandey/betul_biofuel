@@ -389,7 +389,8 @@
   {
    "fieldname": "post_dated_approval_section",
    "fieldtype": "Section Break",
-   "label": "Approval Settings"
+   "label": "Approval Settings",
+   "permlevel": 2
   },
   {
    "fieldname": "require_ceo_approval_post_dated",
@@ -397,7 +398,8 @@
    "label": "Require CEO Approval for Post-Dated Entry",
    "default": "1",
    "bold": 1,
-   "description": "When ON: IT Head submits request, CEO must approve. When OFF: IT Head's request auto-activates immediately (no CEO approval needed). Only System Manager can change this setting."
+   "permlevel": 2,
+   "description": "When ON: IT Head submits request, CEO must approve. When OFF: IT Head's request auto-activates immediately (no CEO approval needed). Only MD, CEO can change this setting."
   },
   {
    "fieldname": "post_dated_section",
@@ -488,6 +490,26 @@
    "write": 1,
    "role": "System Manager",
    "permlevel": 2
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "CEO",
+   "permlevel": 2
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "MD",
+   "permlevel": 2
+  },
+  {
+   "read": 1,
+   "role": "CEO"
+  },
+  {
+   "read": 1,
+   "role": "MD"
   }
  ],
  "sort_field": "modified",
