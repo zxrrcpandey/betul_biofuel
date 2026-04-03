@@ -68,3 +68,103 @@ footer::after {
 [data-theme="dark"] footer::after {
     color: #6b7280;
 }
+
+/* ══════════════════════════════════════════════
+   NUMBER CARDS: Colorful backgrounds
+   ══════════════════════════════════════════════ */
+
+.number-card-group .number-card {
+    border-radius: 12px !important;
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+    transition: transform 0.2s, box-shadow 0.2s !important;
+    overflow: hidden !important;
+}
+
+.number-card-group .number-card:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+}
+
+/* Color each card by position — creates a rotating palette */
+.number-card-group .number-card:nth-child(6n+1) {
+    background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%) !important;
+    border-left: 4px solid #22c55e !important;
+}
+.number-card-group .number-card:nth-child(6n+2) {
+    background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%) !important;
+    border-left: 4px solid #8b5cf6 !important;
+}
+.number-card-group .number-card:nth-child(6n+3) {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
+    border-left: 4px solid #f59e0b !important;
+}
+.number-card-group .number-card:nth-child(6n+4) {
+    background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%) !important;
+    border-left: 4px solid #ec4899 !important;
+}
+.number-card-group .number-card:nth-child(6n+5) {
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
+    border-left: 4px solid #3b82f6 !important;
+}
+.number-card-group .number-card:nth-child(6n+6) {
+    background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%) !important;
+    border-left: 4px solid #f97316 !important;
+}
+
+/* Card title */
+.number-card-group .number-card .card-title,
+.number-card-group .number-card .title {
+    font-weight: 700 !important;
+    font-size: 11px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    color: #374151 !important;
+}
+
+/* Card number */
+.number-card-group .number-card .number {
+    font-size: 28px !important;
+    font-weight: 800 !important;
+}
+
+/* Card stats/percentage */
+.number-card-group .number-card .card-stats,
+.number-card-group .number-card .percentage-stat {
+    font-size: 11px !important;
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .number-card-group .number-card:nth-child(6n+1) {
+    background: linear-gradient(135deg, #064e3b 0%, #065f46 100%) !important;
+    border-left-color: #34d399 !important;
+}
+[data-theme="dark"] .number-card-group .number-card:nth-child(6n+2) {
+    background: linear-gradient(135deg, #3b0764 0%, #4c1d95 100%) !important;
+    border-left-color: #a78bfa !important;
+}
+[data-theme="dark"] .number-card-group .number-card:nth-child(6n+3) {
+    background: linear-gradient(135deg, #713f12 0%, #78350f 100%) !important;
+    border-left-color: #fbbf24 !important;
+}
+[data-theme="dark"] .number-card-group .number-card:nth-child(6n+4) {
+    background: linear-gradient(135deg, #831843 0%, #9d174d 100%) !important;
+    border-left-color: #f472b6 !important;
+}
+[data-theme="dark"] .number-card-group .number-card:nth-child(6n+5) {
+    background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%) !important;
+    border-left-color: #60a5fa !important;
+}
+[data-theme="dark"] .number-card-group .number-card:nth-child(6n+6) {
+    background: linear-gradient(135deg, #7c2d12 0%, #9a3412 100%) !important;
+    border-left-color: #fb923c !important;
+}
+
+[data-theme="dark"] .number-card-group .number-card .card-title,
+[data-theme="dark"] .number-card-group .number-card .title {
+    color: #e5e7eb !important;
+}
+
+[data-theme="dark"] .number-card-group .number-card .number {
+    color: #f9fafb !important;
+}
