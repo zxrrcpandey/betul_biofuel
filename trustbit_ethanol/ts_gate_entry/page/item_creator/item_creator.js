@@ -56,10 +56,16 @@ class TSItemCreator {
 
 	// ── Helper: Monkey-patch Link controls ──
 	_on_link_value(control, callback) {
-		let _debounce_timer = null;
+		let _timer = null;
+		let _last_val = null;
 		const debounced = (val) => {
-			clearTimeout(_debounce_timer);
-			_debounce_timer = setTimeout(() => callback(val), 150);
+			clearTimeout(_timer);
+			_timer = setTimeout(() => {
+				if (val !== _last_val) {
+					_last_val = val;
+					callback(val);
+				}
+			}, 200);
 		};
 		const orig = control.set_formatted_input.bind(control);
 		control.set_formatted_input = function (value) {
@@ -523,8 +529,13 @@ class TSItemCreator {
 			return;
 		}
 
+		// Prevent duplicate prompt (debounce fires twice from Link control)
+		if (this._category_code_fetching) return;
+		this._category_code_fetching = true;
+
 		const field = this.state.category_code_type === "Numerical" ? "category_num_code" : "category_code";
 		frappe.db.get_value("Item Group", this.state.item_group, field, (r) => {
+			this._category_code_fetching = false;
 			this.state.category_code = r ? r[field] || "" : "";
 			this._update_badge("#bbf-category-code", this.state.category_code);
 			if (!this.state.category_code) {
@@ -541,9 +552,14 @@ class TSItemCreator {
 
 	// ── Prompt to set missing code directly ──
 	_prompt_set_code(doctype, name, fieldname, callback) {
+		// Prevent duplicate dialog
+		if (this._prompt_open) return;
+		this._prompt_open = true;
+
 		const is_num = fieldname.includes("num");
 		const label = is_num ? "Numerical Code (e.g. 01)" : "Character Code (e.g. BBF)";
 
+		const me = this;
 		const d = new frappe.ui.Dialog({
 			title: `Set ${doctype} Code`,
 			fields: [
@@ -592,6 +608,7 @@ class TSItemCreator {
 				});
 			},
 		});
+		d.onhide = () => { me._prompt_open = false; };
 		d.show();
 		setTimeout(() => d.fields_dict.code_value.$input.focus(), 200);
 	}
