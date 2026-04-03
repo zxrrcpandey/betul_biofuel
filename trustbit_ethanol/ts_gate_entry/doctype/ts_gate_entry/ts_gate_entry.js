@@ -1,30 +1,26 @@
 frappe.ui.form.on("TS Gate Entry", {
 	refresh(frm) {
-		// Post-dated entry check (inline)
+		// Post-dated entry check — apply cached result immediately, fetch in background
 		if (!frm.doc.docstatus) {
-			frappe.call({
-				method: "trustbit_ethanol.ts_gate_entry.ts_post_dated.check_post_dated_access",
-				args: { doctype: "TS Gate Entry", token_number: frm.doc.token_number || "" },
-				async: true,
-				callback(r) {
-					if (!r.message || !r.message.enabled) return;
-					try {
-						const $target = $(frm.wrapper).find(".form-page");
-						$target.find(".pd-banner").remove();
-						const a = r.message;
-						$target.prepend(`<div class="pd-banner" style="padding:10px 16px;background:#e3f2fd;border:1px solid #bbdefb;border-radius:6px;margin:8px 15px;font-size:13px;color:#1565c0;">
-							<strong>&#128197; Post-Dated Entry Enabled</strong> — Dates <strong>${a.from_date}</strong> to <strong>${a.to_date}</strong> allowed.
-						</div>`);
-						["entry_date", "entry_time"].forEach(fn => {
-							frm.set_df_property(fn, "read_only", 0);
-							if (frm.fields_dict[fn] && frm.fields_dict[fn].$wrapper)
-								frm.fields_dict[fn].$wrapper.find("input").css({"border-color": "#2490ef", "background": "#f0f7ff"});
-						});
-					} catch(e) {
-						console.warn("Post-dated banner error:", e);
+			// Apply cached result instantly (prevents lock on re-render)
+			if (frm._pd_access && frm._pd_access.enabled) {
+				_ge_pd_apply(frm, frm._pd_access);
+			}
+			// Fetch fresh result (first load or refresh)
+			if (!frm._pd_fetched) {
+				frm._pd_fetched = true;
+				frappe.call({
+					method: "trustbit_ethanol.ts_gate_entry.ts_post_dated.check_post_dated_access",
+					args: { doctype: "TS Gate Entry", token_number: frm.doc.token_number || "" },
+					async: true,
+					callback(r) {
+						if (r.message && r.message.enabled) {
+							frm._pd_access = r.message;
+							_ge_pd_apply(frm, r.message);
+						}
 					}
-				}
-			});
+				});
+			}
 		}
 
 		// Print button with format selection
@@ -373,3 +369,19 @@ frappe.ui.form.on("TS Gate Entry", {
 		}
 	}
 });
+
+function _ge_pd_apply(frm, access) {
+	try {
+		const $target = $(frm.wrapper).find(".form-page");
+		if (!$target.find(".pd-banner").length) {
+			$target.prepend(`<div class="pd-banner" style="padding:10px 16px;background:#e3f2fd;border:1px solid #bbdefb;border-radius:6px;margin:8px 15px;font-size:13px;color:#1565c0;">
+				<strong>&#128197; Post-Dated Entry Enabled</strong> — Dates <strong>${access.from_date}</strong> to <strong>${access.to_date}</strong> allowed.
+			</div>`);
+		}
+		["entry_date", "entry_time"].forEach(fn => {
+			frm.set_df_property(fn, "read_only", 0);
+			if (frm.fields_dict[fn] && frm.fields_dict[fn].$wrapper)
+				frm.fields_dict[fn].$wrapper.find("input").css({"border-color": "#2490ef", "background": "#f0f7ff"});
+		});
+	} catch(e) {}
+}

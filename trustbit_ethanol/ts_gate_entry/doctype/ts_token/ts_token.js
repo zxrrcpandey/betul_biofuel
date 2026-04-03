@@ -1,33 +1,24 @@
 frappe.ui.form.on("TS Token", {
 	refresh(frm) {
-		// Post-dated entry check (inline — no external dependency)
+		// Post-dated entry — apply cached result instantly, fetch once in background
 		if (!frm.doc.docstatus) {
-			frappe.call({
-				method: "trustbit_ethanol.ts_gate_entry.ts_post_dated.check_post_dated_access",
-				args: { doctype: "TS Token", token_number: frm.doc.name || "" },
-				async: true,
-				callback(r) {
-					if (!r.message || !r.message.enabled) return;
-					try {
-						// Banner — place above form body, below page header
-						const $target = $(frm.wrapper).find(".form-page");
-						$target.find(".pd-banner").remove();
-						const a = r.message;
-						const html = `<div class="pd-banner" style="padding:10px 16px;background:#e3f2fd;border:1px solid #bbdefb;border-radius:6px;margin:8px 15px;font-size:13px;color:#1565c0;">
-							<strong>&#128197; Post-Dated Entry Enabled</strong> — Dates <strong>${a.from_date}</strong> to <strong>${a.to_date}</strong> allowed. Active until <strong>${a.valid_until}</strong>.
-						</div>`;
-						$target.prepend(html);
-						// Unlock date fields
-						["entry_date", "entry_time"].forEach(fn => {
-							frm.set_df_property(fn, "read_only", 0);
-							if (frm.fields_dict[fn] && frm.fields_dict[fn].$wrapper)
-								frm.fields_dict[fn].$wrapper.find("input").css({"border-color": "#2490ef", "background": "#f0f7ff"});
-						});
-					} catch(e) {
-						console.warn("Post-dated banner error:", e);
+			if (frm._pd_access && frm._pd_access.enabled) {
+				_tkn_pd_apply(frm, frm._pd_access);
+			}
+			if (!frm._pd_fetched) {
+				frm._pd_fetched = true;
+				frappe.call({
+					method: "trustbit_ethanol.ts_gate_entry.ts_post_dated.check_post_dated_access",
+					args: { doctype: "TS Token", token_number: frm.doc.name || "" },
+					async: true,
+					callback(r) {
+						if (r.message && r.message.enabled) {
+							frm._pd_access = r.message;
+							_tkn_pd_apply(frm, r.message);
+						}
 					}
-				}
-			});
+				});
+			}
 		}
 
 		let is_gate_pass = frm.doc.entry_type === "Gate Pass";
@@ -365,3 +356,19 @@ frappe.ui.form.on("TS Token", {
 		}
 	}
 });
+
+function _tkn_pd_apply(frm, access) {
+	try {
+		const $target = $(frm.wrapper).find(".form-page");
+		if (!$target.find(".pd-banner").length) {
+			$target.prepend(`<div class="pd-banner" style="padding:10px 16px;background:#e3f2fd;border:1px solid #bbdefb;border-radius:6px;margin:8px 15px;font-size:13px;color:#1565c0;">
+				<strong>&#128197; Post-Dated Entry Enabled</strong> — Dates <strong>${access.from_date}</strong> to <strong>${access.to_date}</strong> allowed. Active until <strong>${access.valid_until}</strong>.
+			</div>`);
+		}
+		["entry_date", "entry_time"].forEach(fn => {
+			frm.set_df_property(fn, "read_only", 0);
+			if (frm.fields_dict[fn] && frm.fields_dict[fn].$wrapper)
+				frm.fields_dict[fn].$wrapper.find("input").css({"border-color": "#2490ef", "background": "#f0f7ff"});
+		});
+	} catch(e) {}
+}
