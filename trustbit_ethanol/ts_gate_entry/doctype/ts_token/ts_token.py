@@ -107,7 +107,7 @@ class TSToken(Document):
 
 	def generate_token_number(self):
 		# Format: BBPL-TKN-YYYY-NNNNN (sequential per year)
-		year = (self.entry_date or getdate()).strftime("%Y") if self.entry_date else getdate().strftime("%Y")
+		year = getdate(self.entry_date).strftime("%Y") if self.entry_date else getdate().strftime("%Y")
 		prefix = f"BBPL-TKN-{year}-"
 
 		# Get next sequential number
