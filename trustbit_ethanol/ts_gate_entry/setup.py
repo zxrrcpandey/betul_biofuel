@@ -1340,57 +1340,77 @@ def _seed_default_approval_limits():
 
 
 def seed_number_cards():
-	"""Create Number Cards used by TS Gate Entry workspaces if they don't exist."""
+	"""Create Number Cards with colorful backgrounds. Updates background_color on existing cards."""
 	cards = [
-		{"name": "Active Unloading - Main", "label": "Active Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Unloading"]]'},
-		{"name": "Approved Quality", "label": "Approved Quality", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "status", "=", "Approved"]]', "color": "#10b981", "module": "TS Gate Entry"},
-		{"name": "Awaiting Gross Weight", "label": "Awaiting Gross", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "PO Linked"]]'},
-		{"name": "Awaiting PO Link", "label": "Awaiting PO Link", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Token Generated"]]'},
-		{"name": "Awaiting Tare Weight", "label": "Awaiting Tare", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "=", "Awaiting Unloading"]]'},
-		{"name": "Completed Today WB", "label": "Completed Today", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "=", "Completed"], ["TS Weighbridge Log", "creation", "Timespan", "today"]]'},
-		{"name": "Completed Unloading Today", "label": "Completed Today", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Completed"], ["TS Unloading Entry", "creation", "Timespan", "today"]]'},
-		{"name": "Currently Unloading", "label": "Currently Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Unloading"]]'},
-		{"name": "Exited Today", "label": "Exited Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Exited"], ["TS Token", "g1_exit_time", "Timespan", "today"]]'},
-		{"name": "Exited Today - Main", "label": "Exited Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Exited"], ["TS Token", "creation", "Timespan", "today"]]'},
-		{"name": "GRN Created Today", "label": "GRN Created Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "GRN Created"]]'},
-		{"name": "Pending Deductions", "label": "Pending Deductions", "document_type": "TS Deduction Sheet", "filters_json": '[["TS Deduction Sheet", "status", "=", "Calculated"]]', "color": "#f59e0b", "module": "TS Gate Entry"},
-		{"name": "Pending Exit", "label": "Pending Exit", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "in", ["GRN Created", "Tare Weighed"]]]'},
-		{"name": "Pending GRN", "label": "Pending GRN", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Tare Weighed"]]', "color": "#f59e0b"},
-		{"name": "Pending Material Inspections", "label": "Pending Material Inspections", "document_type": "TS Material Inspection", "filters_json": '[["TS Material Inspection", "status", "=", "Pending"]]', "color": "#ef4444", "module": "TS Gate Entry"},
-		{"name": "Pending Quality", "label": "Pending Quality", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Tare Weighed"]]'},
-		{"name": "Pending Quality-1", "label": "Pending Quality", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "status", "=", "Pending"]]', "color": "#f59e0b", "module": "TS Gate Entry"},
-		{"name": "Pending Unloading", "label": "Pending Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Pending"]]'},
-		{"name": "Sent to Stores", "label": "Sent to Stores", "document_type": "TS Gate Entry", "filters_json": '[["TS Gate Entry", "status", "=", "Sent to Stores"], ["TS Gate Entry", "docstatus", "=", 1]]'},
-		{"name": "Sent to Weighbridge", "label": "Sent to Weighbridge", "document_type": "TS Gate Entry", "filters_json": '[["TS Gate Entry", "status", "=", "Sent to Weighbridge"], ["TS Gate Entry", "docstatus", "=", 1]]'},
-		{"name": "SLA Breaches", "label": "SLA Breaches", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]'},
-		{"name": "Stuck Vehicles", "label": "Stuck Vehicles", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]'},
-		{"name": "Tare Weighed Today", "label": "Tare Weighed Today", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "in", ["Tare Recorded", "Completed"]], ["TS Weighbridge Log", "creation", "Timespan", "today"]]'},
-		{"name": "Todays Deductions", "label": "Today's Deductions", "document_type": "TS Deduction Sheet", "filters_json": '[["TS Deduction Sheet", "creation", "Timespan", "today"]]', "color": "#3b82f6", "module": "TS Gate Entry"},
-		{"name": "Todays Quality Checks", "label": "Today's Quality Checks", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "creation", "Timespan", "today"]]', "color": "#3b82f6", "module": "TS Gate Entry"},
-		{"name": "Total Today - Main", "label": "Total Today", "document_type": "TS Token", "filters_json": '[["TS Token", "creation", "Timespan", "today"]]'},
-		{"name": "Total Today - Mgmt", "label": "Total Today", "document_type": "TS Token", "filters_json": '[["TS Token", "creation", "Timespan", "today"]]'},
-		{"name": "Vehicles Inside - Main", "label": "Vehicles Inside", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]'},
-		{"name": "Vehicles Inside - Mgmt", "label": "Vehicles Inside", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]'},
-		{"name": "Vehicles Inside Plant", "label": "Vehicles Inside Plant", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]'},
-		{"name": "Vehicles Today", "label": "Vehicles Today", "document_type": "TS Token", "filters_json": '[["TS Token", "creation", "Timespan", "today"]]'},
+		# Green — completed/positive
+		{"name": "Approved Quality", "label": "Approved Quality", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "status", "=", "Approved"]]', "color": "#10b981", "bg": "#dcfce7", "module": "TS Gate Entry"},
+		{"name": "Completed Today WB", "label": "Completed Today", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "=", "Completed"], ["TS Weighbridge Log", "creation", "Timespan", "today"]]', "color": "#10b981", "bg": "#dcfce7"},
+		{"name": "Completed Unloading Today", "label": "Completed Today", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Completed"], ["TS Unloading Entry", "creation", "Timespan", "today"]]', "color": "#10b981", "bg": "#dcfce7"},
+		{"name": "Exited Today", "label": "Exited Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Exited"], ["TS Token", "g1_exit_time", "Timespan", "today"]]', "color": "#10b981", "bg": "#dcfce7"},
+		{"name": "Exited Today - Main", "label": "Exited Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Exited"], ["TS Token", "creation", "Timespan", "today"]]', "color": "#10b981", "bg": "#dcfce7"},
+		{"name": "GRN Created Today", "label": "GRN Created Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "GRN Created"]]', "color": "#10b981", "bg": "#dcfce7"},
+		{"name": "Sent to Stores", "label": "Sent to Stores", "document_type": "TS Gate Entry", "filters_json": '[["TS Gate Entry", "status", "=", "Sent to Stores"], ["TS Gate Entry", "docstatus", "=", 1]]', "color": "#10b981", "bg": "#d1fae5"},
+		{"name": "Total Today - Main", "label": "Total Today", "document_type": "TS Token", "filters_json": '[["TS Token", "creation", "Timespan", "today"]]', "color": "#10b981", "bg": "#d1fae5"},
+		{"name": "Total Today - Mgmt", "label": "Total Today", "document_type": "TS Token", "filters_json": '[["TS Token", "creation", "Timespan", "today"]]', "color": "#10b981", "bg": "#d1fae5"},
+		{"name": "Vehicles Today", "label": "Vehicles Today", "document_type": "TS Token", "filters_json": '[["TS Token", "creation", "Timespan", "today"]]', "color": "#10b981", "bg": "#d1fae5"},
+		{"name": "Visitors Today", "label": "Visitors Today", "document_type": "TS Token", "filters_json": '[["TS Token", "entry_type", "=", "Gate Pass"], ["TS Token", "creation", "Timespan", "today"]]', "color": "#10b981", "bg": "#dcfce7"},
+		# Red — pending/critical
+		{"name": "Pending Quality-1", "label": "Pending Quality", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "status", "=", "Pending"]]', "color": "#ef4444", "bg": "#fee2e2", "module": "TS Gate Entry"},
+		{"name": "Pending Exit", "label": "Pending Exit", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "in", ["GRN Created", "Tare Weighed"]]]', "color": "#ef4444", "bg": "#fee2e2"},
+		{"name": "Pending GRN", "label": "Pending GRN", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Tare Weighed"]]', "color": "#ef4444", "bg": "#fee2e2"},
+		{"name": "Stuck Vehicles", "label": "Stuck Vehicles", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]', "color": "#ef4444", "bg": "#fee2e2"},
+		{"name": "SLA Breaches", "label": "SLA Breaches", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]', "color": "#ef4444", "bg": "#fee2e2"},
+		{"name": "Awaiting Tare Weight", "label": "Awaiting Tare", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "=", "Awaiting Unloading"]]', "color": "#ef4444", "bg": "#fee2e2"},
+		{"name": "Items Without Code", "label": "Items Without Code", "document_type": "Item", "filters_json": '[["Item", "item_code", "is", "not set"]]', "color": "#ef4444", "bg": "#fee2e2"},
+		# Pink
+		{"name": "Pending Material Inspections", "label": "Pending Material Inspections", "document_type": "TS Material Inspection", "filters_json": '[["TS Material Inspection", "status", "=", "Pending"]]', "color": "#ec4899", "bg": "#fce7f3", "module": "TS Gate Entry"},
+		# Blue — active/info
+		{"name": "Vehicles Inside Plant", "label": "Vehicles Inside Plant", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]', "color": "#3b82f6", "bg": "#dbeafe"},
+		{"name": "Vehicles Inside - Main", "label": "Vehicles Inside", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]', "color": "#3b82f6", "bg": "#dbeafe"},
+		{"name": "Vehicles Inside - Mgmt", "label": "Vehicles Inside", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]', "color": "#3b82f6", "bg": "#dbeafe"},
+		{"name": "Sent to Weighbridge", "label": "Sent to Weighbridge", "document_type": "TS Gate Entry", "filters_json": '[["TS Gate Entry", "status", "=", "Sent to Weighbridge"], ["TS Gate Entry", "docstatus", "=", 1]]', "color": "#3b82f6", "bg": "#dbeafe"},
+		{"name": "Currently Unloading", "label": "Currently Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Unloading"]]', "color": "#3b82f6", "bg": "#dbeafe"},
+		{"name": "Todays Quality Checks", "label": "Today's Quality Checks", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "creation", "Timespan", "today"]]', "color": "#3b82f6", "bg": "#dbeafe", "module": "TS Gate Entry"},
+		{"name": "Todays Deductions", "label": "Today's Deductions", "document_type": "TS Deduction Sheet", "filters_json": '[["TS Deduction Sheet", "creation", "Timespan", "today"]]', "color": "#3b82f6", "bg": "#e0e7ff", "module": "TS Gate Entry"},
+		{"name": "Tare Weighed Today", "label": "Tare Weighed Today", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "in", ["Tare Recorded", "Completed"]], ["TS Weighbridge Log", "creation", "Timespan", "today"]]', "color": "#3b82f6", "bg": "#dbeafe"},
+		{"name": "Visitors Inside Campus", "label": "Visitors Inside Campus", "document_type": "TS Token", "filters_json": '[["TS Token", "entry_type", "=", "Gate Pass"], ["TS Token", "gate_pass_status", "=", "Inside Campus"]]', "color": "#3b82f6", "bg": "#dbeafe"},
+		{"name": "Total Active Items", "label": "Total Active Items", "document_type": "Item", "filters_json": '[]', "color": "#10b981", "bg": "#dcfce7"},
+		{"name": "Total Item Groups", "label": "Total Item Groups", "document_type": "Item Group", "filters_json": '[]', "color": "#3b82f6", "bg": "#dbeafe"},
+		# Amber — waiting
+		{"name": "Pending Deductions", "label": "Pending Deductions", "document_type": "TS Deduction Sheet", "filters_json": '[["TS Deduction Sheet", "status", "=", "Calculated"]]', "color": "#f59e0b", "bg": "#fef3c7", "module": "TS Gate Entry"},
+		{"name": "Awaiting PO Link", "label": "Awaiting PO Link", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Token Generated"]]', "color": "#f59e0b", "bg": "#fef3c7"},
+		{"name": "Awaiting Gross Weight", "label": "Awaiting Gross", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "PO Linked"]]', "color": "#f59e0b", "bg": "#fef3c7"},
+		{"name": "Pending Quality", "label": "Pending Quality", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Tare Weighed"]]', "color": "#f59e0b", "bg": "#fef3c7"},
+		{"name": "Active Unloading - Main", "label": "Active Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Unloading"]]', "color": "#f59e0b", "bg": "#fef3c7"},
+		{"name": "Pending Unloading", "label": "Pending Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Pending"]]', "color": "#f59e0b", "bg": "#fef3c7"},
+		{"name": "Visitors Inside Plant", "label": "Visitors Inside Plant", "document_type": "TS Token", "filters_json": '[["TS Token", "entry_type", "=", "Gate Pass"], ["TS Token", "gate_pass_status", "=", "Inside Plant"]]', "color": "#f59e0b", "bg": "#fef3c7"},
+		# Purple
+		{"name": "Total Brands", "label": "Total Brands", "document_type": "Brand", "filters_json": '[]', "color": "#8b5cf6", "bg": "#ede9fe"},
+		{"name": "Total Visitors Master", "label": "Total Visitors", "document_type": "TS Visitor", "filters_json": '[]', "color": "#8b5cf6", "bg": "#ede9fe"},
 	]
 
 	for nc in cards:
 		if frappe.db.exists("Number Card", nc["name"]):
-			continue
-		doc = frappe.get_doc({
-			"doctype": "Number Card",
-			"label": nc["label"],
-			"document_type": nc["document_type"],
-			"function": "Count",
-			"filters_json": nc["filters_json"],
-			"is_standard": 0,
-			"type": "Document Type",
-			"color": nc.get("color"),
-			"module": nc.get("module"),
-			"owner": "Administrator",
-		})
-		doc.insert(ignore_permissions=True, set_name=nc["name"])
+			# Update background_color on existing cards
+			frappe.db.set_value("Number Card", nc["name"], {
+				"color": nc.get("color"),
+				"background_color": nc.get("bg"),
+			})
+		else:
+			doc = frappe.get_doc({
+				"doctype": "Number Card",
+				"label": nc["label"],
+				"document_type": nc["document_type"],
+				"function": "Count",
+				"filters_json": nc["filters_json"],
+				"is_standard": 0,
+				"type": "Document Type",
+				"color": nc.get("color"),
+				"background_color": nc.get("bg"),
+				"module": nc.get("module"),
+				"owner": "Administrator",
+			})
+			doc.insert(ignore_permissions=True, set_name=nc["name"])
 
 	frappe.db.commit()
 
