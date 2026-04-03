@@ -106,18 +106,34 @@ class TSToken(Document):
 				)
 
 	def generate_token_number(self):
-		date_part = getdate().strftime("%y%m%d")
-		settings = frappe.get_single("TS Settings")
-		digits = max(int(settings.token_suffix_digits or 4), 2)
-		min_val = 10 ** (digits - 1)
-		max_val = (10 ** digits) - 1
+		# Format: BBPL-TKN-YYYY-NNNNN (sequential per year)
+		year = (self.entry_date or getdate()).strftime("%Y") if self.entry_date else getdate().strftime("%Y")
+		prefix = f"BBPL-TKN-{year}-"
 
+		# Get next sequential number
+		last = frappe.db.sql(
+			"SELECT name FROM `tabTS Token` WHERE name LIKE %s ORDER BY name DESC LIMIT 1",
+			prefix + "%", as_list=True
+		)
+
+		if last and last[0][0]:
+			try:
+				last_num = int(last[0][0].split("-")[-1])
+			except (ValueError, IndexError):
+				last_num = 0
+		else:
+			last_num = 0
+
+		next_num = last_num + 1
+		token = f"{prefix}{next_num:05d}"
+
+		# Safety: ensure uniqueness
 		for _ in range(100):
-			suffix = random.randint(min_val, max_val)
-			token = f"TKN-{date_part}-{suffix}"
 			if not frappe.db.exists("TS Token", token):
 				self.token_number = token
 				return
+			next_num += 1
+			token = f"{prefix}{next_num:05d}"
 
 		frappe.throw("Could not generate unique token number. Please try again.")
 
