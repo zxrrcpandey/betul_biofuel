@@ -24,10 +24,10 @@ class TSItemCreator {
 		// State
 		this.state = {
 			company: "",
-			company_code_type: "Character",
+			company_code_type: "Numerical",
 			company_code: "",
 			item_group: "",
-			category_code_type: "Character",
+			category_code_type: "Numerical",
 			category_code: "",
 			serial_number: "",
 			has_variant: false,
@@ -557,7 +557,7 @@ class TSItemCreator {
 		this._prompt_open = true;
 
 		const is_num = fieldname.includes("num");
-		const label = is_num ? "Numerical Code (e.g. 01)" : "Character Code (e.g. BBF)";
+		const label = is_num ? "Numerical Code (e.g. 01)" : "Character Code (e.g. BBPL)";
 
 		const me = this;
 		const d = new frappe.ui.Dialog({
@@ -577,7 +577,7 @@ class TSItemCreator {
 					reqd: 1,
 					description: is_num
 						? "2-3 digit number (e.g. 01, 02)"
-						: "2-3 letter uppercase code (e.g. BBF, RM, GRN)",
+						: "2-3 letter uppercase code (e.g. BBPL, RM, GRN)",
 				},
 			],
 			primary_action_label: "Save Code",

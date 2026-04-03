@@ -16,19 +16,19 @@ def download_template():
 
 	example_rows = [
 		[
-			"Broken Rice Grade A", "Betul Bio Fuel Pvt Ltd", "Raw Material", "Kg", "100630",
+			"Broken Rice Grade A", "Betul Biofuel Pvt. Ltd.", "Raw Material", "Kg", "100630",
 			"No", "", "",
 			"100", "50", "", "",
 			"", "", "Yes"
 		],
 		[
-			"Rice Bran Oil", "Betul Bio Fuel Pvt Ltd", "Raw Material", "Kg", "151590",
+			"Rice Bran Oil", "Betul Biofuel Pvt. Ltd.", "Raw Material", "Kg", "151590",
 			"Yes", "Custom Variant", "BRK,GRA",
-			"80", "120", "100", "Stores - BBF",
+			"80", "120", "100", "Stores - BBPL",
 			"", "Multi-variant oil product", "Yes"
 		],
 		[
-			"Maize Grain", "Betul Bio Fuel Pvt Ltd", "Raw Material", "Kg", "100590",
+			"Maize Grain", "Betul Biofuel Pvt. Ltd.", "Raw Material", "Kg", "100590",
 			"No", "", "",
 			"", "", "", "",
 			"", "", "Yes"
@@ -121,17 +121,17 @@ def bulk_validate_and_preview(rows):
 			if not frappe.db.exists("Company", company):
 				errors.append(f"Company '{company}' not found")
 			else:
-				company_code = frappe.db.get_value("Company", company, "company_code") or ""
+				company_code = frappe.db.get_value("Company", company, "company_num_code") or frappe.db.get_value("Company", company, "company_code") or ""
 				if not company_code:
-					errors.append(f"Company '{company}' has no company_code set")
+					errors.append(f"Company '{company}' has no company code set")
 
 		if item_group:
 			if not frappe.db.exists("Item Group", item_group):
 				errors.append(f"Item Group '{item_group}' not found")
 			else:
-				category_code = frappe.db.get_value("Item Group", item_group, "category_code") or ""
+				category_code = frappe.db.get_value("Item Group", item_group, "category_num_code") or frappe.db.get_value("Item Group", item_group, "category_code") or ""
 				if not category_code:
-					errors.append(f"Item Group '{item_group}' has no category_code set")
+					errors.append(f"Item Group '{item_group}' has no category code set")
 
 		if stock_uom and not frappe.db.exists("UOM", stock_uom):
 			errors.append(f"UOM '{stock_uom}' not found")
@@ -262,9 +262,9 @@ def _create_single_item(row):
 	doc_data = {
 		"doctype": "TS Item Creator",
 		"company": row.get("company", ""),
-		"company_code_type": "Character",
+		"company_code_type": "Numerical",
 		"item_group": row.get("item_group", ""),
-		"category_code_type": "Character",
+		"category_code_type": "Numerical",
 		"item_name": row.get("item_name", ""),
 		"stock_uom": row.get("stock_uom", "") or "Kg",
 		"gst_hsn_code": row.get("gst_hsn_code", ""),
