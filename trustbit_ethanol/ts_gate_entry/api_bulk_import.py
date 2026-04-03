@@ -322,3 +322,42 @@ def _create_single_item(row):
 	result = creator.create_item()
 
 	return result
+
+
+@frappe.whitelist()
+def download_reference_guide():
+	"""Return all valid values for bulk import — companies, item groups, brands, variants, UOMs."""
+	data = {}
+
+	# Companies with codes
+	data["companies"] = frappe.get_all("Company",
+		fields=["name", "company_code", "company_num_code"],
+		order_by="name", limit_page_length=0)
+
+	# Item Groups with codes (only leaf groups that have codes)
+	data["item_groups"] = frappe.get_all("Item Group",
+		fields=["name", "category_code", "category_num_code"],
+		order_by="name", limit_page_length=0)
+
+	# Brands with codes
+	data["brands"] = frappe.get_all("Brand",
+		fields=["name", "brand_code"],
+		order_by="name", limit_page_length=0)
+
+	# TS Variants with codes
+	data["variants"] = frappe.get_all("TS Variant",
+		fields=["name", "variant_code"],
+		filters={"enabled": 1},
+		order_by="name", limit_page_length=0)
+
+	# UOMs
+	data["uoms"] = frappe.get_all("UOM",
+		fields=["name"],
+		order_by="name", limit_page_length=0)
+
+	# GST HSN Codes (top 500)
+	data["hsn_codes"] = frappe.get_all("GST HSN Code",
+		fields=["name", "description"],
+		order_by="name", limit_page_length=500)
+
+	return data

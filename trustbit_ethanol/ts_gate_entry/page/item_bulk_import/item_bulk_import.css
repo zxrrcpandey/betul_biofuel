@@ -524,3 +524,65 @@
 		display: none;
 	}
 }
+
+/* ═══════════════════════════════════════════════
+   Interactive Grid Styles
+   ═══════════════════════════════════════════════ */
+
+.bbf-mode-btn { font-size: 12px; padding: 5px 14px; border-radius: 4px; cursor: pointer; }
+.bbf-mode-btn.active, .btn-primary-dark { background: #1a365d !important; color: #fff !important; border-color: #1a365d !important; }
+
+.bbf-info-bar {
+	background: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb;
+	border-radius: 6px; padding: 8px 14px; margin-bottom: 12px; font-size: 12px;
+}
+
+.bbf-grid-wrap { overflow-x: auto; }
+
+.bbf-grid-table {
+	width: 100%; border-collapse: collapse; font-size: 12px;
+	min-width: 900px;
+}
+.bbf-grid-table th {
+	background: #f7fafc; padding: 8px 6px; text-align: left;
+	font-weight: 600; color: #555; border-bottom: 2px solid #e2e8f0;
+	font-size: 11px; text-transform: uppercase; white-space: nowrap;
+}
+.bbf-grid-table td {
+	padding: 4px 4px; border-bottom: 1px solid #f0f0f0; vertical-align: top;
+}
+.bbf-grid-table tr:hover td { background: #f8f9fa; }
+
+.bbf-col-num { width: 36px; text-align: center; color: #999; font-weight: 600; font-size: 11px; }
+.bbf-col-del { width: 32px; text-align: center; }
+.bbf-col-name { min-width: 160px; }
+.bbf-col-company { min-width: 160px; }
+.bbf-col-group { min-width: 140px; }
+.bbf-col-uom { width: 80px; }
+.bbf-col-hsn { width: 100px; }
+.bbf-col-variant { min-width: 110px; }
+.bbf-col-rate { width: 80px; }
+
+.bbf-grid-input {
+	width: 100%; border: 1px solid #d1d8dd; border-radius: 3px;
+	padding: 5px 8px; font-size: 12px; background: #fff;
+}
+.bbf-grid-input:focus { border-color: #2490ef; outline: none; }
+.bbf-grid-rate { text-align: right; }
+
+.bbf-link-wrap { min-height: 30px; }
+.bbf-link-wrap .frappe-control { margin: 0 !important; }
+.bbf-link-wrap .frappe-control .control-input { margin: 0 !important; }
+.bbf-link-wrap input { font-size: 12px !important; padding: 5px 8px !important; }
+
+.bbf-row-delete {
+	cursor: pointer; color: #e74c3c; font-size: 18px; font-weight: bold;
+	display: inline-block; width: 24px; height: 24px; line-height: 24px; text-align: center;
+	border-radius: 50%;
+}
+.bbf-row-delete:hover { background: #fef2f2; }
+
+.bbf-grid-summary { font-size: 13px; color: #555; }
+.bbf-grid-summary #bbf-grid-count { font-weight: 700; color: #2490ef; font-size: 16px; }
+
+.btn-xs { font-size: 11px; padding: 3px 10px; }

@@ -389,35 +389,29 @@
   {
    "fieldname": "post_dated_approval_section",
    "fieldtype": "Section Break",
-   "label": "Approval Settings"
+   "label": "CEO Approval"
   },
   {
    "fieldname": "require_ceo_approval_post_dated",
    "fieldtype": "Check",
-   "label": "Require CEO Approval for Post-Dated Entry",
+   "label": "Require CEO Approval",
    "default": "1",
    "bold": 1,
-   "description": "When ON: IT Head submits request, CEO must approve. When OFF: IT Head's request auto-activates immediately. Only MD, CEO, System Manager can change this."
+   "description": "<b>ON:</b> IT Head creates request → CEO must approve before operators can backdate.<br><b>OFF:</b> IT Head creates request → activates immediately, no CEO needed."
   },
   {
    "fieldname": "post_dated_section",
    "fieldtype": "Section Break",
-   "label": "Pre-Enable Post-Dated Entry",
-   "description": "When enabled, all operators can backdate entries without per-request CEO approval"
+   "label": "Always-On Backdating (Quick Enable)",
+   "description": "Turn this ON to let ALL operators backdate entries right now — no request needed. Just set the date range."
   },
   {
    "fieldname": "enable_pre_post_dated",
    "fieldtype": "Check",
-   "label": "Enable Pre-Post-Dated Entry",
+   "label": "Enable Backdating for All Operators",
    "default": "0",
-   "description": "Master switch: all operators can backdate within the date range below"
-  },
-  {
-   "fieldname": "max_backdate_days",
-   "fieldtype": "Int",
-   "label": "Max Backdate Days",
-   "default": "30",
-   "description": "Maximum days in the past (0 = unlimited)"
+   "bold": 1,
+   "description": "<b>When ON:</b> All G1, G2, Weighbridge, QI, Stores operators can set past dates on their forms immediately."
   },
   {
    "fieldname": "column_break_pd1",
@@ -426,28 +420,41 @@
   {
    "fieldname": "pre_post_dated_from",
    "fieldtype": "Date",
-   "label": "Pre-Enable From Date",
+   "label": "Allow Backdating FROM This Date",
    "depends_on": "eval:doc.enable_pre_post_dated",
-   "description": "Earliest date operators can backdate to"
+   "mandatory_depends_on": "eval:doc.enable_pre_post_dated",
+   "description": "Operators can set dates starting from this date. Example: If set to April 1, operators can backdate to April 1 or later."
   },
   {
    "fieldname": "pre_post_dated_to",
    "fieldtype": "Date",
-   "label": "Pre-Enable To Date",
+   "label": "Allow Backdating UNTIL This Date",
    "depends_on": "eval:doc.enable_pre_post_dated",
-   "description": "Latest date operators can backdate to"
+   "mandatory_depends_on": "eval:doc.enable_pre_post_dated",
+   "description": "<b>IMPORTANT:</b> Set this to today or a future date! If this date is in the past, backdating will NOT work. Example: Set to April 30 to allow backdating until end of April."
   },
   {
-   "fieldname": "post_dated_settings_section",
+   "fieldname": "post_dated_limits_section",
    "fieldtype": "Section Break",
-   "label": "Notification Settings"
+   "label": "Limits & Notifications"
+  },
+  {
+   "fieldname": "max_backdate_days",
+   "fieldtype": "Int",
+   "label": "Maximum Days in Past",
+   "default": "30",
+   "description": "How far back can operators go? Default: 30 days. Set to 0 for no limit."
+  },
+  {
+   "fieldname": "column_break_pd2",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "post_dated_expiry_warning_minutes",
    "fieldtype": "Int",
-   "label": "Expiry Warning Minutes",
+   "label": "Expiry Warning (Minutes)",
    "default": "30",
-   "description": "Send warning notification this many minutes before request expiry"
+   "description": "IT Head gets a warning notification this many minutes before a request expires. Default: 30 minutes."
   }
  ],
  "issingle": 1,

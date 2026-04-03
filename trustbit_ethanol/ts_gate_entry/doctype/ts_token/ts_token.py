@@ -128,6 +128,8 @@ class TSToken(Document):
 			validate_post_dated_date("TS Token", self.entry_date)
 
 		if self.entry_type == "Material":
+			if not self.vehicle_number:
+				frappe.throw("Vehicle Number is required for Material entries")
 			self.calculate_turnaround()
 
 		# Gate Pass validation
@@ -299,6 +301,13 @@ class TSToken(Document):
 				item_rate = flt(deduction_sheet.item_rate) if deduction_sheet and deduction_sheet.item_rate else 0
 				po_item_name = None
 
+			# Fetch ts_delivery_location and ts_item_remark from PO Item (fetch_from doesn't trigger in programmatic creation)
+			ts_delivery_location = ""
+			ts_item_remark = ""
+			if po_item_name:
+				ts_delivery_location = frappe.db.get_value("Purchase Order Item", po_item_name, "ts_delivery_location") or ""
+				ts_item_remark = frappe.db.get_value("Purchase Order Item", po_item_name, "ts_item_remark") or ""
+
 			pr_item = {
 				"item_code": ge_item.item_code,
 				"item_name": ge_item.item_name,
@@ -309,6 +318,8 @@ class TSToken(Document):
 				"warehouse": accepted_warehouse or warehouse,
 				"purchase_order": item_po_name,
 				"purchase_order_item": po_item_name,
+				"ts_delivery_location": ts_delivery_location,
+				"ts_item_remark": ts_item_remark,
 			}
 			pr_items.append(pr_item)
 

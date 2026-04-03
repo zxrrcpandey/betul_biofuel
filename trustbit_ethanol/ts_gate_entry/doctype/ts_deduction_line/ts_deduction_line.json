@@ -50,7 +50,7 @@
    "fieldname": "rate_type",
    "fieldtype": "Select",
    "label": "Rate Type",
-   "options": "\nPercentage\nPer Bag\nPer MT\nPer Qtl\nFixed",
+   "options": "\nPercentage\nPer Bag\nPer MT\nPer Qtl\nPer KG\nFixed",
    "in_list_view": 1,
    "columns": 1
   },

@@ -4,38 +4,98 @@
 	<div class="bbf-bulk-header">
 		<div class="bbf-bulk-header-inner">
 			<div>
-				<div class="bbf-bulk-header-title">Bulk Item Import</div>
-				<div class="bbf-bulk-header-desc">Upload a CSV file to create multiple items at once</div>
+				<div class="bbf-bulk-header-title">TS Bulk Item Creator</div>
+				<div class="bbf-bulk-header-desc">Add items directly or upload CSV — autocomplete ensures valid values</div>
 			</div>
-			<button class="btn bbf-btn-template" id="bbf-download-template">
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-				Download Template
-			</button>
+			<div style="display:flex; gap:8px;">
+				<button class="btn bbf-btn-template" id="bbf-download-ref" title="Download list of all valid Companies, Item Groups, Brands, Variants">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+					Reference Guide
+				</button>
+				<button class="btn bbf-btn-template" id="bbf-download-template">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+					CSV Template
+				</button>
+			</div>
 		</div>
 	</div>
 
-	<!-- Phase 1: Upload Zone -->
+	<!-- Phase 1: Interactive Grid + CSV fallback -->
 	<div class="bbf-phase" id="bbf-phase-upload">
 		<div class="bbf-card">
-			<div class="bbf-upload-zone" id="bbf-upload-zone">
-				<svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-					<rect x="6" y="10" width="36" height="28" rx="4" stroke="currentColor" stroke-width="2"/>
-					<path d="M24 18v12m0-12l-4 4m4-4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-				</svg>
-				<div class="bbf-upload-text">
-					<strong>Drop your CSV file here</strong>
-					<span>or click to browse</span>
+
+			<!-- Mode toggle -->
+			<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+				<div style="display:flex; gap:8px;">
+					<button class="btn btn-primary-dark bbf-mode-btn active" id="bbf-mode-grid">Interactive Grid</button>
+					<button class="btn btn-default bbf-mode-btn" id="bbf-mode-csv">Import CSV</button>
 				</div>
-				<div class="bbf-upload-hint">Accepts .csv files only. Max 500 rows.</div>
-				<input type="file" id="bbf-file-input" accept=".csv" style="display:none;">
+				<div id="bbf-grid-actions" style="display:flex; gap:8px;">
+					<button class="btn btn-xs btn-default" id="bbf-add-1">+ 1 Row</button>
+					<button class="btn btn-xs btn-default" id="bbf-add-5">+ 5 Rows</button>
+					<button class="btn btn-xs btn-default" id="bbf-add-20">+ 20 Rows</button>
+				</div>
 			</div>
 
-			<div class="bbf-upload-info" id="bbf-upload-info" style="display:none;">
-				<div class="bbf-file-badge">
-					<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 2h8l4 4v12a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.5"/><path d="M12 2v4h4" stroke="currentColor" stroke-width="1.5"/></svg>
-					<span id="bbf-file-name">file.csv</span>
-					<span id="bbf-file-rows" class="bbf-file-rows-badge">0 rows</span>
-					<button class="bbf-file-remove" id="bbf-file-remove" title="Remove file">&times;</button>
+			<!-- Interactive Grid -->
+			<div id="bbf-grid-section">
+				<div class="bbf-info-bar">
+					<span>&#128161;</span>
+					Type to search in Company, Item Group, Brand fields — the system shows matching options with codes. <strong>No need to remember codes!</strong>
+				</div>
+
+				<div class="bbf-grid-wrap">
+					<table class="bbf-grid-table" id="bbf-grid-table">
+						<thead>
+							<tr>
+								<th class="bbf-col-num">#</th>
+								<th class="bbf-col-name">Item Name *</th>
+								<th class="bbf-col-company">Company *</th>
+								<th class="bbf-col-group">Item Group *</th>
+								<th class="bbf-col-uom">UOM</th>
+								<th class="bbf-col-hsn">HSN Code *</th>
+								<th class="bbf-col-variant">Variant Codes</th>
+								<th class="bbf-col-rate">Rate</th>
+								<th class="bbf-col-del"></th>
+							</tr>
+						</thead>
+						<tbody id="bbf-grid-body">
+						</tbody>
+					</table>
+				</div>
+
+				<div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+					<div class="bbf-grid-summary" id="bbf-grid-summary">
+						<span id="bbf-grid-count">0</span> items ready
+					</div>
+					<button class="btn bbf-btn-create" id="bbf-btn-validate-grid" disabled>
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 4L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+						Validate & Preview
+					</button>
+				</div>
+			</div>
+
+			<!-- CSV Upload (hidden by default) -->
+			<div id="bbf-csv-section" style="display:none;">
+				<div class="bbf-upload-zone" id="bbf-upload-zone">
+					<svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+						<rect x="6" y="10" width="36" height="28" rx="4" stroke="currentColor" stroke-width="2"/>
+						<path d="M24 18v12m0-12l-4 4m4-4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>
+					<div class="bbf-upload-text">
+						<strong>Drop your CSV file here</strong>
+						<span>or click to browse</span>
+					</div>
+					<div class="bbf-upload-hint">Accepts .csv files only. Max 500 rows.</div>
+					<input type="file" id="bbf-file-input" accept=".csv" style="display:none;">
+				</div>
+				<div class="bbf-upload-info" id="bbf-upload-info" style="display:none;">
+					<div class="bbf-file-badge">
+						<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 2h8l4 4v12a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.5"/><path d="M12 2v4h4" stroke="currentColor" stroke-width="1.5"/></svg>
+						<span id="bbf-file-name">file.csv</span>
+						<span id="bbf-file-rows" class="bbf-file-rows-badge">0 rows</span>
+						<button class="bbf-file-remove" id="bbf-file-remove" title="Remove file">&times;</button>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -44,7 +104,6 @@
 	<!-- Phase 2: Preview & Validate -->
 	<div class="bbf-phase" id="bbf-phase-preview" style="display:none;">
 		<div class="bbf-card">
-			<!-- Validation Summary -->
 			<div class="bbf-validation-summary" id="bbf-validation-summary">
 				<div class="bbf-summary-item bbf-summary-total">
 					<span class="bbf-summary-num" id="bbf-total-count">0</span>
@@ -59,8 +118,6 @@
 					<span class="bbf-summary-label">Errors</span>
 				</div>
 			</div>
-
-			<!-- Preview Table -->
 			<div class="bbf-preview-table-wrap">
 				<table class="bbf-preview-table" id="bbf-preview-table">
 					<thead>
@@ -79,8 +136,6 @@
 					<tbody id="bbf-preview-body"></tbody>
 				</table>
 			</div>
-
-			<!-- Action Buttons -->
 			<div class="bbf-preview-actions">
 				<button class="btn bbf-btn-back" id="bbf-btn-back-upload">
 					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -109,7 +164,6 @@
 	<!-- Phase 3: Results -->
 	<div class="bbf-phase" id="bbf-phase-results" style="display:none;">
 		<div class="bbf-card">
-			<!-- Results Summary -->
 			<div class="bbf-results-summary">
 				<div class="bbf-result-card bbf-result-success">
 					<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/><path d="M10 16l4 4 8-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -122,8 +176,6 @@
 					<span class="bbf-result-label">Failed</span>
 				</div>
 			</div>
-
-			<!-- Results Table -->
 			<div class="bbf-preview-table-wrap">
 				<table class="bbf-preview-table" id="bbf-results-table">
 					<thead>
@@ -139,12 +191,10 @@
 					<tbody id="bbf-results-body"></tbody>
 				</table>
 			</div>
-
-			<!-- Actions -->
 			<div class="bbf-preview-actions">
 				<button class="btn bbf-btn-create" id="bbf-btn-import-another">
 					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-					Import Another Batch
+					Create Another Batch
 				</button>
 			</div>
 		</div>

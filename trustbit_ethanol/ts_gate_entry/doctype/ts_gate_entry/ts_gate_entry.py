@@ -74,6 +74,8 @@ class TSGateEntry(Document):
 	def validate_token_status(self):
 		if not self.token_number:
 			return
+		if not frappe.db.exists("TS Token", self.token_number):
+			frappe.throw(f"Token {self.token_number} does not exist")
 		token_status = frappe.db.get_value("TS Token", self.token_number, "status")
 		# Allow "PO Linked" when amending a gate entry (token was already advanced)
 		allowed = ["Token Generated"]

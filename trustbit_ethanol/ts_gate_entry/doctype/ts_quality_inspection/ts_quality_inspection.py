@@ -46,13 +46,13 @@ class TSQualityInspection(Document):
 
 	def calculate_variances(self):
 		if self.item_category == "Coal":
-			if self.actual_gcv and flt(self.po_gcv):
+			if flt(self.actual_gcv) is not None and flt(self.po_gcv):
 				self.gcv_variance_percent = round(
 					((flt(self.actual_gcv) - flt(self.po_gcv)) / flt(self.po_gcv)) * 100, 2
 				)
-			if self.po_moisture_percent and self.actual_moisture_percent:
+			if flt(self.po_moisture_percent) is not None and flt(self.actual_moisture_percent) is not None:
 				self.moisture_variance_percent = round(
-					self.actual_moisture_percent - self.po_moisture_percent, 3
+					flt(self.actual_moisture_percent) - flt(self.po_moisture_percent), 3
 				)
 
 	@frappe.whitelist()

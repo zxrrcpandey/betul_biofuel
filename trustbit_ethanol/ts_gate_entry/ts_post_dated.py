@@ -44,6 +44,7 @@ def check_post_dated_access(doctype, token_number=None):
 		fields=["name", "request_type", "from_date", "to_date", "valid_until",
 		        "valid_from", "token_number"],
 		order_by="valid_until desc",
+		ignore_permissions=True,
 	)
 
 	for req in requests:
@@ -64,6 +65,7 @@ def check_post_dated_access(doctype, token_number=None):
 				"TS Post Dated DocType",
 				filters={"parent": req.name, "enabled": 1},
 				pluck="doctype_name",
+				ignore_permissions=True,
 			)
 			if doctype in allowed:
 				return _build_access_result(req)
@@ -259,6 +261,7 @@ def validate_post_dated_date(doctype, date_value, token_number=None):
 		filters={"status": "Active", "valid_until": [">=", now]},
 		fields=["name", "request_type", "from_date", "to_date", "valid_until", "valid_from", "token_number"],
 		order_by="valid_until desc",
+		ignore_permissions=True,
 	)
 
 	for req in all_requests:
@@ -278,7 +281,7 @@ def validate_post_dated_date(doctype, date_value, token_number=None):
 			if token_number and req.token_number == token_number:
 				return req.name
 		elif req.request_type == "DocType-wise":
-			allowed = frappe.get_all("TS Post Dated DocType", filters={"parent": req.name, "enabled": 1}, pluck="doctype_name")
+			allowed = frappe.get_all("TS Post Dated DocType", filters={"parent": req.name, "enabled": 1}, pluck="doctype_name", ignore_permissions=True)
 			if doctype in allowed:
 				return req.name
 
