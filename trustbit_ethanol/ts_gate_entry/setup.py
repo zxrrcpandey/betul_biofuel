@@ -685,7 +685,6 @@ def create_custom_fields():
 			"fieldtype": "Data",
 			"label": "G1 Operator Name",
 			"insert_after": "ts_driver_mobile_g1",
-			"read_only": 1,
 		},
 	]
 
@@ -714,7 +713,6 @@ def create_custom_fields():
 			"fieldtype": "Data",
 			"label": "G2 Operator Name",
 			"insert_after": "ts_g1_driver_mobile",
-			"read_only": 1,
 		},
 	]
 
