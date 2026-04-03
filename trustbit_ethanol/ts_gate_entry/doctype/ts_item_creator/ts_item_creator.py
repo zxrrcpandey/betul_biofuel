@@ -3,8 +3,10 @@ from frappe.model.document import Document
 
 
 class TSItemCreator(Document):
-	def before_save(self):
+	def before_validate(self):
 		self._fetch_codes()
+
+	def before_save(self):
 		if not self.serial_number:
 			self._assign_serial()
 		self._build_item_code()
