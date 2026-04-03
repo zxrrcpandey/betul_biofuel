@@ -168,7 +168,10 @@ def bulk_validate_and_preview(rows):
 		preview_code = ""
 		preview_variants = []
 		if company_code and category_code and not errors:
-			key = (company_code, category_code)
+			# Counter keys use char codes (same as _assign_serial in TS Item Creator)
+			counter_company = frappe.db.get_value("Company", company, "company_code") or company_code if company else company_code
+			counter_category = frappe.db.get_value("Item Group", item_group, "category_code") or category_code if item_group else category_code
+			key = (counter_company, counter_category)
 			current = preview_counters.get(key, 0)
 			next_serial = current + 1
 			preview_counters[key] = next_serial
