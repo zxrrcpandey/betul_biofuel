@@ -249,8 +249,12 @@ class TSItemCreator(Document):
 			company=company,
 			posting_date=posting_date,
 			posting_time=nowtime(),
+			do_not_save=True,
 		)
 
+		stock_entry.insert(ignore_permissions=True)
+		stock_entry.submit()
+		stock_entry.load_from_db()
 		stock_entry.add_comment("Comment", f"Opening Stock (Post-dated: {posting_date})")
 
 	def _create_standalone_item(self):

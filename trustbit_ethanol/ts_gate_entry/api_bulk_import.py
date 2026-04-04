@@ -263,6 +263,21 @@ def _create_single_item(row):
 	variant_codes_str = row.get("variant_codes", "") or ""
 	maintain_stock = (row.get("maintain_stock", "") or "yes").lower() in ("yes", "1", "true")
 
+	# Validate HSN code — auto-create if missing
+	hsn_code = row.get("gst_hsn_code", "").strip()
+	if hsn_code and not frappe.db.exists("GST HSN Code", hsn_code):
+		# Try lookup by hsn_code field
+		existing = frappe.db.get_value("GST HSN Code", {"hsn_code": hsn_code}, "name")
+		if existing:
+			hsn_code = existing
+		else:
+			# Auto-create the HSN code
+			frappe.get_doc({
+				"doctype": "GST HSN Code",
+				"hsn_code": hsn_code,
+				"description": hsn_code,
+			}).insert(ignore_permissions=True)
+
 	# Build TS Item Creator doc
 	doc_data = {
 		"doctype": "TS Item Creator",
@@ -272,7 +287,7 @@ def _create_single_item(row):
 		"category_code_type": "Numerical",
 		"item_name": row.get("item_name", ""),
 		"stock_uom": row.get("stock_uom", "") or "Kg",
-		"gst_hsn_code": row.get("gst_hsn_code", ""),
+		"gst_hsn_code": hsn_code,
 		"item_tax_template": row.get("item_tax_template", ""),
 		"description": row.get("description", ""),
 		"maintain_stock": 1 if maintain_stock else 0,
