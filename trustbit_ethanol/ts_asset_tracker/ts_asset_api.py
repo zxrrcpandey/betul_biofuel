@@ -392,49 +392,60 @@ def bulk_import_assets(rows):
 	results = []
 	for row in rows:
 		try:
+			# Validate UOM exists
+			uom = row.get("uom", "").strip() or "Nos"
+			if not frappe.db.exists("UOM", uom):
+				uom = "Nos"
+
+			# Parse ALL date fields
+			warranty = _parse_date(row.get("warranty_expiry", "")) or None
+			purchase_date = _parse_date(row.get("purchase_date", "")) or None
+			amc_expiry = _parse_date(row.get("amc_expiry", "")) or None
+
+			# Use opening_stock field (triggers after_insert → sets current_stock + creates ledger)
+			qty = flt(row.get("qty", 0))
+
 			doc = frappe.get_doc({
 				"doctype": "TS Asset Item",
 				"item_name": row.get("item_name", ""),
+				"item_group": row.get("item_group", ""),
 				"category": row.get("category", "Returnable"),
-				"uom": row.get("uom", "Nos"),
-				"current_stock": flt(row.get("qty", 0)),
+				"uom": uom,
+				"opening_stock": qty,
 				"purchase_value": flt(row.get("purchase_value", 0)),
 				"current_value": flt(row.get("purchase_value", 0)),
-				"warranty_expiry": _parse_date(row.get("warranty_expiry", "")) or None,
+				"purchase_date": purchase_date,
+				"warranty_expiry": warranty,
+				"amc_expiry": amc_expiry,
+				"amc_vendor": row.get("amc_vendor", ""),
 				"description": row.get("description", ""),
 				"min_stock_level": flt(row.get("min_stock_level", 0)),
 				"expected_return_hours": flt(row.get("expected_return_hours", 0)),
 				"status": "Active",
 			})
 			doc.insert(ignore_permissions=True)
-
-			# Create opening ledger entry
-			if flt(row.get("qty", 0)) > 0:
-				_create_ledger_entry(
-					asset_item=doc.name,
-					item_name=doc.item_name,
-					transaction_type="Opening",
-					qty_change=flt(row.get("qty", 0)),
-					balance_qty=flt(row.get("qty", 0)),
-					value_change=flt(row.get("purchase_value", 0)) * flt(row.get("qty", 0)),
-					remarks="Bulk import opening stock",
-				)
+			frappe.db.commit()
 
 			results.append({
 				"success": True,
 				"name": doc.name,
 				"item_name": doc.item_name,
 				"category": doc.category,
-				"current_stock": doc.current_stock,
+				"current_stock": flt(doc.current_stock) or qty,
 			})
 		except Exception as e:
+			frappe.db.rollback()
+			frappe.log_error(
+				title=f"Asset Bulk Import Error ({row.get('item_name', '?')})",
+				message=frappe.get_traceback()
+			)
+			frappe.clear_messages()
 			results.append({
 				"success": False,
 				"item_name": row.get("item_name", "?"),
 				"error": str(e)[:200],
 			})
 
-	frappe.db.commit()
 	return results
 
 

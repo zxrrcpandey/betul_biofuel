@@ -128,12 +128,13 @@ class TSAssetBulkImport {
 		const reader = new FileReader();
 		reader.onload = (e) => {
 			const lines = e.target.result.trim().split("\n");
-			const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/\s+/g, "_"));
+			const headers = this._parse_csv_line(lines[0]).map(h => h.trim().toLowerCase().replace(/\s+/g, "_"));
 			const rows = [];
 			for (let i = 1; i < lines.length && i <= 500; i++) {
-				const vals = lines[i].split(",");
+				if (!lines[i].trim()) continue;
+				const vals = this._parse_csv_line(lines[i]);
 				const row = {};
-				headers.forEach((h, j) => { row[h] = (vals[j] || "").trim().replace(/^"|"$/g, ""); });
+				headers.forEach((h, j) => { row[h] = (vals[j] || "").trim(); });
 				if (row.item_name) rows.push(row);
 			}
 			this.$page.find("#abi-upload-info").show();
@@ -144,6 +145,26 @@ class TSAssetBulkImport {
 			}
 		};
 		reader.readAsText(file);
+	}
+
+	_parse_csv_line(line) {
+		// Proper CSV parsing — handles quoted fields with commas inside
+		const result = [];
+		let current = "";
+		let in_quotes = false;
+		for (let i = 0; i < line.length; i++) {
+			const ch = line[i];
+			if (ch === '"') {
+				in_quotes = !in_quotes;
+			} else if (ch === ',' && !in_quotes) {
+				result.push(current);
+				current = "";
+			} else {
+				current += ch;
+			}
+		}
+		result.push(current);
+		return result;
 	}
 
 	_process(rows) {
@@ -220,10 +241,10 @@ class TSAssetBulkImport {
 	}
 
 	_download_template() {
-		const csv = "item_name,category,uom,qty,purchase_value,location,warranty_expiry,description,min_stock_level,expected_return_hours\n" +
-			'"Angle Grinder 7\"","Tool","Nos","1","4500","Main Store","2027-04-01","Bosch 7 inch angle grinder","1","8"\n' +
-			'"Safety Helmet","Returnable","Nos","10","850","Main Store","2028-01-01","ISI marked safety helmet","5",""\n' +
-			'"Welding Rod 3.15mm","Consumable","Kg","50","120","Main Store","","ER 70S-6 welding rod","10",""\n';
+		const csv = "item_name,category,uom,qty,purchase_value,location,warranty_expiry,purchase_date,amc_expiry,amc_vendor,item_group,description,min_stock_level,expected_return_hours\n" +
+			'"Angle Grinder 7 inch","Tool","Nos","1","4500","Main Store","01-04-2027","15-03-2026","","","Power Tools","Bosch 7 inch angle grinder","1","8"\n' +
+			'"Safety Helmet","Returnable","Nos","10","850","Main Store","01-01-2028","01-01-2026","","","Safety","ISI marked safety helmet","5",""\n' +
+			'"Welding Rod 3.15mm","Consumable","Kg","50","120","Main Store","","","","","Consumables","ER 70S-6 welding rod","10",""\n';
 		const blob = new Blob([csv], { type: "text/csv" });
 		const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ts_asset_template.csv"; a.click();
 	}
