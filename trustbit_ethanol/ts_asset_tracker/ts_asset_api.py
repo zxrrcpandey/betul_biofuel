@@ -400,7 +400,7 @@ def bulk_import_assets(rows):
 				"current_stock": flt(row.get("qty", 0)),
 				"purchase_value": flt(row.get("purchase_value", 0)),
 				"current_value": flt(row.get("purchase_value", 0)),
-				"warranty_expiry": row.get("warranty_expiry") or None,
+				"warranty_expiry": _parse_date(row.get("warranty_expiry", "")) or None,
 				"description": row.get("description", ""),
 				"min_stock_level": flt(row.get("min_stock_level", 0)),
 				"expected_return_hours": flt(row.get("expected_return_hours", 0)),
@@ -447,3 +447,22 @@ def get_asset_reference():
 		fields=["name", "location_type"], filters={"is_active": 1},
 		order_by="name", limit_page_length=0)
 	return data
+
+
+def _parse_date(date_str):
+	"""Parse date from various formats (DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD) to YYYY-MM-DD."""
+	if not date_str or not str(date_str).strip():
+		return ""
+	date_str = str(date_str).strip()
+	if len(date_str) == 10 and date_str[4] == "-" and date_str[7] == "-":
+		return date_str
+	from datetime import datetime
+	for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%m-%d-%Y", "%m/%d/%Y", "%Y/%m/%d"):
+		try:
+			return datetime.strptime(date_str, fmt).strftime("%Y-%m-%d")
+		except ValueError:
+			continue
+	try:
+		return str(getdate(date_str))
+	except Exception:
+		return ""
