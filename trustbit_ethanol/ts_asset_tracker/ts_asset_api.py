@@ -200,52 +200,45 @@ def _process_damage(doc):
 
 def _process_discard(doc):
 	"""Discard items — remove from stock permanently.
-	Smart handling: if items are currently issued (already out of stock),
-	only close the assignment without deducting stock again."""
+	Items must be returned first before discarding (no discarding assigned items)."""
 	for item in doc.items:
 		asset = frappe.get_doc("TS Asset Item", item.asset_item)
 
-		# Check how many are currently assigned (already out of stock)
+		# Block discard if items are currently assigned (must Return first)
 		assigned_qty = flt(frappe.db.sql("""
 			SELECT COALESCE(SUM(qty), 0) FROM `tabTS Asset Assignment`
 			WHERE asset_item = %s AND status IN ('Active', 'Overdue')
 		""", item.asset_item)[0][0])
 
+		if assigned_qty > 0:
+			frappe.throw(
+				_("{0} has {1} qty currently issued/assigned. "
+				  "Please create a Return transaction first, then Discard.").format(
+					asset.item_name, assigned_qty
+				)
+			)
+
+		# Check sufficient stock
 		discard_qty = flt(item.qty)
+		if discard_qty > flt(asset.current_stock):
+			frappe.throw(
+				_("Cannot discard {0} of {1}. Only {2} in stock.").format(
+					discard_qty, asset.item_name, asset.current_stock
+				)
+			)
 
-		# Items already issued don't need stock deduction (already deducted at Issue)
-		# Only deduct for items still in stock
-		qty_from_assigned = min(discard_qty, assigned_qty)
-		qty_from_stock = discard_qty - qty_from_assigned
-
-		# Deduct only the portion that's still in stock
-		if qty_from_stock > 0:
-			new_stock = flt(asset.current_stock) - qty_from_stock
-			asset.db_set("current_stock", max(new_stock, 0))
-		else:
-			new_stock = flt(asset.current_stock)
-
-		if new_stock <= 0 and assigned_qty <= discard_qty:
+		# Deduct from stock
+		new_stock = flt(asset.current_stock) - discard_qty
+		asset.db_set("current_stock", max(new_stock, 0))
+		if new_stock <= 0:
 			asset.db_set("status", "Discarded")
-
-		# Close active assignments for discarded items
-		assignments = frappe.get_all("TS Asset Assignment",
-			filters={"asset_item": item.asset_item, "status": ["in", ["Active", "Overdue"]]},
-			fields=["name", "qty"],
-			order_by="creation desc")
-		remaining_to_close = qty_from_assigned
-		for a in assignments:
-			if remaining_to_close <= 0:
-				break
-			frappe.db.set_value("TS Asset Assignment", a.name, "status", "Discarded")
-			remaining_to_close -= flt(a.qty)
 
 		_create_ledger_entry(
 			asset_item=item.asset_item, item_name=asset.item_name,
-			transaction_type="Discard", qty_change=-qty_from_stock, balance_qty=max(new_stock, 0),
+			transaction_type="Discard", qty_change=-discard_qty, balance_qty=max(new_stock, 0),
 			voucher_type="TS Asset Transaction", voucher_no=doc.name,
 			value_change=-flt(doc.discard_value or 0),
-			remarks=f"Discarded {discard_qty}: {qty_from_stock} from stock, {qty_from_assigned} from assigned. {doc.discard_reason or ''}".strip(),
+			remarks=doc.discard_reason,
 			posting_date=doc.transaction_date, posting_time=doc.transaction_time,
 		)
 
