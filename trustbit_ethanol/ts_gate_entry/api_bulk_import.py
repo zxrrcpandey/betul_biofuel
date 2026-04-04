@@ -192,6 +192,8 @@ def bulk_validate_and_preview(rows):
 			"item_name": row.get("item_name", ""),
 			"company": company,
 			"item_group": item_group,
+			"stock_uom": stock_uom,
+			"gst_hsn_code": gst_hsn_code,
 			"has_variant": has_variant,
 			"variant_codes": variant_codes,
 		})
