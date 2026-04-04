@@ -292,9 +292,9 @@ def _create_single_item(row):
 	if row.get("opening_warehouse"):
 		doc_data["opening_warehouse"] = row["opening_warehouse"]
 
-	# Post-dated import: pass custom posting_date for opening stock
+	# Post-dated import: parse and convert posting_date to YYYY-MM-DD
 	if row.get("posting_date"):
-		doc_data["posting_date"] = row["posting_date"]
+		doc_data["posting_date"] = _parse_date(row["posting_date"])
 
 	# Handle variants
 	if has_variant and variant_codes_str:
@@ -370,3 +370,30 @@ def download_reference_guide():
 		order_by="name", limit_page_length=500)
 
 	return data
+
+
+def _parse_date(date_str):
+	"""Parse date from various formats (DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD) to YYYY-MM-DD."""
+	if not date_str:
+		return ""
+
+	date_str = date_str.strip()
+
+	# Already in correct format
+	if len(date_str) == 10 and date_str[4] == "-" and date_str[7] == "-":
+		return date_str
+
+	from frappe.utils import getdate
+	from datetime import datetime
+
+	for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%m-%d-%Y", "%m/%d/%Y", "%Y/%m/%d"):
+		try:
+			return datetime.strptime(date_str, fmt).strftime("%Y-%m-%d")
+		except ValueError:
+			continue
+
+	# Fallback: let frappe try
+	try:
+		return str(getdate(date_str))
+	except Exception:
+		frappe.throw(f"Cannot parse date '{date_str}'. Use format YYYY-MM-DD or DD-MM-YYYY.")
