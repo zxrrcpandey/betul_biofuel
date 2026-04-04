@@ -541,7 +541,7 @@
 
 .bbf-grid-table {
 	width: 100%; border-collapse: collapse; font-size: 12px;
-	min-width: 900px;
+	min-width: 1050px;
 }
 .bbf-grid-table th {
 	background: #f7fafc; padding: 8px 6px; text-align: left;
@@ -562,6 +562,7 @@
 .bbf-col-hsn { width: 100px; }
 .bbf-col-variant { min-width: 110px; }
 .bbf-col-rate { width: 80px; }
+.bbf-col-date { width: 140px; }
 
 .bbf-grid-input {
 	width: 100%; border: 1px solid #d1d8dd; border-radius: 3px;

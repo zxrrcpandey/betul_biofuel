@@ -42,6 +42,7 @@ class TSItemCreator {
 			standard_rate: 0,
 			opening_stock: 0,
 			opening_warehouse: "",
+			posting_date: "",
 			description: "",
 		};
 
@@ -177,6 +178,7 @@ class TSItemCreator {
 		});
 		this.opening_stock_field.$input.on("change", () => {
 			me.state.opening_stock = flt(me.opening_stock_field.get_value());
+			me._toggle_posting_date_row();
 		});
 
 		// Opening Warehouse (standalone)
@@ -207,6 +209,17 @@ class TSItemCreator {
 		});
 		this._on_link_value(this.opening_warehouse_variant_field, (val) => {
 			me.state.opening_warehouse = val;
+		});
+
+		// Posting Date (for backdated opening stock)
+		this.posting_date_field = frappe.ui.form.make_control({
+			df: { fieldtype: "Date", placeholder: "Leave blank for today" },
+			parent: this.$page.find("#bbf-posting-date-field"),
+			render_input: true,
+		});
+		this.posting_date_field.$input.on("change", () => {
+			me.state.posting_date = me.posting_date_field.get_value() || "";
+			me._toggle_posting_date_info();
 		});
 
 		// Description (standalone)
@@ -799,6 +812,31 @@ class TSItemCreator {
 		return true;
 	}
 
+	// ── Posting Date Helpers ──
+	_toggle_posting_date_row() {
+		const has_stock = flt(this.state.opening_stock) > 0 || (this.state.has_variant && this.variant_rows.some(r => flt(r.opening_stock) > 0));
+		this.$page.find("#bbf-posting-date-row").toggle(has_stock && this.state.maintain_stock);
+		if (!has_stock) {
+			this.state.posting_date = "";
+			this.posting_date_field.set_value("");
+			this.$page.find("#bbf-posting-date-info").hide();
+		}
+	}
+
+	_toggle_posting_date_info() {
+		const val = this.state.posting_date;
+		if (val) {
+			const today = frappe.datetime.get_today();
+			if (val !== today) {
+				this.$page.find("#bbf-posting-date-info").show();
+			} else {
+				this.$page.find("#bbf-posting-date-info").hide();
+			}
+		} else {
+			this.$page.find("#bbf-posting-date-info").hide();
+		}
+	}
+
 	// ── Review ──
 	_populate_review() {
 		const s = this.state;
@@ -842,9 +880,11 @@ class TSItemCreator {
 
 			this.$page.find("#bbf-review-variants").show();
 			this.$page.find("#bbf-review-note").show();
-			this.$page.find("#bbf-review-note-text").html(
-				`This will create <b>1 Template</b> + <b>${this.variant_rows.length} Variant(s)</b> in ERPNext.`
-			);
+			let note_text = `This will create <b>1 Template</b> + <b>${this.variant_rows.length} Variant(s)</b> in ERPNext.`;
+			if (s.posting_date && s.posting_date !== frappe.datetime.get_today()) {
+				note_text += `<br><span style="color:#e65100;">Opening stock will be posted on <b>${s.posting_date}</b></span>`;
+			}
+			this.$page.find("#bbf-review-note-text").html(note_text);
 		} else {
 			// Standalone review
 			this.$page.find("#bbf-review-code").text(base_code);
@@ -855,9 +895,11 @@ class TSItemCreator {
 			this.$page.find("#bbf-review-selling-rate").text(s.standard_rate ? format_currency(s.standard_rate) : "-");
 
 			if (s.maintain_stock && flt(s.opening_stock) > 0) {
-				this.$page.find("#bbf-review-opening").text(
-					s.opening_stock + " @ " + (s.opening_warehouse || "-")
-				);
+				let opening_text = s.opening_stock + " @ " + (s.opening_warehouse || "-");
+				if (s.posting_date && s.posting_date !== frappe.datetime.get_today()) {
+					opening_text += " (Posted: " + s.posting_date + ")";
+				}
+				this.$page.find("#bbf-review-opening").text(opening_text);
 				this.$page.find(".bbf-review-opening-row").show();
 			} else {
 				this.$page.find(".bbf-review-opening-row").hide();
@@ -891,6 +933,7 @@ class TSItemCreator {
 		} else {
 			s.opening_warehouse = me.opening_warehouse_variant_field.get_value() || s.opening_warehouse;
 		}
+		s.posting_date = me.posting_date_field.get_value() || "";
 
 		if (!s.company || !s.item_group) {
 			frappe.show_alert({ message: "Company or Item Group is missing.", indicator: "red" });
@@ -916,6 +959,7 @@ class TSItemCreator {
 			item_tax_template: s.item_tax_template,
 			maintain_stock: s.maintain_stock,
 			opening_warehouse: s.opening_warehouse,
+			posting_date: s.posting_date || "",
 			description: s.description,
 		};
 
@@ -1020,6 +1064,7 @@ class TSItemCreator {
 			item_name: "", stock_uom: "Kg", gst_hsn_code: "", item_tax_template: "",
 			maintain_stock: 1, valuation_rate: 0, standard_rate: 0,
 			opening_stock: 0, opening_warehouse: "",
+			posting_date: "",
 			description: "",
 		};
 
@@ -1038,7 +1083,10 @@ class TSItemCreator {
 		this.opening_stock_field.set_value("");
 		this.opening_warehouse_field.set_value("");
 		this.opening_warehouse_variant_field.set_value("");
+		this.posting_date_field.set_value("");
 		this.desc_field.set_value("");
+		this.$page.find("#bbf-posting-date-row").hide();
+		this.$page.find("#bbf-posting-date-info").hide();
 
 		// Reset UI
 		this.$page.find("#bbf-has-variant").prop("checked", false);

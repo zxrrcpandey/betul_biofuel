@@ -41,6 +41,7 @@
   "column_break_stock",
   "opening_stock",
   "opening_warehouse",
+  "posting_date",
   "description_section",
   "description",
   "result_section",
@@ -288,6 +289,13 @@
    "options": "Warehouse",
    "depends_on": "eval:doc.maintain_stock && doc.opening_stock",
    "description": "Warehouse for opening stock"
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Posting Date",
+   "depends_on": "eval:doc.maintain_stock && doc.opening_stock",
+   "description": "Date for opening stock entry. Leave blank for today's date. Use for backdated/post-dated imports."
   },
   {
    "fieldname": "description_section",

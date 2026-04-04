@@ -11,7 +11,7 @@ def download_template():
 		"item_name", "company", "item_group", "stock_uom", "gst_hsn_code",
 		"has_variant", "variant_source", "variant_codes",
 		"valuation_rate", "standard_rate", "opening_stock", "opening_warehouse",
-		"item_tax_template", "description", "maintain_stock"
+		"posting_date", "item_tax_template", "description", "maintain_stock"
 	]
 
 	example_rows = [
@@ -19,19 +19,19 @@ def download_template():
 			"Broken Rice Grade A", "Betul Biofuel Pvt. Ltd.", "Raw Material", "Kg", "100630",
 			"No", "", "",
 			"100", "50", "", "",
-			"", "", "Yes"
+			"", "", "", "Yes"
 		],
 		[
 			"Rice Bran Oil", "Betul Biofuel Pvt. Ltd.", "Raw Material", "Kg", "151590",
 			"Yes", "Custom Variant", "BRK,GRA",
 			"80", "120", "100", "Stores - BBPL",
-			"", "Multi-variant oil product", "Yes"
+			"2026-04-01", "", "Multi-variant oil product", "Yes"
 		],
 		[
 			"Maize Grain", "Betul Biofuel Pvt. Ltd.", "Raw Material", "Kg", "100590",
 			"No", "", "",
 			"", "", "", "",
-			"", "", "Yes"
+			"", "", "", "Yes"
 		],
 	]
 
@@ -289,6 +289,10 @@ def _create_single_item(row):
 
 	if row.get("opening_warehouse"):
 		doc_data["opening_warehouse"] = row["opening_warehouse"]
+
+	# Post-dated import: pass custom posting_date for opening stock
+	if row.get("posting_date"):
+		doc_data["posting_date"] = row["posting_date"]
 
 	# Handle variants
 	if has_variant and variant_codes_str:

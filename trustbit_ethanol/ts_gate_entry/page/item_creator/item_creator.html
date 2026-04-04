@@ -214,6 +214,19 @@
 						<span class="bbf-hint">Required if opening stock is set.</span>
 					</div>
 				</div>
+
+				<div class="bbf-form-row" id="bbf-posting-date-row" style="display:none;">
+					<div class="bbf-form-group">
+						<label class="bbf-label">Posting Date</label>
+						<div class="bbf-field" id="bbf-posting-date-field"></div>
+						<span class="bbf-hint">Date for opening stock entry. Leave blank for today. Use for backdated imports (e.g., opening as of 1st April).</span>
+					</div>
+					<div class="bbf-form-group">
+						<div class="bbf-posting-date-info" id="bbf-posting-date-info" style="display:none; margin-top:24px; padding:10px 14px; background:#fff3e0; border:1px solid #ffe0b2; border-radius:6px; font-size:12px; color:#e65100;">
+							<strong>Post-Dated Import:</strong> Opening stock &amp; ledger entries will be posted on the selected date, not today.
+						</div>
+					</div>
+				</div>
 			</div>
 
 			<!-- Variant mode: only opening warehouse (per-variant fields are on Step 2) -->

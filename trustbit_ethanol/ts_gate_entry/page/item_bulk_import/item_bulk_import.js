@@ -80,6 +80,7 @@ class TSBulkImport {
 				item_name: "", company: "", item_group: "",
 				stock_uom: "Kg", gst_hsn_code: "",
 				variant_codes: "", valuation_rate: "",
+				posting_date: "",
 			};
 			this.grid_rows.push(row);
 			this._render_grid_row(row);
@@ -100,6 +101,7 @@ class TSBulkImport {
 			<td><div class="bbf-link-wrap" data-field="gst_hsn_code"></div></td>
 			<td><input type="text" class="bbf-grid-input" data-field="variant_codes" placeholder="e.g. JDL,SKF"></td>
 			<td><input type="number" class="bbf-grid-input bbf-grid-rate" data-field="valuation_rate" placeholder="0"></td>
+			<td><input type="date" class="bbf-grid-input" data-field="posting_date" style="width:130px;" title="Leave blank for today. Set for backdated opening stock."></td>
 			<td class="bbf-col-del"><span class="bbf-row-delete" title="Delete row">&times;</span></td>
 		</tr>`);
 
@@ -170,6 +172,7 @@ class TSBulkImport {
 				gst_hsn_code: r.gst_hsn_code || "",
 				variant_codes: r.variant_codes || "",
 				valuation_rate: r.valuation_rate || "",
+				posting_date: r.posting_date || "",
 				has_variant: r.variant_codes ? "Yes" : "No",
 				variant_source: r.variant_codes ? "Custom Variant" : "",
 				maintain_stock: "Yes",
