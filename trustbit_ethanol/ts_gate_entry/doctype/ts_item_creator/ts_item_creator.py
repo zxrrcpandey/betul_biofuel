@@ -48,14 +48,15 @@ class TSItemCreator(Document):
 				) or ""
 
 	def _assign_serial(self):
-		"""Get next serial number for this company + category combination."""
+		"""Get next serial number for this company + category combination.
+		Uses DB-level locking (for_update) to prevent duplicates in bulk imports."""
 		if not self.company_code or not self.category_code:
 			return
 
-		# Clear cache to get fresh counter (critical for bulk import batches)
-		frappe.clear_document_cache("TS Item Code Settings", "TS Item Code Settings")
-		settings = frappe.get_doc("TS Item Code Settings")
+		# Read fresh from DB with lock (not cached singleton)
+		settings = frappe.get_doc("TS Item Code Settings", for_update=True)
 		digits = max(int(settings.serial_digits or 3), 2)
+		sep = settings.default_separator or "-"
 
 		# Use character codes as the counter key (consistent regardless of display type)
 		company_key = frappe.db.get_value("Company", self.company, "company_code") or self.company_code
@@ -69,16 +70,25 @@ class TSItemCreator(Document):
 				break
 
 		if counter_row:
-			counter_row.last_serial = (counter_row.last_serial or 0) + 1
-			next_serial = counter_row.last_serial
+			next_serial = (counter_row.last_serial or 0) + 1
 		else:
 			settings.append("counters", {
 				"company_code": company_key,
 				"category_code": category_key,
-				"last_serial": 1
+				"last_serial": 0
 			})
+			counter_row = settings.counters[-1]
 			next_serial = 1
 
+		# Skip past any existing items (handles previously created items from failed batches)
+		while True:
+			serial_str = str(next_serial).zfill(digits)
+			candidate_code = sep.join([self.company_code, self.category_code, serial_str])
+			if not frappe.db.exists("Item", candidate_code):
+				break
+			next_serial += 1
+
+		counter_row.last_serial = next_serial
 		settings.save(ignore_permissions=True)
 		self.serial_number = str(next_serial).zfill(digits)
 
