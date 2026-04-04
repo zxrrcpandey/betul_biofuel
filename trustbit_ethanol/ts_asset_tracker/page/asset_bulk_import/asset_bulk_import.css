@@ -1,0 +1,31 @@
+.asset-bulk-import-page { max-width: 1200px; margin: 0 auto; }
+.abi-header { background: linear-gradient(135deg, #0f172a, #1e3a5f); color: #fff; padding: 20px 24px; border-radius: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+.abi-header-title { font-size: 20px; font-weight: 700; }
+.abi-header-desc { font-size: 12px; opacity: 0.7; margin-top: 4px; }
+.abi-btn-template { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3); font-size: 12px; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
+.abi-btn-template:hover { background: rgba(255,255,255,0.25); color: #fff; }
+.abi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+.abi-info-bar { background: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; border-radius: 6px; padding: 8px 14px; margin-bottom: 12px; font-size: 12px; }
+.abi-grid-wrap { overflow-x: auto; }
+.abi-grid-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 850px; }
+.abi-grid-table th { background: #f7fafc; padding: 8px 6px; text-align: left; font-weight: 600; color: #555; border-bottom: 2px solid #e2e8f0; font-size: 11px; text-transform: uppercase; }
+.abi-grid-table td { padding: 4px 4px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+.abi-grid-table tr:hover td { background: #f8f9fa; }
+.abi-input { width: 100%; border: 1px solid #d1d8dd; border-radius: 3px; padding: 5px 8px; font-size: 12px; }
+.abi-input:focus { border-color: #2490ef; outline: none; }
+.abi-link { min-height: 30px; }
+.abi-link .frappe-control { margin: 0 !important; }
+.abi-link input { font-size: 12px !important; padding: 5px 8px !important; }
+.abi-row-del { cursor: pointer; color: #e74c3c; font-size: 18px; font-weight: bold; }
+.abi-grid-summary { font-size: 13px; color: #555; }
+.abi-grid-summary #abi-grid-count { font-weight: 700; color: #2490ef; font-size: 16px; }
+.abi-btn-create { background: #10b981; color: #fff; border-color: #10b981; font-size: 14px; padding: 8px 20px; border-radius: 6px; }
+.abi-upload-zone { border: 2px dashed #d1d8dd; border-radius: 10px; padding: 50px; text-align: center; color: #999; cursor: pointer; }
+.abi-upload-zone:hover { border-color: #2490ef; background: #f8faff; }
+.abi-progress-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.abi-progress-card { background: #fff; padding: 30px 40px; border-radius: 12px; text-align: center; min-width: 300px; }
+.abi-progress-bar-wrap { background: #e2e8f0; border-radius: 6px; height: 8px; margin: 16px 0; overflow: hidden; }
+.abi-progress-bar { background: linear-gradient(90deg, #3b82f6, #10b981); height: 100%; border-radius: 6px; transition: width 0.3s; }
+.abi-mode-btn { font-size: 12px; padding: 5px 14px; }
+.abi-mode-btn.active, .btn-primary-dark { background: #1a365d !important; color: #fff !important; border-color: #1a365d !important; }
+.btn-xs { font-size: 11px; padding: 3px 10px; }

@@ -376,3 +376,74 @@ def _create_ledger_entry(**kwargs):
 	})
 	doc.insert(ignore_permissions=True)
 	return doc.name
+
+
+# ═══════════════════════════════════════════════════════════════
+#  BULK IMPORT
+# ═══════════════════════════════════════════════════════════════
+
+@frappe.whitelist()
+def bulk_import_assets(rows):
+	"""Create multiple TS Asset Items from a list of row dicts."""
+	import json
+	if isinstance(rows, str):
+		rows = json.loads(rows)
+
+	results = []
+	for row in rows:
+		try:
+			doc = frappe.get_doc({
+				"doctype": "TS Asset Item",
+				"item_name": row.get("item_name", ""),
+				"category": row.get("category", "Returnable"),
+				"uom": row.get("uom", "Nos"),
+				"current_stock": flt(row.get("qty", 0)),
+				"purchase_value": flt(row.get("purchase_value", 0)),
+				"current_value": flt(row.get("purchase_value", 0)),
+				"warranty_expiry": row.get("warranty_expiry") or None,
+				"description": row.get("description", ""),
+				"min_stock_level": flt(row.get("min_stock_level", 0)),
+				"expected_return_hours": flt(row.get("expected_return_hours", 0)),
+				"status": "Active",
+			})
+			doc.insert(ignore_permissions=True)
+
+			# Create opening ledger entry
+			if flt(row.get("qty", 0)) > 0:
+				_create_ledger_entry(
+					asset_item=doc.name,
+					item_name=doc.item_name,
+					transaction_type="Opening",
+					qty_change=flt(row.get("qty", 0)),
+					balance_qty=flt(row.get("qty", 0)),
+					value_change=flt(row.get("purchase_value", 0)) * flt(row.get("qty", 0)),
+					remarks="Bulk import opening stock",
+				)
+
+			results.append({
+				"success": True,
+				"name": doc.name,
+				"item_name": doc.item_name,
+				"category": doc.category,
+				"current_stock": doc.current_stock,
+			})
+		except Exception as e:
+			results.append({
+				"success": False,
+				"item_name": row.get("item_name", "?"),
+				"error": str(e)[:200],
+			})
+
+	frappe.db.commit()
+	return results
+
+
+@frappe.whitelist()
+def get_asset_reference():
+	"""Return reference data for bulk import — categories, UOMs, locations."""
+	data = {}
+	data["uoms"] = frappe.get_all("UOM", fields=["name"], order_by="name", limit_page_length=0)
+	data["locations"] = frappe.get_all("TS Asset Location",
+		fields=["name", "location_type"], filters={"is_active": 1},
+		order_by="name", limit_page_length=0)
+	return data

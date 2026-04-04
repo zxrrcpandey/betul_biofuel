@@ -1,0 +1,107 @@
+<div class="asset-bulk-import-page">
+
+	<!-- Header -->
+	<div class="abi-header">
+		<div class="abi-header-inner">
+			<div>
+				<div class="abi-header-title">TS Bulk Asset Import</div>
+				<div class="abi-header-desc">Add assets directly or upload CSV — autocomplete ensures valid values</div>
+			</div>
+			<div style="display:flex; gap:8px;">
+				<button class="btn abi-btn-template" id="abi-download-ref">&#128218; Reference Guide</button>
+				<button class="btn abi-btn-template" id="abi-download-template">&#128196; CSV Template</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Phase 1: Grid + CSV -->
+	<div class="abi-phase" id="abi-phase-upload">
+		<div class="abi-card">
+			<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+				<div style="display:flex; gap:8px;">
+					<button class="btn btn-primary-dark abi-mode-btn active" id="abi-mode-grid">Interactive Grid</button>
+					<button class="btn btn-default abi-mode-btn" id="abi-mode-csv">Import CSV</button>
+				</div>
+				<div id="abi-grid-actions" style="display:flex; gap:8px;">
+					<button class="btn btn-xs btn-default" id="abi-add-1">+ 1 Row</button>
+					<button class="btn btn-xs btn-default" id="abi-add-5">+ 5 Rows</button>
+					<button class="btn btn-xs btn-default" id="abi-add-20">+ 20 Rows</button>
+				</div>
+			</div>
+
+			<!-- Interactive Grid -->
+			<div id="abi-grid-section">
+				<div class="abi-info-bar">&#128161; Type to search — Item Name, Category, UOM, Location fields have autocomplete.</div>
+				<div class="abi-grid-wrap">
+					<table class="abi-grid-table" id="abi-grid-table">
+						<thead>
+							<tr>
+								<th style="width:36px">#</th>
+								<th>Item Name *</th>
+								<th>Category *</th>
+								<th>UOM</th>
+								<th>Qty *</th>
+								<th>Purchase Value</th>
+								<th>Location</th>
+								<th>Warranty Expiry</th>
+								<th style="width:32px"></th>
+							</tr>
+						</thead>
+						<tbody id="abi-grid-body"></tbody>
+					</table>
+				</div>
+				<div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+					<div class="abi-grid-summary"><span id="abi-grid-count">0</span> assets ready</div>
+					<button class="btn abi-btn-create" id="abi-btn-import-grid" disabled>&#10003; Import Assets</button>
+				</div>
+			</div>
+
+			<!-- CSV Upload -->
+			<div id="abi-csv-section" style="display:none;">
+				<div class="abi-upload-zone" id="abi-upload-zone">
+					<div style="font-size:48px; color:#94a3b8;">&#128196;</div>
+					<div><strong>Drop your CSV file here</strong><br><span style="color:#999;">or click to browse</span></div>
+					<div style="font-size:11px; color:#bbb; margin-top:8px;">Max 500 rows, .csv only</div>
+					<input type="file" id="abi-file-input" accept=".csv" style="display:none;">
+				</div>
+				<div id="abi-upload-info" style="display:none; margin-top:12px;">
+					<span id="abi-file-name" style="font-weight:600;"></span>
+					<span id="abi-file-rows" style="background:#e0e7ff; padding:2px 8px; border-radius:10px; font-size:11px; margin-left:8px;"></span>
+					<button id="abi-file-remove" style="margin-left:8px; color:#ef4444; cursor:pointer; border:none; background:none;">&times; Remove</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Progress -->
+	<div class="abi-progress-overlay" id="abi-progress-overlay" style="display:none;">
+		<div class="abi-progress-card">
+			<div style="font-size:16px; font-weight:600;">Importing Assets...</div>
+			<div class="abi-progress-bar-wrap"><div class="abi-progress-bar" id="abi-progress-bar" style="width:0%"></div></div>
+			<div id="abi-progress-text" style="font-size:13px; color:#888;">0 / 0</div>
+		</div>
+	</div>
+
+	<!-- Phase 2: Results -->
+	<div class="abi-phase" id="abi-phase-results" style="display:none;">
+		<div class="abi-card">
+			<div style="display:flex; gap:16px; justify-content:center; margin-bottom:20px;">
+				<div style="background:#dcfce7; padding:20px 40px; border-radius:10px; text-align:center;">
+					<div style="font-size:32px; font-weight:800; color:#166534;" id="abi-result-success">0</div>
+					<div style="font-size:12px; font-weight:600; color:#166534;">CREATED</div>
+				</div>
+				<div style="background:#fee2e2; padding:20px 40px; border-radius:10px; text-align:center;">
+					<div style="font-size:32px; font-weight:800; color:#991b1b;" id="abi-result-fail">0</div>
+					<div style="font-size:12px; font-weight:600; color:#991b1b;">FAILED</div>
+				</div>
+			</div>
+			<table class="abi-grid-table" id="abi-results-table">
+				<thead><tr><th>#</th><th>Status</th><th>Asset Code</th><th>Item Name</th><th>Category</th><th>Details</th></tr></thead>
+				<tbody id="abi-results-body"></tbody>
+			</table>
+			<div style="text-align:center; margin-top:16px;">
+				<button class="btn abi-btn-create" id="abi-btn-another">+ Import Another Batch</button>
+			</div>
+		</div>
+	</div>
+</div>
