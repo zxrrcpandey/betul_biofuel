@@ -263,20 +263,29 @@ def _create_single_item(row):
 	variant_codes_str = row.get("variant_codes", "") or ""
 	maintain_stock = (row.get("maintain_stock", "") or "yes").lower() in ("yes", "1", "true")
 
-	# Validate HSN code — auto-create if missing
+	# Validate HSN code — auto-create if missing, pad to 6 digits minimum
 	hsn_code = row.get("gst_hsn_code", "").strip()
-	if hsn_code and not frappe.db.exists("GST HSN Code", hsn_code):
-		# Try lookup by hsn_code field
-		existing = frappe.db.get_value("GST HSN Code", {"hsn_code": hsn_code}, "name")
-		if existing:
-			hsn_code = existing
-		else:
-			# Auto-create the HSN code
-			frappe.get_doc({
-				"doctype": "GST HSN Code",
-				"hsn_code": hsn_code,
-				"description": hsn_code,
-			}).insert(ignore_permissions=True)
+	if hsn_code:
+		# Pad to 6 digits if shorter (India Compliance requires 6 or 8 digits)
+		if hsn_code.isdigit() and len(hsn_code) < 6:
+			hsn_code = hsn_code.ljust(6, "0")
+
+		if not frappe.db.exists("GST HSN Code", hsn_code):
+			# Try lookup by hsn_code field
+			existing = frappe.db.get_value("GST HSN Code", {"hsn_code": hsn_code}, "name")
+			if existing:
+				hsn_code = existing
+			else:
+				# Auto-create the HSN code
+				try:
+					frappe.get_doc({
+						"doctype": "GST HSN Code",
+						"hsn_code": hsn_code,
+						"description": hsn_code,
+					}).insert(ignore_permissions=True)
+				except Exception:
+					# If HSN creation fails (invalid format), skip it
+					hsn_code = ""
 
 	# Build TS Item Creator doc
 	doc_data = {

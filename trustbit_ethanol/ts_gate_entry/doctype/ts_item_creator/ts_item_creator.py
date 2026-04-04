@@ -52,7 +52,9 @@ class TSItemCreator(Document):
 		if not self.company_code or not self.category_code:
 			return
 
-		settings = frappe.get_single("TS Item Code Settings")
+		# Clear cache to get fresh counter (critical for bulk import batches)
+		frappe.clear_document_cache("TS Item Code Settings", "TS Item Code Settings")
+		settings = frappe.get_doc("TS Item Code Settings")
 		digits = max(int(settings.serial_digits or 3), 2)
 
 		# Use character codes as the counter key (consistent regardless of display type)
