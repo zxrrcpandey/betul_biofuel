@@ -3,12 +3,9 @@ from frappe.model.document import Document
 
 
 class TSAssetTransaction(Document):
-	def after_insert(self):
-		"""Auto-complete most transaction types on save. Discard requires approval."""
-		if self.transaction_type == "Discard":
-			# Discard needs approval — stay Draft, user clicks "Submit for Approval"
-			return
-
-		# All other types: auto-complete immediately
-		from trustbit_ethanol.ts_asset_tracker.ts_asset_api import complete_transaction
-		complete_transaction(self.name)
+	def validate(self):
+		"""Prevent editing completed transactions."""
+		if not self.is_new() and self.status in ("Completed", "Cancelled"):
+			old_status = frappe.db.get_value("TS Asset Transaction", self.name, "status")
+			if old_status in ("Completed", "Cancelled"):
+				frappe.throw("Cannot modify a {} transaction".format(old_status))

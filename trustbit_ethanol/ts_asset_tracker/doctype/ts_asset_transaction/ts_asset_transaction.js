@@ -15,26 +15,44 @@ frappe.ui.form.on("TS Asset Transaction", {
 
 		if (frm.is_new()) return;
 
+		// Lock fields on Completed
+		if (frm.doc.status === "Completed") {
+			frm.disable_save();
+		}
+
 		// Draft + Discard → "Submit for Approval" button
 		if (frm.doc.status === "Draft" && frm.doc.transaction_type === "Discard") {
 			frm.add_custom_button(__("Submit for Approval"), () => {
-				frappe.call({
-					method: "trustbit_ethanol.ts_asset_tracker.ts_asset_api.submit_for_discard_approval",
-					args: { transaction_name: frm.doc.name },
-					callback: () => frm.reload_doc(),
-				});
-			}, __("Actions")).addClass("btn-primary-dark");
+				frappe.confirm(
+					__("Submit this Discard for CEO/MD approval?"),
+					() => {
+						frappe.call({
+							method: "trustbit_ethanol.ts_asset_tracker.ts_asset_api.submit_for_discard_approval",
+							args: { transaction_name: frm.doc.name },
+							callback: () => frm.reload_doc(),
+						});
+					}
+				);
+			}).addClass("btn-primary-dark");
 		}
 
-		// Draft + non-Discard → "Complete Transaction" button (fallback if auto-complete didn't run)
+		// Draft + non-Discard → "Complete Transaction" button
 		if (frm.doc.status === "Draft" && frm.doc.transaction_type !== "Discard") {
 			frm.add_custom_button(__("Complete Transaction"), () => {
-				frappe.call({
-					method: "trustbit_ethanol.ts_asset_tracker.ts_asset_api.complete_transaction",
-					args: { transaction_name: frm.doc.name },
-					callback: () => frm.reload_doc(),
-				});
-			}, __("Actions")).addClass("btn-primary-dark");
+				frappe.confirm(
+					__("Complete this {0} transaction? Stock will be updated.", [frm.doc.transaction_type]),
+					() => {
+						frappe.call({
+							method: "trustbit_ethanol.ts_asset_tracker.ts_asset_api.complete_transaction",
+							args: { transaction_name: frm.doc.name },
+							callback: () => {
+								frappe.show_alert({ message: __("Transaction completed!"), indicator: "green" });
+								frm.reload_doc();
+							},
+						});
+					}
+				);
+			}).addClass("btn-primary-dark");
 		}
 
 		// Pending Approval → Approve / Reject (for CEO/MD)
@@ -45,7 +63,7 @@ frappe.ui.form.on("TS Asset Transaction", {
 					args: { transaction_name: frm.doc.name },
 					callback: () => frm.reload_doc(),
 				});
-			}, __("Actions")).addClass("btn-success");
+			}).addClass("btn-success");
 
 			frm.add_custom_button(__("Reject Discard"), () => {
 				frappe.prompt(
@@ -59,7 +77,7 @@ frappe.ui.form.on("TS Asset Transaction", {
 					},
 					__("Reject Reason")
 				);
-			}, __("Actions")).addClass("btn-danger");
+			}).addClass("btn-danger");
 		}
 	},
 });
