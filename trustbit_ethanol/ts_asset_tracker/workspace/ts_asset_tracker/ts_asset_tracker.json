@@ -50,7 +50,8 @@
   {"label": "Asset Items", "link_to": "TS Asset Item", "type": "DocType", "doc_view": "List"},
   {"label": "Persons", "link_to": "TS Asset Person", "type": "DocType", "doc_view": "List"},
   {"label": "Asset Ledger", "link_to": "TS Asset Ledger", "type": "DocType", "doc_view": "List"},
-  {"label": "Settings", "link_to": "TS Asset Settings", "type": "DocType"}
+  {"label": "Settings", "link_to": "TS Asset Settings", "type": "DocType"},
+  {"label": "Bulk Asset Import", "link_to": "asset-bulk-import", "type": "Page"}
  ],
  "title": "TS Asset Tracker"
 }
