@@ -53,8 +53,9 @@ class TSItemCreator(Document):
 		if not self.company_code or not self.category_code:
 			return
 
-		# Read fresh from DB with lock (not cached singleton)
-		settings = frappe.get_doc("TS Item Code Settings", for_update=True)
+		# Read settings fresh (clear cache to avoid stale data in bulk imports)
+		frappe.clear_document_cache("TS Item Code Settings", "TS Item Code Settings")
+		settings = frappe.get_doc("TS Item Code Settings")
 		digits = max(int(settings.serial_digits or 3), 2)
 		sep = settings.default_separator or "-"
 
@@ -62,22 +63,23 @@ class TSItemCreator(Document):
 		company_key = frappe.db.get_value("Company", self.company, "company_code") or self.company_code
 		category_key = frappe.db.get_value("Item Group", self.item_group, "category_code") or self.category_code
 
-		# Find or create counter row
-		counter_row = None
-		for row in settings.counters:
-			if row.company_code == company_key and row.category_code == category_key:
-				counter_row = row
-				break
+		# Get current counter directly from DB (bypass cache completely)
+		current_serial = frappe.db.sql("""
+			SELECT last_serial FROM `tabTS Code Counter`
+			WHERE parent = 'TS Item Code Settings' AND company_code = %s AND category_code = %s
+			FOR UPDATE
+		""", (company_key, category_key))
 
-		if counter_row:
-			next_serial = (counter_row.last_serial or 0) + 1
+		if current_serial:
+			next_serial = (current_serial[0][0] or 0) + 1
 		else:
+			# Create counter row
 			settings.append("counters", {
 				"company_code": company_key,
 				"category_code": category_key,
 				"last_serial": 0
 			})
-			counter_row = settings.counters[-1]
+			settings.save(ignore_permissions=True)
 			next_serial = 1
 
 		# Skip past any existing items (handles previously created items from failed batches)
@@ -88,8 +90,12 @@ class TSItemCreator(Document):
 				break
 			next_serial += 1
 
-		counter_row.last_serial = next_serial
-		settings.save(ignore_permissions=True)
+		# Update counter directly in DB (atomic, no cache issues)
+		frappe.db.sql("""
+			UPDATE `tabTS Code Counter` SET last_serial = %s
+			WHERE parent = 'TS Item Code Settings' AND company_code = %s AND category_code = %s
+		""", (next_serial, company_key, category_key))
+
 		self.serial_number = str(next_serial).zfill(digits)
 
 	def _build_item_code(self):
