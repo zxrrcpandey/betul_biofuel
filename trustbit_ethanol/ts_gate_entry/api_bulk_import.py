@@ -106,12 +106,21 @@ def bulk_validate_and_preview(rows):
 		variant_codes_str = row.get("variant_codes", "") or ""
 		maintain_stock = (row.get("maintain_stock", "") or "yes").lower() in ("yes", "1", "true")
 
+		item_name = row.get("item_name", "").strip()
+
 		if not company:
 			errors.append("Company is required")
 		if not item_group:
 			errors.append("Item Group is required")
 		if not gst_hsn_code:
 			errors.append("GST HSN Code is required")
+
+		# --- Duplicate check ---
+		if item_name and item_group:
+			existing = frappe.db.get_value("Item",
+				{"item_name": item_name, "item_group": item_group}, "name")
+			if existing:
+				errors.append(f"Duplicate: Item '{item_name}' already exists in '{item_group}' as {existing}")
 
 		# --- Validate masters exist ---
 		company_code = ""
@@ -262,6 +271,15 @@ def _create_single_item(row):
 	variant_source = row.get("variant_source", "") or ""
 	variant_codes_str = row.get("variant_codes", "") or ""
 	maintain_stock = (row.get("maintain_stock", "") or "yes").lower() in ("yes", "1", "true")
+
+	# Block duplicates — check item_name + item_group combination
+	item_name = row.get("item_name", "").strip()
+	item_group = row.get("item_group", "").strip()
+	if item_name and item_group:
+		existing = frappe.db.get_value("Item",
+			{"item_name": item_name, "item_group": item_group}, "name")
+		if existing:
+			frappe.throw(f"Duplicate: Item '{item_name}' already exists in '{item_group}' as {existing}")
 
 	# Validate HSN code — auto-create if missing, pad to 6 digits minimum
 	hsn_code = row.get("gst_hsn_code", "").strip()

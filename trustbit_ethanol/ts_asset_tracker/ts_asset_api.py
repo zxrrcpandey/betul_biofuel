@@ -412,6 +412,13 @@ def bulk_import_assets(rows):
 	results = []
 	for row in rows:
 		try:
+			# Block duplicates — check item_name
+			asset_name = row.get("item_name", "").strip()
+			if asset_name:
+				existing = frappe.db.get_value("TS Asset Item", {"item_name": asset_name}, "name")
+				if existing:
+					frappe.throw(_("Duplicate: Asset '{0}' already exists as {1}").format(asset_name, existing))
+
 			# Validate UOM exists
 			uom = row.get("uom", "").strip() or "Nos"
 			if not frappe.db.exists("UOM", uom):
