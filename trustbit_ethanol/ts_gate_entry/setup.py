@@ -614,6 +614,12 @@ def create_custom_fields():
 			"insert_after": "ts_priority",
 		},
 		{
+			"fieldname": "ts_username",
+			"fieldtype": "Data",
+			"label": "Username",
+			"insert_after": "ts_remark",
+		},
+		{
 			"fieldname": "ts_project",
 			"fieldtype": "Link",
 			"label": "Project",
@@ -641,6 +647,12 @@ def create_custom_fields():
 			"fieldtype": "Small Text",
 			"label": "Remark",
 			"insert_after": "ts_priority",
+		},
+		{
+			"fieldname": "ts_username",
+			"fieldtype": "Data",
+			"label": "Username",
+			"insert_after": "ts_remark",
 		},
 		{
 			"fieldname": "ts_project",
