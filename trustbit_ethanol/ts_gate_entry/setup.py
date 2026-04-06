@@ -605,7 +605,7 @@ def create_custom_fields():
 			"fieldtype": "Select",
 			"label": "Priority",
 			"options": "\nLow\nMedium\nHigh\nUrgent",
-			"insert_after": "schedule_date",
+			"insert_after": "company",
 		},
 		{
 			"fieldname": "ts_username",
