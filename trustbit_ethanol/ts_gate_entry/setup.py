@@ -608,16 +608,10 @@ def create_custom_fields():
 			"insert_after": "schedule_date",
 		},
 		{
-			"fieldname": "ts_remark",
-			"fieldtype": "Small Text",
-			"label": "Remark",
-			"insert_after": "ts_priority",
-		},
-		{
 			"fieldname": "ts_username",
 			"fieldtype": "Data",
 			"label": "Username",
-			"insert_after": "ts_remark",
+			"insert_after": "ts_priority",
 		},
 		{
 			"fieldname": "ts_project",
@@ -631,6 +625,18 @@ def create_custom_fields():
 			"fieldtype": "Check",
 			"label": "Is this a New Project?",
 			"insert_after": "ts_project",
+		},
+		{
+			"fieldname": "ts_remark_section",
+			"fieldtype": "Section Break",
+			"label": "Remark",
+			"insert_after": "items",
+		},
+		{
+			"fieldname": "ts_remark",
+			"fieldtype": "Small Text",
+			"label": "Remark",
+			"insert_after": "ts_remark_section",
 		},
 	])
 
@@ -643,16 +649,10 @@ def create_custom_fields():
 			"insert_after": "schedule_date",
 		},
 		{
-			"fieldname": "ts_remark",
-			"fieldtype": "Small Text",
-			"label": "Remark",
-			"insert_after": "ts_priority",
-		},
-		{
 			"fieldname": "ts_username",
 			"fieldtype": "Data",
 			"label": "Username",
-			"insert_after": "ts_remark",
+			"insert_after": "ts_priority",
 		},
 		{
 			"fieldname": "ts_project",
@@ -666,6 +666,18 @@ def create_custom_fields():
 			"fieldtype": "Check",
 			"label": "Is this a New Project?",
 			"insert_after": "ts_project",
+		},
+		{
+			"fieldname": "ts_remark_section",
+			"fieldtype": "Section Break",
+			"label": "Remark",
+			"insert_after": "items",
+		},
+		{
+			"fieldname": "ts_remark",
+			"fieldtype": "Small Text",
+			"label": "Remark",
+			"insert_after": "ts_remark_section",
 		},
 	])
 
