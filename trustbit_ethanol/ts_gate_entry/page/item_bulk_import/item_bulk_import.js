@@ -314,6 +314,8 @@ class TSBulkImport {
 				<td>${code}</td><td>${r.item_name || "—"}</td>
 				<td>${r.company || "—"}</td><td>${r.item_group || "—"}</td>
 				<td>${r.stock_uom || "Kg"}</td><td>${r.gst_hsn_code || "—"}</td>
+				<td>${r.valuation_rate || "—"}</td>
+				<td>${r.opening_stock || "—"}</td>
 				<td>${variants || "—"}</td>
 				<td>${errors || '<span style="color:#999">—</span>'}</td>
 			</tr>`;

@@ -90,6 +90,7 @@ def bulk_validate_and_preview(rows):
 		preview_counters[key] = row.last_serial or 0
 
 	results = []
+	seen_items = {}  # Track within-batch duplicates
 
 	for row in rows:
 		row_num = row.get("_row_num", "?")
@@ -105,9 +106,12 @@ def bulk_validate_and_preview(rows):
 		variant_source = row.get("variant_source", "") or ""
 		variant_codes_str = row.get("variant_codes", "") or ""
 		maintain_stock = (row.get("maintain_stock", "") or "yes").lower() in ("yes", "1", "true")
-
+		valuation_rate = row.get("valuation_rate", "")
+		opening_stock = row.get("opening_stock", "")
 		item_name = row.get("item_name", "").strip()
 
+		if not item_name:
+			errors.append("Item Name is required")
 		if not company:
 			errors.append("Company is required")
 		if not item_group:
@@ -115,12 +119,25 @@ def bulk_validate_and_preview(rows):
 		if not gst_hsn_code:
 			errors.append("GST HSN Code is required")
 
-		# --- Duplicate check ---
+		# --- Valuation Rate check ---
+		if opening_stock and float(opening_stock or 0) > 0:
+			if not valuation_rate or float(valuation_rate or 0) <= 0:
+				errors.append("Valuation Rate is required when Opening Stock is set")
+
+		# --- Duplicate check (DB) ---
 		if item_name and item_group:
 			existing = frappe.db.get_value("Item",
 				{"item_name": item_name, "item_group": item_group}, "name")
 			if existing:
-				errors.append(f"Duplicate: Item '{item_name}' already exists in '{item_group}' as {existing}")
+				errors.append(f"Duplicate: '{item_name}' already exists in '{item_group}' as {existing}")
+
+		# --- Duplicate check (within batch) ---
+		if item_name and item_group:
+			batch_key = (item_name.lower(), item_group)
+			if batch_key in seen_items:
+				errors.append(f"Duplicate in CSV: '{item_name}' appears in row {seen_items[batch_key]} and row {row_num}")
+			else:
+				seen_items[batch_key] = row_num
 
 		# --- Validate masters exist ---
 		company_code = ""
@@ -203,6 +220,8 @@ def bulk_validate_and_preview(rows):
 			"item_group": item_group,
 			"stock_uom": stock_uom,
 			"gst_hsn_code": gst_hsn_code,
+			"valuation_rate": valuation_rate,
+			"opening_stock": opening_stock,
 			"has_variant": has_variant,
 			"variant_codes": variant_codes,
 		})
