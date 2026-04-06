@@ -182,7 +182,7 @@ class TSAssetBulkImport {
 			}
 			const batch = rows.slice(done, done + 10);
 			frappe.call({
-				method: "trustbit_ethanol.ts_asset_tracker.ts_asset_api.bulk_import_assets",
+				method: "trustbit_ethanol.ts_return_item_tracker.ts_asset_api.bulk_import_assets",
 				args: { rows: JSON.stringify(batch) },
 				callback(r) {
 					if (r.message) results.push(...r.message);
@@ -224,7 +224,7 @@ class TSAssetBulkImport {
 
 	_download_ref() {
 		frappe.call({
-			method: "trustbit_ethanol.ts_asset_tracker.ts_asset_api.get_asset_reference",
+			method: "trustbit_ethanol.ts_return_item_tracker.ts_asset_api.get_asset_reference",
 			callback(r) {
 				if (!r.message) return;
 				const d = r.message;

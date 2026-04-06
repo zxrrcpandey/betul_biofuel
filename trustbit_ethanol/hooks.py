@@ -23,7 +23,7 @@ app_include_js = [
 # Module-workspace mapping for correct breadcrumbs
 module_app_map = {
 	"TS Gate Entry": "trustbit_ethanol",
-	"TS Asset Tracker": "trustbit_ethanol",
+	"TS Return Item Tracker": "trustbit_ethanol",
 }
 
 # Fixtures for roles and custom fields
@@ -182,7 +182,7 @@ scheduler_events = {
 		"*/30 * * * *": [
 			"trustbit_ethanol.ts_gate_entry.ts_po_approval.check_approval_sla",
 			"trustbit_ethanol.ts_gate_entry.doctype.ts_material_inspection.ts_material_inspection.check_inspection_sla",
-			"trustbit_ethanol.ts_asset_tracker.ts_asset_api.check_overdue_assignments",
+			"trustbit_ethanol.ts_return_item_tracker.ts_asset_api.check_overdue_assignments",
 		]
 	}
 }

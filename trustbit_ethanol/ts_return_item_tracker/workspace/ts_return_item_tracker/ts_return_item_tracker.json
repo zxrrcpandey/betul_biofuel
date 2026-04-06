@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#0f172a,#1e3a5f);padding:20px 24px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:20px;font-weight:700;'>TS Asset Tracker</div><div style='font-size:12px;opacity:0.7;'>Material Lifecycle Management</div></div>\", \"col\": 12}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class='h6'>Quick Actions</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Issue\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Process Return\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Transfer\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Damage Report\", \"col\": 3}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class='h6'>Masters & Reports</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Asset Items\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Persons\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Asset Ledger\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Settings\", \"col\": 3}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#0f172a,#1e3a5f);padding:20px 24px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:20px;font-weight:700;'>TS Return Item Tracker</div><div style='font-size:12px;opacity:0.7;'>Material Lifecycle Management</div></div>\", \"col\": 12}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class='h6'>Quick Actions</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Issue\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Process Return\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Transfer\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Damage Report\", \"col\": 3}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class='h6'>Masters & Reports</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Asset Items\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Persons\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Asset Ledger\", \"col\": 3}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Settings\", \"col\": 3}}]",
  "creation": "2026-04-04 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -9,7 +9,7 @@
  "idx": 0,
  "icon": "color-review-points",
  "is_hidden": 0,
- "label": "TS Asset Tracker",
+ "label": "TS Return Item Tracker",
  "links": [
   {"hidden": 0, "label": "Transactions", "link_type": "DocType", "type": "Card Break"},
   {"hidden": 0, "label": "TS Asset Transaction", "link_to": "TS Asset Transaction", "link_type": "DocType", "type": "Link", "onboard": 1},
@@ -25,8 +25,8 @@
  ],
  "modified": "2026-04-04 00:00:00",
  "modified_by": "Administrator",
- "module": "TS Asset Tracker",
- "name": "TS Asset Tracker",
+ "module": "TS Return Item Tracker",
+ "name": "TS Return Item Tracker",
  "number_cards": [],
  "owner": "Administrator",
  "parent_page": "",
@@ -53,5 +53,5 @@
   {"label": "Settings", "link_to": "TS Asset Settings", "type": "DocType"},
   {"label": "Bulk Asset Import", "link_to": "asset-bulk-import", "type": "Page"}
  ],
- "title": "TS Asset Tracker"
+ "title": "TS Return Item Tracker"
 }

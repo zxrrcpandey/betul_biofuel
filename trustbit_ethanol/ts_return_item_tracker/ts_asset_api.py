@@ -1,4 +1,4 @@
-"""TS Asset Tracker API — Issue, Return, Transfer, Damage, Discard + Ledger + Live Tracking."""
+"""TS Return Item Tracker API — Issue, Return, Transfer, Damage, Discard + Ledger + Live Tracking."""
 
 import frappe
 from frappe import _

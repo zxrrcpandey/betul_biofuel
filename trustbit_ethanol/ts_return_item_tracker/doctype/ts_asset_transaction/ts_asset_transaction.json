@@ -411,7 +411,7 @@
  "links": [],
  "modified": "2026-04-03 00:00:00",
  "modified_by": "Administrator",
- "module": "TS Asset Tracker",
+ "module": "TS Return Item Tracker",
  "name": "TS Asset Transaction",
  "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",

@@ -6,7 +6,7 @@
  "idx": 0,
  "modified": "2026-04-04 00:00:00",
  "modified_by": "Administrator",
- "module": "TS Asset Tracker",
+ "module": "TS Return Item Tracker",
  "name": "asset-bulk-import",
  "owner": "Administrator",
  "page_name": "asset-bulk-import",
