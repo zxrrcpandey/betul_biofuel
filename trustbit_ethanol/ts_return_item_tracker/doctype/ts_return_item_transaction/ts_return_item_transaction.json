@@ -1,0 +1,469 @@
+{
+ "actions": [],
+ "creation": "2026-04-03 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_transaction",
+  "naming_series",
+  "transaction_type",
+  "status",
+  "column_break_transaction",
+  "transaction_date",
+  "transaction_time",
+  "company",
+  "section_reference",
+  "reference_transaction",
+  "column_break_reference",
+  "remarks",
+  "section_issued_to",
+  "issued_to_person",
+  "issued_to_name",
+  "department",
+  "cost_center",
+  "column_break_issued",
+  "location",
+  "expected_return_at",
+  "section_return",
+  "returned_by_person",
+  "returned_by_name",
+  "return_department",
+  "column_break_return",
+  "actual_return_time",
+  "return_condition",
+  "section_transfer",
+  "from_person",
+  "from_department",
+  "column_break_transfer",
+  "to_person",
+  "to_department",
+  "section_damage",
+  "damage_severity",
+  "damage_reason",
+  "repair_estimate",
+  "column_break_damage",
+  "damage_photo_1",
+  "damage_photo_2",
+  "damage_photo_3",
+  "section_discard",
+  "discard_reason",
+  "discard_value",
+  "column_break_discard",
+  "approved_by",
+  "approved_at",
+  "approval_remarks",
+  "section_photos",
+  "photo_before",
+  "column_break_photos",
+  "photo_after",
+  "section_items",
+  "items",
+  "section_usage",
+  "usage_hours",
+  "usage_days",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_transaction",
+   "fieldtype": "Section Break",
+   "label": "Transaction Details"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Naming Series",
+   "options": "BBPL-AT-.YYYY.-.#####",
+   "default": "BBPL-AT-.YYYY.-.#####",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "transaction_type",
+   "fieldtype": "Select",
+   "label": "Transaction Type",
+   "options": "\nIssue\nReturn\nRe-issue\nTransfer\nDamage Report\nDiscard\nCheck Out\nCheck In",
+   "reqd": 1,
+   "in_list_view": 1,
+   "bold": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nPending Approval\nApproved\nCompleted\nRejected\nCancelled",
+   "default": "Draft",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_transaction",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "transaction_date",
+   "fieldtype": "Date",
+   "label": "Transaction Date",
+   "reqd": 1,
+   "default": "Today",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "transaction_time",
+   "fieldtype": "Time",
+   "label": "Transaction Time",
+   "reqd": 1,
+   "default": "Now"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_reference",
+   "fieldtype": "Section Break",
+   "label": "Reference"
+  },
+  {
+   "fieldname": "reference_transaction",
+   "fieldtype": "Link",
+   "label": "Reference Transaction",
+   "options": "TS Return Item Transaction",
+   "description": "Link to original issue for returns"
+  },
+  {
+   "fieldname": "column_break_reference",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "section_issued_to",
+   "fieldtype": "Section Break",
+   "label": "Issued To",
+   "depends_on": "eval:['Issue','Re-issue','Check Out','Transfer'].includes(doc.transaction_type)"
+  },
+  {
+   "fieldname": "issued_to_person",
+   "fieldtype": "Link",
+   "label": "Issued To Person",
+   "options": "TS Return Item Person"
+  },
+  {
+   "fieldname": "issued_to_name",
+   "fieldtype": "Data",
+   "label": "Issued To Name",
+   "fetch_from": "issued_to_person.person_name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Department",
+   "fetch_from": "issued_to_person.department"
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "fetch_from": "issued_to_person.cost_center"
+  },
+  {
+   "fieldname": "column_break_issued",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Link",
+   "label": "Location",
+   "options": "TS Return Item Location"
+  },
+  {
+   "fieldname": "expected_return_at",
+   "fieldtype": "Datetime",
+   "label": "Expected Return At"
+  },
+  {
+   "fieldname": "section_return",
+   "fieldtype": "Section Break",
+   "label": "Return Details",
+   "depends_on": "eval:['Return','Check In'].includes(doc.transaction_type)"
+  },
+  {
+   "fieldname": "returned_by_person",
+   "fieldtype": "Link",
+   "label": "Returned By Person",
+   "options": "TS Return Item Person"
+  },
+  {
+   "fieldname": "returned_by_name",
+   "fieldtype": "Data",
+   "label": "Returned By Name",
+   "fetch_from": "returned_by_person.person_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "return_department",
+   "fieldtype": "Link",
+   "label": "Return Department",
+   "options": "Department"
+  },
+  {
+   "fieldname": "column_break_return",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "actual_return_time",
+   "fieldtype": "Datetime",
+   "label": "Actual Return Time"
+  },
+  {
+   "fieldname": "return_condition",
+   "fieldtype": "Select",
+   "label": "Return Condition",
+   "options": "\nGood\nDamaged\nNeeds Repair\nBeyond Repair"
+  },
+  {
+   "fieldname": "section_transfer",
+   "fieldtype": "Section Break",
+   "label": "Transfer Details",
+   "depends_on": "eval:doc.transaction_type=='Transfer'"
+  },
+  {
+   "fieldname": "from_person",
+   "fieldtype": "Link",
+   "label": "From Person",
+   "options": "TS Return Item Person"
+  },
+  {
+   "fieldname": "from_department",
+   "fieldtype": "Link",
+   "label": "From Department",
+   "options": "Department"
+  },
+  {
+   "fieldname": "column_break_transfer",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "to_person",
+   "fieldtype": "Link",
+   "label": "To Person",
+   "options": "TS Return Item Person"
+  },
+  {
+   "fieldname": "to_department",
+   "fieldtype": "Link",
+   "label": "To Department",
+   "options": "Department"
+  },
+  {
+   "fieldname": "section_damage",
+   "fieldtype": "Section Break",
+   "label": "Damage Details",
+   "depends_on": "eval:doc.transaction_type=='Damage Report'"
+  },
+  {
+   "fieldname": "damage_severity",
+   "fieldtype": "Select",
+   "label": "Damage Severity",
+   "options": "\nMinor\nModerate\nMajor\nBeyond Repair",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "damage_reason",
+   "fieldtype": "Small Text",
+   "label": "Damage Reason",
+   "mandatory_depends_on": "eval:doc.transaction_type=='Damage Report'"
+  },
+  {
+   "fieldname": "repair_estimate",
+   "fieldtype": "Currency",
+   "label": "Repair Estimate"
+  },
+  {
+   "fieldname": "column_break_damage",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "damage_photo_1",
+   "fieldtype": "Attach Image",
+   "label": "Damage Photo 1"
+  },
+  {
+   "fieldname": "damage_photo_2",
+   "fieldtype": "Attach Image",
+   "label": "Damage Photo 2"
+  },
+  {
+   "fieldname": "damage_photo_3",
+   "fieldtype": "Attach Image",
+   "label": "Damage Photo 3"
+  },
+  {
+   "fieldname": "section_discard",
+   "fieldtype": "Section Break",
+   "label": "Discard",
+   "depends_on": "eval:doc.transaction_type=='Discard'"
+  },
+  {
+   "fieldname": "discard_reason",
+   "fieldtype": "Small Text",
+   "label": "Discard Reason"
+  },
+  {
+   "fieldname": "discard_value",
+   "fieldtype": "Currency",
+   "label": "Discard Value"
+  },
+  {
+   "fieldname": "column_break_discard",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_at",
+   "fieldtype": "Datetime",
+   "label": "Approved At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approval_remarks",
+   "fieldtype": "Small Text",
+   "label": "Approval Remarks"
+  },
+  {
+   "fieldname": "section_photos",
+   "fieldtype": "Section Break",
+   "label": "Photos"
+  },
+  {
+   "fieldname": "photo_before",
+   "fieldtype": "Attach Image",
+   "label": "Before Issue Photo"
+  },
+  {
+   "fieldname": "column_break_photos",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "photo_after",
+   "fieldtype": "Attach Image",
+   "label": "After Return Photo"
+  },
+  {
+   "fieldname": "section_items",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "TS Return Item Transaction Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_usage",
+   "fieldtype": "Section Break",
+   "label": "Usage"
+  },
+  {
+   "fieldname": "usage_hours",
+   "fieldtype": "Float",
+   "label": "Usage Duration (Hours)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "usage_days",
+   "fieldtype": "Float",
+   "label": "Usage Duration (Days)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "TS Return Item Transaction",
+   "hidden": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "autoname": "naming_series:",
+ "links": [],
+ "modified": "2026-04-03 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Return Item Tracker",
+ "name": "TS Return Item Transaction",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Asset Controller"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Stores User"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Asset Custodian"
+  },
+  {
+   "read": 1,
+   "role": "Department Head"
+  },
+  {
+   "read": 1,
+   "role": "CEO"
+  },
+  {
+   "read": 1,
+   "role": "MD"
+  }
+ ],
+ "search_fields": "transaction_type,issued_to_name",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "title_field": "transaction_type",
+ "track_changes": 1
+}

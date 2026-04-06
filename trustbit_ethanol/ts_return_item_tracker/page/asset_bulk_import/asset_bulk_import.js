@@ -85,7 +85,7 @@ class TSAssetBulkImport {
 
 		// Location — Link
 		const loc_ctrl = frappe.ui.form.make_control({
-			df: { fieldtype: "Link", options: "TS Asset Location", placeholder: "Location..." },
+			df: { fieldtype: "Link", options: "TS Return Item Location", placeholder: "Location..." },
 			parent: $tr.find('.abi-link[data-field="location"]'), render_input: true, only_input: true,
 		});
 		loc_ctrl.$input.on("change", () => { row.location = loc_ctrl.get_value(); });
@@ -182,7 +182,7 @@ class TSAssetBulkImport {
 			}
 			const batch = rows.slice(done, done + 10);
 			frappe.call({
-				method: "trustbit_ethanol.ts_return_item_tracker.ts_asset_api.bulk_import_assets",
+				method: "trustbit_ethanol.ts_return_item_tracker.ts_return_item_api.bulk_import_assets",
 				args: { rows: JSON.stringify(batch) },
 				callback(r) {
 					if (r.message) results.push(...r.message);
@@ -224,7 +224,7 @@ class TSAssetBulkImport {
 
 	_download_ref() {
 		frappe.call({
-			method: "trustbit_ethanol.ts_return_item_tracker.ts_asset_api.get_asset_reference",
+			method: "trustbit_ethanol.ts_return_item_tracker.ts_return_item_api.get_asset_reference",
 			callback(r) {
 				if (!r.message) return;
 				const d = r.message;
@@ -234,7 +234,7 @@ class TSAssetBulkImport {
 				csv += "--- LOCATIONS ---\n" + (d.locations || []).map(l => l.name + " (" + (l.location_type || "") + ")").join("\n") + "\n";
 				const blob = new Blob([csv], { type: "text/csv" });
 				const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-				a.download = "ts_asset_reference.csv"; a.click();
+				a.download = "ts_return_item_reference.csv"; a.click();
 				frappe.show_alert({ message: "Reference downloaded!", indicator: "green" });
 			}
 		});
@@ -246,7 +246,7 @@ class TSAssetBulkImport {
 			'"Safety Helmet","Returnable","Nos","10","850","Main Store","01-01-2028","01-01-2026","","","Safety","ISI marked safety helmet","5",""\n' +
 			'"Welding Rod 3.15mm","Consumable","Kg","50","120","Main Store","","","","","Consumables","ER 70S-6 welding rod","10",""\n';
 		const blob = new Blob([csv], { type: "text/csv" });
-		const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ts_asset_template.csv"; a.click();
+		const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ts_return_item_template.csv"; a.click();
 	}
 
 	_reset() {

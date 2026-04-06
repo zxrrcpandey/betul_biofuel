@@ -1,0 +1,308 @@
+{
+ "actions": [],
+ "creation": "2026-04-03 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_item_details",
+  "item_name",
+  "item_code",
+  "category",
+  "column_break_item",
+  "status",
+  "item_group",
+  "uom",
+  "section_description",
+  "description",
+  "column_break_image",
+  "item_image",
+  "section_valuation",
+  "purchase_value",
+  "current_value",
+  "depreciation_method",
+  "useful_life_months",
+  "column_break_valuation",
+  "purchase_date",
+  "warranty_expiry",
+  "amc_expiry",
+  "amc_vendor",
+  "section_stock",
+  "current_stock",
+  "opening_stock",
+  "min_stock_level",
+  "column_break_stock",
+  "expected_return_hours",
+  "requires_approval",
+  "section_qr",
+  "barcode",
+  "qr_code_image",
+  "section_maintenance",
+  "maintenance_interval_days",
+  "last_maintenance_date",
+  "next_maintenance_date"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_item_details",
+   "fieldtype": "Section Break",
+   "label": "Item Details"
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "reqd": 1,
+   "in_list_view": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Data",
+   "label": "Item Code",
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "\nConsumable\nReturnable\nTool\nEquipment",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_item",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Active\nInactive\nDiscarded",
+   "default": "Active",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Data",
+   "label": "Item Group"
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM",
+   "reqd": 1,
+   "default": "Nos"
+  },
+  {
+   "fieldname": "section_description",
+   "fieldtype": "Section Break",
+   "label": "Description"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "column_break_image",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "item_image",
+   "fieldtype": "Attach Image",
+   "label": "Item Image"
+  },
+  {
+   "fieldname": "section_valuation",
+   "fieldtype": "Section Break",
+   "label": "Valuation"
+  },
+  {
+   "fieldname": "purchase_value",
+   "fieldtype": "Currency",
+   "label": "Purchase Value"
+  },
+  {
+   "fieldname": "current_value",
+   "fieldtype": "Currency",
+   "label": "Current Value"
+  },
+  {
+   "fieldname": "depreciation_method",
+   "fieldtype": "Select",
+   "label": "Depreciation Method",
+   "options": "None\nStraight Line\nUsage Based"
+  },
+  {
+   "fieldname": "useful_life_months",
+   "fieldtype": "Int",
+   "label": "Useful Life (Months)"
+  },
+  {
+   "fieldname": "column_break_valuation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "purchase_date",
+   "fieldtype": "Date",
+   "label": "Purchase Date"
+  },
+  {
+   "fieldname": "warranty_expiry",
+   "fieldtype": "Date",
+   "label": "Warranty Expiry"
+  },
+  {
+   "fieldname": "amc_expiry",
+   "fieldtype": "Date",
+   "label": "AMC Expiry"
+  },
+  {
+   "fieldname": "amc_vendor",
+   "fieldtype": "Data",
+   "label": "AMC Vendor"
+  },
+  {
+   "fieldname": "section_stock",
+   "fieldtype": "Section Break",
+   "label": "Stock"
+  },
+  {
+   "fieldname": "current_stock",
+   "fieldtype": "Float",
+   "label": "Current Stock",
+   "read_only": 1,
+   "bold": 1,
+   "default": "0",
+   "in_list_view": 1,
+   "description": "Auto-calculated from transactions"
+  },
+  {
+   "fieldname": "opening_stock",
+   "fieldtype": "Float",
+   "label": "Opening Stock",
+   "description": "Set initial stock when creating the item. This will be added to Current Stock on first save."
+  },
+  {
+   "fieldname": "min_stock_level",
+   "fieldtype": "Float",
+   "label": "Min Stock Level"
+  },
+  {
+   "fieldname": "column_break_stock",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "expected_return_hours",
+   "fieldtype": "Float",
+   "label": "Expected Return Hours",
+   "description": "Default SLA in hours"
+  },
+  {
+   "fieldname": "requires_approval",
+   "fieldtype": "Check",
+   "label": "Requires Approval",
+   "description": "HOD approval before issue"
+  },
+  {
+   "fieldname": "section_qr",
+   "fieldtype": "Section Break",
+   "label": "QR Code"
+  },
+  {
+   "fieldname": "barcode",
+   "fieldtype": "Data",
+   "label": "Barcode"
+  },
+  {
+   "fieldname": "qr_code_image",
+   "fieldtype": "Attach Image",
+   "label": "QR Code Image",
+   "hidden": 1
+  },
+  {
+   "fieldname": "section_maintenance",
+   "fieldtype": "Section Break",
+   "label": "Maintenance"
+  },
+  {
+   "fieldname": "maintenance_interval_days",
+   "fieldtype": "Int",
+   "label": "Maintenance Interval (Days)"
+  },
+  {
+   "fieldname": "last_maintenance_date",
+   "fieldtype": "Date",
+   "label": "Last Maintenance Date"
+  },
+  {
+   "fieldname": "next_maintenance_date",
+   "fieldtype": "Date",
+   "label": "Next Maintenance Date",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "autoname": "format:TSAI-{YYYY}-{#####}",
+ "links": [],
+ "modified": "2026-04-03 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Return Item Tracker",
+ "name": "TS Return Item",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Asset Controller"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Stores User"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "read": 1,
+   "role": "Asset Custodian"
+  },
+  {
+   "read": 1,
+   "role": "Department Head"
+  },
+  {
+   "read": 1,
+   "role": "CEO"
+  },
+  {
+   "read": 1,
+   "role": "MD"
+  }
+ ],
+ "search_fields": "item_name,item_code,category",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "title_field": "item_name",
+ "track_changes": 1
+}

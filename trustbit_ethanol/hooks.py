@@ -182,7 +182,7 @@ scheduler_events = {
 		"*/30 * * * *": [
 			"trustbit_ethanol.ts_gate_entry.ts_po_approval.check_approval_sla",
 			"trustbit_ethanol.ts_gate_entry.doctype.ts_material_inspection.ts_material_inspection.check_inspection_sla",
-			"trustbit_ethanol.ts_return_item_tracker.ts_asset_api.check_overdue_assignments",
+			"trustbit_ethanol.ts_return_item_tracker.ts_return_item_api.check_overdue_assignments",
 		]
 	}
 }
