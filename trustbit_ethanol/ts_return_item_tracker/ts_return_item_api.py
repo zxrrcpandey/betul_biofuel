@@ -249,7 +249,7 @@ def _process_discard(doc):
 
 @frappe.whitelist()
 def submit_for_discard_approval(transaction_name):
-	"""Asset Controller submits discard for CEO/MD approval."""
+	"""Return Item Controller submits discard for CEO/MD approval."""
 	doc = frappe.get_doc("TS Return Item Transaction", transaction_name)
 	if doc.transaction_type != "Discard":
 		frappe.throw(_("Only Discard transactions need approval"))
@@ -270,7 +270,7 @@ def submit_for_discard_approval(transaction_name):
 			"type": "Alert",
 			"document_type": "TS Return Item Transaction",
 			"document_name": doc.name,
-			"subject": _("Asset Discard Approval Required — {0}").format(doc.name),
+			"subject": _("Return Item Discard Approval Required — {0}").format(doc.name),
 			"email_content": _("Discard request for {0} items. Value: {1}. Reason: {2}").format(
 				len(doc.items), doc.discard_value, doc.discard_reason
 			),
@@ -463,7 +463,7 @@ def bulk_import_assets(rows):
 		except Exception as e:
 			frappe.db.rollback()
 			frappe.log_error(
-				title=f"Asset Bulk Import Error ({row.get('item_name', '?')})",
+				title=f"Return Item Bulk Import Error ({row.get('item_name', '?')})",
 				message=frappe.get_traceback()
 			)
 			frappe.clear_messages()

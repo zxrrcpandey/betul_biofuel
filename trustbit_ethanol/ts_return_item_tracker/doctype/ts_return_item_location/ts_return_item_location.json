@@ -80,7 +80,7 @@
    "delete": 1,
    "read": 1,
    "write": 1,
-   "role": "Asset Controller"
+   "role": "Return Item Controller"
   },
   {
    "read": 1,

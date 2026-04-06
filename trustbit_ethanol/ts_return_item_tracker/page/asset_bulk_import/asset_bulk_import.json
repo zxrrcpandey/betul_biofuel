@@ -13,10 +13,10 @@
  "roles": [
   {"role": "System Manager"},
   {"role": "IT Head"},
-  {"role": "Asset Controller"},
+  {"role": "Return Item Controller"},
   {"role": "Stores User"}
  ],
  "standard": "Yes",
  "system_page": 0,
- "title": "Bulk Asset Import"
+ "title": "Bulk Return Item Import"
 }

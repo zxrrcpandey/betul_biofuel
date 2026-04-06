@@ -1,10 +1,10 @@
 frappe.pages["asset-bulk-import"].on_page_load = function (wrapper) {
-	const page = frappe.ui.make_app_page({ parent: wrapper, title: "TS Bulk Asset Import", single_column: true });
+	const page = frappe.ui.make_app_page({ parent: wrapper, title: "TS Bulk Return Item Import", single_column: true });
 	$(frappe.render_template("asset_bulk_import")).appendTo(page.body);
-	new TSAssetBulkImport(page);
+	new TSReturnItemBulkImport(page);
 };
 
-class TSAssetBulkImport {
+class TSReturnItemBulkImport {
 	constructor(page) {
 		this.page = page;
 		this.$page = $(page.body);

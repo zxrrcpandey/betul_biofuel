@@ -24,7 +24,7 @@
   {
    "fieldname": "asset_item",
    "fieldtype": "Link",
-   "label": "Asset Item",
+   "label": "Return Item",
    "options": "TS Return Item",
    "reqd": 1,
    "in_list_view": 1
@@ -139,7 +139,7 @@
    "delete": 1,
    "read": 1,
    "write": 1,
-   "role": "Asset Controller"
+   "role": "Return Item Controller"
   },
   {
    "read": 1,
@@ -170,7 +170,7 @@
   },
   {
    "read": 1,
-   "role": "Asset Custodian"
+   "role": "Return Item Custodian"
   }
  ],
  "sort_field": "modified",

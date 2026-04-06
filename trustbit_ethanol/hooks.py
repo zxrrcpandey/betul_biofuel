@@ -45,8 +45,8 @@ fixtures = [
 			"Grain Purchase Manager",
 			"AVP",
 			"Admin Reception",
-			"Asset Controller",
-			"Asset Custodian"
+			"Return Item Controller",
+			"Return Item Custodian"
 		]]]
 	},
 	{

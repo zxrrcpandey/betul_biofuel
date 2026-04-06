@@ -261,7 +261,7 @@
    "delete": 1,
    "read": 1,
    "write": 1,
-   "role": "Asset Controller"
+   "role": "Return Item Controller"
   },
   {
    "create": 1,
@@ -285,7 +285,7 @@
   },
   {
    "read": 1,
-   "role": "Asset Custodian"
+   "role": "Return Item Custodian"
   },
   {
    "read": 1,
