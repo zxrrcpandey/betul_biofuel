@@ -47,11 +47,11 @@
   {"label": "Process Return", "link_to": "TS Return Item Transaction", "type": "DocType", "doc_view": "List"},
   {"label": "Transfer", "link_to": "TS Return Item Transaction", "type": "DocType", "doc_view": "List"},
   {"label": "Damage Report", "link_to": "TS Return Item Transaction", "type": "DocType", "doc_view": "List"},
-  {"label": "Asset Items", "link_to": "TS Return Item", "type": "DocType", "doc_view": "List"},
+  {"label": "Return Items", "link_to": "TS Return Item", "type": "DocType", "doc_view": "List"},
   {"label": "Persons", "link_to": "TS Return Item Person", "type": "DocType", "doc_view": "List"},
-  {"label": "Asset Ledger", "link_to": "TS Return Item Ledger", "type": "DocType", "doc_view": "List"},
+  {"label": "Return Item Ledger", "link_to": "TS Return Item Ledger", "type": "DocType", "doc_view": "List"},
   {"label": "Settings", "link_to": "TS Return Item Settings", "type": "DocType"},
-  {"label": "Bulk Asset Import", "link_to": "asset-bulk-import", "type": "Page"}
+  {"label": "Bulk Return Item Import", "link_to": "asset-bulk-import", "type": "Page"}
  ],
  "title": "TS Return Item Tracker"
 }
