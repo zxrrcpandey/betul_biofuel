@@ -614,6 +614,12 @@ def create_custom_fields():
 			"insert_after": "ts_priority",
 		},
 		{
+			"fieldname": "ts_department_name",
+			"fieldtype": "Data",
+			"label": "Department Name",
+			"insert_after": "ts_username",
+		},
+		{
 			"fieldname": "ts_project",
 			"fieldtype": "Link",
 			"label": "Project",
@@ -653,6 +659,12 @@ def create_custom_fields():
 			"fieldtype": "Data",
 			"label": "Username",
 			"insert_after": "ts_priority",
+		},
+		{
+			"fieldname": "ts_department_name",
+			"fieldtype": "Data",
+			"label": "Department Name",
+			"insert_after": "ts_username",
 		},
 		{
 			"fieldname": "ts_project",
