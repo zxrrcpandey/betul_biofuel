@@ -412,32 +412,38 @@ def bulk_import_assets(rows):
 	results = []
 	for row in rows:
 		try:
-			# Block duplicates — check item_name
-			asset_name = row.get("item_name", "").strip()
-			if asset_name:
-				existing = frappe.db.get_value("TS Return Item", {"item_name": asset_name}, "name")
-				if existing:
-					frappe.throw(_("Duplicate: Asset '{0}' already exists as {1}").format(asset_name, existing))
+			# Lookup ERPNext Item by item_code
+			item_code = row.get("item_code", "").strip()
+			if not item_code:
+				frappe.throw(_("Item Code is required"))
 
-			# Validate UOM exists
-			uom = row.get("uom", "").strip() or "Nos"
-			if not frappe.db.exists("UOM", uom):
-				uom = "Nos"
+			if not frappe.db.exists("Item", item_code):
+				frappe.throw(_("ERPNext Item '{0}' not found").format(item_code))
+
+			# Block duplicates — check if already linked
+			existing = frappe.db.get_value("TS Return Item", {"erp_item": item_code}, "name")
+			if existing:
+				frappe.throw(_("Item '{0}' already linked to {1}").format(item_code, existing))
+
+			# Fetch item details from ERPNext
+			erp_item = frappe.db.get_value("Item", item_code,
+				["item_name", "item_code", "stock_uom", "item_group"], as_dict=True)
 
 			# Parse ALL date fields
 			warranty = _parse_date(row.get("warranty_expiry", "")) or None
 			purchase_date = _parse_date(row.get("purchase_date", "")) or None
 			amc_expiry = _parse_date(row.get("amc_expiry", "")) or None
 
-			# Use opening_stock field (triggers after_insert → sets current_stock + creates ledger)
 			qty = flt(row.get("qty", 0))
 
 			doc = frappe.get_doc({
 				"doctype": "TS Return Item",
-				"item_name": row.get("item_name", ""),
-				"item_group": row.get("item_group", ""),
+				"erp_item": item_code,
+				"item_name": erp_item.item_name,
+				"item_code": erp_item.item_code,
+				"item_group": erp_item.item_group,
+				"uom": erp_item.stock_uom or "Nos",
 				"category": row.get("category", "Returnable"),
-				"uom": uom,
 				"opening_stock": qty,
 				"purchase_value": flt(row.get("purchase_value", 0)),
 				"current_value": flt(row.get("purchase_value", 0)),
@@ -456,7 +462,8 @@ def bulk_import_assets(rows):
 			results.append({
 				"success": True,
 				"name": doc.name,
-				"item_name": doc.item_name,
+				"item_code": item_code,
+				"item_name": erp_item.item_name,
 				"category": doc.category,
 				"current_stock": flt(doc.current_stock) or qty,
 			})

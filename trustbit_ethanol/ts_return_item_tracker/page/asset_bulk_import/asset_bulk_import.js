@@ -45,7 +45,7 @@ class TSReturnItemBulkImport {
 	_add_rows(count) {
 		for (let i = 0; i < count; i++) {
 			this.row_counter++;
-			const row = { idx: this.row_counter, item_name: "", category: "", uom: "Nos", qty: "", purchase_value: "", location: "", warranty_expiry: "" };
+			const row = { idx: this.row_counter, item_code: "", category: "", uom: "Nos", qty: "", purchase_value: "", location: "", warranty_expiry: "" };
 			this.grid_rows.push(row);
 			this._render_row(row);
 		}
@@ -56,15 +56,39 @@ class TSReturnItemBulkImport {
 		const me = this;
 		const $tr = $(`<tr data-idx="${row.idx}">
 			<td style="text-align:center; color:#999; font-size:11px;">${row.idx}</td>
-			<td><input type="text" class="abi-input" data-field="item_name" placeholder="Item name..."></td>
+			<td><div class="abi-link" data-field="item_code"></div></td>
 			<td><div class="abi-link" data-field="category"></div></td>
-			<td><div class="abi-link" data-field="uom"></div></td>
+			<td style="min-width:60px;"><span class="abi-uom-display" style="font-size:12px; color:#666;">—</span></td>
 			<td><input type="number" class="abi-input" data-field="qty" placeholder="0" style="width:70px; text-align:right;"></td>
 			<td><input type="number" class="abi-input" data-field="purchase_value" placeholder="0" style="width:90px; text-align:right;"></td>
 			<td><div class="abi-link" data-field="location"></div></td>
 			<td><input type="date" class="abi-input" data-field="warranty_expiry" style="width:130px;"></td>
 			<td style="text-align:center;"><span class="abi-row-del" title="Delete">&times;</span></td>
 		</tr>`);
+
+		// Item Code — Link to ERPNext Item
+		const item_ctrl = frappe.ui.form.make_control({
+			df: { fieldtype: "Link", options: "Item", placeholder: "Search item code..." },
+			parent: $tr.find('.abi-link[data-field="item_code"]'), render_input: true, only_input: true,
+		});
+		item_ctrl.$input.on("change", () => {
+			const val = item_ctrl.get_value();
+			row.item_code = val;
+			me._update_count();
+			// Auto-fetch UOM from Item
+			if (val) {
+				frappe.db.get_value("Item", val, ["stock_uom", "item_name"]).then(r => {
+					if (r.message) {
+						row.uom = r.message.stock_uom || "Nos";
+						$tr.find(".abi-uom-display").text(row.uom);
+					}
+				});
+			} else {
+				row.uom = "Nos";
+				$tr.find(".abi-uom-display").text("—");
+			}
+		});
+		row._item = item_ctrl;
 
 		// Category — Select control
 		const cat_ctrl = frappe.ui.form.make_control({
@@ -73,15 +97,6 @@ class TSReturnItemBulkImport {
 		});
 		cat_ctrl.$input.on("change", () => { row.category = cat_ctrl.get_value(); me._update_count(); });
 		row._cat = cat_ctrl;
-
-		// UOM — Link
-		const uom_ctrl = frappe.ui.form.make_control({
-			df: { fieldtype: "Link", options: "UOM", placeholder: "UOM..." },
-			parent: $tr.find('.abi-link[data-field="uom"]'), render_input: true, only_input: true,
-		});
-		uom_ctrl.set_value("Nos"); row.uom = "Nos";
-		uom_ctrl.$input.on("change", () => { row.uom = uom_ctrl.get_value(); });
-		row._uom = uom_ctrl;
 
 		// Location — Link
 		const loc_ctrl = frappe.ui.form.make_control({
@@ -98,19 +113,19 @@ class TSReturnItemBulkImport {
 	}
 
 	_update_count() {
-		const filled = this.grid_rows.filter(r => r.item_name && r.category).length;
+		const filled = this.grid_rows.filter(r => r.item_code && r.category).length;
 		this.$page.find("#abi-grid-count").text(filled);
 		this.$page.find("#abi-btn-import-grid").prop("disabled", filled === 0);
 	}
 
 	_get_grid_data() {
 		for (const row of this.grid_rows) {
+			if (row._item) row.item_code = row._item.get_value() || "";
 			if (row._cat) row.category = row._cat.get_value() || "";
-			if (row._uom) row.uom = row._uom.get_value() || "Nos";
 			if (row._loc) row.location = row._loc.get_value() || "";
 		}
-		return this.grid_rows.filter(r => r.item_name && r.category).map(r => ({
-			item_name: r.item_name, category: r.category, uom: r.uom || "Nos",
+		return this.grid_rows.filter(r => r.item_code && r.category).map(r => ({
+			item_code: r.item_code, category: r.category, uom: r.uom || "Nos",
 			qty: r.qty || 0, purchase_value: r.purchase_value || 0,
 			location: r.location || "", warranty_expiry: r.warranty_expiry || "",
 		}));
@@ -193,7 +208,7 @@ class TSReturnItemBulkImport {
 					next();
 				},
 				error() {
-					batch.forEach(b => results.push({ success: false, item_name: b.item_name, error: "Batch failed" }));
+					batch.forEach(b => results.push({ success: false, item_name: b.item_code, error: "Batch failed" }));
 					done += batch.length;
 					next();
 				}
@@ -207,8 +222,8 @@ class TSReturnItemBulkImport {
 			if (r.success) {
 				ok++;
 				html += `<tr><td>${i + 1}</td><td style="color:#10b981; font-weight:600;">Created</td>
-					<td><a href="/app/ts-asset-item/${r.name}">${r.name}</a></td>
-					<td>${r.item_name}</td><td>${r.category}</td><td>Stock: ${r.current_stock}</td></tr>`;
+					<td><a href="/app/ts-return-item/${r.name}">${r.name}</a></td>
+					<td>${r.item_code || r.item_name}</td><td>${r.category}</td><td>Stock: ${r.current_stock}</td></tr>`;
 			} else {
 				fail++;
 				html += `<tr style="background:#fff5f5;"><td>${i + 1}</td><td style="color:#ef4444; font-weight:600;">Failed</td>
@@ -241,10 +256,10 @@ class TSReturnItemBulkImport {
 	}
 
 	_download_template() {
-		const csv = "item_name,category,uom,qty,purchase_value,location,warranty_expiry,purchase_date,amc_expiry,amc_vendor,item_group,description,min_stock_level,expected_return_hours\n" +
-			'"Angle Grinder 7 inch","Tool","Nos","1","4500","Main Store","01-04-2027","15-03-2026","","","Power Tools","Bosch 7 inch angle grinder","1","8"\n' +
-			'"Safety Helmet","Returnable","Nos","10","850","Main Store","01-01-2028","01-01-2026","","","Safety","ISI marked safety helmet","5",""\n' +
-			'"Welding Rod 3.15mm","Consumable","Kg","50","120","Main Store","","","","","Consumables","ER 70S-6 welding rod","10",""\n';
+		const csv = "item_code,category,qty,purchase_value,warranty_expiry,purchase_date,amc_expiry,amc_vendor,description,min_stock_level,expected_return_hours\n" +
+			'"10-70-0001","Tool","1","4500","01-04-2027","15-03-2026","","","Bosch 7 inch angle grinder","1","8"\n' +
+			'"10-70-0002","Returnable","10","850","01-01-2028","01-01-2026","","","ISI marked safety helmet","5",""\n' +
+			'"10-90-0001","Consumable","50","120","","","","","ER 70S-6 welding rod","10",""\n';
 		const blob = new Blob([csv], { type: "text/csv" });
 		const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ts_return_item_template.csv"; a.click();
 	}

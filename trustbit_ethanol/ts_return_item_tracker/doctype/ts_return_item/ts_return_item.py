@@ -4,6 +4,22 @@ from frappe.utils import flt, getdate, nowtime
 
 
 class TSReturnItem(Document):
+	def validate(self):
+		# Auto-set item_code from erp_item
+		if self.erp_item and not self.item_code:
+			self.item_code = frappe.db.get_value("Item", self.erp_item, "item_code") or self.erp_item
+
+		# Check duplicate erp_item (1:1 mapping)
+		if self.erp_item:
+			existing = frappe.db.get_value("TS Return Item",
+				{"erp_item": self.erp_item, "name": ["!=", self.name]}, "name")
+			if existing:
+				frappe.throw(
+					f"ERPNext Item <b>{self.erp_item}</b> is already linked to "
+					f"<a href='/app/ts-return-item/{existing}'>{existing}</a>. "
+					"Each item can only have one Return Item entry."
+				)
+
 	def after_insert(self):
 		"""Process opening stock on first creation."""
 		if flt(self.opening_stock) > 0:
@@ -15,10 +31,8 @@ class TSReturnItem(Document):
 		if qty <= 0:
 			return
 
-		# Update current_stock via db_set (avoid save loop)
 		self.db_set("current_stock", qty)
 
-		# Create ledger entry for audit trail
 		frappe.get_doc({
 			"doctype": "TS Return Item Ledger",
 			"asset_item": self.name,

@@ -6,6 +6,7 @@
  "field_order": [
   "asset_item",
   "item_name",
+  "item_group",
   "category",
   "column_break_qty",
   "qty",
@@ -36,6 +37,14 @@
    "fetch_from": "asset_item.item_name",
    "read_only": 1,
    "in_list_view": 1
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "options": "Item Group",
+   "fetch_from": "asset_item.item_group",
+   "read_only": 1
   },
   {
    "fieldname": "category",

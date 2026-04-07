@@ -5,6 +5,7 @@
  "engine": "InnoDB",
  "field_order": [
   "section_item_details",
+  "erp_item",
   "item_name",
   "item_code",
   "category",
@@ -48,10 +49,23 @@
    "label": "Item Details"
   },
   {
+   "fieldname": "erp_item",
+   "fieldtype": "Link",
+   "label": "ERPNext Item",
+   "options": "Item",
+   "reqd": 1,
+   "unique": 1,
+   "bold": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Select item from ERPNext Item master (1:1 mapping)"
+  },
+  {
    "fieldname": "item_name",
    "fieldtype": "Data",
    "label": "Item Name",
-   "reqd": 1,
+   "read_only": 1,
+   "fetch_from": "erp_item.item_name",
    "in_list_view": 1,
    "bold": 1
   },
@@ -59,8 +73,8 @@
    "fieldname": "item_code",
    "fieldtype": "Data",
    "label": "Item Code",
-   "unique": 1,
-   "in_list_view": 1
+   "read_only": 1,
+   "fetch_from": "erp_item.item_code"
   },
   {
    "fieldname": "category",
@@ -86,15 +100,20 @@
   },
   {
    "fieldname": "item_group",
-   "fieldtype": "Data",
-   "label": "Item Group"
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "options": "Item Group",
+   "read_only": 1,
+   "fetch_from": "erp_item.item_group",
+   "in_standard_filter": 1
   },
   {
    "fieldname": "uom",
    "fieldtype": "Link",
    "label": "UOM",
    "options": "UOM",
-   "reqd": 1,
+   "read_only": 1,
+   "fetch_from": "erp_item.stock_uom",
    "default": "Nos"
   },
   {
@@ -300,7 +319,7 @@
    "role": "MD"
   }
  ],
- "search_fields": "item_name,item_code,category",
+ "search_fields": "erp_item,item_name,item_code,category,item_group",
  "sort_field": "modified",
  "sort_order": "DESC",
  "title_field": "item_name",
