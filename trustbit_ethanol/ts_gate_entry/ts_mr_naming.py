@@ -2,8 +2,8 @@
 
 Prefix based on MR Purpose (material_request_type):
   Purchase        → PR
-  Service Request → SR  (custom purpose added in v2.5)
-  Fixed Asset     → FA  (not standard in ERPNext, mapped from purpose field)
+  Service Request → SR
+  Fixed Asset     → FA
   Material Transfer → BBPL-TRAN
   Material Issue    → BBPL-ISSU
 
@@ -25,15 +25,12 @@ PURPOSE_PREFIX = {
 }
 
 
-def mr_autoname(doc, method=None):
-	"""Generate MR name: {PREFIX}-{CC_CODE}-{YY}-{#####}
-	Called from doc_events autoname hook. Overrides naming_series."""
+def _generate_mr_name(doc):
+	"""Generate MR name: {PREFIX}-{CC_CODE}-{YY}-{#####}"""
 
 	# Get prefix from purpose
 	purpose = doc.material_request_type or "Purchase"
-	prefix = PURPOSE_PREFIX.get(purpose)
-	if not prefix:
-		prefix = "PR"
+	prefix = PURPOSE_PREFIX.get(purpose, "PR")
 
 	# Get CC code from Cost Center
 	if not doc.cost_center:
@@ -53,14 +50,16 @@ def mr_autoname(doc, method=None):
 	# Build series key for counter
 	series_key = f"{prefix}-{cc_code}-{year}-"
 
-	# Get next number using Frappe's built-in series counter (atomic, handles concurrency)
+	# Get next number using tabSeries (atomic, handles concurrency)
 	serial = _get_next_serial(series_key, 5)
 
-	# Override the name — bypass naming_series
-	doc.name = f"{prefix}-{cc_code}-{year}-{serial}"
+	return f"{prefix}-{cc_code}-{year}-{serial}"
 
-	# Clear naming_series so Frappe doesn't override our name
-	doc.naming_series = ""
+
+def mr_autoname(doc, method=None):
+	"""Called from doc_events autoname hook.
+	Sets doc.name directly — Frappe will use this instead of naming_series."""
+	doc.name = _generate_mr_name(doc)
 
 
 def mr_before_insert(doc, method=None):
@@ -70,12 +69,11 @@ def mr_before_insert(doc, method=None):
 		return  # autoname already set the name correctly
 
 	# autoname didn't fire — generate name now
-	mr_autoname(doc)
+	doc.name = _generate_mr_name(doc)
 
 
 def _get_next_serial(series_key, digits=5):
 	"""Get next serial number for a series key using tabSeries (atomic)."""
-	# Check if series exists
 	current = frappe.db.sql(
 		"SELECT current FROM tabSeries WHERE name = %s FOR UPDATE",
 		series_key
