@@ -299,7 +299,7 @@ def create_custom_fields():
 				"label": "Cost Center",
 				"options": "Cost Center",
 				"insert_after": "schedule_date",
-				"reqd": 0,
+				"reqd": 1,
 				"ignore_user_permissions": 1,
 				"description": "Cost Center for MR approval routing. Shows all Cost Centers across companies."
 			},
@@ -507,6 +507,16 @@ def create_custom_fields():
 				"label": "Category Code (123)",
 				"insert_after": "category_code",
 				"description": "2-digit numerical code for item coding (e.g., 01, 02)"
+			},
+		],
+		"Cost Center": [
+			{
+				"fieldname": "cc_code",
+				"fieldtype": "Data",
+				"label": "CC Code",
+				"insert_after": "cost_center_name",
+				"unique": 1,
+				"description": "Short code for MR naming series (e.g., MEC, CIV, BLR)"
 			},
 		],
 		"Brand": [
@@ -1626,6 +1636,73 @@ def seed_ts_settings():
 	if changed:
 		doc.save(ignore_permissions=True)
 		frappe.db.commit()
+
+
+def seed_cc_codes():
+	"""Seed cc_code on Cost Centers for MR naming series."""
+	CC_CODES = {
+		"BAC Capex - BBPL": "BAC-CAP",
+		"Betul Biofuel Private Limited- BBPL - BBPL": "BBPL",
+		"Bhopal Office - BBPL": "BHO",
+		"Boiler ( Bed Material, Charcoal & Consumable ) - BBPL": "BLR-CON",
+		"BOILER BOP - BBPL": "BLR-BOP",
+		"BOILER ESP - BBPL": "BLR-ESP",
+		"BOILER FUEL/ASH - BBPL": "BLR-FA",
+		"BOILER THERMEX - BBPL": "BLR-THX",
+		"BOILER TRIVENI - BBPL": "BLR-TRV",
+		"BOLIER THERMAX - BBPL": "BLR-TMX",
+		"Capex - BBPL": "CAPEX",
+		"CBG B.G-Gen - BBPL": "CBG-GEN",
+		"CBG B.G-Upg - BBPL": "CBG-UPG",
+		"CBG CAPEX - BBPL": "CBG-CAP",
+		"CBG CIVIL - BBPL": "CBG-CIV",
+		"CBG E&C - BBPL": "CBG-EC",
+		"CBG Infra - BBPL": "CBG-INF",
+		"CBG-Farming - BBPL": "CBG-FRM",
+		"CF- Capex - BBPL": "CF-CAP",
+		"CF- MARKETING - BBPL": "CF-MKT",
+		"CF- Production - BBPL": "CF-PRD",
+		"CF- Raw Material - BBPL": "CF-RM",
+		"Civil - BBPL": "CIV",
+		"CIVIL BOP - BBPL": "CIV-BOP",
+		"CIVIL MATERIAL - BBPL": "CIV-MAT",
+		"CO2 - BBPL": "CO2",
+		"Coal - BBPL": "COAL",
+		"DDGS - BBPL": "DDGS",
+		"Delhi Office - BBPL": "DEL",
+		"DG Fuel + Electricity bill - BBPL": "DG",
+		"Electrical+ Services - BBPL": "ELC",
+		"Expantion 150KLPD Mechnical - BBPL": "EXP-MEC",
+		"Expantion Civil Work - BBPL": "EXP-CIV",
+		"HR, safety & and Furniture Material - BBPL": "HR",
+		"IT Hardware + Services - BBPL": "IT",
+		"Labour Quarter - BBPL": "LBR",
+		"LIASING - BBPL": "LIA",
+		"Machinery - BBPL": "MACH",
+		"Main - BBPL": "MAIN",
+		"Mechanical + Services - BBPL": "MEC",
+		"Mechanical Boiler + Services - BBPL": "MEC-BLR",
+		"MISCELLANEOUS - BBPL": "MISC",
+		"NEW VALLEY CAPEX - BBPL": "NV-CAP",
+		"Process ( WTP/CPU, BIOLOGICAL) - BBPL": "PRC-BIO",
+		"PROCESS ACC - BBPL": "PRC-ACC",
+		"PROCESS BOP - BBPL": "PRC-BOP",
+		"PROCESS DRYER - BBPL": "PRC-DRY",
+		"PROCESS ISGEK - BBPL": "PRC-ISG",
+		"PROCESS MILLING - BBPL": "PRC-MIL",
+		"PROCESS STRUCTURE - BBPL": "PRC-STR",
+		"PROCESS WTP/CPU - BBPL": "PRC-WTP",
+		"RDPS-VIJAY INTERNATIONAL - BBPL": "RDPS",
+		"RM MAIZE/RICE/DORB - BBPL": "RM",
+		"RTS Betul - BBPL": "RTS",
+		"TRIVENI TURBINE - BBPL": "TRV-TRB",
+	}
+
+	for cc_name, code in CC_CODES.items():
+		if frappe.db.exists("Cost Center", cc_name):
+			current = frappe.db.get_value("Cost Center", cc_name, "cc_code")
+			if not current:
+				frappe.db.set_value("Cost Center", cc_name, "cc_code", code)
 
 
 def seed_locations():

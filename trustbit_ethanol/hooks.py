@@ -143,6 +143,7 @@ doc_events = {
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_before_save",
 	},
 	"Material Request": {
+		"autoname": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_autoname",
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
 	}
 }
@@ -160,6 +161,7 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup.seed_mr_approval_routes",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_ts_settings",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_locations",
+	"trustbit_ethanol.ts_gate_entry.setup.seed_cc_codes",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_list_view_settings",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_custom_docperm",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_property_setters",
