@@ -570,17 +570,23 @@ def _ensure_variant_attribute(variant_code_value):
 @frappe.whitelist()
 def get_next_serial_preview(company, item_group):
 	"""Get the next serial number for preview (without incrementing)."""
-	settings = frappe.get_single("TS Item Code Settings")
-	digits = max(int(settings.serial_digits or 3), 2)
+	# Read digits directly from DB (bypass cache — user may have just changed it)
+	digits_val = frappe.db.get_single_value("TS Item Code Settings", "serial_digits")
+	digits = max(int(digits_val or 3), 2)
 
 	company_key = frappe.db.get_value("Company", company, "company_code") or ""
 	category_key = frappe.db.get_value("Item Group", item_group, "category_code") or ""
 
 	if not company_key or not category_key:
-		return "001"
+		return str(1).zfill(digits)
 
-	for row in settings.counters:
-		if row.company_code == company_key and row.category_code == category_key:
-			return str((row.last_serial or 0) + 1).zfill(digits)
+	# Read counter directly from DB (bypass cached singleton)
+	result = frappe.db.sql("""
+		SELECT last_serial FROM `tabTS Code Counter`
+		WHERE parent = 'TS Item Code Settings' AND company_code = %s AND category_code = %s
+	""", (company_key, category_key))
+
+	if result:
+		return str((result[0][0] or 0) + 1).zfill(digits)
 
 	return str(1).zfill(digits)
