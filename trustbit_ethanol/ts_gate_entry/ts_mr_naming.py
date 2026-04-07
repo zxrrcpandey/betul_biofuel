@@ -26,7 +26,8 @@ PURPOSE_PREFIX = {
 
 
 def mr_autoname(doc, method=None):
-	"""Generate MR name: {PREFIX}-{CC_CODE}-{YY}-{#####}"""
+	"""Generate MR name: {PREFIX}-{CC_CODE}-{YY}-{#####}
+	Called from doc_events autoname hook. Overrides naming_series."""
 
 	# Get prefix from purpose
 	purpose = doc.material_request_type or "Purchase"
@@ -53,10 +54,23 @@ def mr_autoname(doc, method=None):
 	series_key = f"{prefix}-{cc_code}-{year}-"
 
 	# Get next number using Frappe's built-in series counter (atomic, handles concurrency)
-	# This uses the tabSeries table — same mechanism as naming_series
 	serial = _get_next_serial(series_key, 5)
 
+	# Override the name — bypass naming_series
 	doc.name = f"{prefix}-{cc_code}-{year}-{serial}"
+
+	# Clear naming_series so Frappe doesn't override our name
+	doc.naming_series = ""
+
+
+def mr_before_insert(doc, method=None):
+	"""Fallback: if autoname didn't fire (naming_series took priority),
+	override the name here before insert."""
+	if doc.name and doc.name.startswith(("PR-", "SR-", "FA-", "BBPL-TRAN-", "BBPL-ISSU-")):
+		return  # autoname already set the name correctly
+
+	# autoname didn't fire — generate name now
+	mr_autoname(doc)
 
 
 def _get_next_serial(series_key, digits=5):

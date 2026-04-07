@@ -144,6 +144,7 @@ doc_events = {
 	},
 	"Material Request": {
 		"autoname": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_autoname",
+		"before_insert": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_before_insert",
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
 	}
 }
