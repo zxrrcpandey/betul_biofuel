@@ -133,7 +133,7 @@ class TSReturnItemBulkImport {
 
 	_import_grid() {
 		const rows = this._get_grid_data();
-		if (!rows.length) { frappe.msgprint("Fill at least one row with Item Name and Category."); return; }
+		if (!rows.length) { frappe.msgprint("Fill at least one row with Item Code and Category."); return; }
 		frappe.confirm(`Import <b>${rows.length}</b> assets?`, () => this._process(rows));
 	}
 
@@ -150,7 +150,7 @@ class TSReturnItemBulkImport {
 				const vals = this._parse_csv_line(lines[i]);
 				const row = {};
 				headers.forEach((h, j) => { row[h] = (vals[j] || "").trim(); });
-				if (row.item_name) rows.push(row);
+				if (row.item_code) rows.push(row);
 			}
 			this.$page.find("#abi-upload-info").show();
 			this.$page.find("#abi-file-name").text(file.name);
@@ -227,7 +227,7 @@ class TSReturnItemBulkImport {
 			} else {
 				fail++;
 				html += `<tr style="background:#fff5f5;"><td>${i + 1}</td><td style="color:#ef4444; font-weight:600;">Failed</td>
-					<td>—</td><td>${r.item_name || "?"}</td><td>—</td><td style="color:#ef4444;">${r.error}</td></tr>`;
+					<td>—</td><td>${r.item_code || r.item_name || "?"}</td><td>—</td><td style="color:#ef4444;">${r.error}</td></tr>`;
 			}
 		});
 		this.$page.find("#abi-result-success").text(ok);
@@ -243,7 +243,7 @@ class TSReturnItemBulkImport {
 			callback(r) {
 				if (!r.message) return;
 				const d = r.message;
-				let csv = "=== TS ASSET TRACKER REFERENCE GUIDE ===\n\n";
+				let csv = "=== TS RETURN ITEM TRACKER REFERENCE GUIDE ===\n\n";
 				csv += "--- CATEGORIES ---\nConsumable\nReturnable\nTool\nEquipment\n\n";
 				csv += "--- UOMs ---\n" + (d.uoms || []).map(u => u.name).join("\n") + "\n\n";
 				csv += "--- LOCATIONS ---\n" + (d.locations || []).map(l => l.name + " (" + (l.location_type || "") + ")").join("\n") + "\n";

@@ -470,13 +470,13 @@ def bulk_import_assets(rows):
 		except Exception as e:
 			frappe.db.rollback()
 			frappe.log_error(
-				title=f"Return Item Bulk Import Error ({row.get('item_name', '?')})",
+				title=f"Return Item Bulk Import Error ({row.get('item_code', '?')})",
 				message=frappe.get_traceback()
 			)
 			frappe.clear_messages()
 			results.append({
 				"success": False,
-				"item_name": row.get("item_name", "?"),
+				"item_code": row.get("item_code", "?"),
 				"error": str(e)[:200],
 			})
 
