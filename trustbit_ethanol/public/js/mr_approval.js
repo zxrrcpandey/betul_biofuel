@@ -656,13 +656,16 @@ function _check_cc_budget(frm) {
 // ═══════════════════════════════════════════════════════════
 
 function _ts_add_mr_print_button(frm) {
-	// Hide Frappe's default print (menu + toolbar icon)
+	// Hide ONLY Frappe's print icon + menu item
 	setTimeout(() => {
-		frm.page.menu_btn_group.find('.dropdown-item:contains("Print")').hide();
-		frm.page.wrapper.find('.btn-print-preview').hide();
-	}, 300);
+		frm.page.wrapper.find('.btn[data-original-title="Print"], .btn-print-preview, a[title="Print"]').hide();
+		frm.page.menu_btn_group.find('.dropdown-item').each(function() {
+			if ($(this).text().trim() === "Print") $(this).hide();
+		});
+	}, 500);
 
-	frm.add_custom_button(__("Print"), () => {
+	// Standalone print button (not inside Actions)
+	frm.add_custom_button(__("🖨 Print PDF"), () => {
 		const formats = ["TS Material Request", "TS Material Request (Clean)"];
 		frappe.prompt({
 			fieldtype: "Select",
@@ -675,5 +678,5 @@ function _ts_add_mr_print_button(frm) {
 			const url = `/api/method/frappe.utils.print_format.download_pdf?doctype=Material%20Request&name=${encodeURIComponent(frm.doc.name)}&format=${encodeURIComponent(values.format)}&no_letterhead=0`;
 			window.open(url, "_blank");
 		}, __("Select Print Format"), __("Download PDF"));
-	}, __("Actions"));
+	});
 }

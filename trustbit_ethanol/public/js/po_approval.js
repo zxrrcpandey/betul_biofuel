@@ -706,27 +706,20 @@ function _force_po_grid_columns(frm) {
 // ═══════════════════════════════════════════════════════════
 
 function _ts_add_print_button(frm, default_format) {
-	// Hide Frappe's default print (menu + toolbar icon)
+	// Hide ONLY Frappe's print icon (the printer button in toolbar)
 	setTimeout(() => {
-		frm.page.menu_btn_group.find('.dropdown-item:contains("Print")').hide();
-		frm.page.wrapper.find('.btn-print-preview').hide();
-	}, 300);
+		// Target specifically the print icon button — not other buttons
+		frm.page.wrapper.find('.btn[data-original-title="Print"], .btn-print-preview, a[title="Print"]').hide();
+		// Hide "Print" from menu (... dropdown) — match exact text only
+		frm.page.menu_btn_group.find('.dropdown-item').each(function() {
+			if ($(this).text().trim() === "Print") $(this).hide();
+		});
+	}, 500);
 
-	// Add our custom Print button
-	frm.add_custom_button(__("Print"), () => {
-		const formats = [];
-		if (frm.doc.doctype === "Purchase Order") {
-			formats.push("TS Purchase Order", "TS Purchase Order (Clean)");
-		} else if (frm.doc.doctype === "Material Request") {
-			formats.push("TS Material Request", "TS Material Request (Clean)");
-		}
+	// Add our custom Print button as standalone (not inside Actions)
+	frm.add_custom_button(__("🖨 Print PDF"), () => {
+		const formats = ["TS Purchase Order", "TS Purchase Order (Clean)"];
 
-		if (formats.length === 1) {
-			_ts_download_pdf(frm, formats[0]);
-			return;
-		}
-
-		// Show format selection dialog
 		frappe.prompt({
 			fieldtype: "Select",
 			label: "Print Format",
@@ -737,7 +730,7 @@ function _ts_add_print_button(frm, default_format) {
 		}, (values) => {
 			_ts_download_pdf(frm, values.format);
 		}, __("Select Print Format"), __("Download PDF"));
-	}, __("Actions"));
+	});
 }
 
 function _ts_download_pdf(frm, format) {
