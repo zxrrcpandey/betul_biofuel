@@ -299,33 +299,40 @@ def create_user(first_name, email, roles, last_name=None, mobile_no=None, send_w
         if not has_email_account:
             send_email = 0
 
-    # Create user
-    user = frappe.new_doc("User")
-    user.email = email
-    user.first_name = first_name
-    user.last_name = cstr(last_name).strip() or None
-    user.mobile_no = cstr(mobile_no).strip() or None
-    user.user_type = "System User"
-    user.send_welcome_email = send_email
-    user.enabled = 1
+    # Create user — run as Administrator to avoid Frappe internal permission
+    # checks (e.g., Notification Settings save in check_enable_disable)
+    original_user = frappe.session.user
+    frappe.set_user("Administrator")
+    try:
+        user = frappe.new_doc("User")
+        user.email = email
+        user.first_name = first_name
+        user.last_name = cstr(last_name).strip() or None
+        user.mobile_no = cstr(mobile_no).strip() or None
+        user.user_type = "System User"
+        user.send_welcome_email = send_email
+        user.enabled = 1
 
-    # If not sending welcome email, generate a temporary password
-    temp_password = None
-    if not send_email:
-        temp_password = random_string(12)
-        user.new_password = temp_password
+        # If not sending welcome email, generate a temporary password
+        temp_password = None
+        if not send_email:
+            temp_password = random_string(12)
+            user.new_password = temp_password
 
-    # Assign validated roles
-    for role in validated_roles:
-        user.append("roles", {"role": role})
+        # Assign validated roles
+        for role in validated_roles:
+            user.append("roles", {"role": role})
 
-    # Block modules
-    for mod in AUTO_BLOCK_MODULES:
-        user.append("block_modules", {"module": mod})
+        # Block modules
+        for mod in AUTO_BLOCK_MODULES:
+            user.append("block_modules", {"module": mod})
 
-    user.flags.ignore_permissions = True
-    user.flags.no_welcome_mail = not send_email
-    user.insert()
+        user.flags.ignore_permissions = True
+        user.flags.no_welcome_mail = not send_email
+        user.insert()
+        frappe.db.commit()
+    finally:
+        frappe.set_user(original_user)
 
     _audit_log(email, "User created", "Roles: {0}".format(", ".join(validated_roles)))
     frappe.db.commit()
@@ -360,26 +367,33 @@ def update_user_roles(email, roles):
     if not frappe.db.exists("User", email):
         frappe.throw(_("User '{0}' does not exist.").format(frappe.utils.escape_html(email)))
 
-    user = frappe.get_doc("User", email)
+    # Run as Administrator for Frappe internal permission checks
+    original_user = frappe.session.user
+    frappe.set_user("Administrator")
+    try:
+        user = frappe.get_doc("User", email)
 
-    # Preserve system/non-allowed roles that we don't manage
-    preserved_roles = [r.role for r in user.roles if r.role not in ALLOWED_ROLES]
+        # Preserve system/non-allowed roles that we don't manage
+        preserved_roles = [r.role for r in user.roles if r.role not in ALLOWED_ROLES]
 
-    # Rebuild roles: preserved (untouched) + new validated operational roles
-    user.roles = []
-    for role in preserved_roles:
-        user.append("roles", {"role": role})
-    for role in validated_roles:
-        user.append("roles", {"role": role})
+        # Rebuild roles: preserved (untouched) + new validated operational roles
+        user.roles = []
+        for role in preserved_roles:
+            user.append("roles", {"role": role})
+        for role in validated_roles:
+            user.append("roles", {"role": role})
 
-    # Ensure block_modules are set
-    existing_blocked = [m.module for m in user.block_modules]
-    for mod in AUTO_BLOCK_MODULES:
-        if mod not in existing_blocked:
-            user.append("block_modules", {"module": mod})
+        # Ensure block_modules are set
+        existing_blocked = [m.module for m in user.block_modules]
+        for mod in AUTO_BLOCK_MODULES:
+            if mod not in existing_blocked:
+                user.append("block_modules", {"module": mod})
 
-    user.flags.ignore_permissions = True
-    user.save()
+        user.flags.ignore_permissions = True
+        user.save()
+        frappe.db.commit()
+    finally:
+        frappe.set_user(original_user)
 
     _audit_log(email, "Roles updated", "New roles: {0}".format(", ".join(validated_roles)))
     frappe.db.commit()
@@ -404,10 +418,18 @@ def toggle_user(email, enabled):
     if not enabled:
         warnings = _get_pending_work(email)
 
-    user = frappe.get_doc("User", email)
-    user.enabled = enabled
-    user.flags.ignore_permissions = True
-    user.save()
+    # Frappe's check_enable_disable() calls toggle_notifications() which
+    # saves Notification Settings — requires System Manager. Run as Admin.
+    original_user = frappe.session.user
+    frappe.set_user("Administrator")
+    try:
+        user = frappe.get_doc("User", email)
+        user.enabled = enabled
+        user.flags.ignore_permissions = True
+        user.save()
+        frappe.db.commit()
+    finally:
+        frappe.set_user(original_user)
 
     action = "User enabled" if enabled else "User disabled"
     _audit_log(email, action)
@@ -429,12 +451,18 @@ def reset_password(email):
     # Check if email sending is possible
     has_email_account = frappe.db.exists("Email Account", {"enable_outgoing": 1})
     if not has_email_account:
-        # Fallback: generate new password
+        # Fallback: generate new password — run as Admin for internal hooks
         temp_password = random_string(12)
-        user = frappe.get_doc("User", email)
-        user.new_password = temp_password
-        user.flags.ignore_permissions = True
-        user.save()
+        original_user = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            user = frappe.get_doc("User", email)
+            user.new_password = temp_password
+            user.flags.ignore_permissions = True
+            user.save()
+            frappe.db.commit()
+        finally:
+            frappe.set_user(original_user)
         _audit_log(email, "Password reset (generated)")
         frappe.db.commit()
         return {"user": email, "method": "generated", "temp_password": temp_password}
