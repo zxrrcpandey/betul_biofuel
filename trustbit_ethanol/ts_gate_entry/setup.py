@@ -1827,6 +1827,25 @@ def seed_property_setters():
 	frappe.db.commit()
 
 
+def patch_wkhtmltopdf_whitelist():
+	"""Patch Frappe core: add @frappe.whitelist() to is_wkhtmltopdf_valid.
+	This function is called from JS but missing the decorator in Frappe v15.
+	Without it, PDF print shows 'Invalid wkhtmltopdf version' warning."""
+	import os
+	pdf_path = os.path.join(frappe.get_app_path("frappe"), "utils", "pdf.py")
+	try:
+		content = open(pdf_path).read()
+		if "@frappe.whitelist()" not in content.split("def is_wkhtmltopdf_valid")[0].split("def ")[-1]:
+			# Only patch if not already patched
+			content = content.replace(
+				"@redis_cache(ttl=60 * 60)\ndef is_wkhtmltopdf_valid",
+				"@frappe.whitelist()\n@redis_cache(ttl=60 * 60)\ndef is_wkhtmltopdf_valid"
+			)
+			open(pdf_path, "w").write(content)
+	except Exception:
+		pass
+
+
 def seed_global_defaults():
 	"""Set Global Defaults — default company, fiscal year, country, currency."""
 	gd = frappe.get_doc("Global Defaults")

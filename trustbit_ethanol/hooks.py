@@ -170,6 +170,7 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup.seed_monthly_distributions",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_brands",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_global_defaults",
+	"trustbit_ethanol.ts_gate_entry.setup.patch_wkhtmltopdf_whitelist",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_navbar_website_settings",
 ]
 
