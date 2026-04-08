@@ -75,6 +75,7 @@ function _um_render_table(page) {
 	const disabled = total - active;
 
 	let html = `
+		<div style="margin-bottom:5px;text-align:right;font-size:10px;color:#94a3b8;">${page._um_allowed_roles.length} roles available</div>
 		<div style="margin-bottom:15px;">
 			<div style="display:flex;gap:15px;flex-wrap:wrap;">
 				<div class="um-stat-card" style="background:#dbeafe;border-left:4px solid #3b82f6;padding:10px 15px;border-radius:6px;min-width:120px;">
