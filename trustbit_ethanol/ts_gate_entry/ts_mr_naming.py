@@ -73,23 +73,12 @@ def mr_before_insert(doc, method=None):
 
 
 def _get_next_serial(series_key, digits=5):
-	"""Get next serial number for a series key using tabSeries (atomic)."""
-	current = frappe.db.sql(
-		"SELECT current FROM tabSeries WHERE name = %s FOR UPDATE",
-		series_key
-	)
+	"""Get next serial number using Frappe's built-in getseries().
 
-	if current:
-		next_val = (current[0][0] or 0) + 1
-		frappe.db.sql(
-			"UPDATE tabSeries SET current = %s WHERE name = %s",
-			(next_val, series_key)
-		)
-	else:
-		next_val = 1
-		frappe.db.sql(
-			"INSERT INTO tabSeries (name, current) VALUES (%s, %s)",
-			(series_key, next_val)
-		)
-
-	return str(next_val).zfill(digits)
+	Uses frappe.model.naming.getseries which is battle-tested for
+	concurrency, transaction safety, and atomic counter increments.
+	Previously used custom SQL which could lose counter inserts
+	if a later validation in the same transaction rolled back.
+	"""
+	from frappe.model.naming import getseries
+	return getseries(series_key, digits)
