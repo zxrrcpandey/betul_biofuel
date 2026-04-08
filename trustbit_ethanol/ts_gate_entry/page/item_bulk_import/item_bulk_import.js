@@ -338,6 +338,7 @@ class TSBulkImport {
 		const BATCH = 10;
 		let done = 0;
 		const all_results = [];
+		let last_error_file = "";
 
 		me.$page.find("#bbf-progress-overlay").show();
 		me._update_progress(0, rows.length);
@@ -346,7 +347,7 @@ class TSBulkImport {
 			const batch = rows.slice(done, done + BATCH);
 			if (!batch.length) {
 				me.$page.find("#bbf-progress-overlay").hide();
-				me._render_results(all_results);
+				me._render_results(all_results, last_error_file);
 				me.$page.find("#bbf-phase-preview").hide();
 				me.$page.find("#bbf-phase-results").show();
 				return;
@@ -356,6 +357,7 @@ class TSBulkImport {
 				args: { rows: JSON.stringify(batch) },
 				callback: (r) => {
 					if (r.message?.results) all_results.push(...r.message.results);
+					if (r.message?.error_file_url) last_error_file = r.message.error_file_url;
 					done += batch.length;
 					me._update_progress(done, rows.length);
 					next();
@@ -376,7 +378,7 @@ class TSBulkImport {
 		this.$page.find("#bbf-progress-text").text(done + " / " + total);
 	}
 
-	_render_results(results) {
+	_render_results(results, error_file_url) {
 		let success = 0, fail = 0, html = "";
 		results.forEach(r => {
 			if (r.success) {
@@ -396,6 +398,16 @@ class TSBulkImport {
 		this.$page.find("#bbf-result-success").text(success);
 		this.$page.find("#bbf-result-fail").text(fail);
 		this.$page.find("#bbf-results-body").html(html);
+
+		// Show error CSV download link (System Manager only)
+		if (error_file_url && fail > 0 && frappe.user_roles.includes("System Manager")) {
+			this.$page.find("#bbf-results-body").after(
+				`<div style="margin:12px 0; padding:10px 14px; background:#fff3e0; border:1px solid #ffe0b2; border-radius:6px; font-size:12px;">
+					<strong>Error Report:</strong> <a href="${error_file_url}" target="_blank" style="color:#1565c0;">Download failed rows CSV</a>
+					<span style="color:#888; margin-left:8px;">(System Manager only)</span>
+				</div>`
+			);
+		}
 	}
 
 	// ═══════════════════════════════════════════════════════════

@@ -276,11 +276,17 @@ def bulk_create_items(rows):
 	success_count = sum(1 for r in results if r["success"])
 	fail_count = sum(1 for r in results if not r["success"])
 
+	# Save error report as CSV file if any failures (System Manager only)
+	error_file_url = ""
+	if fail_count > 0:
+		error_file_url = _save_error_report(rows, results)
+
 	return {
 		"results": results,
 		"total": len(results),
 		"success_count": success_count,
 		"fail_count": fail_count,
+		"error_file_url": error_file_url,
 	}
 
 
@@ -458,3 +464,44 @@ def _parse_date(date_str):
 		return str(getdate(date_str))
 	except Exception:
 		frappe.throw(f"Cannot parse date '{date_str}'. Use format YYYY-MM-DD or DD-MM-YYYY.")
+
+
+def _save_error_report(rows, results):
+	"""Save failed import rows + errors as CSV file. Accessible by System Manager only."""
+	from frappe.utils import now_datetime
+
+	output = io.StringIO()
+	writer = csv.writer(output)
+
+	# Header: original columns + Error column
+	if rows:
+		cols = [k for k in rows[0].keys() if not k.startswith("_")]
+		writer.writerow(cols + ["_error"])
+
+		# Write only failed rows with their errors
+		for i, row in enumerate(rows):
+			result = results[i] if i < len(results) else {}
+			if not result.get("success", True):
+				vals = [row.get(c, "") for c in cols]
+				vals.append(result.get("error", "Unknown error"))
+				writer.writerow(vals)
+
+	csv_content = output.getvalue()
+	if not csv_content.strip():
+		return ""
+
+	# Save as private File (only System Manager can access private files)
+	timestamp = now_datetime().strftime("%Y%m%d_%H%M%S")
+	filename = f"bulk_import_errors_{timestamp}.csv"
+
+	file_doc = frappe.get_doc({
+		"doctype": "File",
+		"file_name": filename,
+		"content": csv_content,
+		"is_private": 1,
+		"folder": "Home",
+	})
+	file_doc.insert(ignore_permissions=True)
+	frappe.db.commit()
+
+	return file_doc.file_url
