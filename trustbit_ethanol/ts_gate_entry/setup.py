@@ -49,6 +49,7 @@ def create_custom_fields():
 				"in_standard_filter": 1,
 				"bold": 1,
 				"allow_on_submit": 1,
+				"default": "Not Submitted",
 				"description": "Current approval status (managed by TS Approval System)"
 			},
 			{
@@ -319,7 +320,8 @@ def create_custom_fields():
 				"no_copy": 1,
 				"in_standard_filter": 1,
 				"bold": 1,
-				"allow_on_submit": 1
+				"allow_on_submit": 1,
+				"default": "Not Submitted"
 			},
 			# ── v2.0 Route & Step Tracking ──
 			{

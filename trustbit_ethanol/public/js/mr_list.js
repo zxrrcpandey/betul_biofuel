@@ -12,7 +12,7 @@ function _patch_mr_list(listview) {
 	const orig = listview.settings.get_indicator;
 	listview.settings.get_indicator = function(doc) {
 		const bbf = doc.ts_mr_status;
-		if (bbf && bbf !== "Approved") {
+		if (bbf && bbf !== "Approved" && bbf !== "Not Submitted") {
 			if (bbf.startsWith("Pending")) return [bbf, "orange", "ts_mr_status,like,Pending%"];
 			if (bbf === "Rejected") return [bbf, "red", "ts_mr_status,=,Rejected"];
 			if (bbf === "Revised") return [bbf, "orange", "ts_mr_status,=,Revised"];
