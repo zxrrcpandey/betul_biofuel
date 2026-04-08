@@ -66,9 +66,9 @@ function _hide_po_standard_submit(frm, ctx) {
 	// Always hide standard Submit when approval system is active.
 	// Users must use "Submit for Approval" instead.
 	frm.page.clear_primary_action();
-	if (ctx.status && ctx.status !== "Draft" && ctx.status !== "") {
-		frm.dashboard.clear_headline();
-	}
+	// NOTE: Do NOT call frm.dashboard.clear_headline() here — it wipes
+	// the amount/category/steps info set by _render_amount_info which
+	// may run before or after this function depending on timing.
 	$(frm.page.wrapper).find(".form-message.blue").hide();
 }
 

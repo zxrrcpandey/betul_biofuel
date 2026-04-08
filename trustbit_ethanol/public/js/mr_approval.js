@@ -128,9 +128,9 @@ function _hide_standard_submit(frm, ctx) {
 	if (ctx.status === "Rejected") {
 		frm.disable_save();
 	}
-	if (ctx.status && ctx.status !== "Draft" && ctx.status !== "") {
-		frm.dashboard.clear_headline();
-	}
+	// NOTE: Do NOT call frm.dashboard.clear_headline() here — it wipes
+	// the hold reason banner and route/steps info set by _render_mr_status
+	// and _render_mr_info which run BEFORE this function.
 	$(frm.page.wrapper).find(".form-message.blue").hide();
 
 	// Aggressively hide Submit button — Frappe may re-add it after async calls
