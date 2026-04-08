@@ -121,8 +121,10 @@ def _validate_roles(roles):
     if not roles:
         frappe.throw(_("At least one role must be selected."))
 
-    # Normalize: strip whitespace
+    # Normalize: strip whitespace, remove None/empty
     cleaned = [cstr(r).strip() for r in roles if cstr(r).strip()]
+    if not cleaned:
+        frappe.throw(_("At least one role must be selected."))
 
     # Get all valid Frappe roles for existence check
     valid_roles = set(frappe.get_all("Role", pluck="name"))
