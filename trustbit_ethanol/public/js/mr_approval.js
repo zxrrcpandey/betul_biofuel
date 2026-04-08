@@ -112,48 +112,65 @@ function _render_mr_status(frm, ctx) {
 
 	frm.page.set_indicator(status, color);
 
-	// Show hold reason banner
+	// Show hold reason banner — use our own container (not set_headline which Frappe wipes on refresh)
 	if (ctx.is_on_hold && ctx.hold_reason) {
-		frm.dashboard.set_headline(
-			`<span style="color: #f59e0b;">⏸ On Hold</span> — ${frappe.utils.escape_html(ctx.hold_reason)}`
+		_show_ts_banner(frm, "hold",
+			`<span style="color: #f59e0b; font-weight: 600;">⏸ On Hold</span> — ${frappe.utils.escape_html(ctx.hold_reason)}`,
+			"#fffbeb", "#f59e0b"
 		);
 	}
 }
 
 function _hide_standard_submit(frm, ctx) {
 	// Always hide standard Submit when approval system is active.
-	// Users must use "Submit for Approval" or "Resubmit for Approval" instead.
 	frm.page.clear_primary_action();
-	// For Rejected: disable save entirely
 	if (ctx.status === "Rejected") {
 		frm.disable_save();
 	}
-	// Hide ONLY Frappe's "Submit this document to confirm" banner — NOT our custom banners.
-	// Frappe creates .form-message.blue for both its intro AND our set_headline calls,
-	// so we target only the one containing the submit text.
+	// Hide Frappe's "Submit this document" intro + standard Submit button
+	_hide_frappe_submit_ui(frm);
+	// Keep checking for 2 seconds — Frappe may re-add them after async calls
+	let checks = 0;
+	const interval = setInterval(() => {
+		_hide_frappe_submit_ui(frm);
+		checks++;
+		if (checks > 10) clearInterval(interval);
+	}, 200);
+}
+
+function _hide_frappe_submit_ui(frm) {
+	// Hide "Submit this document to confirm" intro banner
 	$(frm.page.wrapper).find(".form-message.blue").each(function() {
 		if ($(this).text().indexOf("Submit this document") !== -1) {
 			$(this).hide();
 		}
 	});
+	// Hide standard Submit button (not our "Submit for Approval")
+	$(frm.page.wrapper).find('.btn-primary-dark:contains("Submit")').not(':contains("Approval")').hide();
+}
 
-	// Aggressively hide Submit button — Frappe may re-add it after async calls
-	// Keep checking for 2 seconds to catch any late re-renders
-	let checks = 0;
-	const interval = setInterval(() => {
-		const $submit = $(frm.page.wrapper).find('.btn-primary-dark:contains("Submit")').not(':contains("Approval")');
-		if ($submit.length) {
-			$submit.hide();
-		}
-		// Also re-hide the submit intro if Frappe re-renders it
-		$(frm.page.wrapper).find(".form-message.blue").each(function() {
-			if ($(this).text().indexOf("Submit this document") !== -1) {
-				$(this).hide();
-			}
-		});
-		checks++;
-		if (checks > 10) clearInterval(interval);
-	}, 200);
+// ═══════════════════════════════════════════════════════════
+//  TS BANNER — our own container that Frappe can't wipe
+// ═══════════════════════════════════════════════════════════
+
+function _show_ts_banner(frm, key, html, bgColor, borderColor) {
+	// Remove old banner with same key
+	$(frm.page.wrapper).find(`.ts-banner[data-key="${key}"]`).remove();
+
+	const banner = `<div class="ts-banner" data-key="${key}" style="
+		padding: 8px 15px;
+		margin: 0 15px 8px;
+		background: ${bgColor};
+		border-left: 3px solid ${borderColor};
+		border-radius: 4px;
+		font-size: 12px;
+	">${html}</div>`;
+
+	// Insert after form-dashboard-section (always exists, Frappe doesn't touch children we add)
+	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section");
+	if ($dashboard.length) {
+		$dashboard.after(banner);
+	}
 }
 
 function _render_mr_stepper(frm, ctx) {
@@ -247,7 +264,7 @@ function _render_mr_info(frm, ctx) {
 	}
 
 	if (info) {
-		frm.dashboard.set_headline(info);
+		_show_ts_banner(frm, "info", info, "#eff6ff", "#3b82f6");
 	}
 }
 

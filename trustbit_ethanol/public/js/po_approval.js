@@ -64,14 +64,33 @@ function _override_po_indicator(frm, ctx) {
 
 function _hide_po_standard_submit(frm, ctx) {
 	// Always hide standard Submit when approval system is active.
-	// Users must use "Submit for Approval" instead.
 	frm.page.clear_primary_action();
-	// Hide ONLY Frappe's "Submit this document to confirm" banner — NOT our custom banners.
+	// Hide Frappe's "Submit this document" intro + standard Submit button
+	_hide_frappe_po_submit_ui(frm);
+}
+
+function _hide_frappe_po_submit_ui(frm) {
 	$(frm.page.wrapper).find(".form-message.blue").each(function() {
 		if ($(this).text().indexOf("Submit this document") !== -1) {
 			$(this).hide();
 		}
 	});
+}
+
+function _show_ts_po_banner(frm, key, html, bgColor, borderColor) {
+	$(frm.page.wrapper).find(`.ts-banner[data-key="${key}"]`).remove();
+	const banner = `<div class="ts-banner" data-key="${key}" style="
+		padding: 8px 15px;
+		margin: 0 15px 8px;
+		background: ${bgColor};
+		border-left: 3px solid ${borderColor};
+		border-radius: 4px;
+		font-size: 12px;
+	">${html}</div>`;
+	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section");
+	if ($dashboard.length) {
+		$dashboard.after(banner);
+	}
 }
 
 function _render_stepper(frm, ctx) {
@@ -184,7 +203,7 @@ function _render_amount_info(frm, ctx) {
 		info += ` | ${ctx.total_steps} step${ctx.total_steps > 1 ? 's' : ''}`;
 	}
 
-	frm.dashboard.set_headline(info);
+	_show_ts_po_banner(frm, "info", info, "#eff6ff", "#3b82f6");
 }
 
 function _render_buttons(frm, ctx) {
