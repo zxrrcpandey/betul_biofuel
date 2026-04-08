@@ -23,14 +23,17 @@ def check_post_dated_access(doctype, token_number=None):
 		pre_from = settings.get("pre_post_dated_from")
 		pre_to = settings.get("pre_post_dated_to")
 		if pre_from and pre_to:
-			return {
-				"enabled": True,
-				"from_date": str(pre_from),
-				"to_date": str(pre_to),
-				"valid_until": str(pre_to) + " 23:59:59",
-				"request_name": None,
-				"source": "pre_enabled",
-			}
+			today = frappe.utils.today()
+			# Only show as enabled if today is within the pre-enable validity window
+			if today <= str(pre_to):
+				return {
+					"enabled": True,
+					"from_date": str(pre_from),
+					"to_date": str(pre_to),
+					"valid_until": str(pre_to) + " 23:59:59",
+					"request_name": None,
+					"source": "pre_enabled",
+				}
 
 	# 2. Check active requests
 	filters = {
