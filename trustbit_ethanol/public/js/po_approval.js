@@ -66,10 +66,12 @@ function _hide_po_standard_submit(frm, ctx) {
 	// Always hide standard Submit when approval system is active.
 	// Users must use "Submit for Approval" instead.
 	frm.page.clear_primary_action();
-	// NOTE: Do NOT call frm.dashboard.clear_headline() here — it wipes
-	// the amount/category/steps info set by _render_amount_info which
-	// may run before or after this function depending on timing.
-	$(frm.page.wrapper).find(".form-message.blue").hide();
+	// Hide ONLY Frappe's "Submit this document to confirm" banner — NOT our custom banners.
+	$(frm.page.wrapper).find(".form-message.blue").each(function() {
+		if ($(this).text().indexOf("Submit this document") !== -1) {
+			$(this).hide();
+		}
+	});
 }
 
 function _render_stepper(frm, ctx) {

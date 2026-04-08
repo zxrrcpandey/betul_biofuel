@@ -128,10 +128,14 @@ function _hide_standard_submit(frm, ctx) {
 	if (ctx.status === "Rejected") {
 		frm.disable_save();
 	}
-	// NOTE: Do NOT call frm.dashboard.clear_headline() here — it wipes
-	// the hold reason banner and route/steps info set by _render_mr_status
-	// and _render_mr_info which run BEFORE this function.
-	$(frm.page.wrapper).find(".form-message.blue").hide();
+	// Hide ONLY Frappe's "Submit this document to confirm" banner — NOT our custom banners.
+	// Frappe creates .form-message.blue for both its intro AND our set_headline calls,
+	// so we target only the one containing the submit text.
+	$(frm.page.wrapper).find(".form-message.blue").each(function() {
+		if ($(this).text().indexOf("Submit this document") !== -1) {
+			$(this).hide();
+		}
+	});
 
 	// Aggressively hide Submit button — Frappe may re-add it after async calls
 	// Keep checking for 2 seconds to catch any late re-renders
@@ -141,6 +145,12 @@ function _hide_standard_submit(frm, ctx) {
 		if ($submit.length) {
 			$submit.hide();
 		}
+		// Also re-hide the submit intro if Frappe re-renders it
+		$(frm.page.wrapper).find(".form-message.blue").each(function() {
+			if ($(this).text().indexOf("Submit this document") !== -1) {
+				$(this).hide();
+			}
+		});
 		checks++;
 		if (checks > 10) clearInterval(interval);
 	}, 200);
