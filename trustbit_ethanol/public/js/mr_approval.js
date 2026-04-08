@@ -8,6 +8,8 @@ frappe.ui.form.on("Material Request", {
 		// Override item filter: allow non-stock items for Service Request
 		_setup_item_query(frm);
 		if (frm.is_new()) return;
+		// Custom print button (direct PDF, bypasses Frappe print preview)
+		_ts_add_mr_print_button(frm);
 		// Load approval context first (adds buttons), then budget banner
 		_load_mr_context(frm);
 		// Show budget warning if CC is set (after approval context)
@@ -647,4 +649,30 @@ function _check_cc_budget(frm) {
 			}
 		}
 	});
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CUSTOM PRINT BUTTON — Direct PDF download
+// ═══════════════════════════════════════════════════════════
+
+function _ts_add_mr_print_button(frm) {
+	// Hide Frappe's default print
+	setTimeout(() => {
+		frm.page.menu_btn_group.find('.dropdown-item:contains("Print")').hide();
+	}, 300);
+
+	frm.add_custom_button(__("Print"), () => {
+		const formats = ["TS Material Request", "TS Material Request (Clean)"];
+		frappe.prompt({
+			fieldtype: "Select",
+			label: "Print Format",
+			fieldname: "format",
+			options: formats.join("\n"),
+			default: "TS Material Request",
+			reqd: 1,
+		}, (values) => {
+			const url = `/api/method/frappe.utils.print_format.download_pdf?doctype=Material%20Request&name=${encodeURIComponent(frm.doc.name)}&format=${encodeURIComponent(values.format)}&no_letterhead=0`;
+			window.open(url, "_blank");
+		}, __("Select Print Format"), __("Download PDF"));
+	}, __("Actions"));
 }

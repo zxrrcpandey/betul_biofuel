@@ -3,6 +3,7 @@ frappe.ui.form.on("Purchase Order", {
 	refresh(frm) {
 		_force_po_grid_columns(frm);
 		if (frm.is_new()) return;
+		_ts_add_print_button(frm, "TS Purchase Order");
 		_load_approval_context(frm);
 		_load_budget_indicator(frm);
 		_load_lifecycle_tracker(frm);
@@ -698,4 +699,48 @@ function _force_po_grid_columns(frm) {
 
 		grid.refresh();
 	} catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CUSTOM PRINT BUTTON — Direct PDF download (bypasses Frappe print preview)
+// ═══════════════════════════════════════════════════════════
+
+function _ts_add_print_button(frm, default_format) {
+	// Remove Frappe's default print from menu
+	setTimeout(() => {
+		// Hide "Print" from menu dropdown
+		frm.page.menu_btn_group.find('.dropdown-item:contains("Print")').hide();
+	}, 300);
+
+	// Add our custom Print button
+	frm.add_custom_button(__("Print"), () => {
+		const formats = [];
+		if (frm.doc.doctype === "Purchase Order") {
+			formats.push("TS Purchase Order", "TS Purchase Order (Clean)");
+		} else if (frm.doc.doctype === "Material Request") {
+			formats.push("TS Material Request", "TS Material Request (Clean)");
+		}
+
+		if (formats.length === 1) {
+			_ts_download_pdf(frm, formats[0]);
+			return;
+		}
+
+		// Show format selection dialog
+		frappe.prompt({
+			fieldtype: "Select",
+			label: "Print Format",
+			fieldname: "format",
+			options: formats.join("\n"),
+			default: default_format || formats[0],
+			reqd: 1,
+		}, (values) => {
+			_ts_download_pdf(frm, values.format);
+		}, __("Select Print Format"), __("Download PDF"));
+	}, __("Actions"));
+}
+
+function _ts_download_pdf(frm, format) {
+	const url = `/api/method/frappe.utils.print_format.download_pdf?doctype=${encodeURIComponent(frm.doc.doctype)}&name=${encodeURIComponent(frm.doc.name)}&format=${encodeURIComponent(format)}&no_letterhead=0`;
+	window.open(url, "_blank");
 }
