@@ -414,7 +414,7 @@ def _submit_po_for_approval(doc):
 		validate_budget_on_po_submit(doc)
 
 	status = doc.ts_approval_status
-	if status and status not in ("", "Draft"):
+	if status and status not in ("", "Draft", "Not Submitted"):
 		frappe.throw(_("This PO is already in the approval chain (status: {0})").format(status))
 
 	# Resolve category from PO items → Item Group → TS Purchase Category
@@ -575,7 +575,7 @@ def _submit_mr_for_approval(doc):
 		frappe.throw(_("MR must have at least one item to submit for approval"))
 
 	status = doc.ts_mr_status
-	if status and status not in ("", "Draft"):
+	if status and status not in ("", "Draft", "Not Submitted"):
 		frappe.throw(_("This MR is already in the approval chain (status: {0})").format(status))
 
 	cost_center = _get_mr_cost_center(doc)
@@ -651,17 +651,10 @@ def _approve_mr(doc, comment=""):
 	if not current_step:
 		frappe.throw(_("Current MR approval step not found"))
 
-	# Validate user has the role
-	user_roles = frappe.get_roles(frappe.session.user)
-	can_act = False
-	for step in steps:
-		if step.step_order >= current_step_order and step.role in user_roles:
-			can_act = True
-			break
-	if not can_act:
-		frappe.throw(_("You don't have permission to act on this MR at this step"))
+	# Validate user can act — CC config check + role-based higher-level override
+	_validate_user_can_act_on_mr(doc)
 
-	role_display = current_step.role_label or current_step.role
+	role_display = _get_user_mr_step_role(doc, current_step_order) or current_step.role_label or current_step.role
 	current_state = doc.ts_mr_status
 
 	if current_step.action_type == "Final Approve":
@@ -747,7 +740,8 @@ def _revise_mr(doc, reason, comment=""):
 		"ts_mr_revision_reason": reason,
 	}, update_modified=True)
 
-	_send_approval_notification(doc, "mr_revised", [doc.owner],
+	notify_users = list(set(filter(None, [doc.owner, doc.ts_mr_submitted_by])))
+	_send_approval_notification(doc, "mr_revised", notify_users,
 		extra={"revised_by": role_display, "reason": reason})
 
 	return {"status": "revised"}
@@ -775,7 +769,8 @@ def _reject_mr(doc, reason, comment=""):
 	# Rejected MR stays as Draft with "Rejected" status — fields are locked in JS
 	# (cancel() is invalid on Draft docs; docstatus 0 → 2 is not allowed by Frappe)
 
-	_send_approval_notification(doc, "mr_rejected", [doc.owner],
+	notify_users = list(set(filter(None, [doc.owner, doc.ts_mr_submitted_by])))
+	_send_approval_notification(doc, "mr_rejected", notify_users,
 		extra={"rejected_by": role_display, "reason": reason})
 	_send_post_approval_notification(doc, "mr_rejection")
 
@@ -802,7 +797,7 @@ def _resubmit_mr(doc):
 	route_doc = frappe.get_doc("TS MR Approval Route", route_name)
 	steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
 
-	target = _get_target_step_with_skip(steps, frappe.session.user)
+	target = _get_target_step_for_mr(steps, frappe.session.user, cost_center)
 	next_state = f"Pending {target.role_label or target.role}"
 
 	_log_mr_action(doc, "Resubmitted", "Revised", next_state,
@@ -1695,7 +1690,7 @@ def _build_mr_approval_chain(doc, route_doc):
 			item["status"] = "done"
 			item["by"] = log.action_by_name
 			item["date"] = format_datetime(log.action_date, "dd MMM yyyy HH:mm")
-		elif step.step_order == current_step and status.startswith("Pending"):
+		elif step.step_order == current_step and (status.startswith("Pending") or status.startswith("On Hold")):
 			item["status"] = "current"
 		elif status == "Approved":
 			item["status"] = "done"
@@ -1883,6 +1878,42 @@ def check_approval_sla():
 
 		if settings.approval_escalation_enabled:
 			_auto_escalate(po_data)
+
+	# Also check stuck Material Requests
+	stuck_mrs = frappe.get_all("Material Request",
+		filters={
+			"ts_mr_status": ["like", "Pending%"],
+			"modified": ["<", threshold],
+			"docstatus": 0,
+		},
+		fields=["name", "ts_mr_status", "modified", "ts_mr_last_sla_alert"])
+
+	for mr_data in stuck_mrs:
+		frappe.db.sql("SELECT name FROM `tabMaterial Request` WHERE name = %s FOR UPDATE", mr_data.name)
+
+		if mr_data.ts_mr_last_sla_alert:
+			last_alert_hours = time_diff_in_hours(now_datetime(), mr_data.ts_mr_last_sla_alert)
+			if last_alert_hours < sla_hours:
+				continue
+
+		hours_stuck = round(time_diff_in_hours(now_datetime(), mr_data.modified), 1)
+
+		frappe.db.set_value("Material Request", mr_data.name,
+			"ts_mr_last_sla_alert", now_datetime(), update_modified=False)
+
+		if settings.approval_sla_email:
+			esc = frappe.utils.escape_html
+			frappe.sendmail(
+				recipients=[settings.approval_sla_email],
+				subject=f"[CTL Alert] MR {mr_data.name} stuck at {mr_data.ts_mr_status} for {hours_stuck}h",
+				message=f"""
+				<p>Material Request <strong>{esc(mr_data.name)}</strong> has been stuck
+				at <strong>{esc(mr_data.ts_mr_status)}</strong> for <strong>{hours_stuck} hours</strong>,
+				exceeding the {sla_hours}-hour CTL (Committed Time Limit).</p>
+				<p><a href="{frappe.utils.get_url()}/app/material-request/{esc(mr_data.name)}">View MR</a></p>
+				""",
+				now=True,
+			)
 
 	frappe.db.commit()
 

@@ -459,6 +459,15 @@ def create_custom_fields():
 				"description": "Step order when MR was put on hold (for Resume to restore)"
 			},
 			{
+				"fieldname": "ts_mr_last_sla_alert",
+				"fieldtype": "Datetime",
+				"label": "Last CTL Alert",
+				"insert_after": "ts_mr_held_at_step",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1
+			},
+			{
 				"fieldname": "ts_mr_log_section",
 				"fieldtype": "Section Break",
 				"label": "MR Approval History",
