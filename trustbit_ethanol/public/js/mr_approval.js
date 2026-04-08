@@ -656,9 +656,10 @@ function _check_cc_budget(frm) {
 // ═══════════════════════════════════════════════════════════
 
 function _ts_add_mr_print_button(frm) {
-	// Hide Frappe's default print
+	// Hide Frappe's default print (menu + toolbar icon)
 	setTimeout(() => {
 		frm.page.menu_btn_group.find('.dropdown-item:contains("Print")').hide();
+		frm.page.wrapper.find('.btn-print-preview').hide();
 	}, 300);
 
 	frm.add_custom_button(__("Print"), () => {

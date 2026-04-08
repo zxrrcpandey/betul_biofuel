@@ -706,10 +706,10 @@ function _force_po_grid_columns(frm) {
 // ═══════════════════════════════════════════════════════════
 
 function _ts_add_print_button(frm, default_format) {
-	// Remove Frappe's default print from menu
+	// Hide Frappe's default print (menu + toolbar icon)
 	setTimeout(() => {
-		// Hide "Print" from menu dropdown
 		frm.page.menu_btn_group.find('.dropdown-item:contains("Print")').hide();
+		frm.page.wrapper.find('.btn-print-preview').hide();
 	}, 300);
 
 	// Add our custom Print button
