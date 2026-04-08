@@ -33,6 +33,9 @@ frappe.pages["user-management"].on_page_load = function (wrapper) {
 	// Primary action: New User
 	page.set_primary_action(__("+ New User"), () => _um_show_create_dialog(page), "es-line-add");
 
+	// Secondary action: Change My Password
+	page.add_inner_button(__("Change My Password"), () => _um_change_own_password());
+
 	// Load data
 	_um_load(page);
 };
@@ -490,4 +493,64 @@ function _um_reset_password(page, email) {
 			});
 		}
 	);
+}
+
+// ── CHANGE OWN PASSWORD ─────────────────────────────────────────────
+
+function _um_change_own_password() {
+	const d = new frappe.ui.Dialog({
+		title: __("Change My Password"),
+		fields: [
+			{
+				fieldname: "current_password",
+				label: __("Current Password"),
+				fieldtype: "Password",
+				reqd: 1,
+			},
+			{
+				fieldname: "new_password",
+				label: __("New Password"),
+				fieldtype: "Password",
+				reqd: 1,
+				description: __("Minimum 8 characters"),
+			},
+			{
+				fieldname: "confirm_password",
+				label: __("Confirm New Password"),
+				fieldtype: "Password",
+				reqd: 1,
+			},
+		],
+		primary_action_label: __("Change Password"),
+		primary_action(values) {
+			if (values.new_password !== values.confirm_password) {
+				frappe.msgprint(__("New password and confirmation do not match."));
+				return;
+			}
+			if (values.new_password.length < 8) {
+				frappe.msgprint(__("New password must be at least 8 characters."));
+				return;
+			}
+			if (values.new_password === values.current_password) {
+				frappe.msgprint(__("New password must be different from current password."));
+				return;
+			}
+
+			d.disable_primary_action();
+
+			frappe.xcall("trustbit_ethanol.ts_gate_entry.ts_user_management.reset_own_password", {
+				current_password: values.current_password,
+				new_password: values.new_password,
+			}).then(() => {
+				d.hide();
+				frappe.show_alert({
+					message: __("Password changed successfully."),
+					indicator: "green",
+				}, 5);
+			}).catch(() => {
+				d.enable_primary_action();
+			});
+		},
+	});
+	d.show();
 }

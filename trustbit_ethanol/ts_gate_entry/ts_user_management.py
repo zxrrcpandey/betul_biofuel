@@ -28,16 +28,13 @@ ALLOWED_ROLES = [
     "Grain Purchase Manager",
     "Accounts User",
     "Accounts Manager",
-    "AVP",
-    "CEO",
-    "Managing Director",
     "Return Item Controller",
     "Return Item Custodian",
-    "General Manager",
     "Stock User",
     "Stock Manager",
 ]
 
+# Executive/system roles — only Administrator can assign these
 BLOCKED_ROLES = [
     "System Manager",
     "Administrator",
@@ -46,6 +43,11 @@ BLOCKED_ROLES = [
     "Workspace Manager",
     "CTO",
     "Auditor",
+    "CEO",
+    "Managing Director",
+    "AVP",
+    "General Manager",
+    "IT Head",
 ]
 
 # Users that cannot be edited/disabled via this page
@@ -438,6 +440,44 @@ def toggle_user(email, enabled):
     frappe.db.commit()
 
     return {"user": email, "enabled": enabled, "warnings": warnings}
+
+
+@frappe.whitelist()
+def reset_own_password(current_password, new_password):
+    """Allow IT Head to change their own password."""
+    _check_it_head()
+
+    email = frappe.session.user
+    if not email or email in ("Administrator", "Guest"):
+        frappe.throw(_("Invalid user session."))
+
+    # Verify current password
+    from frappe.utils.password import check_password
+    try:
+        check_password(email, current_password)
+    except frappe.AuthenticationError:
+        frappe.throw(_("Current password is incorrect."))
+
+    # Validate new password length
+    new_password = cstr(new_password).strip()
+    if len(new_password) < 8:
+        frappe.throw(_("New password must be at least 8 characters."))
+
+    # Set new password
+    original_user = frappe.session.user
+    frappe.set_user("Administrator")
+    try:
+        user = frappe.get_doc("User", email)
+        user.new_password = new_password
+        user.flags.ignore_permissions = True
+        user.save()
+        frappe.db.commit()
+    finally:
+        frappe.set_user(original_user)
+
+    _audit_log(email, "Own password changed")
+    frappe.db.commit()
+    return {"success": True}
 
 
 @frappe.whitelist()
