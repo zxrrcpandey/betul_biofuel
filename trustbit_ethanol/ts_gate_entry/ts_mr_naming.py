@@ -24,6 +24,9 @@ PURPOSE_PREFIX = {
 	"Material Issue": "BBPL-ISSU",
 }
 
+# Maximum retries to find a non-duplicate name
+MAX_NAMING_RETRIES = 20
+
 
 def _generate_mr_name(doc):
 	"""Generate MR name: {PREFIX}-{CC_CODE}-{YY}-{#####}"""
@@ -50,10 +53,10 @@ def _generate_mr_name(doc):
 	# Build series key for counter
 	series_key = f"{prefix}-{cc_code}-{year}-"
 
-	# Get next number using tabSeries (atomic, handles concurrency)
-	serial = _get_next_serial(series_key, 5)
+	# Get next number, with duplicate protection
+	name = _get_next_unique_name(series_key, prefix, cc_code, year)
 
-	return f"{prefix}-{cc_code}-{year}-{serial}"
+	return name
 
 
 def mr_autoname(doc, method=None):
@@ -72,13 +75,86 @@ def mr_before_insert(doc, method=None):
 	doc.name = _generate_mr_name(doc)
 
 
-def _get_next_serial(series_key, digits=5):
-	"""Get next serial number using Frappe's built-in getseries().
+def _get_next_unique_name(series_key, prefix, cc_code, year, digits=5):
+	"""Get next unique MR name, auto-fixing counter if it's out of sync.
 
-	Uses frappe.model.naming.getseries which is battle-tested for
-	concurrency, transaction safety, and atomic counter increments.
-	Previously used custom SQL which could lose counter inserts
-	if a later validation in the same transaction rolled back.
+	1. First syncs the counter with the actual max in DB (prevents duplicates)
+	2. Then gets next serial via Frappe's getseries()
+	3. Verifies the name doesn't exist — retries up to MAX_NAMING_RETRIES times
 	"""
+	# Step 1: Sync counter with actual max in DB
+	_sync_counter_with_db(series_key, prefix, cc_code, year, digits)
+
+	# Step 2: Get next serial and verify uniqueness
 	from frappe.model.naming import getseries
-	return getseries(series_key, digits)
+
+	for attempt in range(MAX_NAMING_RETRIES):
+		serial = getseries(series_key, digits)
+		name = f"{prefix}-{cc_code}-{year}-{serial}"
+
+		if not frappe.db.exists("Material Request", name):
+			return name
+
+		# Name already exists — counter was behind, getseries already incremented
+		# so next iteration will try the next number
+		frappe.logger().warning(
+			f"MR naming: {name} already exists (attempt {attempt + 1}), trying next serial"
+		)
+
+	# All retries exhausted
+	frappe.throw(
+		f"Cannot generate Material Request number. "
+		f"The naming counter for <b>{series_key}</b> is out of sync. "
+		f"Tried {MAX_NAMING_RETRIES} serial numbers but all already exist. "
+		f"Please contact IT Head to fix the counter in tabSeries.",
+		title="Naming Error"
+	)
+
+
+def _sync_counter_with_db(series_key, prefix, cc_code, year, digits=5):
+	"""Ensure tabSeries counter is at least as high as the max existing MR number.
+
+	This prevents duplicate names when the counter falls behind due to
+	direct DB inserts, imports, or transaction rollbacks.
+	"""
+	# Find max existing serial for this prefix
+	pattern = f"{prefix}-{cc_code}-{year}-%"
+	max_name = frappe.db.sql(
+		"SELECT name FROM `tabMaterial Request` WHERE name LIKE %s ORDER BY name DESC LIMIT 1",
+		pattern
+	)
+
+	if not max_name:
+		return  # No existing MRs — counter is fine (or will be created by getseries)
+
+	# Extract the serial number from the last part
+	last_name = max_name[0][0]
+	try:
+		last_serial = int(last_name.rsplit("-", 1)[1])
+	except (ValueError, IndexError):
+		return  # Can't parse — skip sync
+
+	# Check current counter
+	current = frappe.db.sql(
+		"SELECT current FROM tabSeries WHERE name = %s", series_key
+	)
+
+	if current:
+		current_val = current[0][0] or 0
+		if current_val < last_serial:
+			frappe.db.sql(
+				"UPDATE tabSeries SET current = %s WHERE name = %s",
+				(last_serial, series_key)
+			)
+			frappe.logger().warning(
+				f"MR naming: Fixed counter {series_key} from {current_val} to {last_serial}"
+			)
+	else:
+		# Counter doesn't exist — create it at the max value
+		frappe.db.sql(
+			"INSERT INTO tabSeries (name, current) VALUES (%s, %s)",
+			(series_key, last_serial)
+		)
+		frappe.logger().warning(
+			f"MR naming: Created missing counter {series_key} = {last_serial}"
+		)
