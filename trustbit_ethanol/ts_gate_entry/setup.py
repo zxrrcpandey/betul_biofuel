@@ -1495,12 +1495,16 @@ def seed_purchase_categories():
 		"Coal": ["Raw Material - Coal", "Coal A", "Coal B"],
 		"Grain": ["Raw Material - Grain", "Rice", "Maize", "Raw Material"],
 		"Store": [
+			# General store items
 			"Mechanical", "PUSH ELBOW", "PUSH", "T MANIFOLD", "VOLT METER", "GLASS FUSE",
 			"LAB MOTOR", "Patch Code", "Cable Manager", "Ash Silo", "Conveyor Belt Idlers",
 			"Plant Cleaning", "Steam line", "AHP", "Boiler", "STRUCTURE", "Sub Assemblies",
-			"Services", "IT", "Battery", "GENRAL", "Biological Chemical",
-			"PIPE FITTING & VALVE", "FASTENERS", "Electrical", "Tools", "SPARE",
-			"Consumable", "Products", "All Item Groups",
+			"Services", "IT", "Battery", "GENRAL", "PIPE FITTING & VALVE", "FASTENERS",
+			"Electrical", "Tools", "SPARE", "Consumable", "Products", "All Item Groups",
+			# Chemical items (same approval rules as Store — Lesson 145)
+			"Chemical", "D-Nature Chemicals", "Process Chemical", "Processing Chemical",
+			"Process Lab Chemical", "Production Chemical", "WTP/CPU Chemical",
+			"Biological Chemical", "CHEMICAL EARTHING",
 		],
 	}
 
