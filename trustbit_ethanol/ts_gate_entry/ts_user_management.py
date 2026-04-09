@@ -334,6 +334,13 @@ def create_user(first_name, email, roles, last_name=None, mobile_no=None, send_w
         user.flags.ignore_permissions = True
         user.flags.no_welcome_mail = not send_email
         user.insert()
+
+        # Force password change on first login for temp passwords
+        if temp_password:
+            reset_key = frappe.generate_hash(user.name, 20)
+            frappe.db.set_value("User", user.name, "reset_password_key", reset_key)
+            frappe.db.set_value("User", user.name, "logout_all_sessions", 1)
+
         frappe.db.commit()
     finally:
         frappe.set_user(original_user)
@@ -502,10 +509,18 @@ def reset_password(email):
             user.new_password = temp_password
             user.flags.ignore_permissions = True
             user.save()
+
+            # Force password change on next login:
+            # Set reset_password_key so Frappe redirects to /update-password after login
+            reset_key = frappe.generate_hash(email, 20)
+            frappe.db.set_value("User", email, "reset_password_key", reset_key)
+            # Logout all existing sessions so old sessions can't bypass
+            frappe.db.set_value("User", email, "logout_all_sessions", 1)
+
             frappe.db.commit()
         finally:
             frappe.set_user(original_user)
-        _audit_log(email, "Password reset (generated)")
+        _audit_log(email, "Password reset (generated, force change on next login)")
         frappe.db.commit()
         return {"user": email, "method": "generated", "temp_password": temp_password}
 
