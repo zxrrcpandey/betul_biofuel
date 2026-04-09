@@ -337,9 +337,7 @@ def create_user(first_name, email, roles, last_name=None, mobile_no=None, send_w
 
         # Force password change on first login for temp passwords
         if temp_password:
-            reset_key = frappe.generate_hash(user.name, 20)
-            frappe.db.set_value("User", user.name, "reset_password_key", reset_key)
-            frappe.db.set_value("User", user.name, "logout_all_sessions", 1)
+            frappe.db.set_value("User", user.name, "ts_force_password_change", 1)
 
         frappe.db.commit()
     finally:
@@ -510,11 +508,9 @@ def reset_password(email):
             user.flags.ignore_permissions = True
             user.save()
 
-            # Force password change on next login:
-            # Set reset_password_key so Frappe redirects to /update-password after login
-            reset_key = frappe.generate_hash(email, 20)
-            frappe.db.set_value("User", email, "reset_password_key", reset_key)
-            # Logout all existing sessions so old sessions can't bypass
+            # Force password change on next login via custom flag
+            frappe.db.set_value("User", email, "ts_force_password_change", 1)
+            # Logout existing sessions so old password can't be used
             frappe.db.set_value("User", email, "logout_all_sessions", 1)
 
             frappe.db.commit()
@@ -567,3 +563,45 @@ def get_user_detail(email):
         "is_protected": user.email.lower() in [p.lower() for p in PROTECTED_USERS] or "Administrator" in all_roles,
         "is_self": user.email.lower() == frappe.session.user.lower(),
     }
+
+
+# ── ON SESSION CREATION — Force Password Change ─────────────────────
+
+def check_force_password_change():
+    """Called via on_session_creation hook. Redirects user to password change page
+    if ts_force_password_change flag is set (by IT Head via User Management page)."""
+    user = frappe.session.user
+    if user in ("Administrator", "Guest"):
+        return
+
+    force_change = frappe.db.get_value("User", user, "ts_force_password_change")
+    if force_change:
+        # Generate a reset key and redirect to /update-password
+        reset_key = frappe.generate_hash(user, 20)
+        frappe.db.set_value("User", user, "reset_password_key", reset_key)
+        frappe.db.commit()
+        frappe.local.login_manager.login_as = user
+        frappe.local.response["redirect_to"] = f"/update-password?key={reset_key}"
+        frappe.local.response["message"] = "Password change required"
+
+
+@frappe.whitelist()
+def clear_force_password_flag():
+    """Called after user successfully changes password via /update-password."""
+    user = frappe.session.user
+    if user in ("Administrator", "Guest"):
+        return
+    frappe.db.set_value("User", user, {
+        "ts_force_password_change": 0,
+        "reset_password_key": "",
+    })
+    frappe.db.commit()
+
+
+def on_user_update(doc, method):
+    """Clear force password change flag when user changes their password.
+    Frappe calls this on every User save. The __new_password field is set
+    when the user submits the /update-password form."""
+    if doc.get("__new_password") and doc.get("ts_force_password_change"):
+        doc.ts_force_password_change = 0
+        doc.reset_password_key = ""

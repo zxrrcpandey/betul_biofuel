@@ -135,6 +135,9 @@ doctype_js = {
 }
 
 
+# Force password change on login (set by IT Head via User Management page)
+on_session_creation = "trustbit_ethanol.ts_gate_entry.ts_user_management.check_force_password_change"
+
 # Doc Events — PO lifecycle hooks for approval state management
 doc_events = {
 	"Purchase Order": {
@@ -146,7 +149,10 @@ doc_events = {
 		"autoname": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_autoname",
 		"before_insert": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_before_insert",
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
-	}
+	},
+	"User": {
+		"on_update": "trustbit_ethanol.ts_gate_entry.ts_user_management.on_user_update",
+	},
 }
 
 # Setup custom fields on Purchase Receipt, Purchase Order, Material Request, Company, Item Group, Brand

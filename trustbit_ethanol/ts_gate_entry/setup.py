@@ -773,6 +773,20 @@ def create_custom_fields():
 		},
 	]
 
+	# User custom field for force password change
+	custom_fields["User"] = [
+		{
+			"fieldname": "ts_force_password_change",
+			"fieldtype": "Check",
+			"label": "Force Password Change",
+			"insert_after": "logout_all_sessions",
+			"hidden": 1,
+			"read_only": 1,
+			"no_copy": 1,
+			"description": "Set by IT Head via User Management page — forces password change on next login",
+		},
+	]
+
 	_create_custom_fields(custom_fields)
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
