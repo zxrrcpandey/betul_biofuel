@@ -510,8 +510,8 @@ def reset_password(email):
 
             # Force password change on next login via custom flag
             frappe.db.set_value("User", email, "ts_force_password_change", 1)
-            # Logout existing sessions so old password can't be used
-            frappe.db.set_value("User", email, "logout_all_sessions", 1)
+            # NOTE: Do NOT set logout_all_sessions=1 here — it causes
+            # "User None is disabled" error on session resume (Lesson 143)
 
             frappe.db.commit()
         finally:
@@ -570,19 +570,22 @@ def get_user_detail(email):
 def check_force_password_change():
     """Called via on_session_creation hook. Redirects user to password change page
     if ts_force_password_change flag is set (by IT Head via User Management page)."""
-    user = frappe.session.user
-    if user in ("Administrator", "Guest"):
-        return
+    try:
+        user = frappe.session.user
+        if user in ("Administrator", "Guest"):
+            return
 
-    force_change = frappe.db.get_value("User", user, "ts_force_password_change")
-    if force_change:
-        # Generate a reset key and redirect to /update-password
-        reset_key = frappe.generate_hash(user, 20)
-        frappe.db.set_value("User", user, "reset_password_key", reset_key)
-        frappe.db.commit()
-        frappe.local.login_manager.login_as = user
-        frappe.local.response["redirect_to"] = f"/update-password?key={reset_key}"
-        frappe.local.response["message"] = "Password change required"
+        force_change = frappe.db.get_value("User", user, "ts_force_password_change")
+        if force_change:
+            # Generate a reset key for the /update-password page
+            reset_key = frappe.generate_hash(user, 20)
+            frappe.db.set_value("User", user, "reset_password_key", reset_key)
+            frappe.db.commit()
+            # Set redirect in response — Frappe's login handler picks this up
+            frappe.local.response["redirect_to"] = "/update-password?key=" + reset_key
+    except Exception:
+        # Never block login — log error silently
+        frappe.log_error(title="Force Password Change Error")
 
 
 @frappe.whitelist()
