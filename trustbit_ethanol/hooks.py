@@ -178,6 +178,7 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup.seed_global_defaults",
 	"trustbit_ethanol.ts_gate_entry.setup.patch_wkhtmltopdf_whitelist",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_navbar_website_settings",
+	"trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config.cleanup_unrestricted_user_permissions",
 ]
 
 # Scheduled Tasks

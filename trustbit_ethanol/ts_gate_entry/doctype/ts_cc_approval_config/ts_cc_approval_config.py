@@ -5,10 +5,11 @@ from frappe.utils import cint
 
 
 # Roles that should NEVER get CC-based User Permissions (they see everything)
+# Purchase User included because purchase team needs to see ALL MRs to create POs (Lesson 145)
 UNRESTRICTED_ROLES = {
 	"System Manager", "Administrator", "MD", "CEO", "AVP", "IT Head",
 	"Accounts Manager", "Accounts User", "Purchase Manager",
-	"Grain Purchase Manager",
+	"Grain Purchase Manager", "Purchase User",
 }
 
 # Custom field name on User Permission to tag auto-generated ones
@@ -371,3 +372,24 @@ def check_direct_po_cc(cost_center):
 			),
 		}
 	return {"is_direct_po": False}
+
+
+def cleanup_unrestricted_user_permissions():
+	"""Remove CC User Permissions for users who have unrestricted roles.
+	Called from after_migrate to fix stale permissions.
+	Lesson 145: Purchase team users must not have CC restrictions on MR."""
+	removed = 0
+	for doctype in ISOLATED_DOCTYPES:
+		perms = frappe.get_all("User Permission", filters={
+			"allow": "Cost Center",
+			"applicable_for": doctype,
+		}, fields=["name", "user"])
+
+		for perm in perms:
+			user_roles = set(frappe.get_roles(perm.user))
+			if user_roles & UNRESTRICTED_ROLES:
+				frappe.delete_doc("User Permission", perm.name, ignore_permissions=True)
+				removed += 1
+
+	if removed:
+		frappe.db.commit()
