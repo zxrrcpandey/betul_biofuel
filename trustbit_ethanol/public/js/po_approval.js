@@ -63,10 +63,12 @@ function _override_po_indicator(frm, ctx) {
 }
 
 function _hide_po_standard_submit(frm, ctx) {
-	// Always hide standard Submit when approval system is active.
-	frm.page.clear_primary_action();
-	// Hide Frappe's "Submit this document" intro + standard Submit button
-	_hide_frappe_po_submit_ui(frm);
+	// Only hide standard Submit on Draft POs (docstatus=0).
+	// Do NOT clear primary action on Submitted (Cancel) or Cancelled (Amend) POs.
+	if (frm.doc.docstatus === 0) {
+		frm.page.clear_primary_action();
+		_hide_frappe_po_submit_ui(frm);
+	}
 }
 
 function _hide_frappe_po_submit_ui(frm) {

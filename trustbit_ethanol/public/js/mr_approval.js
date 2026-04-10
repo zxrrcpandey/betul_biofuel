@@ -122,10 +122,13 @@ function _render_mr_status(frm, ctx) {
 }
 
 function _hide_standard_submit(frm, ctx) {
-	// Always hide standard Submit when approval system is active.
-	frm.page.clear_primary_action();
-	if (ctx.status === "Rejected") {
-		frm.disable_save();
+	// Only hide standard Submit on Draft MRs (docstatus=0).
+	// Do NOT clear primary action on Submitted (Cancel) or Cancelled (Amend) MRs.
+	if (frm.doc.docstatus === 0) {
+		frm.page.clear_primary_action();
+		if (ctx.status === "Rejected") {
+			frm.disable_save();
+		}
 	}
 	// Hide Frappe's "Submit this document" intro + standard Submit button
 	_hide_frappe_submit_ui(frm);
