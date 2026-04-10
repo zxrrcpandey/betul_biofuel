@@ -1766,32 +1766,10 @@ def po_before_save(doc, method):
 
 
 def _check_duplicate_po_from_mr(doc):
-	"""Block creating a PO if another non-cancelled PO already references the same MR."""
-	mr_names = set()
-	for item in (doc.get("items") or []):
-		if item.material_request:
-			mr_names.add(item.material_request)
-
-	if not mr_names:
-		return
-
-	for mr_name in mr_names:
-		existing = frappe.db.sql("""
-			SELECT DISTINCT poi.parent
-			FROM `tabPurchase Order Item` poi
-			INNER JOIN `tabPurchase Order` po ON po.name = poi.parent
-			WHERE poi.material_request = %s
-				AND po.docstatus < 2
-				AND po.name != %s
-		""", (mr_name, doc.name or ""), as_dict=True)
-
-		if existing:
-			po_names = ", ".join(e.parent for e in existing)
-			frappe.throw(
-				_("A Purchase Order ({0}) already exists for Material Request {1}. "
-				  "Cannot create a duplicate PO from the same MR.").format(po_names, mr_name),
-				title=_("Duplicate PO from MR"),
-			)
+	"""Previously blocked duplicate POs from same MR. Removed because ERPNext
+	natively supports multiple POs from one MR (partial orders, split suppliers).
+	ERPNext tracks per_ordered on MR items to prevent over-ordering."""
+	pass
 
 
 def _copy_project_from_mr(doc):
