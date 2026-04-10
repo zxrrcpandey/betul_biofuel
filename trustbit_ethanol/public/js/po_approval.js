@@ -292,6 +292,20 @@ function _render_buttons(frm, ctx) {
 
 	if (ctx.can_resubmit) {
 		frm.add_custom_button(__("Resubmit for Approval"), () => {
+			if (frm.is_dirty()) {
+				frappe.confirm(
+					__("You have unsaved changes. Save first, then resubmit?"),
+					() => {
+						frm.save().then(() => {
+							frappe.confirm(
+								__("Resubmit this PO for approval? It will restart from the first step."),
+								() => _call_action(frm, "resubmit_document", { doctype: "Purchase Order", docname: frm.doc.name, mode: "restart" })
+							);
+						});
+					}
+				);
+				return;
+			}
 			frappe.confirm(
 				__("Resubmit this PO for approval? It will restart from the first step."),
 				() => _call_action(frm, "resubmit_document", { doctype: "Purchase Order", docname: frm.doc.name, mode: "restart" })
@@ -433,7 +447,8 @@ function _load_budget_indicator(frm) {
 function _lock_fields(frm, ctx) {
 	// Lock PO fields during approval and after terminal states
 	const status = ctx.status || "";
-	const should_lock = ctx.is_pending || status.startsWith("Awaiting") || status === "Rejected" || status === "Revised" || status === "Approved";
+	const should_lock = ctx.is_pending || status.startsWith("Awaiting") || status === "Rejected" || status === "Approved";
+	// NOTE: "Revised" intentionally excluded — creator must edit items before resubmitting (Lesson 81)
 	if (!should_lock) return;
 
 	const fields_to_lock = [
