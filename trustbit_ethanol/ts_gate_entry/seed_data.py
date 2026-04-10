@@ -131,6 +131,10 @@ CUSTOM_DOCPERM = [
 	{"parent": "TS Settings", "role": "IT Head", "read": 1, "write": 1, "create": 1, "report": 1, "export": 1, "share": 1, "print": 1, "email": 1},
 	{"parent": "TS Token", "role": "IT Head", "read": 1, "write": 1, "create": 1, "delete": 1, "cancel": 1, "amend": 1, "report": 1, "export": 1, "share": 1, "print": 1, "email": 1},
 	{"parent": "Supplier", "role": "Accounts Manager", "read": 1, "write": 1, "create": 1, "report": 1, "export": 1, "share": 1, "print": 1, "email": 1},
+	# UOM read for purchase/accounts roles (Lesson 149: Custom DocPerm overrides standard)
+	{"parent": "UOM", "role": "Purchase User", "read": 1, "export": 1},
+	{"parent": "UOM", "role": "Purchase Manager", "read": 1, "export": 1},
+	{"parent": "UOM", "role": "Accounts User", "read": 1, "export": 1},
 	{"parent": "TS Transport Master", "role": "IT Head", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "share": 1, "print": 1, "email": 1},
 	{"parent": "TS Transporter Vehicle", "role": "IT Head", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "share": 1, "print": 1, "email": 1},
 	{"parent": "TS Variant", "role": "IT Head", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "share": 1, "print": 1, "email": 1},
