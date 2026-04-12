@@ -180,6 +180,9 @@ CUSTOM_DOCPERM = [
 ]
 
 PROPERTY_SETTERS = [
+	# Item description read-only on MR/PO — auto-fetched from Item master
+	{"doc_type": "Material Request Item", "field_name": "description", "property": "read_only", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
+	{"doc_type": "Purchase Order Item", "field_name": "description", "property": "read_only", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "columns", "property_type": "Int", "value": "2", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "fieldtype", "property_type": "Select", "value": "Select", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "in_list_view", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
