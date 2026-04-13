@@ -17,7 +17,10 @@ UP_MARKER_FIELD = "ts_cc_auto_generated"
 
 # DocTypes to isolate by Cost Center — one User Permission per doctype per user per CC
 # MUST be explicit per-doctype (never empty applicable_for — that restricts ALL doctypes)
-ISOLATED_DOCTYPES = ["Material Request", "Budget", "TS Budget Proposal"]
+# NOTE: Material Request Item is included because Frappe's User Permission check
+# runs on EVERY Link field including child table fields. Without MR Item here,
+# users get "Not permitted" when saving MR with cost_center on item rows (Lesson 150).
+ISOLATED_DOCTYPES = ["Material Request", "Material Request Item", "Budget", "TS Budget Proposal"]
 
 
 class TSCCApprovalConfig(Document):
