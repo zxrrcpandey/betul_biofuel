@@ -997,16 +997,43 @@ class TSItemCreator {
 	// ── Review ──
 	_populate_review() {
 		const s = this.state;
-		const base_code = [s.company_code, s.category_code, s.serial_number || "___"].join("-");
+		const is_asset = s.creation_type === "Fixed Asset";
+
+		// Build base code — assets use ASSET-{company}-{asset_cat}-{serial}
+		const base_code = is_asset
+			? ["ASSET", s.company_code, s.asset_category_code, s.serial_number || "___"].join("-")
+			: [s.company_code, s.category_code, s.serial_number || "___"].join("-");
 
 		this.$page.find("#bbf-review-company").text(s.company + " (" + s.company_code + ")");
-		this.$page.find("#bbf-review-category").text(s.item_group + " (" + s.category_code + ")");
+
+		// Item Group / Asset Category display
+		if (is_asset) {
+			this.$page.find("#bbf-review-category").text("Fixed Assets → " + s.asset_category + " (" + s.asset_category_code + ")");
+		} else {
+			this.$page.find("#bbf-review-category").text(s.item_group + " (" + s.category_code + ")");
+		}
+
 		this.$page.find("#bbf-review-serial").text(s.serial_number || "Auto-assigned");
 		this.$page.find("#bbf-review-name").text(s.item_name || base_code);
 		this.$page.find("#bbf-review-uom").text(s.stock_uom);
 		this.$page.find("#bbf-review-hsn").text(s.gst_hsn_code || "-");
 		this.$page.find("#bbf-review-tax").text(s.item_tax_template || "-");
 		this.$page.find("#bbf-review-maintain-stock").text(s.maintain_stock ? "Yes" : "No");
+
+		// Fixed Asset: override badge, hide stock-related rows
+		if (is_asset) {
+			this.$page.find("#bbf-review-code").text(base_code);
+			this.$page.find("#bbf-review-type").text("Fixed Asset");
+			this.$page.find(".bbf-review-standalone-row").hide();
+			this.$page.find(".bbf-review-opening-row").hide();
+			this.$page.find("#bbf-review-variants").hide();
+			this.$page.find("#bbf-review-note").show();
+			this.$page.find("#bbf-review-note-text").html(
+				"This will create a <b>Fixed Asset Item</b> in ERPNext. " +
+				"When a PO with this item is received, ERPNext will auto-create an Asset record."
+			);
+			return;
+		}
 
 		if (s.has_variant && this.variant_rows.length > 0) {
 			// Multi-variant review
