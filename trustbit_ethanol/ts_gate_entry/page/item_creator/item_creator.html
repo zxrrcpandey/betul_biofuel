@@ -13,6 +13,23 @@
 	<!-- Main Card -->
 	<div class="bbf-card">
 
+		<!-- Creation Type Toggle -->
+		<div class="bbf-creation-type-bar">
+			<div class="bbf-creation-type-label">What are you creating?</div>
+			<div class="bbf-creation-type-toggle">
+				<button class="bbf-creation-btn active" data-type="Regular Item">
+					<span class="bbf-creation-icon">📦</span>
+					<span class="bbf-creation-text">Regular Item</span>
+					<span class="bbf-creation-desc">Stock / Consumable</span>
+				</button>
+				<button class="bbf-creation-btn" data-type="Fixed Asset">
+					<span class="bbf-creation-icon">🏢</span>
+					<span class="bbf-creation-text">Fixed Asset</span>
+					<span class="bbf-creation-desc">Equipment / Vehicle / Furniture</span>
+				</button>
+			</div>
+		</div>
+
 		<!-- Steps Indicator -->
 		<div class="bbf-steps">
 			<div class="bbf-step active" data-step="1">
@@ -64,7 +81,8 @@
 				</div>
 			</div>
 
-			<div class="bbf-form-row">
+			<!-- Regular Item: Item Group selector -->
+			<div class="bbf-form-row bbf-regular-only">
 				<div class="bbf-form-group">
 					<label class="bbf-label">Item Group / Category <span class="bbf-req">*</span></label>
 					<div class="bbf-field" id="bbf-category-field"></div>
@@ -79,6 +97,18 @@
 				<div class="bbf-form-group bbf-form-code">
 					<label class="bbf-label">Code</label>
 					<div class="bbf-code-badge" id="bbf-category-code">---</div>
+				</div>
+			</div>
+
+			<!-- Fixed Asset: Asset Category selector -->
+			<div class="bbf-form-row bbf-asset-only" style="display:none;">
+				<div class="bbf-form-group">
+					<label class="bbf-label">Asset Category <span class="bbf-req">*</span></label>
+					<div class="bbf-field" id="bbf-asset-category-field"></div>
+				</div>
+				<div class="bbf-form-group bbf-form-code">
+					<label class="bbf-label">Code</label>
+					<div class="bbf-code-badge" id="bbf-asset-category-code">---</div>
 				</div>
 			</div>
 

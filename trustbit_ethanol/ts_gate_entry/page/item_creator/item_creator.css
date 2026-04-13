@@ -9,6 +9,61 @@
 	font-family: var(--font-stack, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
 }
 
+/* Creation Type Toggle */
+.bbf-creation-type-bar {
+	padding: 16px 20px;
+	border-bottom: 1px solid #e2e8f0;
+	background: #f8fafc;
+	border-radius: 8px 8px 0 0;
+}
+.bbf-creation-type-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: #64748b;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	margin-bottom: 10px;
+}
+.bbf-creation-type-toggle {
+	display: flex;
+	gap: 12px;
+}
+.bbf-creation-btn {
+	flex: 1;
+	padding: 14px 18px;
+	border: 2px solid #e2e8f0;
+	background: white;
+	border-radius: 8px;
+	cursor: pointer;
+	transition: all 0.2s;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+}
+.bbf-creation-btn:hover {
+	border-color: #3b82f6;
+	background: #eff6ff;
+}
+.bbf-creation-btn.active {
+	border-color: #3b82f6;
+	background: #dbeafe;
+	box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+.bbf-creation-icon {
+	font-size: 28px;
+	line-height: 1;
+}
+.bbf-creation-text {
+	font-size: 14px;
+	font-weight: 700;
+	color: #1e293b;
+}
+.bbf-creation-desc {
+	font-size: 11px;
+	color: #64748b;
+}
+
 /* ── Live Preview Bar ── */
 .bbf-preview-bar {
 	background: linear-gradient(135deg, #1a365d 0%, #2a4a7f 100%);

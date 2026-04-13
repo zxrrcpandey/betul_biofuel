@@ -26,6 +26,17 @@ class TSItemCreator(Document):
 					"Company", self.company, "company_code"
 				) or ""
 
+		# Fixed Asset path: fetch asset_category_code and use it as category_code
+		if self.creation_type == "Fixed Asset":
+			if self.asset_category and not self.asset_category_code:
+				self.asset_category_code = frappe.db.get_value(
+					"Asset Category", self.asset_category, "category_code"
+				) or ""
+			# Override item_group + category_code for asset path
+			self.item_group = "Fixed Assets"
+			self.category_code = self.asset_category_code or ""
+			return
+
 		if self.item_group and not self.category_code:
 			if self.category_code_type == "Numerical":
 				self.category_code = frappe.db.get_value(
@@ -61,7 +72,12 @@ class TSItemCreator(Document):
 
 		# Use character codes as the counter key (consistent regardless of display type)
 		company_key = frappe.db.get_value("Company", self.company, "company_code") or self.company_code
-		category_key = frappe.db.get_value("Item Group", self.item_group, "category_code") or self.category_code
+
+		# Fixed Asset uses asset_category_code; Regular uses Item Group code
+		if self.creation_type == "Fixed Asset":
+			category_key = "ASSET_" + (self.asset_category_code or self.category_code or "")
+		else:
+			category_key = frappe.db.get_value("Item Group", self.item_group, "category_code") or self.category_code
 
 		# Get current counter directly from DB (bypass cache completely)
 		current_serial = frappe.db.sql("""
@@ -85,7 +101,10 @@ class TSItemCreator(Document):
 		# Skip past any existing items (handles previously created items from failed batches)
 		while True:
 			serial_str = str(next_serial).zfill(digits)
-			candidate_code = sep.join([self.company_code, self.category_code, serial_str])
+			if self.creation_type == "Fixed Asset":
+				candidate_code = sep.join(["ASSET", company_key, self.asset_category_code or "", serial_str])
+			else:
+				candidate_code = sep.join([self.company_code, self.category_code, serial_str])
 			if not frappe.db.exists("Item", candidate_code):
 				break
 			next_serial += 1
@@ -105,6 +124,13 @@ class TSItemCreator(Document):
 
 		settings = frappe.get_single("TS Item Code Settings")
 		sep = settings.default_separator or "-"
+
+		# Fixed Asset format: ASSET-{company_code}-{asset_category_code}-{serial}
+		if self.creation_type == "Fixed Asset":
+			company_key = frappe.db.get_value("Company", self.company, "company_code") or self.company_code
+			parts = ["ASSET", company_key, self.asset_category_code or "", self.serial_number]
+			self.generated_item_code = sep.join(parts)
+			return
 
 		# For multi-variant, generated_item_code is the TEMPLATE code (no variant suffix)
 		# For standalone, it's the full code
@@ -130,6 +156,20 @@ class TSItemCreator(Document):
 				f"Go to <a href='/app/company/{self.company}'>Company → {self.company}</a> "
 				f"and set the <b>{'company_num_code' if self.company_code_type == 'Numerical' else 'company_code'}</b> field."
 			)
+
+		# Fixed Asset path: validate asset_category and its code
+		if self.creation_type == "Fixed Asset":
+			if not self.asset_category:
+				frappe.throw("Please select an Asset Category for Fixed Asset items.")
+			if not self.asset_category_code:
+				frappe.throw(
+					f"Category Code not found for Asset Category <b>{self.asset_category}</b>.<br>"
+					f"Go to <a href='/app/asset-category/{self.asset_category}'>Asset Category → {self.asset_category}</a> "
+					f"and set the <b>category_code</b> field."
+				)
+			# Skip variant validation for assets — they don't have variants
+			return
+
 		if not self.category_code:
 			frappe.throw(
 				f"Category Code not found for <b>{self.item_group}</b>.<br>"
@@ -170,7 +210,9 @@ class TSItemCreator(Document):
 		if not self.generated_item_code:
 			frappe.throw("Generated Item Code is empty. Please save the form first.")
 
-		if self.has_variant and self.variants:
+		if self.creation_type == "Fixed Asset":
+			result = self._create_fixed_asset_item()
+		elif self.has_variant and self.variants:
 			result = self._create_multi_variant_items()
 		elif self.has_variant:
 			result = self._create_variant_item()
@@ -274,6 +316,39 @@ class TSItemCreator(Document):
 		stock_entry.submit()
 		stock_entry.load_from_db()
 		stock_entry.add_comment("Comment", f"Opening Stock (Post-dated: {posting_date})")
+
+	def _create_fixed_asset_item(self):
+		"""Create a Fixed Asset Item (is_fixed_asset=1, no stock)."""
+		item_data = {
+			"doctype": "Item",
+			"item_code": self.generated_item_code,
+			"item_name": self.item_name or self.generated_item_code,
+			"item_group": "Fixed Assets",
+			"stock_uom": self.stock_uom or "Nos",
+			"description": self.description or self.item_name or self.generated_item_code,
+			"is_stock_item": 0,
+			"is_fixed_asset": 1,
+			"asset_category": self.asset_category,
+			"asset_naming_series": "ACC-ASS-.YYYY.-",
+			"auto_create_assets": 1,
+			"is_grouped_asset": 0,
+		}
+		if self.gst_hsn_code:
+			item_data["gst_hsn_code"] = self.gst_hsn_code
+		if self.item_tax_template:
+			item_data["taxes"] = [{"item_tax_template": self.item_tax_template}]
+
+		item = frappe.get_doc(item_data)
+		item.insert(ignore_permissions=True)
+
+		return {
+			"item_code": item.name,
+			"message": (
+				f"Fixed Asset Item <b>{item.name}</b> created successfully.<br>"
+				f"Asset Category: <b>{self.asset_category}</b><br>"
+				f"You can now create a Purchase Order with this item."
+			),
+		}
 
 	def _create_standalone_item(self):
 		"""Create a standalone item (no variant)."""
@@ -581,6 +656,32 @@ def get_next_serial_preview(company, item_group):
 		return str(1).zfill(digits)
 
 	# Read counter directly from DB (bypass cached singleton)
+	result = frappe.db.sql("""
+		SELECT last_serial FROM `tabTS Code Counter`
+		WHERE parent = 'TS Item Code Settings' AND company_code = %s AND category_code = %s
+	""", (company_key, category_key))
+
+	if result:
+		return str((result[0][0] or 0) + 1).zfill(digits)
+
+	return str(1).zfill(digits)
+
+
+@frappe.whitelist()
+def get_next_asset_serial_preview(company, asset_category):
+	"""Get the next serial number for Fixed Asset preview (without incrementing).
+	Uses a separate counter key 'ASSET_{category_code}' to avoid clash with regular items."""
+	digits_val = frappe.db.get_single_value("TS Item Code Settings", "serial_digits")
+	digits = max(int(digits_val or 3), 2)
+
+	company_key = frappe.db.get_value("Company", company, "company_code") or ""
+	asset_cat_code = frappe.db.get_value("Asset Category", asset_category, "category_code") or ""
+
+	if not company_key or not asset_cat_code:
+		return str(1).zfill(digits)
+
+	category_key = "ASSET_" + asset_cat_code
+
 	result = frappe.db.sql("""
 		SELECT last_serial FROM `tabTS Code Counter`
 		WHERE parent = 'TS Item Code Settings' AND company_code = %s AND category_code = %s

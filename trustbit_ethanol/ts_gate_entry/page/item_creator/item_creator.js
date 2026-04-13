@@ -23,6 +23,9 @@ class TSItemCreator {
 
 		// State
 		this.state = {
+			creation_type: "Regular Item",
+			asset_category: "",
+			asset_category_code: "",
 			company: "",
 			company_code_type: "Numerical",
 			company_code: "",
@@ -102,6 +105,17 @@ class TSItemCreator {
 		this._on_link_value(this.category_field, (val) => {
 			me.state.item_group = val;
 			me._fetch_category_code();
+		});
+
+		// Asset Category (only used for Fixed Asset creation type)
+		this.asset_category_field = frappe.ui.form.make_control({
+			df: { fieldtype: "Link", options: "Asset Category", placeholder: "Select Asset Category..." },
+			parent: this.$page.find("#bbf-asset-category-field"),
+			render_input: true,
+		});
+		this._on_link_value(this.asset_category_field, (val) => {
+			me.state.asset_category = val;
+			me._fetch_asset_category_code();
 		});
 
 		// Item Name
@@ -237,6 +251,16 @@ class TSItemCreator {
 	_bind_events() {
 		const me = this;
 
+		// Creation Type toggle (Regular Item / Fixed Asset)
+		this.$page.find(".bbf-creation-btn").on("click", function () {
+			const $btn = $(this);
+			const type = $btn.data("type");
+			$btn.siblings().removeClass("active");
+			$btn.addClass("active");
+			me.state.creation_type = type;
+			me._toggle_creation_mode();
+		});
+
 		// Toggle buttons (Character / Numerical)
 		this.$page.find(".bbf-toggle-btn").on("click", function () {
 			const $btn = $(this);
@@ -330,6 +354,37 @@ class TSItemCreator {
 			this.$page.find(".bbf-standalone-stock").hide();
 			this.$page.find(".bbf-variant-stock").hide();
 		}
+	}
+
+	_toggle_creation_mode() {
+		const is_asset = this.state.creation_type === "Fixed Asset";
+
+		// Show/hide Item Group vs Asset Category rows in Step 1
+		this.$page.find(".bbf-regular-only").toggle(!is_asset);
+		this.$page.find(".bbf-asset-only").toggle(is_asset);
+
+		// Hide/show Variant step (Step 3) based on creation type
+		this.$page.find(".bbf-step[data-step='3']").toggle(!is_asset);
+		this.$page.find(".bbf-step-line").eq(1).toggle(!is_asset);
+
+		// Hide/show Stock & Valuation step (Step 4)
+		this.$page.find(".bbf-step[data-step='4']").toggle(!is_asset);
+		this.$page.find(".bbf-step-line").eq(2).toggle(!is_asset);
+
+		if (is_asset) {
+			// For assets, total steps becomes 3 (1: Company+Asset Cat, 2: Item Details, 3: Review)
+			// We re-number visible steps but keep the data-step values
+			this.total_steps = 5;  // keep but skip 3 and 4 in navigation
+			// Reset variant state
+			this.state.has_variant = false;
+			this.state.maintain_stock = 0;
+		} else {
+			this.total_steps = 5;
+			this.state.maintain_stock = 1;
+		}
+
+		// Clear preview and badges
+		this._update_preview();
 	}
 
 	// ── Variant Row Management ──
@@ -563,6 +618,31 @@ class TSItemCreator {
 		});
 	}
 
+	_fetch_asset_category_code() {
+		if (!this.state.asset_category) {
+			this.state.asset_category_code = "";
+			this._update_badge("#bbf-asset-category-code", "");
+			this._update_preview();
+			return;
+		}
+		if (this._asset_code_fetching) return;
+		this._asset_code_fetching = true;
+		frappe.db.get_value("Asset Category", this.state.asset_category, "category_code", (r) => {
+			this._asset_code_fetching = false;
+			this.state.asset_category_code = r ? r.category_code || "" : "";
+			this._update_badge("#bbf-asset-category-code", this.state.asset_category_code);
+			if (!this.state.asset_category_code) {
+				frappe.msgprint({
+					title: "Category Code Missing",
+					message: `Asset Category <b>${this.state.asset_category}</b> has no <b>category_code</b> set. Please add it via the Asset Category form.`,
+					indicator: "orange",
+				});
+			} else {
+				this._fetch_serial_preview();
+			}
+		});
+	}
+
 	// ── Prompt to set missing code directly ──
 	_prompt_set_code(doctype, name, fieldname, callback) {
 		// Prevent duplicate dialog
@@ -627,6 +707,26 @@ class TSItemCreator {
 	}
 
 	_fetch_serial_preview() {
+		// Fixed Asset path
+		if (this.state.creation_type === "Fixed Asset") {
+			if (!this.state.company || !this.state.asset_category_code) {
+				this._update_preview();
+				return;
+			}
+			frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.get_next_asset_serial_preview",
+				args: { company: this.state.company, asset_category: this.state.asset_category },
+				callback: (r) => {
+					if (r.message) {
+						this.state.serial_number = r.message;
+						this._update_badge("#bbf-serial-code", this.state.serial_number);
+						this._update_preview();
+					}
+				},
+			});
+			return;
+		}
+
 		if (!this.state.company || !this.state.item_group) {
 			this._update_preview();
 			return;
@@ -657,6 +757,29 @@ class TSItemCreator {
 
 	_update_preview() {
 		const esc = frappe.utils.escape_html;
+
+		// Fixed Asset preview: ASSET-{CompanyCode}-{AssetCategoryCode}-{Serial}
+		if (this.state.creation_type === "Fixed Asset") {
+			const cc = this.state.company_code;
+			const ac = this.state.asset_category_code;
+			const ser = this.state.serial_number;
+			if (!cc || !ac) {
+				this.$page.find("#bbf-live-code").html(
+					'<span class="bbf-code-placeholder">Select Company & Asset Category to begin</span>'
+				);
+				return;
+			}
+			const colored = `<span style="color:#fbd38d">ASSET</span>`
+				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
+				+ `<span style="color:#90cdf4">${esc(cc)}</span>`
+				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
+				+ `<span style="color:#fbd38d">${esc(ac)}</span>`
+				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
+				+ `<span style="color:#fff">${esc(ser || "___")}</span>`;
+			this.$page.find("#bbf-live-code").html(colored);
+			return;
+		}
+
 		const cc = this.state.company_code;
 		const cat = this.state.category_code;
 		const ser = this.state.serial_number;
@@ -733,13 +856,23 @@ class TSItemCreator {
 
 	_next_step() {
 		if (this._validate_step(this.current_step)) {
-			this._go_to_step(this.current_step + 1);
+			let next = this.current_step + 1;
+			// For Fixed Asset, skip steps 3 (Variant) and 4 (Stock)
+			if (this.state.creation_type === "Fixed Asset") {
+				if (next === 3) next = 5;
+			}
+			this._go_to_step(next);
 		}
 	}
 
 	_prev_step() {
 		if (this.current_step > 1) {
-			this._go_to_step(this.current_step - 1);
+			let prev = this.current_step - 1;
+			// For Fixed Asset, skip back over steps 3 and 4
+			if (this.state.creation_type === "Fixed Asset") {
+				if (prev === 4) prev = 2;
+			}
+			this._go_to_step(prev);
 		}
 	}
 
@@ -753,13 +886,25 @@ class TSItemCreator {
 				frappe.show_alert({ message: "Company code not found. Set it on the Company master.", indicator: "red" });
 				return false;
 			}
-			if (!this.state.item_group) {
-				frappe.show_alert({ message: "Please select an Item Group", indicator: "orange" });
-				return false;
-			}
-			if (!this.state.category_code) {
-				frappe.show_alert({ message: "Category code not found. Set it on the Item Group master.", indicator: "red" });
-				return false;
+			// Fixed Asset path: validate asset_category instead of item_group
+			if (this.state.creation_type === "Fixed Asset") {
+				if (!this.state.asset_category) {
+					frappe.show_alert({ message: "Please select an Asset Category", indicator: "orange" });
+					return false;
+				}
+				if (!this.state.asset_category_code) {
+					frappe.show_alert({ message: "Category code not found on Asset Category. Please set it.", indicator: "red" });
+					return false;
+				}
+			} else {
+				if (!this.state.item_group) {
+					frappe.show_alert({ message: "Please select an Item Group", indicator: "orange" });
+					return false;
+				}
+				if (!this.state.category_code) {
+					frappe.show_alert({ message: "Category code not found. Set it on the Item Group master.", indicator: "red" });
+					return false;
+				}
 			}
 		}
 
@@ -918,26 +1063,33 @@ class TSItemCreator {
 
 		// Re-read current field values (prefer live values over stale state)
 		s.company = me.company_field.get_value() || s.company;
-		s.item_group = me.category_field.get_value() || s.item_group;
-		s.stock_uom = me.uom_field.get_value() || "Kg";
+		s.stock_uom = me.uom_field.get_value() || "Nos";
 		s.item_name = me.item_name_field.get_value() || s.item_name;
 		s.gst_hsn_code = me.hsn_field.get_value() || s.gst_hsn_code;
 		s.item_tax_template = me.tax_template_field.get_value() || "";
 		s.description = me.desc_field.get_value() || "";
 
-		if (!s.has_variant) {
-			s.valuation_rate = flt(me.valuation_rate_field.get_value());
-			s.standard_rate = flt(me.standard_rate_field.get_value());
-			s.opening_stock = flt(me.opening_stock_field.get_value());
-			s.opening_warehouse = me.opening_warehouse_field.get_value() || "";
+		if (s.creation_type === "Fixed Asset") {
+			s.asset_category = me.asset_category_field.get_value() || s.asset_category;
+			if (!s.company || !s.asset_category) {
+				frappe.show_alert({ message: "Company or Asset Category is missing.", indicator: "red" });
+				return;
+			}
 		} else {
-			s.opening_warehouse = me.opening_warehouse_variant_field.get_value() || s.opening_warehouse;
-		}
-		s.posting_date = me.posting_date_field.get_value() || "";
-
-		if (!s.company || !s.item_group) {
-			frappe.show_alert({ message: "Company or Item Group is missing.", indicator: "red" });
-			return;
+			s.item_group = me.category_field.get_value() || s.item_group;
+			if (!s.has_variant) {
+				s.valuation_rate = flt(me.valuation_rate_field.get_value());
+				s.standard_rate = flt(me.standard_rate_field.get_value());
+				s.opening_stock = flt(me.opening_stock_field.get_value());
+				s.opening_warehouse = me.opening_warehouse_field.get_value() || "";
+			} else {
+				s.opening_warehouse = me.opening_warehouse_variant_field.get_value() || s.opening_warehouse;
+			}
+			s.posting_date = me.posting_date_field.get_value() || "";
+			if (!s.company || !s.item_group) {
+				frappe.show_alert({ message: "Company or Item Group is missing.", indicator: "red" });
+				return;
+			}
 		}
 
 		$btn.prop("disabled", true).text("Creating...");
@@ -945,12 +1097,15 @@ class TSItemCreator {
 		// Build the doc payload
 		const doc = {
 			doctype: "TS Item Creator",
+			creation_type: s.creation_type,
 			company: s.company,
 			company_code_type: s.company_code_type,
 			company_code: s.company_code,
-			item_group: s.item_group,
+			item_group: s.creation_type === "Fixed Asset" ? "Fixed Assets" : s.item_group,
 			category_code_type: s.category_code_type,
-			category_code: s.category_code,
+			category_code: s.creation_type === "Fixed Asset" ? (s.asset_category_code || "") : s.category_code,
+			asset_category: s.asset_category || "",
+			asset_category_code: s.asset_category_code || "",
 			has_variant: s.has_variant ? 1 : 0,
 			variant_source: s.variant_source,
 			item_name: s.item_name,
