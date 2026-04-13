@@ -363,6 +363,9 @@ class TSItemCreator {
 		this.$page.find(".bbf-regular-only").toggle(!is_asset);
 		this.$page.find(".bbf-asset-only").toggle(is_asset);
 
+		// Hide Company Code Type toggle for Fixed Asset (always uses Character code)
+		this.$page.find(".bbf-company-code-type").toggle(!is_asset);
+
 		// Hide/show Variant step (Step 3) based on creation type
 		this.$page.find(".bbf-step[data-step='3']").toggle(!is_asset);
 		this.$page.find(".bbf-step-line").eq(1).toggle(!is_asset);
@@ -378,6 +381,15 @@ class TSItemCreator {
 			// Reset variant state
 			this.state.has_variant = false;
 			this.state.maintain_stock = 0;
+			// Force Character code type for assets — asset code always uses char code (BBPL)
+			this.state.company_code_type = "Character";
+			// Sync toggle button visual state
+			this.$page.find(".bbf-toggle-btn[data-target='company']").removeClass("active");
+			this.$page.find(".bbf-toggle-btn[data-target='company'][data-value='Character']").addClass("active");
+			// Re-fetch company code with new type
+			if (this.state.company) {
+				this._fetch_company_code(this.state.company);
+			}
 		} else {
 			this.total_steps = 5;
 			this.state.maintain_stock = 1;
