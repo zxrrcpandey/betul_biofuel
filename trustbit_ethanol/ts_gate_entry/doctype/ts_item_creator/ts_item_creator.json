@@ -16,6 +16,8 @@
   "category_code",
   "asset_category",
   "asset_category_code",
+  "fiscal_year",
+  "fiscal_year_short",
   "serial_section",
   "serial_number",
   "column_break_serial",
@@ -136,8 +138,25 @@
    "fieldtype": "Data",
    "label": "Asset Category Code",
    "read_only": 1,
+   "hidden": 1,
+   "description": "Deprecated — no longer used in the item code"
+  },
+  {
+   "fieldname": "fiscal_year",
+   "fieldtype": "Link",
+   "label": "Fiscal Year",
+   "options": "Fiscal Year",
    "depends_on": "eval:doc.creation_type==\"Fixed Asset\"",
-   "description": "Auto-fetched from Asset Category master"
+   "mandatory_depends_on": "eval:doc.creation_type==\"Fixed Asset\"",
+   "description": "Fiscal Year for the asset code. Defaults to current FY; override for backdated items."
+  },
+  {
+   "fieldname": "fiscal_year_short",
+   "fieldtype": "Data",
+   "label": "FY Short Form",
+   "read_only": 1,
+   "depends_on": "eval:doc.creation_type==\"Fixed Asset\"",
+   "description": "Auto-derived from Fiscal Year (e.g. 2025-2026 becomes 25-26)"
   },
   {
    "fieldname": "serial_section",

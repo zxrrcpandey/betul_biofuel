@@ -1,6 +1,36 @@
+import re
+
 import frappe
 from frappe.model.document import Document
-from frappe.utils import getdate, nowtime, flt
+from frappe.utils import flt, getdate, nowtime
+
+
+def derive_fy_short(fiscal_year):
+	"""Convert 'YYYY-YYYY' fiscal year name to short form 'YY-YY'.
+
+	Falls back to year_start_date/year_end_date on the Fiscal Year doc if the
+	name does not match the standard pattern.
+	"""
+	if not fiscal_year:
+		return ""
+	name = str(fiscal_year).strip()
+	match = re.match(r"^(\d{4})-(\d{4})$", name)
+	if match:
+		return match.group(1)[-2:] + "-" + match.group(2)[-2:]
+	# Handle 'FY 2025-2026' or similar
+	match = re.search(r"(\d{4})\D+(\d{4})", name)
+	if match:
+		return match.group(1)[-2:] + "-" + match.group(2)[-2:]
+	# Last resort: read dates from Fiscal Year DocType
+	try:
+		fy = frappe.db.get_value(
+			"Fiscal Year", fiscal_year, ["year_start_date", "year_end_date"], as_dict=True
+		)
+		if fy and fy.year_start_date and fy.year_end_date:
+			return str(fy.year_start_date.year)[-2:] + "-" + str(fy.year_end_date.year)[-2:]
+	except Exception:
+		pass
+	return name
 
 
 class TSItemCreator(Document):
@@ -26,15 +56,20 @@ class TSItemCreator(Document):
 					"Company", self.company, "company_code"
 				) or ""
 
-		# Fixed Asset path: fetch asset_category_code and use it as category_code
+		# Fixed Asset path: use Fiscal Year short form as the category key
 		if self.creation_type == "Fixed Asset":
-			if self.asset_category and not self.asset_category_code:
-				self.asset_category_code = frappe.db.get_value(
-					"Asset Category", self.asset_category, "category_code"
-				) or ""
-			# Override item_group + category_code for asset path
+			# Derive FY short form (e.g. "2025-2026" -> "25-26")
+			if self.fiscal_year:
+				self.fiscal_year_short = derive_fy_short(self.fiscal_year)
+			else:
+				self.fiscal_year_short = ""
+			# Override item_group + category_code for asset path.
+			# category_code stores the FY short form so downstream serial and
+			# code-generation logic can stay generic.
 			self.item_group = "Fixed Assets"
-			self.category_code = self.asset_category_code or ""
+			self.category_code = self.fiscal_year_short or ""
+			# asset_category_code is no longer used in the code, clear it
+			self.asset_category_code = ""
 			return
 
 		if self.item_group and not self.category_code:
@@ -67,15 +102,18 @@ class TSItemCreator(Document):
 		# Read settings fresh (clear cache to avoid stale data in bulk imports)
 		frappe.clear_document_cache("TS Item Code Settings", "TS Item Code Settings")
 		settings = frappe.get_doc("TS Item Code Settings")
-		digits = max(int(settings.serial_digits or 3), 2)
+
+		# Fixed Asset format always uses 5 serial digits (FA-BBPL-25-26-00001)
+		is_asset = self.creation_type == "Fixed Asset"
+		digits = 5 if is_asset else max(int(settings.serial_digits or 3), 2)
 		sep = settings.default_separator or "-"
 
 		# Use character codes as the counter key (consistent regardless of display type)
 		company_key = frappe.db.get_value("Company", self.company, "company_code") or self.company_code
 
-		# Fixed Asset uses asset_category_code; Regular uses Item Group code
-		if self.creation_type == "Fixed Asset":
-			category_key = "ASSET_" + (self.asset_category_code or self.category_code or "")
+		# Counter key: Fixed Asset uses "FY_25-26"; Regular uses Item Group code
+		if is_asset:
+			category_key = "FY_" + (self.fiscal_year_short or self.category_code or "")
 		else:
 			category_key = frappe.db.get_value("Item Group", self.item_group, "category_code") or self.category_code
 
@@ -101,8 +139,8 @@ class TSItemCreator(Document):
 		# Skip past any existing items (handles previously created items from failed batches)
 		while True:
 			serial_str = str(next_serial).zfill(digits)
-			if self.creation_type == "Fixed Asset":
-				candidate_code = sep.join(["ASSET", company_key, self.asset_category_code or "", serial_str])
+			if is_asset:
+				candidate_code = sep.join(["FA", company_key, self.fiscal_year_short or "", serial_str])
 			else:
 				candidate_code = sep.join([self.company_code, self.category_code, serial_str])
 			if not frappe.db.exists("Item", candidate_code):
@@ -125,10 +163,10 @@ class TSItemCreator(Document):
 		settings = frappe.get_single("TS Item Code Settings")
 		sep = settings.default_separator or "-"
 
-		# Fixed Asset format: ASSET-{company_code}-{asset_category_code}-{serial}
+		# Fixed Asset format: FA-{company_code}-{fiscal_year_short}-{serial}
 		if self.creation_type == "Fixed Asset":
 			company_key = frappe.db.get_value("Company", self.company, "company_code") or self.company_code
-			parts = ["ASSET", company_key, self.asset_category_code or "", self.serial_number]
+			parts = ["FA", company_key, self.fiscal_year_short or "", self.serial_number]
 			self.generated_item_code = sep.join(parts)
 			return
 
@@ -157,15 +195,19 @@ class TSItemCreator(Document):
 				f"and set the <b>{'company_num_code' if self.company_code_type == 'Numerical' else 'company_code'}</b> field."
 			)
 
-		# Fixed Asset path: validate asset_category and its code
+		# Fixed Asset path: validate fiscal year + asset category
 		if self.creation_type == "Fixed Asset":
-			if not self.asset_category:
-				frappe.throw("Please select an Asset Category for Fixed Asset items.")
-			if not self.asset_category_code:
+			if not self.fiscal_year:
+				frappe.throw("Please select a Fiscal Year for Fixed Asset items.")
+			if not self.fiscal_year_short:
 				frappe.throw(
-					f"Category Code not found for Asset Category <b>{self.asset_category}</b>.<br>"
-					f"Go to <a href='/app/asset-category/{self.asset_category}'>Asset Category → {self.asset_category}</a> "
-					f"and set the <b>category_code</b> field."
+					f"Could not derive short form from Fiscal Year <b>{self.fiscal_year}</b>.<br>"
+					f"Expected format like <b>2025-2026</b>."
+				)
+			if not self.asset_category:
+				frappe.throw(
+					"Please select an Asset Category. This is required by ERPNext to "
+					"auto-create the Asset record when the Purchase Order is received."
 				)
 			# Skip variant validation for assets — they don't have variants
 			return
@@ -668,19 +710,20 @@ def get_next_serial_preview(company, item_group):
 
 
 @frappe.whitelist()
-def get_next_asset_serial_preview(company, asset_category):
+def get_next_asset_serial_preview(company, fiscal_year):
 	"""Get the next serial number for Fixed Asset preview (without incrementing).
-	Uses a separate counter key 'ASSET_{category_code}' to avoid clash with regular items."""
-	digits_val = frappe.db.get_single_value("TS Item Code Settings", "serial_digits")
-	digits = max(int(digits_val or 3), 2)
 
+	Counter key is 'FY_{fy_short}' per company. Resets naturally on each new
+	fiscal year. Returns 5-digit zero-padded serial.
+	"""
+	digits = 5
 	company_key = frappe.db.get_value("Company", company, "company_code") or ""
-	asset_cat_code = frappe.db.get_value("Asset Category", asset_category, "category_code") or ""
+	fy_short = derive_fy_short(fiscal_year)
 
-	if not company_key or not asset_cat_code:
+	if not company_key or not fy_short:
 		return str(1).zfill(digits)
 
-	category_key = "ASSET_" + asset_cat_code
+	category_key = "FY_" + fy_short
 
 	result = frappe.db.sql("""
 		SELECT last_serial FROM `tabTS Code Counter`
@@ -691,3 +734,25 @@ def get_next_asset_serial_preview(company, asset_category):
 		return str((result[0][0] or 0) + 1).zfill(digits)
 
 	return str(1).zfill(digits)
+
+
+@frappe.whitelist()
+def get_current_fiscal_year():
+	"""Return the Fiscal Year name for today's date, plus its short form."""
+	today = getdate()
+	fy_list = frappe.get_all(
+		"Fiscal Year",
+		filters={
+			"year_start_date": ["<=", today],
+			"year_end_date": [">=", today],
+		},
+		fields=["name", "year_start_date", "year_end_date"],
+		limit=1,
+	)
+	if not fy_list:
+		return {"fiscal_year": "", "fiscal_year_short": ""}
+	fy = fy_list[0]
+	return {
+		"fiscal_year": fy.name,
+		"fiscal_year_short": derive_fy_short(fy.name),
+	}

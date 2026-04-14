@@ -100,15 +100,25 @@
 				</div>
 			</div>
 
-			<!-- Fixed Asset: Asset Category selector -->
+			<!-- Fixed Asset: Fiscal Year selector -->
 			<div class="bbf-form-row bbf-asset-only" style="display:none;">
 				<div class="bbf-form-group">
-					<label class="bbf-label">Asset Category <span class="bbf-req">*</span></label>
-					<div class="bbf-field" id="bbf-asset-category-field"></div>
+					<label class="bbf-label">Fiscal Year <span class="bbf-req">*</span></label>
+					<div class="bbf-field" id="bbf-fiscal-year-field"></div>
+					<span class="bbf-hint">Defaults to current FY. Override for backdated items.</span>
 				</div>
 				<div class="bbf-form-group bbf-form-code">
-					<label class="bbf-label">Code</label>
-					<div class="bbf-code-badge" id="bbf-asset-category-code">---</div>
+					<label class="bbf-label">FY Short</label>
+					<div class="bbf-code-badge" id="bbf-fy-short">---</div>
+				</div>
+			</div>
+
+			<!-- Fixed Asset: Asset Category selector (required for ERPNext Asset creation) -->
+			<div class="bbf-form-row bbf-asset-only" style="display:none;">
+				<div class="bbf-form-group bbf-full">
+					<label class="bbf-label">Asset Category <span class="bbf-req">*</span></label>
+					<div class="bbf-field" id="bbf-asset-category-field"></div>
+					<span class="bbf-hint">Used by ERPNext to auto-create the Asset record when the PO is received. Not part of the item code.</span>
 				</div>
 			</div>
 

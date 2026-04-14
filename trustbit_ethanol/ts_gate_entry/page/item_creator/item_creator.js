@@ -26,6 +26,8 @@ class TSItemCreator {
 			creation_type: "Regular Item",
 			asset_category: "",
 			asset_category_code: "",
+			fiscal_year: "",
+			fiscal_year_short: "",
 			company: "",
 			company_code_type: "Numerical",
 			company_code: "",
@@ -107,7 +109,7 @@ class TSItemCreator {
 			me._fetch_category_code();
 		});
 
-		// Asset Category (only used for Fixed Asset creation type)
+		// Asset Category (still required — ERPNext uses it to auto-create Asset records on PO receipt)
 		this.asset_category_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Link", options: "Asset Category", placeholder: "Select Asset Category..." },
 			parent: this.$page.find("#bbf-asset-category-field"),
@@ -115,7 +117,23 @@ class TSItemCreator {
 		});
 		this._on_link_value(this.asset_category_field, (val) => {
 			me.state.asset_category = val;
-			me._fetch_asset_category_code();
+			// No longer drives the code — just validates the field
+			me._update_preview();
+		});
+
+		// Fiscal Year (drives the Fixed Asset code)
+		this.fiscal_year_field = frappe.ui.form.make_control({
+			df: {
+				fieldtype: "Link",
+				options: "Fiscal Year",
+				placeholder: "Select Fiscal Year...",
+			},
+			parent: this.$page.find("#bbf-fiscal-year-field"),
+			render_input: true,
+		});
+		this._on_link_value(this.fiscal_year_field, (val) => {
+			me.state.fiscal_year = val || "";
+			me._derive_fy_short();
 		});
 
 		// Item Name
@@ -390,6 +408,10 @@ class TSItemCreator {
 			if (this.state.company) {
 				this._fetch_company_code(this.state.company);
 			}
+			// Auto-default Fiscal Year to current FY if not already set
+			if (!this.state.fiscal_year) {
+				this._fetch_current_fiscal_year();
+			}
 		} else {
 			this.total_steps = 5;
 			this.state.maintain_stock = 1;
@@ -397,6 +419,64 @@ class TSItemCreator {
 
 		// Clear preview and badges
 		this._update_preview();
+	}
+
+	// ── Fiscal Year helpers ──
+	_fetch_current_fiscal_year() {
+		const me = this;
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.get_current_fiscal_year",
+			callback: (r) => {
+				if (r.message && r.message.fiscal_year) {
+					me.state.fiscal_year = r.message.fiscal_year;
+					me.state.fiscal_year_short = r.message.fiscal_year_short || "";
+					if (me.fiscal_year_field) {
+						me.fiscal_year_field.set_value(r.message.fiscal_year);
+					}
+					me._update_badge("#bbf-fy-short", me.state.fiscal_year_short);
+					me._fetch_serial_preview();
+				}
+			},
+		});
+	}
+
+	_derive_fy_short() {
+		if (!this.state.fiscal_year) {
+			this.state.fiscal_year_short = "";
+			this._update_badge("#bbf-fy-short", "");
+			this._update_preview();
+			return;
+		}
+		// Parse 'YYYY-YYYY' -> 'YY-YY'
+		const m = String(this.state.fiscal_year).match(/^(\d{4})-(\d{4})$/);
+		if (m) {
+			this.state.fiscal_year_short = m[1].slice(2) + "-" + m[2].slice(2);
+		} else {
+			// Fall back to server-side derivation
+			const me = this;
+			frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.get_next_asset_serial_preview",
+				args: { company: me.state.company || "", fiscal_year: me.state.fiscal_year },
+				callback: () => {
+					// Server derives internally; we still need FY short on client.
+					// As a safer fallback, try Fiscal Year doc via frappe.db
+					frappe.db.get_value("Fiscal Year", me.state.fiscal_year, ["year_start_date", "year_end_date"], (r) => {
+						if (r && r.year_start_date && r.year_end_date) {
+							const s = String(r.year_start_date).slice(2, 4);
+							const e = String(r.year_end_date).slice(2, 4);
+							me.state.fiscal_year_short = s + "-" + e;
+						} else {
+							me.state.fiscal_year_short = me.state.fiscal_year;
+						}
+						me._update_badge("#bbf-fy-short", me.state.fiscal_year_short);
+						me._fetch_serial_preview();
+					});
+				},
+			});
+			return;
+		}
+		this._update_badge("#bbf-fy-short", this.state.fiscal_year_short);
+		this._fetch_serial_preview();
 	}
 
 	// ── Variant Row Management ──
@@ -719,15 +799,15 @@ class TSItemCreator {
 	}
 
 	_fetch_serial_preview() {
-		// Fixed Asset path
+		// Fixed Asset path — counter per (Company, Fiscal Year)
 		if (this.state.creation_type === "Fixed Asset") {
-			if (!this.state.company || !this.state.asset_category_code) {
+			if (!this.state.company || !this.state.fiscal_year) {
 				this._update_preview();
 				return;
 			}
 			frappe.call({
 				method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.get_next_asset_serial_preview",
-				args: { company: this.state.company, asset_category: this.state.asset_category },
+				args: { company: this.state.company, fiscal_year: this.state.fiscal_year },
 				callback: (r) => {
 					if (r.message) {
 						this.state.serial_number = r.message;
@@ -770,24 +850,24 @@ class TSItemCreator {
 	_update_preview() {
 		const esc = frappe.utils.escape_html;
 
-		// Fixed Asset preview: ASSET-{CompanyCode}-{AssetCategoryCode}-{Serial}
+		// Fixed Asset preview: FA-{CompanyCode}-{FY short}-{Serial}
 		if (this.state.creation_type === "Fixed Asset") {
 			const cc = this.state.company_code;
-			const ac = this.state.asset_category_code;
+			const fy = this.state.fiscal_year_short;
 			const ser = this.state.serial_number;
-			if (!cc || !ac) {
+			if (!cc || !fy) {
 				this.$page.find("#bbf-live-code").html(
-					'<span class="bbf-code-placeholder">Select Company & Asset Category to begin</span>'
+					'<span class="bbf-code-placeholder">Select Company & Fiscal Year to begin</span>'
 				);
 				return;
 			}
-			const colored = `<span style="color:#fbd38d">ASSET</span>`
+			const colored = `<span style="color:#fbd38d">FA</span>`
 				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
 				+ `<span style="color:#90cdf4">${esc(cc)}</span>`
 				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fbd38d">${esc(ac)}</span>`
+				+ `<span style="color:#9ae6b4">${esc(fy)}</span>`
 				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fff">${esc(ser || "___")}</span>`;
+				+ `<span style="color:#fff">${esc(ser || "_____")}</span>`;
 			this.$page.find("#bbf-live-code").html(colored);
 			return;
 		}
@@ -898,14 +978,18 @@ class TSItemCreator {
 				frappe.show_alert({ message: "Company code not found. Set it on the Company master.", indicator: "red" });
 				return false;
 			}
-			// Fixed Asset path: validate asset_category instead of item_group
+			// Fixed Asset path: validate fiscal_year + asset_category
 			if (this.state.creation_type === "Fixed Asset") {
-				if (!this.state.asset_category) {
-					frappe.show_alert({ message: "Please select an Asset Category", indicator: "orange" });
+				if (!this.state.fiscal_year) {
+					frappe.show_alert({ message: "Please select a Fiscal Year", indicator: "orange" });
 					return false;
 				}
-				if (!this.state.asset_category_code) {
-					frappe.show_alert({ message: "Category code not found on Asset Category. Please set it.", indicator: "red" });
+				if (!this.state.fiscal_year_short) {
+					frappe.show_alert({ message: "Could not derive FY short form. Check Fiscal Year master.", indicator: "red" });
+					return false;
+				}
+				if (!this.state.asset_category) {
+					frappe.show_alert({ message: "Please select an Asset Category", indicator: "orange" });
 					return false;
 				}
 			} else {
@@ -999,16 +1083,18 @@ class TSItemCreator {
 		const s = this.state;
 		const is_asset = s.creation_type === "Fixed Asset";
 
-		// Build base code — assets use ASSET-{company}-{asset_cat}-{serial}
+		// Build base code — assets use FA-{company}-{fy_short}-{serial}
 		const base_code = is_asset
-			? ["ASSET", s.company_code, s.asset_category_code, s.serial_number || "___"].join("-")
+			? ["FA", s.company_code, s.fiscal_year_short, s.serial_number || "_____"].join("-")
 			: [s.company_code, s.category_code, s.serial_number || "___"].join("-");
 
 		this.$page.find("#bbf-review-company").text(s.company + " (" + s.company_code + ")");
 
 		// Item Group / Asset Category display
 		if (is_asset) {
-			this.$page.find("#bbf-review-category").text("Fixed Assets → " + s.asset_category + " (" + s.asset_category_code + ")");
+			this.$page.find("#bbf-review-category").text(
+				"Fixed Assets → " + s.asset_category + "  |  FY " + (s.fiscal_year_short || "?")
+			);
 		} else {
 			this.$page.find("#bbf-review-category").text(s.item_group + " (" + s.category_code + ")");
 		}
@@ -1110,8 +1196,9 @@ class TSItemCreator {
 
 		if (s.creation_type === "Fixed Asset") {
 			s.asset_category = me.asset_category_field.get_value() || s.asset_category;
-			if (!s.company || !s.asset_category) {
-				frappe.show_alert({ message: "Company or Asset Category is missing.", indicator: "red" });
+			s.fiscal_year = me.fiscal_year_field.get_value() || s.fiscal_year;
+			if (!s.company || !s.asset_category || !s.fiscal_year) {
+				frappe.show_alert({ message: "Company, Fiscal Year and Asset Category are all required.", indicator: "red" });
 				return;
 			}
 		} else {
@@ -1142,9 +1229,11 @@ class TSItemCreator {
 			company_code: s.company_code,
 			item_group: s.creation_type === "Fixed Asset" ? "Fixed Assets" : s.item_group,
 			category_code_type: s.category_code_type,
-			category_code: s.creation_type === "Fixed Asset" ? (s.asset_category_code || "") : s.category_code,
+			category_code: s.creation_type === "Fixed Asset" ? (s.fiscal_year_short || "") : s.category_code,
 			asset_category: s.asset_category || "",
-			asset_category_code: s.asset_category_code || "",
+			asset_category_code: "",
+			fiscal_year: s.fiscal_year || "",
+			fiscal_year_short: s.fiscal_year_short || "",
 			has_variant: s.has_variant ? 1 : 0,
 			variant_source: s.variant_source,
 			item_name: s.item_name,
