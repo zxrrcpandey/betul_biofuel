@@ -23,31 +23,10 @@ frappe.ui.form.on("TS Gate Entry", {
 			}
 		}
 
-		// Print button with format selection
+		// Custom Print PDF button (direct PDF download, bypasses /printview preview)
+		// Matches MR/PO pattern — single top-level button with format selection prompt.
 		if (frm.doc.docstatus === 1 && frm.doc.token_number) {
-			let _open_ge_print = function (format) {
-				window.open(
-					frappe.urllib.get_full_url(
-						"/printview?doctype=TS%20Gate%20Entry&name=" +
-						encodeURIComponent(frm.doc.name) +
-						"&format=" + encodeURIComponent(format)
-					), "_blank"
-				);
-			};
-			let is_g2_only = frappe.user.has_role("G2 Gate Operator")
-				&& !frappe.user.has_role("IT Head")
-				&& !frappe.user.has_role("System Manager");
-			if (is_g2_only) {
-				frappe.db.get_single_value("TS Settings", "g2_print_mode").then(mode => {
-					if (mode === "Detailed + Slip") {
-						frm.add_custom_button(__("Detailed"), () => _open_ge_print("TS Gate Entry Detailed"), __("Print"));
-					}
-					frm.add_custom_button(__("Slip"), () => _open_ge_print("TS Gate Entry Slip"), __("Print"));
-				});
-			} else {
-				frm.add_custom_button(__("Detailed"), () => _open_ge_print("TS Gate Entry Detailed"), __("Print"));
-				frm.add_custom_button(__("Slip"), () => _open_ge_print("TS Gate Entry Slip"), __("Print"));
-			}
+			_ts_add_gate_entry_print_button(frm);
 		}
 
 		// Stock Direction toggle — show/hide sections
@@ -384,4 +363,59 @@ function _ge_pd_apply(frm, access) {
 				frm.fields_dict[fn].$wrapper.find("input").css({"border-color": "#2490ef", "background": "#f0f7ff"});
 		});
 	} catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CUSTOM PRINT BUTTON — Direct PDF download (matches MR/PO pattern)
+//  Respects TS Settings.g2_print_mode for G2-only operators:
+//    - "Slip Only"      → only Slip available
+//    - "Detailed + Slip" (or unset) → both available
+// ═══════════════════════════════════════════════════════════
+
+function _ts_add_gate_entry_print_button(frm) {
+	// Hide Frappe's default print icon + menu item (same as MR/PO)
+	setTimeout(() => {
+		frm.page.wrapper.find('.btn[data-original-title="Print"], .btn-print-preview, a[title="Print"]').hide();
+		frm.page.menu_btn_group.find('.dropdown-item').each(function() {
+			if ($(this).text().trim() === "Print") $(this).hide();
+		});
+	}, 500);
+
+	// Determine which formats this user can access
+	const is_g2_only = frappe.user.has_role("G2 Gate Operator")
+		&& !frappe.user.has_role("IT Head")
+		&& !frappe.user.has_role("System Manager")
+		&& !frappe.user.has_role("Administrator");
+
+	const _open_prompt = (formats) => {
+		frappe.prompt({
+			fieldtype: "Select",
+			label: "Print Format",
+			fieldname: "format",
+			options: formats.join("\n"),
+			default: formats[0],
+			reqd: 1,
+		}, (values) => {
+			const url = `/api/method/frappe.utils.print_format.download_pdf?doctype=TS%20Gate%20Entry&name=${encodeURIComponent(frm.doc.name)}&format=${encodeURIComponent(values.format)}&no_letterhead=0`;
+			window.open(url, "_blank");
+		}, __("Select Print Format"), __("Download PDF"));
+	};
+
+	// Standalone top-level Print PDF button
+	frm.add_custom_button(__("🖨 Print PDF"), () => {
+		if (is_g2_only) {
+			// G2-only operators: check g2_print_mode setting
+			frappe.db.get_single_value("TS Settings", "g2_print_mode").then(mode => {
+				if (mode === "Slip Only") {
+					_open_prompt(["TS Gate Entry Slip"]);
+				} else {
+					// Detailed + Slip (default when unset)
+					_open_prompt(["TS Gate Entry Detailed", "TS Gate Entry Slip"]);
+				}
+			});
+		} else {
+			// IT Head / System Manager / Administrator: both formats always
+			_open_prompt(["TS Gate Entry Detailed", "TS Gate Entry Slip"]);
+		}
+	});
 }
