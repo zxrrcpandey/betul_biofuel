@@ -1876,7 +1876,12 @@ def patch_wkhtmltopdf_whitelist():
 
 
 def seed_global_defaults():
-	"""Set Global Defaults — default company, fiscal year, country, currency."""
+	"""Set Global Defaults — default company, fiscal year, country, currency.
+
+	Note: Frappe v15 Global Defaults DocType does NOT have `current_fiscal_year`.
+	Default fiscal year is stored in `tabDefaultValue` via `frappe.defaults.set_global_default`.
+	(Lesson 165 — fixed 15 Apr 2026, was AttributeError on every migrate.)
+	"""
 	gd = frappe.get_doc("Global Defaults")
 	changed = False
 
@@ -1886,12 +1891,6 @@ def seed_global_defaults():
 			gd.default_company = company
 			changed = True
 
-	if not gd.current_fiscal_year:
-		fy = frappe.get_all("Fiscal Year", filters={"disabled": 0}, fields=["name"], order_by="year_start_date desc", limit=1)
-		if fy:
-			gd.current_fiscal_year = fy[0].name
-			changed = True
-
 	if not gd.country:
 		gd.country = "India"
 		changed = True
@@ -1899,6 +1898,15 @@ def seed_global_defaults():
 	if changed:
 		gd.save(ignore_permissions=True)
 		frappe.db.commit()
+
+	# Default fiscal year — set via DefaultValue since the field was removed from Global Defaults
+	current_fy = frappe.defaults.get_global_default("fiscal_year")
+	if not current_fy:
+		fy = frappe.get_all("Fiscal Year", filters={"disabled": 0}, fields=["name"],
+			order_by="year_start_date desc", limit=1)
+		if fy:
+			frappe.defaults.set_global_default("fiscal_year", fy[0].name)
+			frappe.db.commit()
 
 
 def seed_navbar_website_settings():
