@@ -1,0 +1,1768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TS Approval Flow Explorer — Mockup</title>
+<style>
+:root {
+  --brand: #1e4d8c;
+  --brand-dark: #16355e;
+  --accent: #0ea5a4;
+  --bg: #f4f6fa;
+  --card: #ffffff;
+  --border: #e5e9f0;
+  --text: #1a202c;
+  --muted: #6b7280;
+  --green: #10b981;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --purple: #8b5cf6;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+  color: white;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header-logo {
+  width: 32px; height: 32px;
+  background: white;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--brand); font-weight: 700; font-size: 14px;
+}
+.header-title { font-size: 16px; font-weight: 600; }
+.header-subtitle { font-size: 11px; opacity: 0.8; }
+.header-right { font-size: 12px; opacity: 0.9; }
+
+/* Main container */
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+/* Selector bar */
+.selector-bar {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+.selector-bar label { font-weight: 600; color: var(--muted); }
+.selector-bar select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  font-size: 13px;
+  min-width: 320px;
+  cursor: pointer;
+}
+.selector-bar select:focus { outline: 2px solid var(--brand); }
+.btn-primary {
+  padding: 8px 16px;
+  background: var(--brand);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+.btn-primary:hover { background: var(--brand-dark); }
+.btn-ghost {
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--brand);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* Grid layout */
+.grid { display: grid; gap: 16px; }
+.grid-2 { grid-template-columns: 1fr 1fr; }
+.grid-3 { grid-template-columns: 2fr 1fr 1fr; }
+.grid-full { grid-template-columns: 1fr; }
+
+/* Card */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.card-badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  background: #f0f4f8;
+  color: var(--brand);
+}
+
+/* User card */
+.user-card {
+  background: linear-gradient(135deg, #eef2f9 0%, #fbfcfe 100%);
+  border: 1px solid #d8e1ee;
+  border-radius: 10px;
+  padding: 20px 24px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.avatar {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 700;
+  flex-shrink: 0;
+}
+.user-info { flex: 1; }
+.user-name { font-size: 18px; font-weight: 700; color: var(--text); }
+.user-email { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.user-roles { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+.role-chip {
+  padding: 3px 10px;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #334155;
+}
+.role-chip.executive { background: #fef3c7; border-color: #fbbf24; color: #92400e; }
+.role-chip.manager { background: #dbeafe; border-color: #60a5fa; color: #1e40af; }
+.role-chip.operational { background: #d1fae5; border-color: #34d399; color: #065f46; }
+
+.user-stats {
+  display: flex;
+  gap: 18px;
+  padding-left: 20px;
+  border-left: 1px solid #cbd5e1;
+}
+.stat { text-align: center; }
+.stat-value {
+  font-size: 22px; font-weight: 700; color: var(--brand-dark);
+  line-height: 1;
+}
+.stat-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-top: 4px;
+  letter-spacing: 0.3px;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+th {
+  text-align: left;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+  font-weight: 600;
+}
+td {
+  padding: 10px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f9fafb; }
+
+.cc-name { font-weight: 600; color: var(--text); }
+.cc-route { color: var(--muted); font-size: 11px; }
+.flow-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.flow-badge.standard { background: #e0e7ff; color: #3730a3; }
+.flow-badge.direct { background: #fce7f3; color: #9d174d; }
+
+.action-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.action-badge.review { background: #fef3c7; color: #92400e; }
+.action-badge.final { background: #d1fae5; color: #065f46; }
+.action-badge.approve { background: #dbeafe; color: #1e40af; }
+.action-badge.creator { background: #ede9fe; color: #5b21b6; }
+.action-badge.notify { background: #f3f4f6; color: #4b5563; }
+
+/* Pending rows */
+.pending-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  gap: 12px;
+}
+.pending-row:last-child { border-bottom: none; }
+.pending-row:hover { background: #fef9e7; }
+.pending-doc {
+  font-family: "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  color: var(--brand);
+  font-weight: 600;
+  min-width: 170px;
+}
+.pending-meta { flex: 1; font-size: 12px; color: var(--muted); }
+.pending-amount { font-weight: 700; color: var(--text); min-width: 90px; text-align: right; }
+.pending-days {
+  min-width: 70px;
+  text-align: right;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.pending-days.fresh { background: #d1fae5; color: #065f46; }
+.pending-days.aging { background: #fef3c7; color: #92400e; }
+.pending-days.stuck { background: #fee2e2; color: #991b1b; }
+
+.empty-state {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Panel notes */
+.note {
+  padding: 12px 14px;
+  background: #eff6ff;
+  border-left: 3px solid var(--brand);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #1e3a5f;
+  margin-top: 10px;
+}
+.note strong { color: var(--brand-dark); }
+.note.warn { background: #fef3c7; border-left-color: var(--amber); color: #78350f; }
+.note.info { background: #f0fdfa; border-left-color: var(--accent); color: #065f46; }
+
+/* Timeline */
+.timeline { position: relative; padding-left: 20px; }
+.timeline::before {
+  content: ""; position: absolute; left: 6px; top: 4px; bottom: 4px;
+  width: 2px; background: var(--border);
+}
+.timeline-item {
+  position: relative;
+  padding: 6px 0 10px 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.timeline-item:last-child { border-bottom: none; }
+.timeline-item::before {
+  content: ""; position: absolute; left: -18px; top: 10px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--brand); border: 2px solid white;
+}
+.timeline-item.approved::before { background: var(--green); }
+.timeline-item.rejected::before { background: var(--red); }
+.timeline-item.revised::before { background: var(--amber); }
+.timeline-item.held::before { background: var(--purple); }
+.timeline-time { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+.timeline-text { font-size: 12px; margin-top: 2px; }
+.timeline-text strong { color: var(--brand-dark); }
+
+/* Path tracer */
+.tracer-input {
+  display: flex; gap: 10px; margin-bottom: 14px;
+}
+.tracer-input select { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; }
+.flow-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0;
+  gap: 8px;
+  overflow-x: auto;
+}
+.flow-node {
+  background: white;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  text-align: center;
+  min-width: 130px;
+  flex-shrink: 0;
+}
+.flow-node.done { border-color: var(--green); background: #ecfdf5; }
+.flow-node.current { border-color: var(--amber); background: #fef3c7; animation: pulse 2s infinite; }
+.flow-node.pending { border-color: var(--border); background: #f9fafb; color: var(--muted); }
+.flow-node.you { border-color: var(--brand); background: #eff6ff; border-width: 3px; }
+.flow-node-step { font-size: 9px; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.flow-node-role { font-size: 12px; font-weight: 700; margin-top: 3px; }
+.flow-node-user { font-size: 10px; margin-top: 2px; color: var(--muted); }
+.flow-arrow { color: var(--muted); font-size: 18px; flex-shrink: 0; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+}
+
+.tracer-summary {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.tracer-summary div { margin: 3px 0; }
+.tracer-summary .label { color: var(--muted); display: inline-block; min-width: 120px; font-weight: 600; text-transform: uppercase; font-size: 10px; }
+
+/* Explainer cards */
+.explain-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.explain-card {
+  padding: 12px 14px;
+  background: #fafafa;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.explain-card strong { display: block; font-size: 11px; color: var(--brand-dark); margin-bottom: 4px; text-transform: uppercase; }
+.explain-card p { font-size: 11px; color: var(--muted); }
+
+.footer {
+  margin-top: 24px;
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Tabs */
+.tabs-bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.tab {
+  padding: 9px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.tab.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+.tab:hover { color: var(--brand-dark); }
+
+/* Flow gallery cards */
+.flow-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: #fafbfc;
+}
+.flow-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.flow-card-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--brand-dark);
+}
+.flow-card-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+.flow-card-tags { display: flex; gap: 6px; }
+.flow-tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.flow-tag.category { background: #e0e7ff; color: #3730a3; }
+.flow-tag.amount { background: #f3f4f6; color: #374151; }
+.flow-tag.steps { background: #fef3c7; color: #92400e; }
+.flow-tag.route { background: #d1fae5; color: #065f46; }
+
+.flow-mini-diagram {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+.mini-node {
+  padding: 6px 12px;
+  background: white;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  text-align: center;
+  min-width: 110px;
+}
+.mini-node.review { border-color: #fbbf24; background: #fffbeb; }
+.mini-node.approve { border-color: #60a5fa; background: #eff6ff; }
+.mini-node.final { border-color: #34d399; background: #ecfdf5; }
+.mini-node.manual { border-color: #a78bfa; background: #f5f3ff; }
+.mini-node-label { font-weight: 700; color: var(--text); }
+.mini-node-type {
+  font-size: 9px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 2px;
+  letter-spacing: 0.3px;
+}
+.mini-arrow { color: var(--muted); font-size: 14px; }
+
+.cc-list {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: white;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+}
+.cc-list strong { color: var(--text); }
+
+/* Explainer cards (how it works) */
+.explainer-body {
+  padding: 16px;
+  background: #fafbfc;
+  border-radius: 8px;
+}
+.explainer-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand-dark);
+  margin-bottom: 6px;
+}
+.explainer-desc {
+  font-size: 12px;
+  color: #475569;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+.scenario-box {
+  padding: 10px 14px;
+  background: #fef3c7;
+  border-left: 3px solid var(--amber);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #78350f;
+  margin-bottom: 14px;
+}
+.scenario-box strong { color: #92400e; }
+
+.before-after {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 16px 0;
+}
+@media (max-width: 800px) {
+  .before-after { grid-template-columns: 1fr; }
+}
+.ba-col {
+  padding: 12px 14px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.ba-col h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  letter-spacing: 0.4px;
+  font-weight: 700;
+}
+.ba-col h4.before { color: #64748b; }
+.ba-col h4.after { color: var(--brand); }
+.ba-node {
+  padding: 8px 10px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  border: 2px solid var(--border);
+  background: #f9fafb;
+}
+.ba-node.current { border-color: var(--amber); background: #fef3c7; font-weight: 700; }
+.ba-node.done { border-color: var(--green); background: #ecfdf5; }
+.ba-node.skipped { border-color: #a78bfa; background: #f5f3ff; color: #5b21b6; }
+.ba-node.queued { color: var(--muted); }
+.ba-node.blocked { border-color: var(--red); background: #fee2e2; color: #991b1b; }
+.ba-note {
+  font-size: 9px;
+  font-style: italic;
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.code-ref {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 4px;
+  font-family: "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  overflow-x: auto;
+}
+
+/* Action playback */
+.action-chip-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.action-chip {
+  padding: 7px 14px;
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  font-family: inherit;
+}
+.action-chip.active { background: var(--brand); color: white; border-color: var(--brand-dark); }
+.action-chip:hover:not(.active) { background: #e2e8f0; }
+
+.action-body {
+  padding: 16px;
+  background: #fafbfc;
+  border-radius: 8px;
+}
+.action-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand-dark);
+  margin-bottom: 10px;
+}
+.action-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+@media (max-width: 800px) {
+  .action-meta { grid-template-columns: 1fr; }
+}
+.action-meta-cell {
+  padding: 10px 12px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.action-meta-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+.action-meta-value {
+  font-size: 12px;
+  color: var(--text);
+}
+.action-changes, .action-notifs {
+  background: white;
+  border-radius: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  margin-top: 10px;
+}
+.action-changes h5, .action-notifs h5 {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.action-changes ul, .action-notifs ul {
+  list-style: none;
+  padding: 0;
+}
+.action-changes li {
+  padding: 5px 0;
+  font-size: 11px;
+  font-family: "SF Mono", Menlo, monospace;
+  color: #334155;
+  border-bottom: 1px dashed #f1f5f9;
+}
+.action-changes li:last-child { border-bottom: none; }
+.action-changes li::before { content: "▸ "; color: var(--brand); font-weight: 700; }
+.action-notifs li {
+  padding: 5px 0;
+  font-size: 11px;
+  color: #334155;
+  border-bottom: 1px dashed #f1f5f9;
+}
+.action-notifs li:last-child { border-bottom: none; }
+.action-notifs li::before { content: "🔔 "; }
+
+/* Mockup banner */
+.mockup-banner {
+  background: #fef3c7;
+  border-bottom: 2px solid var(--amber);
+  padding: 8px 24px;
+  font-size: 12px;
+  color: #78350f;
+  text-align: center;
+  font-weight: 600;
+}
+</style>
+</head>
+<body>
+
+<div class="mockup-banner">
+  MOCKUP PREVIEW — TS Approval Flow Explorer (not live). Switching user below shows how panels change with real demo data.
+</div>
+
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo">TS</div>
+    <div>
+      <div class="header-title">Approval Flow Explorer</div>
+      <div class="header-subtitle">Betul Bio Fuel Pvt. Ltd. — MR / PO / CC debug tool</div>
+    </div>
+  </div>
+  <div class="header-right">Administrator &nbsp;|&nbsp; 2026-04-14 15:42</div>
+</div>
+
+<div class="container">
+
+  <!-- User selector -->
+  <div class="selector-bar">
+    <label>Select User:</label>
+    <select id="userSelect" onchange="switchUser(this.value)">
+      <option value="generalmanager">Brijeshwar Dubey — generalmanager@ (AVP — 29 CCs)</option>
+      <option value="dgm">S. N. Shukla — dgm.operation@ (Process Head — 17 CCs)</option>
+      <option value="powerhouse">Akash Jain — powerhouse@ (Boiler Head — 16 CCs)</option>
+      <option value="ceo">Pradeep Modi — pradeep.modi@ (CEO — 4 CCs + PO routing)</option>
+      <option value="production">Rakesh Kumar — production.navaahar@ (CF Dept Head — 2 CCs)</option>
+      <option value="purchase">Rohit Sharma — purchase@ (Purchase User — 9 CCs)</option>
+    </select>
+    <button class="btn-primary">Load Flow</button>
+    <button class="btn-ghost">Export PDF</button>
+    <button class="btn-ghost">Refresh</button>
+  </div>
+
+  <!-- User card -->
+  <div class="user-card" id="userCard">
+    <!-- populated by JS -->
+  </div>
+
+  <!-- Row 1: MR Creation / MR Review/Approval -->
+  <div class="grid grid-2" style="margin-bottom: 16px;">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">MR Creation Authority</div>
+        <div class="card-badge" id="createCount">0 CCs</div>
+      </div>
+      <div id="createTable"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">MR Review / Approval Authority</div>
+        <div class="card-badge" id="approveCount">0 CCs</div>
+      </div>
+      <div id="approveTable"></div>
+    </div>
+  </div>
+
+  <!-- Row 2: PO Approval Authority -->
+  <div class="card" style="margin-bottom: 16px;">
+    <div class="card-header">
+      <div class="card-title">PO Approval Authority (via System Roles)</div>
+      <div class="card-badge" id="poCount">—</div>
+    </div>
+    <div id="poTable"></div>
+  </div>
+
+  <!-- Row 3: Live Pending + Why No Notification -->
+  <div class="grid grid-2" style="margin-bottom: 16px;">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🔴 Live Pending With You</div>
+        <div class="card-badge" id="pendingCount">0 items</div>
+      </div>
+      <div id="pendingList"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Why You Didn't Get Notified</div>
+        <div class="card-badge">Debug helper</div>
+      </div>
+      <div class="explain-grid">
+        <div class="explain-card">
+          <strong>CC Config Gap</strong>
+          <p>You have the role but aren't in the CC Approval Config user list for that cost center — system skips you.</p>
+        </div>
+        <div class="explain-card">
+          <strong>Self-Submit Skip</strong>
+          <p>You submitted the doc yourself, so your own step is auto-skipped (prevents self-approval).</p>
+        </div>
+        <div class="explain-card">
+          <strong>Higher-Level Override</strong>
+          <p>You CAN act because you hold a higher step's role, but you aren't auto-notified unless it's your current step.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 4: Recent Activity + Notification History -->
+  <div class="grid grid-2" style="margin-bottom: 16px;">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Recent Activity (Last 14 days)</div>
+        <div class="card-badge">Audit log</div>
+      </div>
+      <div id="timeline" class="timeline"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Notification History</div>
+        <div class="card-badge">Bell feed</div>
+      </div>
+      <div id="notifications"></div>
+    </div>
+  </div>
+
+  <!-- Row 5: Path Tracer -->
+  <div class="card" style="margin-bottom: 16px;">
+    <div class="card-header">
+      <div class="card-title">Path Tracer — Interactive Flow Viewer</div>
+      <div class="card-badge">Click any pending doc above</div>
+    </div>
+    <div class="tracer-input">
+      <select id="tracerDoc" onchange="traceDoc(this.value)">
+        <option value="MAT-MR-2026-00063">MAT-MR-2026-00063 — Process WTP (₹45,230) — Pending Dept. Head</option>
+        <option value="MAT-MR-2026-00061">MAT-MR-2026-00061 — BOILER BOP (₹12,500) — Pending AVP</option>
+        <option value="PUR-ORD-2026-00040">PUR-ORD-2026-00040 — Store Above 6L (₹7,25,000) — Pending CEO</option>
+        <option value="PUR-ORD-2026-00038">PUR-ORD-2026-00038 — Capex Above 6L (₹12,50,000) — Pending MD</option>
+      </select>
+      <button class="btn-primary">Trace</button>
+    </div>
+    <div id="flowDiagram"></div>
+    <div id="tracerSummary" class="tracer-summary"></div>
+  </div>
+
+  <!-- Row 6: Configured Flows Gallery -->
+  <div class="card" style="margin-bottom: 16px;">
+    <div class="card-header">
+      <div class="card-title">📐 Configured Flows — How the System Is Set Up</div>
+      <div class="card-badge">10 PO rules + 5 MR routes</div>
+    </div>
+    <div class="tabs-bar">
+      <button class="tab active" id="tabPo" onclick="showFlowTab('po')">PO Approval Rules (10)</button>
+      <button class="tab" id="tabMr" onclick="showFlowTab('mr')">MR Approval Routes (5)</button>
+    </div>
+    <div id="flowGallery"></div>
+  </div>
+
+  <!-- Row 7: How It Works -->
+  <div class="card" style="margin-bottom: 16px;">
+    <div class="card-header">
+      <div class="card-title">🧠 How It Works — Visual Explainers</div>
+      <div class="card-badge">Tricky logic made simple</div>
+    </div>
+    <div class="tabs-bar">
+      <button class="tab active" id="exTab-self-skip" onclick="showExplainer('self-skip')">Self-Skip</button>
+      <button class="tab" id="exTab-higher-level" onclick="showExplainer('higher-level')">Higher-Level Override</button>
+      <button class="tab" id="exTab-cc-skip" onclick="showExplainer('cc-skip')">CC Config Skip (MR)</button>
+      <button class="tab" id="exTab-amount-tamper" onclick="showExplainer('amount-tamper')">Amount Tamper Check</button>
+      <button class="tab" id="exTab-budget-block" onclick="showExplainer('budget-block')">Budget Block (PO)</button>
+    </div>
+    <div id="explainerContent"></div>
+  </div>
+
+  <!-- Row 8: Action Playback -->
+  <div class="card" style="margin-bottom: 16px;">
+    <div class="card-header">
+      <div class="card-title">🎬 Action Playback — What Each Button Does</div>
+      <div class="card-badge">9 approval actions</div>
+    </div>
+    <div class="action-chip-bar">
+      <button class="action-chip active" id="actTab-submit" onclick="playAction('submit')">Submit for Approval</button>
+      <button class="action-chip" id="actTab-approve" onclick="playAction('approve')">Approve / Forward</button>
+      <button class="action-chip" id="actTab-final-approve" onclick="playAction('final-approve')">Final Approve</button>
+      <button class="action-chip" id="actTab-revise" onclick="playAction('revise')">Revise</button>
+      <button class="action-chip" id="actTab-reject" onclick="playAction('reject')">Reject</button>
+      <button class="action-chip" id="actTab-hold" onclick="playAction('hold')">Hold (MR)</button>
+      <button class="action-chip" id="actTab-resume" onclick="playAction('resume')">Resume (MR)</button>
+      <button class="action-chip" id="actTab-resubmit" onclick="playAction('resubmit')">Resubmit</button>
+      <button class="action-chip" id="actTab-send-to-md" onclick="playAction('send-to-md')">Send to MD (PO)</button>
+    </div>
+    <div id="actionContent"></div>
+  </div>
+
+</div>
+
+<div class="footer">
+  TS Approval Flow Explorer v0.1 MOCKUP &nbsp;•&nbsp; betulbiofuel.mkasystem.com &nbsp;•&nbsp; Built from 5-agent analysis of MR/PO/CC approval system
+</div>
+
+<script>
+// Mock data from the 5 agents' reports
+const users = {
+  generalmanager: {
+    name: "Brijeshwar Dubey",
+    email: "generalmanager@betulbiofuel.com",
+    initials: "BD",
+    roles: [["AVP", "executive"], ["Department Head", "manager"], ["Purchase User", "operational"]],
+    stats: { creator: 0, reviewer: 0, finalApprover: 29 },
+    create: [],
+    approve: [
+      ["PROCESS ACC - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["PROCESS BOP - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["PROCESS DRYER - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["PROCESS ISGEK - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["PROCESS MILLING - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["PROCESS STRUCTURE - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["Process ( WTP/CPU, BIOLOGICAL) - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["BOILER BOP - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["BOILER ESP - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["BOILER FUEL ASH - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["BOILER THERMEX - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["BOILER TRIVENI - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["CBG Farming - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["CF Production - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["CF Raw Material - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["Civil - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["HR / Safety - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["MISCELLANEOUS - BBPL", "AVP MR App", "2", "Final Approve"],
+      ["... 11 more CCs", "", "", ""],
+    ],
+    po: [
+      { category: "—", band: "—", step: "—", action: "—", note: "No PO approval rule maps to AVP role directly. AVP handles MR final approval only." },
+    ],
+    pending: [
+      ["MAT-MR-2026-00063", "Process ( WTP/CPU, BIOLOGICAL) - BBPL • Submitted by dgm.operation@", "₹ 45,230", 2],
+      ["MAT-MR-2026-00061", "BOILER BOP - BBPL • Submitted by powerhouse@", "₹ 12,500", 5],
+      ["MAT-MR-2026-00058", "CBG Farming - BBPL • Submitted by hr.navaahar@", "₹ 78,900", 8],
+      ["MAT-MR-2026-00052", "MISCELLANEOUS - BBPL • Submitted by hr.navaahar@", "₹ 3,400", 12],
+    ],
+    timeline: [
+      { time: "Today 10:12", cls: "approved", text: "<strong>Approved</strong> MAT-MR-2026-00060 (Process ACC) at Step 2 — AVP Final Approve" },
+      { time: "Yesterday 16:45", cls: "revised", text: "<strong>Revised</strong> MAT-MR-2026-00059 (HR / Safety) — reason: 'Wrong cost center'" },
+      { time: "2 days ago", cls: "approved", text: "<strong>Final Approved</strong> MAT-MR-2026-00056 (CBG Farming)" },
+      { time: "5 days ago", cls: "rejected", text: "<strong>Rejected</strong> MAT-MR-2026-00051 (MISCELLANEOUS) — reason: 'Not budgeted'" },
+    ],
+    notifications: [
+      "🔔 New MR pending final approval — MAT-MR-2026-00063 (Process WTP) · ₹45,230 · 2 days ago",
+      "🔔 Revised by dgm.operation — MAT-MR-2026-00058 · 3 days ago",
+      "🔔 Submitted for approval — MAT-MR-2026-00061 (BOILER BOP) · 5 days ago",
+    ],
+  },
+  dgm: {
+    name: "S. N. Shukla",
+    email: "dgm.operation@betulbiofuel.com",
+    initials: "SS",
+    roles: [["Department Head", "manager"], ["Purchase User", "operational"]],
+    stats: { creator: 7, reviewer: 10, finalApprover: 0 },
+    create: [
+      ["PROCESS ACC - BBPL", "AVP MR App", "Standard"],
+      ["PROCESS BOP - BBPL", "AVP MR App", "Standard"],
+      ["PROCESS DRYER - BBPL", "AVP MR App", "Standard"],
+      ["PROCESS ISGEK - BBPL", "AVP MR App", "Standard"],
+      ["PROCESS MILLING - BBPL", "AVP MR App", "Standard"],
+      ["PROCESS STRUCTURE - BBPL", "AVP MR App", "Standard"],
+      ["Process ( WTP/CPU, BIOLOGICAL) - BBPL", "AVP MR App", "Standard"],
+    ],
+    approve: [
+      ["PROCESS ACC - BBPL", "AVP MR App", "1", "Review"],
+      ["PROCESS BOP - BBPL", "AVP MR App", "1", "Review"],
+      ["PROCESS DRYER - BBPL", "AVP MR App", "1", "Review"],
+      ["PROCESS ISGEK - BBPL", "AVP MR App", "1", "Review"],
+      ["PROCESS MILLING - BBPL", "AVP MR App", "1", "Review"],
+      ["PROCESS STRUCTURE - BBPL", "AVP MR App", "1", "Review"],
+      ["Process ( WTP/CPU) - BBPL", "AVP MR App", "1", "Review"],
+      ["Capex Process - BBPL", "CAPEX", "1", "Review"],
+      ["Mechanical Process - BBPL", "AVP MR App", "1", "Review"],
+      ["Automation Process - BBPL", "AVP MR App", "1", "Review"],
+    ],
+    po: [
+      { category: "—", band: "—", step: "—", action: "—", note: "Department Head role does not appear in any PO approval rule. PO flows go PM→CEO→MD." },
+    ],
+    pending: [
+      ["MAT-MR-2026-00063", "Process ( WTP/CPU, BIOLOGICAL) - BBPL • You created & submitted — now pending your Review", "₹ 45,230", 2, "warn"],
+      ["MAT-MR-2026-00057", "PROCESS ACC - BBPL • Submitted by someone else", "₹ 8,900", 1],
+    ],
+    timeline: [
+      { time: "Today 09:00", cls: "approved", text: "<strong>Reviewed & Forwarded</strong> MAT-MR-2026-00060 to AVP" },
+      { time: "Today 08:45", cls: "approved", text: "<strong>Created + Submitted</strong> MAT-MR-2026-00063 — Process WTP" },
+      { time: "Yesterday 14:20", cls: "held", text: "<strong>Held</strong> MAT-MR-2026-00055 — reason: 'Waiting for vendor quote'" },
+      { time: "2 days ago", cls: "approved", text: "<strong>Resumed</strong> MAT-MR-2026-00055 — back in approval queue" },
+    ],
+    notifications: [
+      "🔔 Your MR MAT-MR-2026-00059 was approved by AVP · today",
+      "🔔 MR MAT-MR-2026-00057 pending your review · 1 day ago",
+      "🔔 Your MR MAT-MR-2026-00055 was revised — see reason · 3 days ago",
+    ],
+  },
+  powerhouse: {
+    name: "Akash Jain",
+    email: "powerhouse@betulbiofuel.com",
+    initials: "AJ",
+    roles: [["Department Head", "manager"], ["Purchase User", "operational"]],
+    stats: { creator: 8, reviewer: 8, finalApprover: 0 },
+    create: [
+      ["BOILER BOP - BBPL", "AVP MR App", "Standard"],
+      ["BOILER ESP - BBPL", "AVP MR App", "Standard"],
+      ["BOILER FUEL ASH - BBPL", "AVP MR App", "Standard"],
+      ["BOILER THERMEX - BBPL", "AVP MR App", "Standard"],
+      ["BOILER TRIVENI - BBPL", "AVP MR App", "Standard"],
+      ["Mechanical Boiler - BBPL", "AVP MR App", "Standard"],
+      ["Capex Boiler - BBPL", "CAPEX", "Standard"],
+      ["TRIVENI TURBINE - BBPL", "AVP MR App", "Standard"],
+    ],
+    approve: [
+      ["BOILER BOP - BBPL", "AVP MR App", "1", "Review"],
+      ["BOILER ESP - BBPL", "AVP MR App", "1", "Review"],
+      ["BOILER FUEL ASH - BBPL", "AVP MR App", "1", "Review"],
+      ["BOILER THERMEX - BBPL", "AVP MR App", "1", "Review"],
+      ["BOILER TRIVENI - BBPL", "AVP MR App", "1", "Review"],
+      ["Mechanical Boiler - BBPL", "AVP MR App", "1", "Review"],
+      ["Capex Boiler - BBPL", "CAPEX", "1", "Review"],
+      ["TRIVENI TURBINE - BBPL", "AVP MR App", "1", "Review"],
+    ],
+    po: [
+      { category: "—", band: "—", step: "—", action: "—", note: "Department Head role does not appear in any PO approval rule." },
+    ],
+    pending: [
+      ["MAT-MR-2026-00061", "BOILER BOP - BBPL • You created & submitted — pending your Review", "₹ 12,500", 0, "warn"],
+    ],
+    timeline: [
+      { time: "Today 11:30", cls: "approved", text: "<strong>Created + Submitted</strong> MAT-MR-2026-00061 — BOILER BOP" },
+      { time: "3 days ago", cls: "approved", text: "<strong>Reviewed & Forwarded</strong> MAT-MR-2026-00048 (BOILER ESP) to AVP" },
+      { time: "5 days ago", cls: "approved", text: "<strong>Final Approved</strong> — received by AVP" },
+    ],
+    notifications: [
+      "🔔 MR MAT-MR-2026-00061 pending your review · today",
+      "🔔 Your MR MAT-MR-2026-00048 was approved by AVP · 3 days ago",
+    ],
+  },
+  ceo: {
+    name: "Pradeep Modi",
+    email: "pradeep.modi@betulbiofuel.com",
+    initials: "PM",
+    roles: [["CEO", "executive"], ["MD", "executive"], ["IT Head", "manager"], ["Purchase User", "operational"]],
+    stats: { creator: 1, reviewer: 0, finalApprover: 3 },
+    create: [
+      ["RTS Betul - BBPL", "— (Direct PO)", "Direct PO"],
+    ],
+    approve: [
+      ["Capex - BBPL", "CAPEX", "2", "Final Approve"],
+      ["CBG CAPEX - BBPL", "CAPEX", "2", "Final Approve"],
+      ["Delhi Office - BBPL", "CAPEX", "2", "Final Approve"],
+    ],
+    po: [
+      { category: "Store", band: "Under 1L", step: "1", action: "Final Approve", note: "Single-step rule → you approve directly" },
+      { category: "Store", band: "1L–6L", step: "2", action: "Final Approve", note: "After PM Review" },
+      { category: "Store", band: "Above 6L", step: "2", action: "Review", note: "Forwards to MD Final Approve (manual trigger)" },
+      { category: "Capex", band: "Under 1L", step: "1", action: "Final Approve", note: "Single-step" },
+      { category: "Capex", band: "1L–6L", step: "2", action: "Final Approve", note: "After PM Review" },
+      { category: "Capex", band: "Above 6L", step: "2", action: "Review", note: "Forwards to MD" },
+      { category: "Grain", band: "Under 6L", step: "2", action: "Final Approve", note: "After Grain PM Review" },
+      { category: "Grain", band: "Above 6L", step: "2", action: "Review", note: "Forwards to MD" },
+      { category: "Coal", band: "Under 30L", step: "1", action: "Final Approve", note: "Single-step" },
+      { category: "Coal", band: "Above 30L", step: "1", action: "Review", note: "Forwards to MD" },
+    ],
+    pending: [
+      ["PUR-ORD-2026-00040", "Store Above 6L • Supplier: XYZ Chemicals • Pending your Review → will forward to MD", "₹ 7,25,000", 3],
+      ["PUR-ORD-2026-00038", "Capex 1L–6L • Submitted by Purchase Manager", "₹ 4,80,000", 1],
+      ["MAT-MR-2026-00059", "Capex - BBPL • CAPEX route • Pending your Final Approve", "₹ 2,50,000", 4],
+    ],
+    timeline: [
+      { time: "Today 14:00", cls: "approved", text: "<strong>Final Approved</strong> PUR-ORD-2026-00037 (Store Under 1L) — ₹95,000" },
+      { time: "Today 11:20", cls: "approved", text: "<strong>Reviewed</strong> PUR-ORD-2026-00036 (Coal Above 30L) — forwarded to MD" },
+      { time: "Yesterday", cls: "revised", text: "<strong>Revised</strong> PUR-ORD-2026-00034 — reason: 'Price negotiation needed'" },
+      { time: "2 days ago", cls: "approved", text: "<strong>Budget Override</strong> on PUR-ORD-2026-00033 — exceeded by ₹50K, approved anyway" },
+    ],
+    notifications: [
+      "🔔 3 POs pending your review · today",
+      "🔔 PO PUR-ORD-2026-00040 escalated — waiting 3 days · today",
+      "🔔 MR MAT-MR-2026-00059 pending CAPEX final approval · 4 days ago",
+    ],
+  },
+  production: {
+    name: "Rakesh Kumar",
+    email: "production.navaahar@betulbiofuel.com",
+    initials: "RK",
+    roles: [["Department Head", "manager"], ["Manufacturing Manager", "operational"], ["Stock User", "operational"]],
+    stats: { creator: 2, reviewer: 2, finalApprover: 0 },
+    create: [
+      ["CF Production - BBPL", "AVP MR App", "Standard"],
+      ["CF Raw Material - BBPL", "AVP MR App", "Standard"],
+    ],
+    approve: [
+      ["CF Production - BBPL", "AVP MR App", "1", "Review"],
+      ["CF Raw Material - BBPL", "AVP MR App", "1", "Review"],
+    ],
+    po: [
+      { category: "—", band: "—", step: "—", action: "—", note: "Department Head role does not map to any PO approval rule." },
+    ],
+    pending: [],
+    timeline: [
+      { time: "2 days ago", cls: "approved", text: "<strong>Department Head role granted</strong> via audit fix — can now review CF CCs" },
+    ],
+    notifications: [
+      "🔔 No pending approvals",
+    ],
+  },
+  purchase: {
+    name: "Rohit Sharma",
+    email: "purchase@betulbiofuel.com",
+    initials: "RS",
+    roles: [["Purchase User", "operational"], ["Purchase Manager", "manager"], ["Department Head", "manager"]],
+    stats: { creator: 5, reviewer: 2, finalApprover: 0 },
+    create: [
+      ["Bhopal Office - BBPL", "AVP MR App", "Standard"],
+      ["Capex - BBPL", "CAPEX", "Standard"],
+      ["CBG CAPEX - BBPL", "CAPEX", "Standard"],
+      ["DG - BBPL", "AVP MR App", "Standard"],
+      ["LIASING - BBPL", "AVP MR App", "Standard"],
+      ["Machinery - BBPL", "— (Direct PO)", "Direct PO"],
+      ["RTS Betul - BBPL", "— (Direct PO)", "Direct PO"],
+    ],
+    approve: [
+      ["Bhopal Office - BBPL", "AVP MR App", "1", "Review"],
+      ["DG - BBPL", "AVP MR App", "1", "Review"],
+    ],
+    po: [
+      { category: "Store", band: "1L–6L", step: "1", action: "Review", note: "After your review → forwards to CEO" },
+      { category: "Store", band: "Above 6L", step: "1", action: "Review", note: "Forwards to CEO → then MD" },
+      { category: "Capex", band: "1L–6L", step: "1", action: "Review", note: "After your review → forwards to CEO" },
+      { category: "Capex", band: "Above 6L", step: "1", action: "Review", note: "Forwards to CEO → MD" },
+    ],
+    pending: [
+      ["PUR-ORD-2026-00039", "Store 1L–6L • Pending your Review → will forward to CEO", "₹ 3,20,000", 0],
+    ],
+    timeline: [
+      { time: "Today", cls: "approved", text: "<strong>Reviewed & Forwarded</strong> PUR-ORD-2026-00038 to CEO" },
+      { time: "Yesterday", cls: "approved", text: "<strong>Created + Submitted</strong> MAT-MR-2026-00060 (Bhopal Office)" },
+    ],
+    notifications: [
+      "🔔 PO PUR-ORD-2026-00039 pending your review · today",
+    ],
+  },
+};
+
+function switchUser(key) {
+  const u = users[key];
+  if (!u) return;
+
+  // User card
+  const rolesHtml = u.roles.map(([r, cls]) => `<span class="role-chip ${cls}">${r}</span>`).join("");
+  document.getElementById("userCard").innerHTML = `
+    <div class="avatar">${u.initials}</div>
+    <div class="user-info">
+      <div class="user-name">${u.name}</div>
+      <div class="user-email">${u.email}</div>
+      <div class="user-roles">${rolesHtml}</div>
+    </div>
+    <div class="user-stats">
+      <div class="stat"><div class="stat-value">${u.stats.creator}</div><div class="stat-label">Creator in</div></div>
+      <div class="stat"><div class="stat-value">${u.stats.reviewer}</div><div class="stat-label">Reviewer in</div></div>
+      <div class="stat"><div class="stat-value">${u.stats.finalApprover}</div><div class="stat-label">Final Approver</div></div>
+      <div class="stat"><div class="stat-value">${u.pending.length}</div><div class="stat-label">Pending now</div></div>
+    </div>
+  `;
+
+  // MR Creation table
+  document.getElementById("createCount").textContent = `${u.create.length} CCs`;
+  if (u.create.length === 0) {
+    document.getElementById("createTable").innerHTML = `<div class="empty-state">This user cannot create Material Requests.</div>`;
+  } else {
+    const rows = u.create.map(([cc, route, flow]) => `
+      <tr>
+        <td><div class="cc-name">${cc}</div><div class="cc-route">Route: ${route}</div></td>
+        <td><span class="flow-badge ${flow === 'Direct PO' ? 'direct' : 'standard'}">${flow}</span></td>
+      </tr>
+    `).join("");
+    document.getElementById("createTable").innerHTML = `
+      <table><thead><tr><th>Cost Center</th><th>Flow</th></tr></thead><tbody>${rows}</tbody></table>
+    `;
+  }
+
+  // MR Review/Approval table
+  document.getElementById("approveCount").textContent = `${u.approve.length} CCs`;
+  if (u.approve.length === 0) {
+    document.getElementById("approveTable").innerHTML = `<div class="empty-state">No MR approval authority for any cost center.</div>`;
+  } else {
+    const rows = u.approve.slice(0, 8).map(([cc, route, step, action]) => `
+      <tr>
+        <td><div class="cc-name">${cc}</div><div class="cc-route">${route}</div></td>
+        <td>Step ${step}</td>
+        <td><span class="action-badge ${action === 'Final Approve' ? 'final' : action === 'Review' ? 'review' : 'approve'}">${action}</span></td>
+      </tr>
+    `).join("");
+    const more = u.approve.length > 8 ? `<tr><td colspan="3" style="text-align:center;color:var(--muted);font-style:italic;">+ ${u.approve.length - 8} more CCs</td></tr>` : "";
+    document.getElementById("approveTable").innerHTML = `
+      <table><thead><tr><th>Cost Center</th><th>Step</th><th>Action</th></tr></thead><tbody>${rows}${more}</tbody></table>
+    `;
+  }
+
+  // PO Approval
+  document.getElementById("poCount").textContent = u.po[0].category === "—" ? "Not applicable" : `${u.po.length} rules`;
+  if (u.po[0].category === "—") {
+    document.getElementById("poTable").innerHTML = `<div class="note warn">${u.po[0].note}</div>`;
+  } else {
+    const rows = u.po.map(p => `
+      <tr>
+        <td><strong>${p.category}</strong></td>
+        <td>${p.band}</td>
+        <td>Step ${p.step}</td>
+        <td><span class="action-badge ${p.action === 'Final Approve' ? 'final' : 'review'}">${p.action}</span></td>
+        <td style="color:var(--muted);font-size:11px;">${p.note}</td>
+      </tr>
+    `).join("");
+    document.getElementById("poTable").innerHTML = `
+      <table><thead><tr><th>Category</th><th>Amount Band</th><th>Step</th><th>Action</th><th>Flow Note</th></tr></thead><tbody>${rows}</tbody></table>
+    `;
+  }
+
+  // Pending list
+  document.getElementById("pendingCount").textContent = `${u.pending.length} items`;
+  if (u.pending.length === 0) {
+    document.getElementById("pendingList").innerHTML = `<div class="empty-state">✨ Nothing pending with you right now.</div>`;
+  } else {
+    document.getElementById("pendingList").innerHTML = u.pending.map(([doc, meta, amt, days, extra]) => {
+      const cls = days <= 1 ? "fresh" : days <= 5 ? "aging" : "stuck";
+      return `
+        <div class="pending-row">
+          <div class="pending-doc">${doc}</div>
+          <div class="pending-meta">${meta}</div>
+          <div class="pending-amount">${amt}</div>
+          <div class="pending-days ${cls}">${days}d</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  // Timeline
+  document.getElementById("timeline").innerHTML = u.timeline.map(t => `
+    <div class="timeline-item ${t.cls}">
+      <div class="timeline-time">${t.time}</div>
+      <div class="timeline-text">${t.text}</div>
+    </div>
+  `).join("");
+
+  // Notifications
+  document.getElementById("notifications").innerHTML = u.notifications.map(n => `
+    <div style="padding:8px 4px;border-bottom:1px solid #f1f5f9;font-size:12px;">${n}</div>
+  `).join("");
+
+  traceDoc(document.getElementById("tracerDoc").value);
+}
+
+function traceDoc(docId) {
+  // Simple static flows for demo
+  const flows = {
+    "MAT-MR-2026-00063": {
+      nodes: [
+        { step: "CREATED", role: "Dept. Head", user: "dgm.operation@", state: "done" },
+        { step: "STEP 1", role: "Dept. Head", user: "dgm.operation@ • self-skip", state: "done" },
+        { step: "STEP 2", role: "AVP Final Approve", user: "generalmanager@", state: "current" },
+        { step: "SUBMIT", role: "Document submitted", user: "", state: "pending" },
+      ],
+      summary: {
+        current: "Pending AVP Final Approve — generalmanager@betulbiofuel.com",
+        route: "AVP MR App",
+        cc: "Process ( WTP/CPU, BIOLOGICAL) - BBPL",
+        amount: "₹ 45,230",
+        pendingDays: 2,
+        nextAction: "AVP clicks Approve → MR submitted (docstatus=1), Purchase Users notified to create PO",
+      },
+    },
+    "MAT-MR-2026-00061": {
+      nodes: [
+        { step: "CREATED", role: "Dept. Head", user: "powerhouse@", state: "done" },
+        { step: "STEP 1", role: "Dept. Head", user: "powerhouse@ • self-skip", state: "done" },
+        { step: "STEP 2", role: "AVP Final Approve", user: "generalmanager@", state: "current" },
+        { step: "SUBMIT", role: "Document submitted", user: "", state: "pending" },
+      ],
+      summary: {
+        current: "Pending AVP Final Approve — generalmanager@betulbiofuel.com",
+        route: "AVP MR App",
+        cc: "BOILER BOP - BBPL",
+        amount: "₹ 12,500",
+        pendingDays: 5,
+        nextAction: "AVP clicks Approve → MR submitted; creator was same user so Step 1 auto-skipped",
+      },
+    },
+    "PUR-ORD-2026-00040": {
+      nodes: [
+        { step: "CREATED", role: "Purchase User", user: "purchase@", state: "done" },
+        { step: "STEP 1", role: "Purchase Manager Review", user: "purchasemanager@", state: "done" },
+        { step: "STEP 2", role: "CEO Review", user: "pradeep.modi@", state: "current" },
+        { step: "STEP 3", role: "MD Final Approve", user: "pradeep.modi@ • manual trigger", state: "pending" },
+        { step: "SUBMIT", role: "PO Submitted", user: "", state: "pending" },
+      ],
+      summary: {
+        current: "Pending CEO Review — pradeep.modi@betulbiofuel.com",
+        route: "Store Above 6L rule (3 steps)",
+        cc: "Store",
+        amount: "₹ 7,25,000",
+        pendingDays: 3,
+        nextAction: "CEO clicks 'Send to MD' → MD Final Approve → docstatus=1",
+      },
+    },
+    "PUR-ORD-2026-00038": {
+      nodes: [
+        { step: "CREATED", role: "Purchase User", user: "purchase@", state: "done" },
+        { step: "STEP 1", role: "Purchase Manager Review", user: "purchasemanager@", state: "done" },
+        { step: "STEP 2", role: "CEO Review", user: "pradeep.modi@", state: "done" },
+        { step: "STEP 3", role: "MD Final Approve", user: "pradeep.modi@", state: "current" },
+        { step: "SUBMIT", role: "PO Submitted", user: "", state: "pending" },
+      ],
+      summary: {
+        current: "Pending MD Final Approve — pradeep.modi@betulbiofuel.com",
+        route: "Capex Above 6L rule (3 steps)",
+        cc: "Capex",
+        amount: "₹ 12,50,000",
+        pendingDays: 1,
+        nextAction: "MD clicks Final Approve → docstatus=1, PO submitted, Accounts team notified",
+      },
+    },
+  };
+
+  const flow = flows[docId];
+  if (!flow) return;
+
+  const nodesHtml = flow.nodes.map((n, i) => {
+    const arrow = i < flow.nodes.length - 1 ? `<div class="flow-arrow">→</div>` : "";
+    return `
+      <div class="flow-node ${n.state}">
+        <div class="flow-node-step">${n.step}</div>
+        <div class="flow-node-role">${n.role}</div>
+        <div class="flow-node-user">${n.user}</div>
+      </div>
+      ${arrow}
+    `;
+  }).join("");
+  document.getElementById("flowDiagram").innerHTML = `<div class="flow-diagram">${nodesHtml}</div>`;
+
+  const s = flow.summary;
+  document.getElementById("tracerSummary").innerHTML = `
+    <div><span class="label">Current state</span> ${s.current}</div>
+    <div><span class="label">Route / Rule</span> ${s.route}</div>
+    <div><span class="label">Cost center</span> ${s.cc}</div>
+    <div><span class="label">Amount</span> ${s.amount}</div>
+    <div><span class="label">Pending for</span> ${s.pendingDays} days</div>
+    <div><span class="label">Next action</span> ${s.nextAction}</div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   CONFIGURED FLOWS — PO Rules + MR Routes (data from 5-agent scan)
+// ═══════════════════════════════════════════════════════════════════
+const poRules = [
+  { name: "Store-Under 1L",   cat: "Store",   min: 0,        max: 99999,    steps: [{r:"CEO", t:"final"}] },
+  { name: "Store-1L to 6L",   cat: "Store",   min: 100000,   max: 599999,   steps: [{r:"Purchase Manager", t:"review"}, {r:"CEO", t:"final"}] },
+  { name: "Store-Above 6L",   cat: "Store",   min: 600000,   max: null,     steps: [{r:"Purchase Manager", t:"review"}, {r:"CEO", t:"review"}, {r:"MD", t:"final", manual: true}] },
+  { name: "Capex-Under 1L",   cat: "Capex",   min: 0,        max: 99999,    steps: [{r:"CEO", t:"final"}] },
+  { name: "Capex-1L to 6L",   cat: "Capex",   min: 100000,   max: 599999,   steps: [{r:"Purchase Manager", t:"review"}, {r:"CEO", t:"final"}] },
+  { name: "Capex-Above 6L",   cat: "Capex",   min: 600000,   max: null,     steps: [{r:"Purchase Manager", t:"review"}, {r:"CEO", t:"review"}, {r:"MD", t:"final", manual: true}] },
+  { name: "Grain-Under 6L",   cat: "Grain",   min: 0,        max: 599999,   steps: [{r:"Grain Purchase Manager", t:"review"}, {r:"CEO", t:"final"}] },
+  { name: "Grain-Above 6L",   cat: "Grain",   min: 600000,   max: null,     steps: [{r:"Grain Purchase Manager", t:"review"}, {r:"CEO", t:"review"}, {r:"MD", t:"final", manual: true}] },
+  { name: "Coal-Under 30L",   cat: "Coal",    min: 0,        max: 2999999,  steps: [{r:"CEO", t:"final"}] },
+  { name: "Coal-Above 30L",   cat: "Coal",    min: 3000000,  max: null,     steps: [{r:"CEO", t:"review"}, {r:"MD", t:"final", manual: true}] },
+];
+
+const mrRoutes = [
+  { name: "AVP MR App", active: true, steps: [{r:"Department Head", t:"review"}, {r:"AVP", t:"final"}],
+    ccs: ["PROCESS ACC", "PROCESS BOP", "PROCESS DRYER", "PROCESS ISGEK", "PROCESS MILLING", "PROCESS STRUCTURE", "Process WTP/CPU", "BOILER BOP", "BOILER ESP", "BOILER FUEL ASH", "BOILER THERMEX", "BOILER TRIVENI", "CBG Farming", "CF Production", "CF Raw Material", "Civil", "HR / Safety", "MISCELLANEOUS", "+ 11 more"] },
+  { name: "CAPEX", active: true, steps: [{r:"Department Head", t:"review"}, {r:"CEO", t:"final"}],
+    ccs: ["Capex - BBPL", "CBG CAPEX - BBPL", "Delhi Office - BBPL"] },
+  { name: "IT", active: true, steps: [{r:"IT Head", t:"review"}, {r:"CEO", t:"final"}],
+    ccs: ["IT - BBPL"] },
+  { name: "Store 1", active: false, steps: [{r:"Stores Officer", t:"review"}, {r:"Purchase Manager", t:"final"}],
+    ccs: ["(deactivated — Lesson 74)"] },
+  { name: "WTP", active: false, steps: [],
+    ccs: ["(placeholder — matches prod)"] },
+];
+
+function renderFlowNode(step) {
+  const typeLabel = step.t === "final" ? "Final Approve" : step.t === "review" ? "Review" : "Approve";
+  const manual = step.manual ? " • manual trigger" : "";
+  return `<div class="mini-node ${step.t === 'final' ? 'final' : step.t === 'review' ? 'review' : 'approve'}${step.manual ? ' manual' : ''}">
+    <div class="mini-node-label">${step.r}</div>
+    <div class="mini-node-type">${typeLabel}${manual}</div>
+  </div>`;
+}
+
+function renderFlowChain(steps) {
+  if (!steps.length) return `<div style="padding:8px;color:var(--muted);font-style:italic;font-size:11px;">No steps configured</div>`;
+  const creator = `<div class="mini-node"><div class="mini-node-label">Creator</div><div class="mini-node-type">Purchase User</div></div>`;
+  const submit = `<div class="mini-node" style="border-color:#86efac;background:#f0fdf4;"><div class="mini-node-label">✓ Submitted</div><div class="mini-node-type">docstatus = 1</div></div>`;
+  const nodes = [creator, ...steps.map(renderFlowNode), submit];
+  return `<div class="flow-mini-diagram">${nodes.join('<div class="mini-arrow">→</div>')}</div>`;
+}
+
+function fmtAmount(n) {
+  if (n === null) return "∞";
+  if (n >= 100000) return "₹" + (n/100000).toFixed(0) + "L";
+  return "₹" + n.toLocaleString("en-IN");
+}
+
+function showFlowTab(tab) {
+  document.getElementById("tabPo").classList.toggle("active", tab === "po");
+  document.getElementById("tabMr").classList.toggle("active", tab === "mr");
+  const gallery = document.getElementById("flowGallery");
+  if (tab === "po") {
+    gallery.innerHTML = poRules.map(rule => `
+      <div class="flow-card">
+        <div class="flow-card-header">
+          <div class="flow-card-title">${rule.name}</div>
+          <div class="flow-card-tags">
+            <span class="flow-tag category">${rule.cat}</span>
+            <span class="flow-tag amount">${fmtAmount(rule.min)} – ${fmtAmount(rule.max)}</span>
+            <span class="flow-tag steps">${rule.steps.length} step${rule.steps.length > 1 ? 's' : ''}</span>
+          </div>
+        </div>
+        ${renderFlowChain(rule.steps)}
+      </div>
+    `).join("");
+  } else {
+    gallery.innerHTML = mrRoutes.map(route => `
+      <div class="flow-card" style="${!route.active ? 'opacity: 0.5;' : ''}">
+        <div class="flow-card-header">
+          <div class="flow-card-title">${route.name} ${route.active ? '' : '<span style="color:var(--muted);font-weight:400;">(inactive)</span>'}</div>
+          <div class="flow-card-tags">
+            <span class="flow-tag route">${route.ccs.length} CCs</span>
+            <span class="flow-tag steps">${route.steps.length} step${route.steps.length !== 1 ? 's' : ''}</span>
+          </div>
+        </div>
+        ${renderFlowChain(route.steps)}
+        <div class="cc-list"><strong>CCs mapped:</strong> ${route.ccs.join(", ")}</div>
+      </div>
+    `).join("");
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   HOW IT WORKS — Visual Explainers
+// ═══════════════════════════════════════════════════════════════════
+const explainers = {
+  "self-skip": {
+    title: "Self-Skip — prevents self-approval",
+    desc: "When the submitter has the role of an upcoming step, that step is auto-skipped. This prevents a user from approving their own document and also skips redundant sign-offs.",
+    scenario: "<strong>Scenario:</strong> S. N. Shukla (Department Head for Process CCs) creates and submits an MR for Process WTP. The MR route is AVP MR App which has 2 steps: Step 1 Dept Head Review → Step 2 AVP Final Approve.",
+    before: {
+      label: "Without Self-Skip (hypothetical)",
+      nodes: [
+        { label: "Step 1: Department Head", state: "current", note: "would wait for dgm.operation@ to review his own doc" },
+        { label: "Step 2: AVP Final", state: "queued" }
+      ]
+    },
+    after: {
+      label: "With Self-Skip (actual)",
+      nodes: [
+        { label: "Step 1: Department Head", state: "skipped", note: "auto-skipped (submitter has Dept Head role)" },
+        { label: "Step 2: AVP Final", state: "current", note: "goes straight to AVP" }
+      ]
+    },
+    code: "ts_po_approval.py:945  _get_target_step_with_skip()\n  for step in steps:\n      if step.role in user_roles:\n          continue  # skip\n      return step"
+  },
+  "higher-level": {
+    title: "Higher-Level Override — seniors can act at any step",
+    desc: "A user whose role appears at a HIGHER step can also act at the CURRENT step. Lets CEO/MD jump in and approve without waiting for PM review.",
+    scenario: "<strong>Scenario:</strong> PO is at Step 1 (PM Review) for a ₹4L Store purchase. CEO happens to open it and wants to approve directly without forcing it through PM.",
+    before: {
+      label: "Only exact-step role can act",
+      nodes: [
+        { label: "Step 1: Purchase Manager", state: "current", note: "only PM can act" },
+        { label: "Step 2: CEO Final", state: "queued", note: "CEO waiting" }
+      ]
+    },
+    after: {
+      label: "With Higher-Level Override",
+      nodes: [
+        { label: "Step 1: Purchase Manager", state: "done", note: "CEO acted here (step_order >= current + has role)" },
+        { label: "Step 2: CEO Final", state: "current", note: "now at CEO's own step" }
+      ]
+    },
+    code: "ts_po_approval.py:1466 / 1594\n  for step in steps:\n      if step.step_order >= current and step.role in user_roles:\n          can_act = True  # higher-level override granted"
+  },
+  "cc-skip": {
+    title: "CC Config Skip — MR-only dynamic skipping",
+    desc: "For MR only: if the Cost Center's Approval Config has no Reviewer mapped for a step, that step auto-skips. Lets small/one-person CCs bypass the HOD review tier without changing the route.",
+    scenario: "<strong>Scenario:</strong> Civil CC has no Department Head in its CC Approval Config (only Creator + Final Approver). An MR is created for Civil.",
+    before: {
+      label: "Route has 2 steps",
+      nodes: [
+        { label: "Step 1: Dept Head Review", state: "queued", note: "route says this step exists" },
+        { label: "Step 2: AVP Final Approve", state: "queued" }
+      ]
+    },
+    after: {
+      label: "Runtime — CC config takes over",
+      nodes: [
+        { label: "Step 1: Dept Head Review", state: "skipped", note: "CC has no Reviewer mapped → skipped" },
+        { label: "Step 2: AVP Final Approve", state: "current", note: "MR goes directly to AVP" }
+      ]
+    },
+    code: "ts_po_approval.py:963  _get_target_step_for_mr()\n  for step in steps:\n      cc_approvers = get_cc_approvers_for_step(cc_config, step.step_order)\n      if step.action_type == 'Review' and not cc_approvers:\n          continue  # skip — no one to review\n      return step"
+  },
+  "amount-tamper": {
+    title: "Amount Tamper Detection — can't sneak amount changes",
+    desc: "At submission, grand_total is captured to ts_amount_at_submission. Before every approval action, the validator checks they still match. Plus the new gate-field guard blocks direct REST-API mutation.",
+    scenario: "<strong>Scenario:</strong> PO submitted for approval at ₹4,50,000. Someone calls frappe.client.set_value to change grand_total to ₹4,00,000 (below CEO's approval ceiling), hoping to slip it through as Purchase Manager only.",
+    before: {
+      label: "At Submission",
+      nodes: [
+        { label: "ts_amount_at_submission: ₹4,50,000", state: "done" },
+        { label: "grand_total: ₹4,50,000", state: "done" },
+        { label: "Status: Pending PM Review", state: "current", note: "approval proceeds" }
+      ]
+    },
+    after: {
+      label: "After Tamper Attempt",
+      nodes: [
+        { label: "ts_amount_at_submission: ₹4,50,000 (locked snapshot)", state: "done" },
+        { label: "grand_total: ₹4,00,000 (tampered)", state: "blocked" },
+        { label: "Next Approve action → BLOCKED", state: "blocked", note: "PO amount has changed during approval. Must be revised." }
+      ]
+    },
+    code: "ts_po_approval.py:1141  _validate_amount_unchanged()\nts_po_approval.py:1744  po_before_save() — _block_gate_field_tampering()\n  Gate fields locked: ts_amount_at_submission, ts_self_skip_impossible, ts_approval_status, ..."
+  },
+  "budget-block": {
+    title: "Budget Block — PO hard-stops on overspend",
+    desc: "When a PO is submitted, ts_budget.validate_budget_on_po_submit() checks the Cost Center's monthly budget. If utilization would exceed 100%, the PO is blocked. CEO or MD can override via ceo_budget_override() (audited).",
+    scenario: "<strong>Scenario:</strong> Process WTP monthly budget is ₹5,00,000. Already utilized ₹4,80,000. New PO for ₹50,000 would push it to ₹5,30,000 (106%).",
+    before: {
+      label: "Without budget check",
+      nodes: [
+        { label: "PO ₹50,000 submitted", state: "current" },
+        { label: "Pending PM Review", state: "queued", note: "would proceed normally" }
+      ]
+    },
+    after: {
+      label: "With budget check (Stop action)",
+      nodes: [
+        { label: "PO ₹50,000 submitted", state: "current" },
+        { label: "Budget check", state: "blocked", note: "106% > 100% → Stop" },
+        { label: "Error: Budget exceeded", state: "blocked", note: "user must either revise PO or request CEO override" }
+      ]
+    },
+    code: "ts_budget.py:396  validate_budget_on_po_submit()\nts_budget.py:464  ceo_budget_override()  # NEW: now accepts CEO, MD, System Manager (was CEO-only)"
+  }
+};
+
+function showExplainer(key) {
+  document.querySelectorAll('[id^=exTab-]').forEach(t => t.classList.remove('active'));
+  document.getElementById('exTab-' + key).classList.add('active');
+  const e = explainers[key];
+  const renderCol = (col) => `
+    <div class="ba-col">
+      <h4 class="${col === e.before ? 'before' : 'after'}">${col.label}</h4>
+      ${col.nodes.map(n => `
+        <div class="ba-node ${n.state}">
+          <div>${n.label}</div>
+          ${n.note ? `<div class="ba-note">${n.note}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('explainerContent').innerHTML = `
+    <div class="explainer-body">
+      <div class="explainer-title">${e.title}</div>
+      <div class="explainer-desc">${e.desc}</div>
+      <div class="scenario-box">${e.scenario}</div>
+      <div class="before-after">${renderCol(e.before)}${renderCol(e.after)}</div>
+      <div class="code-ref">${e.code}</div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   ACTION PLAYBACK — What each button does
+// ═══════════════════════════════════════════════════════════════════
+const actions = {
+  "submit": {
+    title: "Submit for Approval",
+    who: "Document Creator (owner)",
+    from: "Draft / Not Submitted",
+    to: "Pending [Step 1] (or later via self-skip)",
+    changes: [
+      "ts_approval_status = 'Pending [Role]'",
+      "ts_submitted_by = frappe.session.user",
+      "ts_amount_at_submission = grand_total (PO only — snapshot)",
+      "ts_current_step = target step order",
+      "ts_approval_rule / ts_mr_approval_route = resolved link",
+      "Audit log row: action=Submitted"
+    ],
+    notifications: [
+      "Target step role users (via _get_role_users)",
+      "+ CC config users for step (MR only, via get_cc_users_for_step)",
+      "Channel: bell icon + email"
+    ],
+    guards: ["Doc must be docstatus=0", "Must have items", "Cost Center required (MR)", "Budget check (PO if enabled)"]
+  },
+  "approve": {
+    title: "Approve / Review & Forward",
+    who: "Current step role user (+ any HIGHER step role via override)",
+    from: "Pending [Step N]",
+    to: "Pending [Step N+1]",
+    changes: [
+      "ts_approval_status = 'Pending [Next Role]'",
+      "ts_current_step += 1",
+      "Audit log row: action=Reviewed & Forwarded"
+    ],
+    notifications: [
+      "Next step users (role-based for PO, CC-aware for MR with role fallback)",
+      "Deduped via list(set(...))"
+    ],
+    guards: ["Must be Pending*", "Not self-submitted", "Amount unchanged (PO)", "User has step role (or higher)"]
+  },
+  "final-approve": {
+    title: "Final Approve",
+    who: "Final Approver (step.action_type = Final Approve)",
+    from: "Pending [Final Step]",
+    to: "Approved (docstatus = 1)",
+    changes: [
+      "ts_approval_status = 'Approved'",
+      "ts_approved_by = current_user",
+      "ts_approved_date = now()",
+      "doc.submit() → docstatus = 1",
+      "Audit log row: action=Final Approved"
+    ],
+    notifications: [
+      "Owner / Submitter",
+      "CC Notify Only users (MR, via get_cc_notify_only_users)",
+      "Purchase Manager + Purchase User roles (MR, for PO creation prep)",
+      "Full chain users (PO, via _get_chain_users)",
+      "TS Settings post_approval_notify table (conditional)"
+    ],
+    guards: ["Must be Pending [Final Step]", "Amount unchanged", "Not self-submitted"]
+  },
+  "revise": {
+    title: "Revise — send back to creator",
+    who: "Current step role user",
+    from: "Pending [Step N]",
+    to: "Revised (fields unlocked for creator)",
+    changes: [
+      "ts_approval_status / ts_mr_status = 'Revised'",
+      "ts_revision_count += 1 (PO only)",
+      "ts_revision_reason = [reason text]",
+      "ts_revised_by = [user + role]",
+      "ts_can_send_to_md = 0 (PO)",
+      "Audit log row: action=Revised"
+    ],
+    notifications: [
+      "Owner (doc.owner)",
+      "Original submitter (ts_submitted_by)",
+      "Both deduped"
+    ],
+    guards: ["Reason required (max 2000 chars)", "step.can_revise must be 1", "Must be Pending*"]
+  },
+  "reject": {
+    title: "Reject — terminal",
+    who: "Current step role user",
+    from: "Pending [Step N]",
+    to: "Rejected (stays Draft, fields locked, NO recovery)",
+    changes: [
+      "ts_approval_status / ts_mr_status = 'Rejected'",
+      "ts_last_action = 'Rejected by [Role] on [time]'",
+      "Fields locked server-side + JS",
+      "docstatus stays 0 (NOT cancelled)",
+      "Audit log row: action=Rejected"
+    ],
+    notifications: [
+      "Owner + Submitter",
+      "Full chain (PO) via _get_chain_users",
+      "TS Settings post_approval_notify (if notify_on_rejection=1)"
+    ],
+    guards: ["Reason required", "step.can_reject must be 1", "Must be Pending*", "⚠ IRREVERSIBLE — no un-reject path"]
+  },
+  "hold": {
+    title: "Hold (MR only)",
+    who: "Reviewer (HOD) at current Review step — NOT Final Approve step",
+    from: "Pending [Review Step N]",
+    to: "On Hold [Step N]",
+    changes: [
+      "ts_mr_status = 'On Hold - [Role]'",
+      "ts_mr_hold_reason = [reason]",
+      "ts_mr_held_by = [user + role]",
+      "ts_mr_held_at_step = [step_order] ← CRITICAL for resume",
+      "Audit log row: action=Held"
+    ],
+    notifications: [
+      "Creator (doc.owner)",
+      "Submitter (ts_mr_submitted_by)"
+    ],
+    guards: ["Only Review action_type, NOT Final Approve", "Reason required", "Must be Pending*", "User must pass _validate_user_can_act_on_mr"]
+  },
+  "resume": {
+    title: "Resume (MR only)",
+    who: "Any user with held step's role (NOT necessarily original holder)",
+    from: "On Hold [Step N]",
+    to: "Pending [Step N] (same step)",
+    changes: [
+      "ts_mr_status = 'Pending [Role]'",
+      "ts_mr_current_step = ts_mr_held_at_step (restored)",
+      "ts_mr_hold_reason = '' (cleared)",
+      "ts_mr_held_by = '' (cleared)",
+      "ts_mr_held_at_step = 0",
+      "Audit log row: action=Resumed"
+    ],
+    notifications: [
+      "Step's CC config users (fallback to role users if CC config empty)"
+    ],
+    guards: ["Must be 'On Hold*'", "User has role matching ts_mr_held_at_step"]
+  },
+  "resubmit": {
+    title: "Resubmit (after Revise)",
+    who: "Owner OR Submitter OR Administrator only (strict)",
+    from: "Revised",
+    to: "Pending [Step 1] (with fresh self-skip + re-resolved rule)",
+    changes: [
+      "ts_approval_status = 'Pending [Role]'",
+      "ts_current_step = new target (may differ from original!)",
+      "ts_approval_rule = re-resolved (category/amount may have changed)",
+      "ts_amount_at_submission = grand_total (PO — RE-SNAPSHOT, tamper counter resets)",
+      "ts_can_send_to_md = 0",
+      "Audit log row: action=Resubmitted"
+    ],
+    notifications: [
+      "New target step users (may differ from original flow)"
+    ],
+    guards: ["Only owner/submitter/Admin (_validate_resubmit_permission)", "Status must be 'Revised'", "Approval rule must still exist"]
+  },
+  "send-to-md": {
+    title: "Send to MD (PO only — manual trigger)",
+    who: "CEO at the step whose NEXT step has is_manual_trigger=1",
+    from: "Pending [CEO Review] (after CEO clicks Review)",
+    to: "Pending [MD Final Approve]",
+    changes: [
+      "ts_approval_status = 'Pending [MD Role]'",
+      "ts_current_step += 1 (manual advance)",
+      "ts_can_send_to_md = 0 (consumed)",
+      "Audit log row: action=Sent to MD"
+    ],
+    notifications: [
+      "MD role users"
+    ],
+    guards: ["Next step must have is_manual_trigger=1", "User must have current step role", "Amount unchanged"]
+  }
+};
+
+function playAction(key) {
+  document.querySelectorAll('[id^=actTab-]').forEach(t => t.classList.remove('active'));
+  document.getElementById('actTab-' + key).classList.add('active');
+  const a = actions[key];
+  document.getElementById('actionContent').innerHTML = `
+    <div class="action-body">
+      <div class="action-title">${a.title}</div>
+      <div class="action-meta">
+        <div class="action-meta-cell">
+          <div class="action-meta-label">Who can trigger</div>
+          <div class="action-meta-value">${a.who}</div>
+        </div>
+        <div class="action-meta-cell">
+          <div class="action-meta-label">From state</div>
+          <div class="action-meta-value">${a.from}</div>
+        </div>
+        <div class="action-meta-cell">
+          <div class="action-meta-label">To state</div>
+          <div class="action-meta-value">${a.to}</div>
+        </div>
+      </div>
+      <div class="action-changes">
+        <h5>Fields changed in DB</h5>
+        <ul>${a.changes.map(c => `<li>${c}</li>`).join("")}</ul>
+      </div>
+      <div class="action-notifs">
+        <h5>Who gets notified</h5>
+        <ul>${a.notifications.map(n => `<li>${n}</li>`).join("")}</ul>
+      </div>
+      <div class="action-changes" style="background:#fef9e7;border-color:#fbbf24;">
+        <h5 style="color:#78350f;">Validation guards</h5>
+        <ul>${a.guards.map(g => `<li>${g}</li>`).join("")}</ul>
+      </div>
+    </div>
+  `;
+}
+
+// Initial load
+switchUser("generalmanager");
+showFlowTab("po");
+showExplainer("self-skip");
+playAction("submit");
+</script>
+
+</body>
+</html>

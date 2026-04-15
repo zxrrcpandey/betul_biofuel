@@ -24,6 +24,9 @@ frappe.ui.form.on("Material Request", {
 				() => frm.events.make_purchase_order(frm),
 				__("Create"));
 		}
+		// Post-approval "Request Revision" button (Path 3 — soft revise / notify-only).
+		// Added directly in refresh() so it works regardless of approval context load state.
+		_maybe_add_post_approval_revision_button(frm);
 	},
 	cost_center(frm) {
 		if (!frm.doc.cost_center) return;
@@ -709,4 +712,137 @@ function _ts_add_mr_print_button(frm) {
 			window.open(url, "_blank");
 		}, __("Select Print Format"), __("Download PDF"));
 	});
+}
+
+// ═══════════════════════════════════════════════════════════
+//  POST-APPROVAL REVISION REQUEST (Path 3 — soft revise / notify-only)
+//  Added for Purchase User / Purchase Manager / IT Head so they can
+//  ask the creator to cancel + amend an already-approved MR.
+// ═══════════════════════════════════════════════════════════
+
+function _maybe_add_post_approval_revision_button(frm) {
+	// Only show on submitted MRs (docstatus = 1)
+	if (frm.doc.docstatus !== 1) return;
+
+	// Role check (client-side — server re-validates)
+	const allowed_roles = [
+		"Purchase User", "Purchase Manager", "IT Head",
+		"AVP", "CEO", "MD", "System Manager", "Administrator"
+	];
+	const user_roles = frappe.user_roles || [];
+	if (!allowed_roles.some(r => user_roles.includes(r))) return;
+
+	// Remove any previous instance of THIS button only (unique class — don't share with bbf-mr-btn
+	// because _render_mr_buttons() does a global $(".bbf-mr-btn").remove() that would kill us).
+	$(".bbf-mr-rev-req-btn").remove();
+
+	frm.add_custom_button(__("Request Revision"), () => {
+		// Pre-flight check: query linked POs
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.ts_mr_post_approval_revision.can_request_revision",
+			args: { mr_name: frm.doc.name },
+			callback(r) {
+				const info = r.message || {};
+				if (!info.allowed) {
+					const reasons = {
+						"role_missing": __("You don't have permission to request MR revision."),
+						"mr_not_found": __("MR not found."),
+						"not_submitted": __("Revision request only allowed on approved (submitted) MRs.")
+					};
+					frappe.msgprint({
+						title: __("Cannot Request Revision"),
+						message: reasons[info.reason] || __("Not allowed."),
+						indicator: "red"
+					});
+					return;
+				}
+
+				let warning_html = "";
+				if (info.has_linked_pos) {
+					const po_list = (info.linked_pos || []).slice(0, 5).join(", ");
+					const more = (info.linked_pos || []).length > 5 ? ` (+ ${info.linked_pos.length - 5} more)` : "";
+					warning_html = `
+						<div style="background: #fee2e2; border-left: 3px solid #ef4444; padding: 10px 14px; border-radius: 4px; margin-bottom: 14px; color: #991b1b;">
+							<b>⚠ Blocked:</b> ${info.linked_pos.length} Purchase Order(s) already created from this MR:
+							<br><code>${frappe.utils.escape_html(po_list)}${more}</code>
+							<br><br>Cancel or amend those POs first, then request revision. The creator cannot cancel this MR while POs reference it.
+						</div>
+					`;
+				}
+
+				const d = new frappe.ui.Dialog({
+					title: __("Request MR Revision"),
+					fields: [
+						{
+							fieldtype: "HTML",
+							fieldname: "info_html",
+							options: `
+								${warning_html}
+								<div style="background: #eff6ff; border-left: 3px solid #3b82f6; padding: 10px 14px; border-radius: 4px; margin-bottom: 12px; font-size: 12px;">
+									<b>ℹ How this works:</b>
+									<ul style="margin: 6px 0 0 16px; padding: 0;">
+										<li>This is a <b>notification-only</b> request — the MR state is NOT changed</li>
+										<li>The creator will get a bell notification + email with your reason</li>
+										<li>They must manually <b>Cancel → Amend</b> the MR to apply changes</li>
+										<li>An audit log entry will be added to this MR's timeline</li>
+									</ul>
+								</div>
+							`
+						},
+						{
+							fieldtype: "Small Text",
+							fieldname: "reason",
+							label: __("Reason for revision"),
+							reqd: 1,
+							description: __("Explain what needs to change. This will be shown to the creator.")
+						}
+					],
+					primary_action_label: info.has_linked_pos ? __("Blocked by linked POs") : __("Send Revision Request"),
+					primary_action(values) {
+						if (info.has_linked_pos) {
+							frappe.msgprint({
+								title: __("Cannot Proceed"),
+								message: __("Cancel the linked POs first."),
+								indicator: "red"
+							});
+							return;
+						}
+						if (!values.reason || !values.reason.trim()) {
+							frappe.msgprint({
+								title: __("Reason Required"),
+								message: __("Please enter a reason for the revision request."),
+								indicator: "orange"
+							});
+							return;
+						}
+						d.hide();
+						frappe.call({
+							method: "trustbit_ethanol.ts_gate_entry.ts_mr_post_approval_revision.request_mr_revision",
+							args: { mr_name: frm.doc.name, reason: values.reason.trim() },
+							freeze: true,
+							freeze_message: __("Sending revision request..."),
+							callback(res) {
+								if (res.message && res.message.status === "ok") {
+									frappe.show_alert({
+										message: res.message.message || __("Revision request sent."),
+										indicator: "green"
+									}, 7);
+									frm.reload_doc();
+								}
+							}
+						});
+					}
+				});
+
+				if (info.has_linked_pos) {
+					// Disable the primary action button visually
+					setTimeout(() => {
+						d.get_primary_btn().prop("disabled", true).css("opacity", "0.5");
+					}, 100);
+				}
+
+				d.show();
+			}
+		});
+	}, null).addClass("bbf-mr-rev-req-btn").css({"background-color": "#f59e0b", "color": "white", "border-color": "#d97706"});
 }

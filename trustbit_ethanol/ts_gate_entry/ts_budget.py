@@ -468,8 +468,8 @@ def ceo_budget_override(docname, reason):
 		frappe.throw(_("Override reason is mandatory"))
 
 	user_roles = frappe.get_roles(frappe.session.user)
-	if "CEO" not in user_roles and "System Manager" not in user_roles:
-		frappe.throw(_("Only CEO or System Manager can override budget blocks"))
+	if not ({"CEO", "MD", "System Manager"} & set(user_roles)):
+		frappe.throw(_("Only CEO, MD, or System Manager can override budget blocks"), frappe.PermissionError)
 
 	doc = frappe.get_doc("Purchase Order", docname, for_update=True)
 
@@ -512,6 +512,15 @@ def ceo_budget_override(docname, reason):
 
 	# Set override flag on PO
 	doc.db_set("ts_budget_overridden", 1, update_modified=True)
+
+	# Visible audit trail in PO timeline (override is also captured in TS Budget Override Log)
+	doc.add_comment(
+		"Comment",
+		text=_("Budget override applied by {0}. Reason: {1}").format(
+			frappe.utils.get_fullname(frappe.session.user),
+			frappe.utils.escape_html(reason),
+		),
+	)
 
 	return {"status": "overridden", "message": _("Budget override applied. PO can now proceed through approval.")}
 

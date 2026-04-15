@@ -1741,6 +1741,57 @@ def po_on_amend(doc, method):
 	doc.ts_self_skip_impossible = 0
 
 
+_PO_GATE_FIELDS = (
+	"ts_approval_status",
+	"ts_current_step",
+	"ts_total_steps",
+	"ts_current_level",
+	"ts_required_level",
+	"ts_self_skip_impossible",
+	"ts_can_send_to_md",
+	"ts_amount_at_submission",
+	"ts_submitted_by",
+	"ts_approval_rule",
+	"ts_purchase_category",
+	"ts_budget_overridden",
+)
+
+_MR_GATE_FIELDS = (
+	"ts_mr_status",
+	"ts_mr_route",
+	"ts_mr_approval_route",
+	"ts_mr_current_step",
+	"ts_mr_total_steps",
+	"ts_mr_self_skip_impossible",
+	"ts_mr_submitted_by",
+	"ts_mr_held_at_step",
+)
+
+
+def _block_gate_field_tampering(doc, gate_fields):
+	"""Block REST API mutation of approval control-plane fields.
+
+	Why: Custom Field defaults are permlevel 0, so any user with PO/MR write
+	permission could call frappe.client.set_value to flip ts_self_skip_impossible,
+	ts_amount_at_submission, ts_approval_status, etc. and bypass the entire
+	approval chain. Legitimate controller writes use db_set() which skips save
+	hooks entirely — so this guard only fires for unauthorised user mutations.
+	"""
+	if doc.is_new():
+		return
+	if frappe.session.user == "Administrator":
+		return
+	if "System Manager" in frappe.get_roles(frappe.session.user):
+		return
+	for field in gate_fields:
+		if doc.has_value_changed(field):
+			frappe.throw(
+				_("Field '{0}' is locked by the approval system. "
+				  "Use the approval workflow buttons instead.").format(field),
+				title=_("Approval Field Locked"),
+			)
+
+
 def po_before_save(doc, method):
 	"""Prevent amount changes while PO is in approval chain + block duplicate PO from MR + copy project from MR."""
 	# ── Duplicate PO from MR block ──
@@ -1750,6 +1801,9 @@ def po_before_save(doc, method):
 	# ── Copy project from MR to PO ──
 	if not doc.project:
 		_copy_project_from_mr(doc)
+
+	# ── Gate-field tamper guard (Security #14) ──
+	_block_gate_field_tampering(doc, _PO_GATE_FIELDS)
 
 	if not doc.ts_approval_status:
 		return
@@ -1788,6 +1842,9 @@ def _copy_project_from_mr(doc):
 
 def mr_before_save(doc, method):
 	"""Prevent changes while MR is in approval chain."""
+	# ── Gate-field tamper guard (Security #14) ──
+	_block_gate_field_tampering(doc, _MR_GATE_FIELDS)
+
 	if not hasattr(doc, "ts_mr_status") or not doc.ts_mr_status:
 		return
 
