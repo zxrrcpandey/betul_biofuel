@@ -30,7 +30,8 @@ frappe.ui.form.on("TS Gate Entry", {
 
 		// Custom Print PDF button (direct PDF download, bypasses /printview preview)
 		// Matches MR/PO pattern — single top-level button with format selection prompt.
-		if (frm.doc.docstatus === 1 && frm.doc.token_number) {
+		// Shows on any saved doc (draft or submitted), NOT on brand-new unsaved.
+		if (!frm.is_new() && frm.doc.token_number) {
 			_ts_add_gate_entry_print_button(frm);
 		}
 
