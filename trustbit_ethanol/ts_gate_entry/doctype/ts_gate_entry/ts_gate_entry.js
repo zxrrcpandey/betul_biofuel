@@ -1,7 +1,9 @@
 frappe.ui.form.on("TS Gate Entry", {
 	refresh(frm) {
-		// Post-dated entry check — apply cached result immediately, fetch in background
-		if (!frm.doc.docstatus) {
+		// Post-dated entry check — ONLY on brand-new Gate Entries being created (Lesson 166).
+		// Previously triggered on every draft view, polluting the screen and silently
+		// unlocking entry_date/entry_time on already-saved drafts.
+		if (frm.is_new()) {
 			// Apply cached result instantly (prevents lock on re-render)
 			if (frm._pd_access && frm._pd_access.enabled) {
 				_ge_pd_apply(frm, frm._pd_access);
@@ -21,6 +23,9 @@ frappe.ui.form.on("TS Gate Entry", {
 					}
 				});
 			}
+		} else {
+			// Saved draft or submitted — remove any stale banner
+			$(frm.wrapper).find(".pd-banner").remove();
 		}
 
 		// Custom Print PDF button (direct PDF download, bypasses /printview preview)

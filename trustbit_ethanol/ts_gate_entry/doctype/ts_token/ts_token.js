@@ -1,7 +1,9 @@
 frappe.ui.form.on("TS Token", {
 	refresh(frm) {
-		// Post-dated entry — apply cached result instantly, fetch once in background
-		if (!frm.doc.docstatus) {
+		// Post-dated entry — ONLY on brand-new tokens being created (Lesson 166).
+		// Previously triggered on every draft view, polluting 197 tokens on prod
+		// and silently unlocking entry_date/entry_time on already-saved drafts.
+		if (frm.is_new()) {
 			if (frm._pd_access && frm._pd_access.enabled) {
 				_tkn_pd_apply(frm, frm._pd_access);
 			}
@@ -19,6 +21,9 @@ frappe.ui.form.on("TS Token", {
 					}
 				});
 			}
+		} else {
+			// Saved draft or submitted — remove any stale banner
+			$(frm.wrapper).find(".pd-banner").remove();
 		}
 
 		let is_gate_pass = frm.doc.entry_type === "Gate Pass";

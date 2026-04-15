@@ -2,7 +2,19 @@
 
 import frappe
 from frappe import _
-from frappe.utils import now_datetime, get_datetime, getdate, add_to_date
+from frappe.utils import now_datetime, get_datetime, getdate, add_to_date, add_days
+
+
+def _get_max_backdate_days():
+	"""Return max_backdate_days from TS Settings (default 30, 0 = unlimited)."""
+	settings = frappe.get_cached_doc("TS Settings")
+	val = settings.get("max_backdate_days")
+	if val is None:
+		return 30
+	try:
+		return int(val)
+	except (TypeError, ValueError):
+		return 30
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -23,12 +35,20 @@ def check_post_dated_access(doctype, token_number=None):
 		pre_from = settings.get("pre_post_dated_from")
 		pre_to = settings.get("pre_post_dated_to")
 		if pre_from and pre_to:
-			today = frappe.utils.today()
+			today_str = frappe.utils.today()
 			# Only show as enabled if today is within the pre-enable validity window
-			if today <= str(pre_to):
+			if today_str <= str(pre_to):
+				# Clamp from_date against max_backdate_days policy (Lesson 167 — Security #15).
+				# Prevents TS Settings pre-enable window from exceeding the policy limit.
+				effective_from = getdate(pre_from)
+				max_days = _get_max_backdate_days()
+				if max_days > 0:
+					min_allowed = getdate(add_days(today_str, -max_days))
+					if effective_from < min_allowed:
+						effective_from = min_allowed
 				return {
 					"enabled": True,
-					"from_date": str(pre_from),
+					"from_date": str(effective_from),
 					"to_date": str(pre_to),
 					"valid_until": str(pre_to) + " 23:59:59",
 					"request_name": None,
@@ -240,6 +260,19 @@ def validate_post_dated_date(doctype, date_value, token_number=None):
 		if entry_date > today:
 			frappe.throw(_("Future dates are not allowed. Cannot set date to {0}.").format(entry_date))
 		return None
+
+	# Belt-and-suspenders: enforce max_backdate_days policy independently of pre-enable range
+	# (Lesson 167 — Security #15). Prevents a too-wide pre-enable window from bypassing policy.
+	max_days = _get_max_backdate_days()
+	if max_days > 0:
+		from frappe.utils import date_diff
+		days_back = date_diff(today, entry_date)
+		if days_back > max_days:
+			frappe.throw(
+				_("Cannot backdate to {0} — {1} days in the past exceeds the {2}-day policy limit.").format(
+					entry_date, days_back, max_days
+				)
+			)
 
 	# Date is in the past — check ALL active requests/pre-enable for one that covers this date
 	access = check_post_dated_access(doctype, token_number)
