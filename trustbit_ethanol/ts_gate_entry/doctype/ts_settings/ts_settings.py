@@ -11,12 +11,22 @@ class TSSettings(Document):
 	def _validate_pre_post_dated(self):
 		"""Guard against pre-enable window exceeding max_backdate_days policy (Lesson 167).
 
-		Without this, a System Manager could set pre_post_dated_from years into the past
-		and let all users backdate tokens way beyond the policy limit.
+		Only fires when the user is ACTIVELY changing one of the pre-enable fields.
+		Saving TS Settings for an unrelated change (e.g., g2_print_mode) with a
+		pre-existing bad pre_post_dated_from won't be blocked — the runtime clamp
+		in check_post_dated_access() already handles stale data. (Lesson 170)
 		"""
 		if not self.get("enable_pre_post_dated"):
 			return
 		if not self.pre_post_dated_from or not self.pre_post_dated_to:
+			return
+
+		# Only validate if one of the relevant fields was actually changed on this save.
+		# On insert (no previous version), has_value_changed() returns True for all
+		# fields — that's the correct behaviour (first-time enable must meet policy).
+		relevant = ("enable_pre_post_dated", "pre_post_dated_from",
+		            "pre_post_dated_to", "max_backdate_days")
+		if not self.is_new() and not any(self.has_value_changed(f) for f in relevant):
 			return
 
 		pre_from = getdate(self.pre_post_dated_from)
