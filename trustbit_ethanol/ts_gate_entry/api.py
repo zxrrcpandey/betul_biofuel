@@ -3,6 +3,17 @@ from frappe.utils import now_datetime, time_diff_in_seconds, getdate
 
 
 @frappe.whitelist()
+def get_g2_print_mode():
+	"""Return TS Settings.g2_print_mode for G2 operators who don't have
+	TS Settings read permission. Returns ONLY the g2_print_mode value,
+	no other sensitive settings fields exposed. Called from ts_gate_entry.js
+	when rendering the Print PDF button for G2-only users (Lesson 168).
+	"""
+	val = frappe.db.get_single_value("TS Settings", "g2_print_mode")
+	return {"g2_print_mode": val or "Detailed + Slip"}
+
+
+@frappe.whitelist()
 def get_purchase_orders(po_id=None, po_date=None, **kwargs):
 	filters = {"docstatus": 1, "status": ["not in", ["Closed", "Cancelled", "Completed"]], "per_received": ["<", 100]}
 

@@ -422,13 +422,22 @@ function _ts_add_gate_entry_print_button(frm) {
 	// Standalone top-level Print PDF button
 	frm.add_custom_button(__("🖨 Print PDF"), () => {
 		if (is_g2_only) {
-			// G2-only operators: check g2_print_mode setting
-			frappe.db.get_single_value("TS Settings", "g2_print_mode").then(mode => {
-				if (mode === "Slip Only") {
+			// G2-only operators don't have TS Settings read permission, so
+			// frappe.db.get_single_value fails. Use a whitelisted helper
+			// that returns ONLY the g2_print_mode value (Lesson 168).
+			frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.api.get_g2_print_mode",
+				callback(r) {
+					const mode = (r.message && r.message.g2_print_mode) || "Detailed + Slip";
+					if (mode === "Slip Only") {
+						_open_prompt(["TS Gate Entry Slip"]);
+					} else {
+						_open_prompt(["TS Gate Entry Detailed", "TS Gate Entry Slip"]);
+					}
+				},
+				error() {
+					// Safer fallback for G2: Slip only
 					_open_prompt(["TS Gate Entry Slip"]);
-				} else {
-					// Detailed + Slip (default when unset)
-					_open_prompt(["TS Gate Entry Detailed", "TS Gate Entry Slip"]);
 				}
 			});
 		} else {
