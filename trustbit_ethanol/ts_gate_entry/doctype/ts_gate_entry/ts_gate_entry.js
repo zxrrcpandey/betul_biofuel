@@ -359,7 +359,7 @@ function _ge_pd_apply(frm, access) {
 		const $target = $(frm.wrapper).find(".form-page");
 		if (!$target.find(".pd-banner").length) {
 			$target.prepend(`<div class="pd-banner" style="padding:10px 16px;background:#e3f2fd;border:1px solid #bbdefb;border-radius:6px;margin:8px 15px;font-size:13px;color:#1565c0;">
-				<strong>&#128197; Post-Dated Entry Enabled</strong> — Dates <strong>${access.from_date}</strong> to <strong>${access.to_date}</strong> allowed.
+				<strong>&#128197; Post-Dated Entry Enabled</strong> — Dates <strong>${_fmt_pd_date(access.from_date)}</strong> to <strong>${_fmt_pd_date(access.to_date)}</strong> allowed.
 			</div>`);
 		}
 		["entry_date", "entry_time"].forEach(fn => {
@@ -368,6 +368,18 @@ function _ge_pd_apply(frm, access) {
 				frm.fields_dict[fn].$wrapper.find("input").css({"border-color": "#2490ef", "background": "#f0f7ff"});
 		});
 	} catch(e) {}
+}
+
+// Format "2026-05-14" → "14 May 2026"; "2026-05-14 23:59:59" → "14 May 2026 23:59:59"
+function _fmt_pd_date(s) {
+	if (!s) return "";
+	const parts = String(s).split(" ");
+	const date_part = parts[0];
+	const time_part = parts[1] || "";
+	const d = new Date(date_part + "T00:00:00");
+	if (isNaN(d.getTime())) return s;
+	const formatted = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+	return time_part ? `${formatted} ${time_part}` : formatted;
 }
 
 // ═══════════════════════════════════════════════════════════
