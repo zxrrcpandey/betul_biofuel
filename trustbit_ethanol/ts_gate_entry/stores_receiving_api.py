@@ -100,18 +100,15 @@ def get_dashboard_data():
 	d = _fetch_section_d_drafts()
 	a = _fetch_section_a_tokens()
 	b = _fetch_section_b_non_weighing()
-	c = _fetch_section_c_direct_po()
 	return {
 		"d": d,
 		"a": a,
 		"b": b,
-		"c": c,
 		"counts": {
 			"section_d_count": len(d),
 			"section_a_count": len(a),
 			"section_b_count": len(b),
-			"section_c_count": len(c),
-			"total_pending": len(a) + len(b) + len(c),
+			"total_pending": len(a) + len(b),
 		},
 	}
 

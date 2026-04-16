@@ -6,7 +6,7 @@
      C — Approved Direct PO (new, no token)
    ═══════════════════════════════════════════════════════════════════ */
 
-const SR_VERSION = "v5.3-2026-04-16";
+const SR_VERSION = "v6.0-2026-04-16";
 const SR_API = "trustbit_ethanol.ts_gate_entry.stores_receiving_api";
 console.log("[stores-receiving]", SR_VERSION, "loaded");
 
@@ -37,7 +37,7 @@ frappe.pages["stores-receiving"].refresh = function () {
 	_sr_reload();
 };
 
-let _sr_state = { d: [], a: [], b: [], c: [], busy: false };
+let _sr_state = { d: [], a: [], b: [], busy: false };
 
 async function _sr_init() {
 	try {
@@ -61,9 +61,8 @@ function _sr_render_shell() {
 			</div>
 			<div class="sr-summary">
 				<div class="sr-badge sr-b-d" id="sr-badge-d" style="display:none"><div class="sr-badge-num" id="sr-count-d">0</div><div class="sr-badge-lbl">Drafts</div></div>
-				<div class="sr-badge sr-b-a"><div class="sr-badge-num" id="sr-count-a">—</div><div class="sr-badge-lbl">Section A · Weighed</div></div>
-				<div class="sr-badge sr-b-b"><div class="sr-badge-num" id="sr-count-b">—</div><div class="sr-badge-lbl">Section B · Non-RM</div></div>
-				<div class="sr-badge sr-b-c"><div class="sr-badge-num" id="sr-count-c">—</div><div class="sr-badge-lbl">Section C · Direct PO</div></div>
+				<div class="sr-badge sr-b-a"><div class="sr-badge-num" id="sr-count-a">—</div><div class="sr-badge-lbl">Weighed</div></div>
+				<div class="sr-badge sr-b-b"><div class="sr-badge-num" id="sr-count-b">—</div><div class="sr-badge-lbl">Non-RM (No Weighing)</div></div>
 			</div>
 		</div>
 
@@ -91,13 +90,6 @@ function _sr_render_shell() {
 			<div id="sr-b-body" class="sr-body"><div class="sr-empty">Loading…</div></div>
 		</div>
 
-		<div class="sr-section" id="sr-section-c">
-			<div class="sr-section-head">
-				<div class="sr-section-title">Section C — Direct PO <span class="sr-tag-new">New</span></div>
-				<div class="sr-section-hint">Approved POs in Direct PO cost centers with no full receipt</div>
-			</div>
-			<div id="sr-c-body" class="sr-body"><div class="sr-empty">Loading…</div></div>
-		</div>
 	`);
 }
 
@@ -108,11 +100,9 @@ async function _sr_load_all() {
 		_sr_state.d = data.d || [];
 		_sr_state.a = data.a || [];
 		_sr_state.b = data.b || [];
-		_sr_state.c = data.c || [];
 		_sr_render_section_d();
 		_sr_render_section_a();
 		_sr_render_section_b();
-		_sr_render_section_c();
 		const counts = data.counts || {};
 		// Drafts badge — only show if there are drafts
 		if (_sr_state.d.length) {
@@ -125,7 +115,6 @@ async function _sr_load_all() {
 		}
 		$("#sr-count-a").text(counts.section_a_count ?? _sr_state.a.length);
 		$("#sr-count-b").text(counts.section_b_count ?? _sr_state.b.length);
-		$("#sr-count-c").text(counts.section_c_count ?? _sr_state.c.length);
 	} catch (e) {
 		frappe.msgprint({ title: "Error", message: frappe.utils.escape_html(e.message || String(e)), indicator: "red" });
 		console.error(e);
@@ -270,84 +259,6 @@ function _sr_render_section_b() {
 				const r = await frappe.call({
 					method: `${SR_API}.create_grn_for_non_weighing_token`,
 					args: { token_name: token },
-					freeze: true, freeze_message: "Creating GRN…",
-				});
-				console.log("[stores-receiving] API response", r);
-				if (r && r.message && r.message.purchase_receipt) {
-					succeeded = true;
-					frappe.show_alert({
-						message: `Draft Purchase Receipt ${r.message.purchase_receipt} created — review quantities and submit.`,
-						indicator: "blue"
-					}, 8);
-					frappe.set_route("Form", "Purchase Receipt", r.message.purchase_receipt);
-				} else {
-					console.warn("[stores-receiving] API returned without purchase_receipt:", r);
-					frappe.msgprint({
-						title: "GRN not created",
-						message: "The server returned no Purchase Receipt. Check the browser console and server error log.",
-						indicator: "orange"
-					});
-				}
-			} catch (e) {
-				console.error("[stores-receiving] API error:", e);
-				frappe.msgprint({
-					title: "GRN creation failed",
-					message: frappe.utils.escape_html(e.message || String(e)),
-					indicator: "red"
-				});
-			} finally {
-				if (!succeeded) {
-					btn.prop("disabled", false).text("Create GRN");
-				}
-			}
-		});
-	});
-}
-
-function _sr_render_section_c() {
-	const rows = _sr_state.c;
-	if (!rows.length) { $("#sr-c-body").html('<div class="sr-empty">No pending Direct PO receipts.</div>'); return; }
-	const html = [
-		'<table class="sr-table"><thead><tr>',
-		'<th>PO</th><th>Supplier</th><th>Cost Center</th><th>Total</th>',
-		'<th>Items</th><th>% Received</th><th>Age</th><th>Action</th>',
-		'</tr></thead><tbody>',
-		...rows.map(r => {
-			const broken = r.has_missing_items;
-			const missingList = (r.missing_items || []).map(_sr_esc).join(", ");
-			const actionCell = broken
-				? `<button class="btn btn-xs btn-danger" disabled title="Missing items: ${missingList}">! Missing Items</button>`
-				: `<button class="btn btn-xs btn-success sr-create-c" data-po="${_sr_esc(r.po)}">Create GRN</button>`;
-			const warnRow = broken
-				? `<tr class="sr-broken-warn"><td colspan="8"><strong>Cannot receive:</strong> items missing from Item master — ${missingList}. Ask IT Head / Item Manager to restore or re-create the PO.</td></tr>`
-				: "";
-			const itemsRow = broken ? "" : _sr_items_detail(r.items, 8);
-			return `<tr${broken ? ' class="sr-broken"' : ''}>
-				<td><a href="/app/purchase-order/${encodeURIComponent(r.po)}" target="_blank"><strong>${_sr_esc(r.po)}</strong></a></td>
-				<td>${_sr_esc(r.supplier)}</td>
-				<td>${_sr_esc(r.cc)}</td>
-				<td class="sr-num">${format_currency(r.total, r.currency)}</td>
-				<td class="sr-num">${r.items_count}</td>
-				<td class="sr-num">${(r.per_received || 0).toFixed(0)}%</td>
-				<td>${_sr_age(r.age_hours)}</td>
-				<td>${actionCell}</td>
-			</tr>${warnRow}${itemsRow}`;
-		}),
-		'</tbody></table>'
-	].join("");
-	$("#sr-c-body").html(html);
-	$("#sr-c-body .sr-create-c").on("click", function () {
-		const btn = $(this);
-		const po = btn.data("po");
-		console.log("[stores-receiving] Section C click → PO", po);
-		_sr_confirm_create(`Create GRN from Purchase Order ${po}?`, async () => {
-			console.log("[stores-receiving] Confirmed, calling API", po);
-			btn.prop("disabled", true).text("Creating…");
-			let succeeded = false;
-			try {
-				const r = await frappe.call({
-					method: `${SR_API}.create_grn_from_direct_po`,
-					args: { po_name: po },
 					freeze: true, freeze_message: "Creating GRN…",
 				});
 				console.log("[stores-receiving] API response", r);
