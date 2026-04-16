@@ -14,7 +14,9 @@ def create_custom_fields():
 				"insert_after": "naming_series",
 				"read_only": 1,
 				"no_copy": 1,
-				"print_hide": 1,
+				"print_hide": 0,
+				"in_standard_filter": 1,
+				"bold": 1,
 				"description": "Linked TS Token (auto-set when GRN is created from TS Gate Entry system)"
 			},
 			{
