@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Dashboards</b></span>\",\"col\":12}},{\"id\":\"s5\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"MD Dashboard\",\"col\":4}},{\"id\":\"s5b\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"MD Wall Display\",\"col\":4}},{\"id\":\"s0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Dashboard\",\"col\":4}},{\"id\":\"s0b\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Wall Display\",\"col\":4}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gate Operations Dashboard\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Wall Display\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Procurement Dashboard\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Control Matrix\",\"col\":4}}]",
+ "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Dashboards</b></span>\",\"col\":12}},{\"id\":\"s5\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"MD Dashboard\",\"col\":4}},{\"id\":\"s5b\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"MD Wall Display\",\"col\":4}},{\"id\":\"s0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Dashboard\",\"col\":4}},{\"id\":\"s0b\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Wall Display\",\"col\":4}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gate Operations Dashboard\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Wall Display\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Procurement Dashboard\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Control Matrix\",\"col\":4}},{\"id\":\"ssr\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stores Receiving Dashboard\",\"col\":4}}]",
  "creation": "2026-03-23 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -135,7 +135,7 @@
  "name": "Dashboards",
  "number_cards": [],
  "owner": "Administrator",
- "parent_page": "Trustbit Ethanol",
+ "parent_page": "BBPL Ethanol",
  "public": 1,
  "roles": [
   {"role": "System Manager"},
@@ -196,6 +196,12 @@
    "color": "Yellow",
    "label": "Budget Control Matrix",
    "link_to": "budget-control-matrix",
+   "type": "Page"
+  },
+  {
+   "color": "Green",
+   "label": "Stores Receiving Dashboard",
+   "link_to": "stores-receiving",
    "type": "Page"
   }
  ],

@@ -28,6 +28,41 @@ def create_custom_fields():
 				"print_hide": 1,
 				"description": "Linked TS Gate Entry (auto-set when GRN is created from TS Gate Entry system)"
 			},
+			{
+				"fieldname": "ts_non_weighing_grn",
+				"fieldtype": "Check",
+				"label": "TS Non-Weighing GRN",
+				"insert_after": "ts_gate_entry",
+				"read_only": 1,
+				"no_copy": 1,
+				"hidden": 1,
+				"print_hide": 1,
+				"default": "0",
+				"description": "Audit marker — set to 1 when PR was created via Stores Receiving Dashboard for a Non-RM no-weighing token"
+			},
+			{
+				"fieldname": "ts_direct_po_grn",
+				"fieldtype": "Check",
+				"label": "TS Direct PO GRN",
+				"insert_after": "ts_non_weighing_grn",
+				"read_only": 1,
+				"no_copy": 1,
+				"hidden": 1,
+				"print_hide": 1,
+				"default": "0",
+				"description": "Audit marker — set to 1 when PR was created via Stores Receiving Dashboard for a Direct PO cost center"
+			},
+			{
+				"fieldname": "ts_stores_dashboard_source",
+				"fieldtype": "Data",
+				"label": "TS Stores Dashboard Source",
+				"insert_after": "ts_direct_po_grn",
+				"read_only": 1,
+				"no_copy": 1,
+				"hidden": 1,
+				"print_hide": 1,
+				"description": "Audit marker — which Stores Receiving Dashboard section created this PR (Section B / Section C)"
+			},
 		],
 
 		# ── PO Approval Fields ──────────────────────────────────────────
@@ -1660,6 +1695,19 @@ def seed_ts_settings():
 	for field, value in defaults.items():
 		if hasattr(doc, field) and not doc.get(field):
 			doc.set(field, value)
+			changed = True
+
+	# Inspection gate for Stores Receiving Dashboard — default ON (fail-closed).
+	# Separate from `defaults` loop because `not doc.get(field)` would treat
+	# an intentional OFF (0) the same as missing. tabSingles has no `modified`
+	# column so we use raw SQL.
+	if hasattr(doc, "block_grn_on_inspection_pending"):
+		rows = frappe.db.sql("""
+			SELECT value FROM `tabSingles`
+			WHERE doctype='TS Settings' AND field='block_grn_on_inspection_pending' LIMIT 1
+		""")
+		if not rows:
+			doc.set("block_grn_on_inspection_pending", 1)
 			changed = True
 
 	if changed:

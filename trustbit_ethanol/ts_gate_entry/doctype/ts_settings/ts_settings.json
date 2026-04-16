@@ -20,6 +20,7 @@
   "default_accepted_warehouse",
   "column_break_grn",
   "auto_submit_grn",
+  "block_grn_on_inspection_pending",
   "tab_approval",
   "approval_section",
   "enable_po_approval",
@@ -159,6 +160,13 @@
    "label": "Auto-Submit GRN",
    "default": "0",
    "description": "If checked, Purchase Receipt will be auto-submitted after creation"
+  },
+  {
+   "fieldname": "block_grn_on_inspection_pending",
+   "fieldtype": "Check",
+   "label": "Block GRN on Inspection Pending (Stores Dashboard)",
+   "default": "1",
+   "description": "When ON (default), Stores Receiving Dashboard blocks GRN creation for Non-RM no-weighing tokens until Material Inspection is Approved. Turn OFF only to allow GRN bypassing inspection (not recommended)."
   },
   {
    "fieldname": "tab_approval",

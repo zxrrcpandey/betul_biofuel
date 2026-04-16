@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Pending Unloading\",\"col\":4}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Currently Unloading\",\"col\":4}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Completed Unloading Today\",\"col\":4}},{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Actions</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Quality Inspection\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Unloading Entry\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Active Unloading\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Completed Unloading\",\"col\":4}}]",
+ "content": "[{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Pending Unloading\",\"col\":4}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Currently Unloading\",\"col\":4}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Completed Unloading Today\",\"col\":4}},{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Actions</b></span>\",\"col\":12}},{\"id\":\"ssr\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stores Receiving Dashboard\",\"col\":4}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Quality Inspection\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Unloading Entry\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Active Unloading\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Completed Unloading\",\"col\":4}}]",
  "creation": "2026-03-07 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -61,7 +61,7 @@
   {"number_card_name": "Completed Unloading Today"}
  ],
  "owner": "Administrator",
- "parent_page": "Trustbit Ethanol",
+ "parent_page": "BBPL Ethanol",
  "public": 1,
  "roles": [
   {"role": "Stores User"},
@@ -69,6 +69,12 @@
  ],
  "sequence_id": 4,
  "shortcuts": [
+  {
+   "color": "Green",
+   "label": "Stores Receiving Dashboard",
+   "link_to": "stores-receiving",
+   "type": "Page"
+  },
   {
    "color": "Blue",
    "doc_view": "New",

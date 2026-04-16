@@ -1,0 +1,28 @@
+{
+ "content": null,
+ "creation": "2026-04-16 00:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-04-16 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "stores-receiving",
+ "owner": "Administrator",
+ "page_name": "stores-receiving",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "Administrator"},
+  {"role": "IT Head"},
+  {"role": "Stores User"},
+  {"role": "Accounts Manager"},
+  {"role": "Accounts User"},
+  {"role": "CEO"},
+  {"role": "MD"}
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Stores Receiving Dashboard"
+}
