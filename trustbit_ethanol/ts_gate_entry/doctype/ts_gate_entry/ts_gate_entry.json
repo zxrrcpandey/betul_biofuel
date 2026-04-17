@@ -340,10 +340,6 @@
   {
    "link_doctype": "TS Weighbridge Log",
    "link_fieldname": "gate_entry"
-  },
-  {
-   "link_doctype": "TS Unloading Entry",
-   "link_fieldname": "gate_entry"
   }
  ],
  "modified": "2026-03-19 00:00:00",

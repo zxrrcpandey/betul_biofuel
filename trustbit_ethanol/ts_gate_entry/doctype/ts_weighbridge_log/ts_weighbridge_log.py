@@ -3,6 +3,14 @@ from frappe.model.document import Document
 from frappe.utils import now_datetime
 
 
+def _is_flow_v28_enabled():
+	"""v2.8.0 flow: Gross → Tare direct, no Unloading gate. Feature flag on TS Settings."""
+	try:
+		return bool(frappe.db.get_single_value("TS Settings", "ts_flow_v28_enabled"))
+	except Exception:
+		return False
+
+
 class TSWeighbridgeLog(Document):
 	def before_insert(self):
 		self.auto_fetch_from_gate_entry()
@@ -193,11 +201,12 @@ class TSWeighbridgeLog(Document):
 			else:
 				self.status = "Awaiting Tare"
 		else:
-			# Stock IN: Gross first → Unloading → Tare
+			# Stock IN: v2.8 flow is Gross → Tare direct (no Unload gate).
+			# Legacy flow (flag off) keeps the unloading_complete gate.
 			if self.tare_weight and self.gross_weight:
 				self.status = "Completed"
 			elif self.gross_weight and not self.tare_weight:
-				if self._is_non_rm_weighing() or self.unloading_complete:
+				if _is_flow_v28_enabled() or self._is_non_rm_weighing() or self.unloading_complete:
 					self.status = "Awaiting Tare Weight"
 				else:
 					self.status = "Awaiting Unloading"

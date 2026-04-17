@@ -694,7 +694,6 @@ function _lc_get_doc_links(d) {
 		links.push({ label: "Weighbridge", dt: "TS Weighbridge Log", doc: docs.weighbridge });
 		links.push({ label: "Quality", dt: "TS Quality Inspection", doc: docs.quality_inspection });
 		links.push({ label: "Deduction", dt: "TS Deduction Sheet", doc: docs.deduction_sheet });
-		links.push({ label: "Unloading", dt: "TS Unloading Entry", doc: docs.unloading });
 	} else {
 		if (docs.weighbridge) {
 			links.push({ label: "Weighbridge", dt: "TS Weighbridge Log", doc: docs.weighbridge });

@@ -141,14 +141,13 @@
   {
    "fieldname": "tare_section",
    "fieldtype": "Section Break",
-   "label": "Tare Weight (After Unloading)"
+   "label": "Tare Weight"
   },
   {
    "fieldname": "tare_weight",
    "fieldtype": "Float",
    "label": "Tare Weight (KG)",
-   "precision": "2",
-   "depends_on": "eval:doc.unloading_complete"
+   "precision": "2"
   },
   {
    "fieldname": "tare_weight_time",
@@ -170,9 +169,10 @@
   {
    "fieldname": "unloading_complete",
    "fieldtype": "Check",
-   "label": "Unloading Complete",
+   "label": "Legacy: Unloading Complete",
    "read_only": 1,
-   "description": "Auto-set when unloading is confirmed complete"
+   "hidden": 1,
+   "description": "v2.7 legacy fallback only. Under v2.8 this field is ignored (Tare is enabled directly after Gross)."
   },
   {
    "fieldname": "net_section",

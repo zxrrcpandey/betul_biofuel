@@ -44,14 +44,6 @@
   },
   {
    "hidden": 0,
-   "label": "TS Unloading Entry",
-   "link_to": "TS Unloading Entry",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
    "label": "Master Data",
    "link_type": "DocType",
    "onboard": 0,

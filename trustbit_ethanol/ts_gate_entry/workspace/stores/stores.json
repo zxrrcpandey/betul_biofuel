@@ -1,0 +1,83 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Stores — Receiving &amp; Quality</b></span>\",\"col\":12}},{\"id\":\"ssr\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stores Receiving Dashboard\",\"col\":4}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Quality Inspection\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Pending Quality\",\"col\":4}}]",
+ "creation": "2026-03-07 00:00:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "stock",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Stores",
+ "links": [
+  {
+   "hidden": 0,
+   "label": "Receiving & Quality",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Quality Inspection",
+   "link_to": "TS Quality Inspection",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Deduction Sheet",
+   "link_to": "TS Deduction Sheet",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "label": "TS Token",
+   "link_to": "TS Token",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-04-17 06:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "Stores",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "BBPL Ethanol",
+ "public": 1,
+ "roles": [
+  {"role": "Stores User"},
+  {"role": "System Manager"}
+ ],
+ "sequence_id": 4,
+ "shortcuts": [
+  {
+   "color": "Green",
+   "label": "Stores Receiving Dashboard",
+   "link_to": "stores-receiving",
+   "type": "Page"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "New",
+   "label": "New Quality Inspection",
+   "link_to": "TS Quality Inspection",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Pending Quality",
+   "link_to": "TS Token",
+   "stats_filter": "[[\"TS Token\",\"status\",\"=\",\"Tare Weighed\"]]",
+   "type": "DocType"
+  }
+ ],
+ "title": "Stores"
+}

@@ -21,22 +21,25 @@ frappe.ui.form.on("TS Weighbridge Log", {
 			frm.set_df_property("tare_weight", "read_only", 1);
 		}
 
-		// Disable tare weight if unloading not complete (Non-RM weighing skips unloading)
+		// v2.8 flow: Gross → Tare direct (no unloading gate).
+		// Legacy flow (flag off): require unloading_complete before Tare.
 		let is_non_rm_weighing = frm.doc.material_flow === "Non-Raw Material";
-		if (is_non_rm_weighing) {
-			// Non-RM weighing: tare allowed directly after gross (no unloading needed)
-			if (!frm.doc.tare_weight && frm.doc.gross_weight) {
+		frappe.db.get_single_value("TS Settings", "ts_flow_v28_enabled").then(v28_enabled => {
+			if (v28_enabled || is_non_rm_weighing) {
+				// Tare allowed directly after gross
+				if (!frm.doc.tare_weight && frm.doc.gross_weight) {
+					frm.set_df_property("tare_weight", "read_only", 0);
+					frm.set_df_property("tare_weight", "description", "");
+				}
+			} else if (!frm.doc.unloading_complete) {
+				frm.set_df_property("tare_weight", "read_only", 1);
+				frm.set_df_property("tare_weight", "description",
+					"Tare weight can only be entered after unloading is confirmed complete");
+			} else if (!frm.doc.tare_weight) {
 				frm.set_df_property("tare_weight", "read_only", 0);
 				frm.set_df_property("tare_weight", "description", "");
 			}
-		} else if (!frm.doc.unloading_complete) {
-			frm.set_df_property("tare_weight", "read_only", 1);
-			frm.set_df_property("tare_weight", "description",
-				"Tare weight can only be entered after unloading is confirmed complete");
-		} else if (!frm.doc.tare_weight) {
-			frm.set_df_property("tare_weight", "read_only", 0);
-			frm.set_df_property("tare_weight", "description", "");
-		}
+		});
 
 		// ── Fetch Weight Buttons ──
 		_add_fetch_weight_buttons(frm);

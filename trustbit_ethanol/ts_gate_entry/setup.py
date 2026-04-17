@@ -1453,7 +1453,6 @@ def seed_number_cards():
 		# Green — completed/positive
 		{"name": "Approved Quality", "label": "Approved Quality", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "status", "=", "Approved"]]', "color": "#10b981", "bg": "#dcfce7", "module": "TS Gate Entry"},
 		{"name": "Completed Today WB", "label": "Completed Today", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "=", "Completed"], ["TS Weighbridge Log", "creation", "Timespan", "today"]]', "color": "#10b981", "bg": "#dcfce7"},
-		{"name": "Completed Unloading Today", "label": "Completed Today", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Completed"], ["TS Unloading Entry", "creation", "Timespan", "today"]]', "color": "#10b981", "bg": "#dcfce7"},
 		{"name": "Exited Today", "label": "Exited Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Exited"], ["TS Token", "g1_exit_time", "Timespan", "today"]]', "color": "#10b981", "bg": "#dcfce7"},
 		{"name": "Exited Today - Main", "label": "Exited Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Exited"], ["TS Token", "creation", "Timespan", "today"]]', "color": "#10b981", "bg": "#dcfce7"},
 		{"name": "GRN Created Today", "label": "GRN Created Today", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "GRN Created"]]', "color": "#10b981", "bg": "#dcfce7"},
@@ -1468,7 +1467,7 @@ def seed_number_cards():
 		{"name": "Pending GRN", "label": "Pending GRN", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Tare Weighed"]]', "color": "#ef4444", "bg": "#fee2e2"},
 		{"name": "Stuck Vehicles", "label": "Stuck Vehicles", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]', "color": "#ef4444", "bg": "#fee2e2"},
 		{"name": "SLA Breaches", "label": "SLA Breaches", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]', "color": "#ef4444", "bg": "#fee2e2"},
-		{"name": "Awaiting Tare Weight", "label": "Awaiting Tare", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "=", "Awaiting Unloading"]]', "color": "#ef4444", "bg": "#fee2e2"},
+		{"name": "Awaiting Tare Weight", "label": "Awaiting Tare", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "=", "Awaiting Tare Weight"]]', "color": "#ef4444", "bg": "#fee2e2"},
 		{"name": "Items Without Code", "label": "Items Without Code", "document_type": "Item", "filters_json": '[["Item", "item_code", "is", "not set"]]', "color": "#ef4444", "bg": "#fee2e2"},
 		# Pink
 		{"name": "Pending Material Inspections", "label": "Pending Material Inspections", "document_type": "TS Material Inspection", "filters_json": '[["TS Material Inspection", "status", "=", "Pending"]]', "color": "#ec4899", "bg": "#fce7f3", "module": "TS Gate Entry"},
@@ -1477,7 +1476,6 @@ def seed_number_cards():
 		{"name": "Vehicles Inside - Main", "label": "Vehicles Inside", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]', "color": "#3b82f6", "bg": "#dbeafe"},
 		{"name": "Vehicles Inside - Mgmt", "label": "Vehicles Inside", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "not in", ["Exited", "Token Generated"]]]', "color": "#3b82f6", "bg": "#dbeafe"},
 		{"name": "Sent to Weighbridge", "label": "Sent to Weighbridge", "document_type": "TS Gate Entry", "filters_json": '[["TS Gate Entry", "status", "=", "Sent to Weighbridge"], ["TS Gate Entry", "docstatus", "=", 1]]', "color": "#3b82f6", "bg": "#dbeafe"},
-		{"name": "Currently Unloading", "label": "Currently Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Unloading"]]', "color": "#3b82f6", "bg": "#dbeafe"},
 		{"name": "Todays Quality Checks", "label": "Today's Quality Checks", "document_type": "TS Quality Inspection", "filters_json": '[["TS Quality Inspection", "creation", "Timespan", "today"]]', "color": "#3b82f6", "bg": "#dbeafe", "module": "TS Gate Entry"},
 		{"name": "Todays Deductions", "label": "Today's Deductions", "document_type": "TS Deduction Sheet", "filters_json": '[["TS Deduction Sheet", "creation", "Timespan", "today"]]', "color": "#3b82f6", "bg": "#e0e7ff", "module": "TS Gate Entry"},
 		{"name": "Tare Weighed Today", "label": "Tare Weighed Today", "document_type": "TS Weighbridge Log", "filters_json": '[["TS Weighbridge Log", "status", "in", ["Tare Recorded", "Completed"]], ["TS Weighbridge Log", "creation", "Timespan", "today"]]', "color": "#3b82f6", "bg": "#dbeafe"},
@@ -1489,8 +1487,6 @@ def seed_number_cards():
 		{"name": "Awaiting PO Link", "label": "Awaiting PO Link", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Token Generated"]]', "color": "#f59e0b", "bg": "#fef3c7"},
 		{"name": "Awaiting Gross Weight", "label": "Awaiting Gross", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "PO Linked"]]', "color": "#f59e0b", "bg": "#fef3c7"},
 		{"name": "Pending Quality", "label": "Pending Quality", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Tare Weighed"]]', "color": "#f59e0b", "bg": "#fef3c7"},
-		{"name": "Active Unloading - Main", "label": "Active Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Unloading"]]', "color": "#f59e0b", "bg": "#fef3c7"},
-		{"name": "Pending Unloading", "label": "Pending Unloading", "document_type": "TS Unloading Entry", "filters_json": '[["TS Unloading Entry", "status", "=", "Pending"]]', "color": "#f59e0b", "bg": "#fef3c7"},
 		{"name": "Visitors Inside Plant", "label": "Visitors Inside Plant", "document_type": "TS Token", "filters_json": '[["TS Token", "entry_type", "=", "Gate Pass"], ["TS Token", "gate_pass_status", "=", "Inside Plant"]]', "color": "#f59e0b", "bg": "#fef3c7"},
 		# Purple
 		{"name": "Total Brands", "label": "Total Brands", "document_type": "Brand", "filters_json": '[]', "color": "#8b5cf6", "bg": "#ede9fe"},
@@ -1710,6 +1706,16 @@ def seed_ts_settings():
 		""")
 		if not rows:
 			doc.set("block_grn_on_inspection_pending", 1)
+			changed = True
+
+	# v2.8.0 flow simplification flag — default ON. Same fail-closed pattern.
+	if hasattr(doc, "ts_flow_v28_enabled"):
+		rows = frappe.db.sql("""
+			SELECT value FROM `tabSingles`
+			WHERE doctype='TS Settings' AND field='ts_flow_v28_enabled' LIMIT 1
+		""")
+		if not rows:
+			doc.set("ts_flow_v28_enabled", 1)
 			changed = True
 
 	if changed:

@@ -103,7 +103,7 @@ def _get_last_timestamp(token):
 		"Gross Weighed": token.wb_gross_time,
 		"Quality Done": token.quality_time,
 		"Graded": token.grading_time,
-		"Unloading": token.unload_start_time,
+		# v2.8.0: "Unloading" state retired; legacy tokens may still have unload_start_time
 		"Tare Weighed": token.wb_tare_time,
 		"GRN Created": token.grn_time,
 		# Stock OUT statuses
@@ -189,10 +189,8 @@ def get_po_lifecycle(po_name):
 			filters={"token_number": token.name},
 			fields=["name", "status"],
 			limit=1)
-		ue = frappe.db.get_all("TS Unloading Entry",
-			filters={"token_number": token.name},
-			fields=["name", "status"],
-			limit=1)
+		# TS Unloading Entry removed in v2.8.0 — no lookup
+		ue = []
 		mi = frappe.db.get_all("TS Material Inspection",
 			filters={"token_number": token.name},
 			fields=["name", "status"],
@@ -258,13 +256,12 @@ def _build_lifecycle_steps(token_status, stock_direction, material_flow, require
 			{"label": "Gross Weighed", "short": "Gross"},
 			{"label": "Quality Done", "short": "QI"},
 			{"label": "Graded", "short": "Grade"},
-			{"label": "Unloading", "short": "Unload"},
 			{"label": "Tare Weighed", "short": "Tare"},
 			{"label": "GRN Created", "short": "GRN"},
 			{"label": "Exited", "short": "Exit"},
 		]
 		order = ["Token Generated", "PO Linked", "Gross Weighed",
-				 "Quality Done", "Graded", "Unloading",
+				 "Quality Done", "Graded",
 				 "Tare Weighed", "GRN Created", "Exited"]
 	elif requires_weighing:
 		# Non-RM with weighing

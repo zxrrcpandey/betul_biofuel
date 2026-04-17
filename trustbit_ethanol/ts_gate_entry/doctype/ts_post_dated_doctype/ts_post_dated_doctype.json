@@ -12,7 +12,7 @@
    "fieldname": "doctype_name",
    "fieldtype": "Select",
    "label": "DocType",
-   "options": "TS Token\nTS Gate Entry\nTS Weighbridge Log\nTS Quality Inspection\nTS Deduction Sheet\nTS Unloading Entry",
+   "options": "TS Token\nTS Gate Entry\nTS Weighbridge Log\nTS Quality Inspection\nTS Deduction Sheet",
    "reqd": 1,
    "in_list_view": 1
   },

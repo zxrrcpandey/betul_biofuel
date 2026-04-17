@@ -21,6 +21,7 @@
   "column_break_grn",
   "auto_submit_grn",
   "block_grn_on_inspection_pending",
+  "ts_flow_v28_enabled",
   "tab_approval",
   "approval_section",
   "enable_po_approval",
@@ -167,6 +168,14 @@
    "label": "Block GRN on Inspection Pending (Stores Dashboard)",
    "default": "1",
    "description": "When ON (default), Stores Receiving Dashboard blocks GRN creation for Non-RM no-weighing tokens until Material Inspection is Approved. Turn OFF only to allow GRN bypassing inspection (not recommended)."
+  },
+  {
+   "fieldname": "ts_flow_v28_enabled",
+   "fieldtype": "Check",
+   "label": "v2.8 Flow Enabled (Gross \u2192 Tare direct, no Unloading gate)",
+   "default": "1",
+   "permlevel": 1,
+   "description": "v2.8.0 flow simplification: allows Tare Weight immediately after Gross (no Unloading Entry gate). Default ON. Turn OFF only for 48h kill-switch fallback to legacy flow. Writable by IT Head / System Manager only (permlevel 1)."
   },
   {
    "fieldname": "tab_approval",
