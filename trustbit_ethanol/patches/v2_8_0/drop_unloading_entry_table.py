@@ -76,9 +76,12 @@ def execute():
 			# If delete fails, manually clear DocType row
 			frappe.db.sql("DELETE FROM `tabDocType` WHERE name=%s", (doctype_name,))
 
-	# 6. Drop the table itself
+	# Commit all DML BEFORE the DDL (DROP TABLE triggers implicit commit check in Frappe).
+	frappe.db.commit()
+
+	# 6. Drop the table itself — use sql_ddl() which handles DDL context safely.
 	if table_exists:
-		frappe.db.sql(f"DROP TABLE IF EXISTS `tab{doctype_name}`")
+		frappe.db.sql_ddl(f"DROP TABLE IF EXISTS `tab{doctype_name}`")
 
 	frappe.db.commit()
 	print(f"v2.8.0 patch: {doctype_name} removed cleanly.")
