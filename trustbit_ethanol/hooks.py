@@ -18,6 +18,7 @@ app_include_js = [
 	"/assets/trustbit_ethanol/js/mr_list.js",
 	"/assets/trustbit_ethanol/js/ts_post_dated.js",
 	"/assets/trustbit_ethanol/js/item_list.js",
+	"/assets/trustbit_ethanol/js/ts_version_badge.js",
 ]
 
 # Module-workspace mapping for correct breadcrumbs
