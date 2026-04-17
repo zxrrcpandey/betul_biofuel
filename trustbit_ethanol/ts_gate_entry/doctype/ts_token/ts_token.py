@@ -369,6 +369,12 @@ class TSToken(Document):
 			"transporter_name": gate_entry.transporter or "",
 		})
 
+		# v2.8.1.3: copy missing PO header fields that ERPNext's make_purchase_receipt
+		# mapper would normally propagate (tax template, project, cost center, terms,
+		# payment terms, addresses, contact, discount, taxes child table).
+		from trustbit_ethanol.ts_gate_entry.stores_receiving_api import _copy_po_header_fields
+		_copy_po_header_fields(pr, po)
+
 		pr.flags.ignore_permissions = True
 		pr.insert()
 

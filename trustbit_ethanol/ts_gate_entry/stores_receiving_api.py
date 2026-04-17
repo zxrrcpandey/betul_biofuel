@@ -33,6 +33,55 @@ INSPECTION_PASS_STATES = {"Approved", "Not Required"}
 
 # Token flow constants
 STATUS_TARE_WEIGHED = "Tare Weighed"
+
+
+def _copy_po_header_fields(pr, po):
+	"""v2.8.1.3: copy PO header fields that ERPNext's make_purchase_receipt mapper
+	would normally propagate. We build PR programmatically, so these need to be
+	explicit. Covers tax template, project, cost center, terms, payment terms,
+	addresses, contact, and the taxes child table.
+
+	Safe to call regardless of whether fields are already set (only copies when
+	PR field is empty/missing to avoid overwriting explicit values).
+	"""
+	HEADER_FIELDS = [
+		"tax_category",
+		"taxes_and_charges",
+		"shipping_rule",
+		"project",
+		"cost_center",
+		"terms",
+		"tc_name",
+		"payment_terms_template",
+		"supplier_address",
+		"contact_person",
+		"shipping_address",
+		"apply_discount_on",
+		"additional_discount_percentage",
+		"discount_amount",
+		"base_discount_amount",
+	]
+	for f in HEADER_FIELDS:
+		po_val = getattr(po, f, None)
+		if po_val and not pr.get(f):
+			pr.set(f, po_val)
+
+	# Copy taxes child table (Purchase Taxes and Charges) — one-to-one mirror
+	if not pr.get("taxes") and getattr(po, "taxes", None):
+		for tax in po.taxes:
+			pr.append("taxes", {
+				"charge_type": tax.charge_type,
+				"account_head": tax.account_head,
+				"description": tax.description,
+				"rate": tax.rate,
+				"tax_amount": 0,  # let Frappe recalculate against PR items
+				"cost_center": tax.cost_center,
+				"category": tax.category,
+				"add_deduct_tax": tax.add_deduct_tax,
+				"included_in_print_rate": tax.included_in_print_rate,
+				"row_id": tax.row_id,
+				"account_currency": tax.account_currency,
+			})
 STATUS_GRN_CREATED = "GRN Created"
 FLOW_NON_RM = "Non-Raw Material"
 FLOW_TYPE_DIRECT_PO = "Direct PO"
@@ -558,6 +607,12 @@ def create_grn_for_weighed_token(token_name):
 		"ts_stores_dashboard_source": "Section A",
 	})
 
+	# v2.8.1.3: copy missing header fields that ERPNext's make_purchase_receipt
+	# mapper would normally propagate (tax template, project, cost center, terms,
+	# payment terms, addresses, contact, discount). We build PR programmatically
+	# so these need explicit copying. taxes child table also copied below.
+	_copy_po_header_fields(pr, po)
+
 	frappe.flags.in_stores_dashboard_mutation = True
 	try:
 		pr.flags.ignore_permissions = True
@@ -755,6 +810,10 @@ def create_grn_for_non_weighing_token(token_name):
 		"ts_non_weighing_grn": 1,
 		"ts_stores_dashboard_source": "Section B",
 	})
+
+	# v2.8.1.3: copy missing PO header fields (tax template, project, terms, etc.)
+	_copy_po_header_fields(pr, po)
+
 	# ignore_permissions: caller already validated via _check_mutate() (MUTATE_ROLES)
 	# and po.check_permission("read") above; Stores User has PR create via Custom DocPerm.
 	# Setting flag for pr_before_save tamper guard to allow audit marker writes.
