@@ -1,12 +1,11 @@
 /**
- * Version badge in Frappe navbar.
+ * Version badge — positioned BELOW the Trustbit logo in the sidebar.
  *
  * Calls trustbit_ethanol.ts_gate_entry.ts_version_api.get_version_info and
- * injects a small monospace badge to the right of the page-header showing
- * the deployed git commit + date. Helps confirm that prod/demo is actually
- * running the version you think it's running.
+ * injects a small monospace label just under the sidebar Trustbit logo so
+ * users can see what commit is deployed on the server they're using.
  *
- * Hover = full commit message.
+ * Hover = full commit message. Click-to-select-all for easy copy.
  */
 
 (function () {
@@ -15,44 +14,62 @@
 	function injectBadge(info) {
 		if (!info || !info.commit || info.commit === "unknown") return;
 
-		// Remove any existing badge first (idempotent across page transitions)
+		// Remove any existing badge first (idempotent across SPA route changes)
 		$(".ts-version-badge").remove();
 
-		const branch_part = info.branch && info.branch !== "develop"
-			? `<span style="color:#f59e0b;font-weight:bold;"> · ${info.branch}</span>`
+		const branch_part = (info.branch && info.branch !== "develop")
+			? `<div style="font-size:9px;color:#f59e0b;font-weight:bold;margin-top:2px;">${info.branch}</div>`
 			: "";
 
 		const tooltip = (info.message || "").replace(/"/g, "&quot;");
+
 		const $badge = $(`
 			<div class="ts-version-badge"
 			     title="${tooltip}\n${info.date}"
 			     style="
-			        display:inline-flex;
-			        align-items:center;
-			        padding:3px 10px;
-			        margin-right:10px;
-			        background:#f1f5f9;
-			        border:1px solid #cbd5e1;
-			        border-radius:12px;
+			        display:block;
+			        margin:4px 14px 8px 14px;
+			        padding:4px 8px;
+			        background:rgba(241, 245, 249, 0.6);
+			        border:1px solid rgba(203, 213, 225, 0.5);
+			        border-radius:6px;
 			        font-family:monospace;
-			        font-size:11px;
-			        color:#475569;
+			        font-size:10px;
+			        color:#64748b;
 			        cursor:help;
 			        user-select:all;
+			        text-align:center;
+			        line-height:1.3;
 			     ">
-			  <span style="color:#1e40af;font-weight:bold;">${info.commit}</span>
-			  <span style="margin:0 4px;color:#94a3b8;">·</span>
-			  <span>${info.date}</span>${branch_part}
+			  <div><span style="color:#1e40af;font-weight:bold;">${info.commit}</span></div>
+			  <div style="font-size:9px;color:#94a3b8;">${info.date}</div>
+			  ${branch_part}
 			</div>
 		`);
 
-		// Try to place it inside the top navbar (right side) — fall back to body top
-		const $target = $(".navbar .navbar-home").first();
-		if ($target.length) {
-			$target.after($badge);
-		} else {
-			// Fallback: prepend inside navbar-collapse
-			$(".navbar .navbar-collapse").first().prepend($badge);
+		// Try a few known selectors for the sidebar — place the badge after the
+		// first-of-its-kind logo block. Fall back through multiple candidates.
+		const candidates = [
+			".body-sidebar .app-logo",           // Frappe v15 sidebar app logo
+			".desk-sidebar .app-logo",
+			".body-sidebar-container .app-logo",
+			".body-sidebar .sidebar-item-container:first",
+			".desk-sidebar",
+			".standard-sidebar",
+		];
+
+		for (const sel of candidates) {
+			const $el = $(sel).first();
+			if ($el.length) {
+				$el.after($badge);
+				return;
+			}
+		}
+
+		// Final fallback: prepend to sidebar
+		const $sidebar = $(".body-sidebar, .desk-sidebar, .standard-sidebar").first();
+		if ($sidebar.length) {
+			$sidebar.prepend($badge);
 		}
 	}
 
@@ -71,15 +88,15 @@
 		});
 	}
 
-	// Inject on initial load
+	// Inject on initial load — wait for sidebar to render
 	$(document).ready(() => {
-		setTimeout(fetchAndInject, 500);
+		setTimeout(fetchAndInject, 800);
 	});
 
-	// Re-inject on route change (SPA navigation wipes navbar extras sometimes)
+	// Re-inject on route change (SPA nav sometimes rebuilds sidebar)
 	if (window.frappe && frappe.router && frappe.router.on) {
 		frappe.router.on("change", () => {
-			setTimeout(fetchAndInject, 300);
+			setTimeout(fetchAndInject, 500);
 		});
 	}
 })();
