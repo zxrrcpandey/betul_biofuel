@@ -22,8 +22,10 @@ def get_version_info():
 
 	info = {"commit": "unknown", "message": "", "date": "", "branch": ""}
 	try:
+		# frappe.get_app_path returns the MODULE dir (apps/<app>/<app>/),
+		# the git root is ONE level up (apps/<app>/).
 		app_path = frappe.get_app_path("trustbit_ethanol")
-		git_root = os.path.dirname(os.path.dirname(app_path))
+		git_root = os.path.dirname(app_path)
 		# Single git command: short hash, subject, commit date, branch
 		result = subprocess.run(
 			[
