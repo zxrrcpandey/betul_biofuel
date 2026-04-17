@@ -78,6 +78,12 @@
 
 	function fetchAndInject() {
 		if (!window.frappe || !frappe.call) return;
+		// Skip on login / unauthenticated pages — badge is for logged-in desk users.
+		// (Decorator also has allow_guest=True for safety, but we still skip to avoid noise.)
+		if (!frappe.session || !frappe.session.user || frappe.session.user === "Guest") return;
+		// Skip on login, update-password, and other non-desk routes
+		if (window.location.pathname.indexOf("/app") !== 0) return;
+
 		frappe.call({
 			method: "trustbit_ethanol.ts_gate_entry.ts_version_api.get_version_info",
 			type: "GET",

@@ -12,7 +12,7 @@ import subprocess
 import frappe
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_version_info():
 	"""Return current git commit info as {commit, message, date}. Cached 5 min."""
 	cache_key = "ts_version_info"
