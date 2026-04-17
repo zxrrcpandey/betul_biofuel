@@ -520,6 +520,11 @@ def create_grn_for_weighed_token(token_name):
 		if not rate and deduction_sheet and deduction_sheet.item_rate:
 			rate = flt(deduction_sheet.item_rate)
 
+		# v2.8.1.2: propagate PO HEADER project to PR item (uniform across rows).
+		# Some PO items have project=NULL — ERPNext rejects mixed project values
+		# in the same PR. Header-level project is the source of truth.
+		item_po_project = frappe.db.get_value("Purchase Order", item_po_name, "project") or po.project or ""
+
 		pr_items.append({
 			"item_code": ge_item["item_code"],
 			"item_name": ge_item["item_name"],
@@ -530,6 +535,7 @@ def create_grn_for_weighed_token(token_name):
 			"warehouse": accepted_warehouse or warehouse,
 			"purchase_order": item_po_name,
 			"purchase_order_item": po_item.name if po_item else None,
+			"project": item_po_project,
 			"ts_delivery_location": (po_item.ts_delivery_location if po_item else "") or "",
 			"ts_item_remark": (po_item.ts_item_remark if po_item else "") or "",
 		})
@@ -713,6 +719,9 @@ def create_grn_for_non_weighing_token(token_name):
 		delivery_location = (po_item.ts_delivery_location if po_item else "") or ""
 		item_remark = (po_item.ts_item_remark if po_item else "") or ""
 
+		# v2.8.1.2: propagate PO HEADER project (see Section A comment)
+		item_po_project = frappe.db.get_value("Purchase Order", item_po_name, "project") or po.project or ""
+
 		pr_items.append({
 			"item_code": ge_item.item_code,
 			"item_name": ge_item.item_name,
@@ -723,6 +732,7 @@ def create_grn_for_non_weighing_token(token_name):
 			"warehouse": accepted_warehouse or warehouse,
 			"purchase_order": item_po_name,
 			"purchase_order_item": po_item.name if po_item else None,
+			"project": item_po_project,
 			"ts_delivery_location": delivery_location,
 			"ts_item_remark": item_remark,
 		})

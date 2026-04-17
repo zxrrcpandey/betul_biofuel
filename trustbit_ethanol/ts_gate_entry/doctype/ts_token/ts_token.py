@@ -331,6 +331,10 @@ class TSToken(Document):
 				ts_delivery_location = frappe.db.get_value("Purchase Order Item", po_item_name, "ts_delivery_location") or ""
 				ts_item_remark = frappe.db.get_value("Purchase Order Item", po_item_name, "ts_item_remark") or ""
 
+			# v2.8.1.2: propagate PO HEADER project to PR item (uniform across rows).
+			# ERPNext PR validation rejects mixed project values in the same PR.
+			item_po_project = frappe.db.get_value("Purchase Order", item_po_name, "project") or po.project or ""
+
 			pr_item = {
 				"item_code": ge_item.item_code,
 				"item_name": ge_item.item_name,
@@ -341,6 +345,7 @@ class TSToken(Document):
 				"warehouse": accepted_warehouse or warehouse,
 				"purchase_order": item_po_name,
 				"purchase_order_item": po_item_name,
+				"project": item_po_project,
 				"ts_delivery_location": ts_delivery_location,
 				"ts_item_remark": ts_item_remark,
 			}
