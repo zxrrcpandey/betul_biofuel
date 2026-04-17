@@ -41,7 +41,10 @@
 			        text-align:center;
 			        line-height:1.3;
 			     ">
-			  <div><span style="color:#1e40af;font-weight:bold;">${info.commit}</span></div>
+			  <div>
+			    <span style="color:#64748b;font-weight:normal;">Build:</span>
+			    <span style="color:#1e40af;font-weight:bold;">${info.commit}</span>
+			  </div>
 			  <div style="font-size:9px;color:#94a3b8;">${info.date}</div>
 			  ${branch_part}
 			</div>
