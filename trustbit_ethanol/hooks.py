@@ -151,6 +151,7 @@ doc_events = {
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
 	},
 	"Purchase Receipt": {
+		"validate": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.validate_unique_supplier_bill",
 		"before_save": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_before_save_audit_guard",
 		"on_submit": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_on_submit_update_token",
 		"on_cancel": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_on_cancel_clear_token",

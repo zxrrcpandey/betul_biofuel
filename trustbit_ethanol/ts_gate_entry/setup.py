@@ -65,6 +65,27 @@ def create_custom_fields():
 				"print_hide": 1,
 				"description": "Audit marker — which Stores Receiving Dashboard section created this PR (Section B / Section C)"
 			},
+			# ── v2.8.0.1: Supplier Invoice details (carry forward to PI via name match) ──
+			{
+				"fieldname": "bill_no",
+				"fieldtype": "Data",
+				"label": "Supplier Invoice No",
+				"insert_after": "supplier_address",
+				"no_copy": 0,
+				"print_hide": 0,
+				"in_list_view": 1,
+				"in_standard_filter": 1,
+				"description": "Supplier's invoice/bill number (auto-carries to Purchase Invoice on creation)"
+			},
+			{
+				"fieldname": "bill_date",
+				"fieldtype": "Date",
+				"label": "Supplier Invoice Date",
+				"insert_after": "bill_no",
+				"no_copy": 0,
+				"print_hide": 0,
+				"description": "Supplier's invoice/bill date (auto-carries to Purchase Invoice on creation)"
+			},
 		],
 
 		# ── PO Approval Fields ──────────────────────────────────────────
