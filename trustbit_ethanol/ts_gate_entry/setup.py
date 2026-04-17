@@ -65,12 +65,12 @@ def create_custom_fields():
 				"print_hide": 1,
 				"description": "Audit marker — which Stores Receiving Dashboard section created this PR (Section B / Section C)"
 			},
-			# ── v2.8.0.1: Supplier Invoice details (carry forward to PI via name match) ──
+			# ── v2.8.0.2: Supplier Invoice details — in Details tab after Supplier ──
 			{
 				"fieldname": "bill_no",
 				"fieldtype": "Data",
 				"label": "Supplier Invoice No",
-				"insert_after": "supplier_address",
+				"insert_after": "supplier",
 				"no_copy": 0,
 				"print_hide": 0,
 				"in_list_view": 1,
