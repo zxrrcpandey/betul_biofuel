@@ -2037,6 +2037,40 @@ def seed_property_setters():
 	frappe.db.commit()
 
 
+def seed_over_receipt_allowance():
+	"""v2.8.1.4: ensure all Items have over_delivery_receipt_allowance = 10%.
+
+	BBF policy — weighed commodities commonly over-receive by small margins
+	(moisture variance, scale calibration). 10% tolerance prevents spurious
+	submit-blocks on PR. Stock Settings global is also set to 10.
+
+	Idempotent: re-runs harmlessly; only updates items <10%.
+	"""
+	# Global Stock Settings fallback
+	try:
+		current = frappe.db.get_single_value("Stock Settings", "over_delivery_receipt_allowance")
+		if not current or float(current) < 10:
+			frappe.db.set_single_value("Stock Settings", "over_delivery_receipt_allowance", 10)
+	except Exception as e:
+		frappe.log_error(message=f"seed_over_receipt_allowance (Stock Settings): {e}",
+						 title="seed_over_receipt_allowance")
+
+	# Bulk-set all items below 10%. Using direct SQL since we have thousands of items
+	# and ORM save would trigger on_update hooks per item.
+	try:
+		frappe.db.sql("""
+			UPDATE `tabItem`
+			SET over_delivery_receipt_allowance = 10
+			WHERE over_delivery_receipt_allowance IS NULL
+			   OR over_delivery_receipt_allowance < 10
+		""")
+		frappe.db.commit()
+		frappe.clear_cache(doctype="Item")
+	except Exception as e:
+		frappe.log_error(message=f"seed_over_receipt_allowance (Items): {e}",
+						 title="seed_over_receipt_allowance")
+
+
 def patch_wkhtmltopdf_whitelist():
 	"""Patch Frappe core: add @frappe.whitelist() to is_wkhtmltopdf_valid.
 	This function is called from JS but missing the decorator in Frappe v15.
