@@ -206,11 +206,19 @@ function _sr_render_section_a() {
 				}
 			} catch (e) {
 				console.error("[stores-receiving] API error:", e);
-				frappe.msgprint({
-					title: "GRN creation failed",
-					message: frappe.utils.escape_html(e.message || String(e)),
-					indicator: "red"
-				});
+				// Frappe's native AJAX error handler already shows a dialog with the
+				// server's frappe.throw message. Only show our fallback for non-server
+				// errors (network, JS) where _server_messages is absent.
+				const has_server_msg = e && (e._server_messages || (e.responseJSON && e.responseJSON._server_messages));
+				if (!has_server_msg) {
+					frappe.msgprint({
+						title: "GRN creation failed",
+						message: frappe.utils.escape_html(
+							(e && (e.message || e.statusText)) || "Network or script error — see browser console."
+						),
+						indicator: "red"
+					});
+				}
 			} finally {
 				if (!succeeded) {
 					btn.prop("disabled", false).text("Create GRN");
@@ -279,11 +287,19 @@ function _sr_render_section_b() {
 				}
 			} catch (e) {
 				console.error("[stores-receiving] API error:", e);
-				frappe.msgprint({
-					title: "GRN creation failed",
-					message: frappe.utils.escape_html(e.message || String(e)),
-					indicator: "red"
-				});
+				// Frappe's native AJAX error handler already shows a dialog with the
+				// server's frappe.throw message. Only show our fallback for non-server
+				// errors (network, JS) where _server_messages is absent.
+				const has_server_msg = e && (e._server_messages || (e.responseJSON && e.responseJSON._server_messages));
+				if (!has_server_msg) {
+					frappe.msgprint({
+						title: "GRN creation failed",
+						message: frappe.utils.escape_html(
+							(e && (e.message || e.statusText)) || "Network or script error — see browser console."
+						),
+						indicator: "red"
+					});
+				}
 			} finally {
 				if (!succeeded) {
 					btn.prop("disabled", false).text("Create GRN");
