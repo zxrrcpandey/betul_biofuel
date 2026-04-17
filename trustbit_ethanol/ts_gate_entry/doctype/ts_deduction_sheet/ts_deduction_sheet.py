@@ -182,14 +182,41 @@ class TSDeductionSheet(Document):
 		if not self.decision:
 			frappe.throw("Please set a Decision before approving")
 
+		# v2.8.1 Phase B: Accounts Manager + IT Head + SM + Administrator only
+		allowed = {"Accounts Manager", "IT Head", "System Manager", "Administrator"}
+		user_roles = set(frappe.get_roles(frappe.session.user))
+		if not (user_roles & allowed):
+			raise frappe.PermissionError(
+				"Only Accounts Manager / IT Head / System Manager can approve deductions"
+			)
+
 		self.status = "Approved"
 		self.save(ignore_permissions=True)
 
-		# Update token status and grading timestamp
+		# Audit trail
+		self.add_comment(
+			"Info",
+			f"[DEDUCTION_APPROVED] by {frappe.session.user}: "
+			f"total ₹{self.total_deduction or 0}, net payable ₹{self.net_payable or 0}"
+		)
+
+		# Update token timestamps (grading_time still useful for audit).
+		# v2.8.1: DO NOT set token.status = "Graded" anymore — that state is retired.
+		# The legacy write still applies under flag OFF (v2.7 path).
+		try:
+			qc_gate_on = bool(frappe.db.get_single_value("TS Settings", "ts_qc_gate_enabled"))
+		except Exception:
+			qc_gate_on = False
+
 		token = frappe.get_doc("TS Token", self.token_number)
-		token.db_set({
-			"grading_time": now_datetime(),
-			"status": "Graded"
-		})
+		if qc_gate_on:
+			# v2.8.1: only update timestamp, no status change
+			token.db_set("grading_time", now_datetime())
+		else:
+			# Legacy v2.7 behavior — write Graded status
+			token.db_set({
+				"grading_time": now_datetime(),
+				"status": "Graded"
+			})
 
 		return {"status": "Approved", "net_payable": self.net_payable}

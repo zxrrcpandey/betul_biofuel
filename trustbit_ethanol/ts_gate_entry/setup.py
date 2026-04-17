@@ -86,6 +86,99 @@ def create_custom_fields():
 				"print_hide": 0,
 				"description": "Supplier's invoice/bill date (auto-carries to Purchase Invoice on creation)"
 			},
+			# ── v2.8.1 Phase B: QC Gate status on PR (auto-populated from linked QI) ──
+			{
+				"fieldname": "ts_qc_status",
+				"fieldtype": "Select",
+				"label": "TS QC Status",
+				"options": "Pending\nApproved\nRejected",
+				"default": "Pending",
+				"insert_after": "ts_stores_dashboard_source",
+				"read_only": 1,
+				"no_copy": 1,
+				"hidden": 0,
+				"in_standard_filter": 1,
+				"permlevel": 1,
+				"description": "QC status derived from linked TS Quality Inspection. Auto-set by QI on_submit hook. Used by Purchase Invoice validate hook to gate payment. Writable at permlevel 1 (IT Head/SM/Admin)."
+			},
+		],
+
+		# ── v2.8.1 Phase B: Purchase Invoice override fields ──
+		"Purchase Invoice": [
+			{
+				"fieldname": "ts_qc_override_section",
+				"fieldtype": "Section Break",
+				"label": "QC Override (v2.8.1)",
+				"insert_after": "total_taxes_and_charges",
+				"collapsible": 1,
+				"collapsible_depends_on": "eval:!doc.ts_qc_override",
+				"description": "Use only when QC is Rejected/Pending and business has decided to accept with reason. Writable by CEO / System Manager / IT Head only."
+			},
+			{
+				"fieldname": "ts_qc_override",
+				"fieldtype": "Check",
+				"label": "QC Override (bypass QC gate)",
+				"insert_after": "ts_qc_override_section",
+				"default": "0",
+				"permlevel": 1,
+				"no_copy": 1,
+				"description": "Check to bypass the QC gate. Requires reason. CEO / SM / IT Head only (permlevel 1)."
+			},
+			{
+				"fieldname": "ts_qc_override_reason",
+				"fieldtype": "Small Text",
+				"label": "QC Override Reason",
+				"insert_after": "ts_qc_override",
+				"mandatory_depends_on": "eval:doc.ts_qc_override",
+				"permlevel": 1,
+				"no_copy": 1,
+				"description": "Business justification for bypassing the QC gate. Minimum 20 characters recommended. Audit-logged."
+			},
+			{
+				"fieldname": "ts_qc_override_col",
+				"fieldtype": "Column Break",
+				"insert_after": "ts_qc_override_reason"
+			},
+			{
+				"fieldname": "ts_qc_override_by",
+				"fieldtype": "Data",
+				"label": "Overridden By",
+				"insert_after": "ts_qc_override_col",
+				"read_only": 1,
+				"permlevel": 1,
+				"no_copy": 1,
+				"description": "Auto-set from session user when override is saved."
+			},
+			{
+				"fieldname": "ts_qc_override_at",
+				"fieldtype": "Datetime",
+				"label": "Overridden At",
+				"insert_after": "ts_qc_override_by",
+				"read_only": 1,
+				"permlevel": 1,
+				"no_copy": 1,
+				"description": "Auto-set to current time when override is saved."
+			},
+		],
+
+		# ── v2.8.1 Phase B: Deduction Sheet links to PI ──
+		"TS Deduction Sheet": [
+			{
+				"fieldname": "ts_purchase_invoice",
+				"fieldtype": "Link",
+				"label": "Purchase Invoice",
+				"options": "Purchase Invoice",
+				"insert_after": "token_number",
+				"description": "Link to the Purchase Invoice this deduction applies to (v2.8.1: becomes required when ts_qc_gate_enabled is ON)."
+			},
+			{
+				"fieldname": "ts_purchase_receipt",
+				"fieldtype": "Link",
+				"label": "Purchase Receipt",
+				"options": "Purchase Receipt",
+				"insert_after": "ts_purchase_invoice",
+				"description": "Informational link to the source Purchase Receipt."
+			},
 		],
 
 		# ── PO Approval Fields ──────────────────────────────────────────
@@ -1737,6 +1830,17 @@ def seed_ts_settings():
 		""")
 		if not rows:
 			doc.set("ts_flow_v28_enabled", 1)
+			changed = True
+
+	# v2.8.1 PI QC Gate flag — default OFF (opt-in).
+	# Flip ON only after QI team is ready to gate invoices.
+	if hasattr(doc, "ts_qc_gate_enabled"):
+		rows = frappe.db.sql("""
+			SELECT value FROM `tabSingles`
+			WHERE doctype='TS Settings' AND field='ts_qc_gate_enabled' LIMIT 1
+		""")
+		if not rows:
+			doc.set("ts_qc_gate_enabled", 0)
 			changed = True
 
 	if changed:

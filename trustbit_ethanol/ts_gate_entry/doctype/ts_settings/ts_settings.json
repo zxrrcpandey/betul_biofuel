@@ -22,6 +22,7 @@
   "auto_submit_grn",
   "block_grn_on_inspection_pending",
   "ts_flow_v28_enabled",
+  "ts_qc_gate_enabled",
   "tab_approval",
   "approval_section",
   "enable_po_approval",
@@ -176,6 +177,14 @@
    "default": "1",
    "permlevel": 1,
    "description": "v2.8.0 flow simplification: allows Tare Weight immediately after Gross (no Unloading Entry gate). Default ON. Turn OFF only for 48h kill-switch fallback to legacy flow. Writable by IT Head / System Manager only (permlevel 1)."
+  },
+  {
+   "fieldname": "ts_qc_gate_enabled",
+   "fieldtype": "Check",
+   "label": "v2.8.1 QC Gate at PI (blocks Purchase Invoice until QI Approved)",
+   "default": "0",
+   "permlevel": 1,
+   "description": "v2.8.1 Phase B: when ON, Purchase Invoice save is blocked unless every linked Token has an Approved Quality Inspection. Default OFF at deploy \u2014 flip ON only after QI team is ready to sign invoices. CEO/SM/IT Head can override per-PI via ts_qc_override. Writable by IT Head / System Manager only (permlevel 1)."
   },
   {
    "fieldname": "tab_approval",

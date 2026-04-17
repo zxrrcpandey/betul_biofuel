@@ -13,8 +13,20 @@ class TSQualityInspection(Document):
 		if not self.token_number:
 			return
 		token_status = frappe.db.get_value("TS Token", self.token_number, "status")
-		if token_status not in ("Gross Weighed",):
-			frappe.throw(f"Token {self.token_number} is at stage '{token_status}'. Quality Inspection can only be created for tokens with status 'Gross Weighed'.")
+		# v2.8.1 Phase B: QI can now run at any stage after weighing (flexible flow)
+		# Under QC gate feature flag, we allow QI from Gross Weighed onwards.
+		allowed_new = ("Gross Weighed", "Tare Weighed", "GRN Created", "Exited")
+		allowed_legacy = ("Gross Weighed",)
+		try:
+			qc_gate_on = bool(frappe.db.get_single_value("TS Settings", "ts_qc_gate_enabled"))
+		except Exception:
+			qc_gate_on = False
+		allowed = allowed_new if qc_gate_on else allowed_legacy
+		if token_status not in allowed:
+			frappe.throw(
+				f"Token {self.token_number} is at stage '{token_status}'. "
+				f"Quality Inspection can only be created for tokens with status in: {', '.join(allowed)}."
+			)
 
 	def auto_fetch_references(self):
 		if not self.token_number:

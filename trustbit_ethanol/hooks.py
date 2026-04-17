@@ -157,6 +157,16 @@ doc_events = {
 		"on_cancel": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_on_cancel_clear_token",
 		"after_delete": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_after_delete_clear_token",
 	},
+	"Purchase Invoice": {
+		"validate": "trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_qc_approved",
+		"before_save": "trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate._block_pi_qc_override_tampering",
+	},
+	"TS Quality Inspection": {
+		"on_submit": "trustbit_ethanol.ts_gate_entry.ts_qc_auto_reject.on_qi_submitted",
+	},
+	"Stock Entry": {
+		"before_save": "trustbit_ethanol.ts_gate_entry.ts_stock_issue_warning.warn_rejected_stock_in_warehouse",
+	},
 	"User": {
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_user_management.on_user_update",
 	},
@@ -201,7 +211,11 @@ scheduler_events = {
 			"trustbit_ethanol.ts_gate_entry.ts_po_approval.check_approval_sla",
 			"trustbit_ethanol.ts_gate_entry.doctype.ts_material_inspection.ts_material_inspection.check_inspection_sla",
 			"trustbit_ethanol.ts_return_item_tracker.ts_return_item_api.check_overdue_assignments",
-		]
+			"trustbit_ethanol.ts_gate_entry.ts_qc_sla_scheduler.scan_overdue_qc_30min",
+		],
+		"0 9 * * 1": [
+			"trustbit_ethanol.ts_gate_entry.ts_qc_sla_scheduler.weekly_qc_email",
+		],
 	}
 }
 
