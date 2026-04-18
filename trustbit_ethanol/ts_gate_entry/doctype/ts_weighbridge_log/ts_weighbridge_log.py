@@ -1,12 +1,38 @@
+import re
+
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime
+
+
+# v2.8.2: roles permitted to amend RST Number after a Purchase Receipt
+# has been created referencing it. Matches the pattern used for other
+# control-plane overrides (Post-Dated Entry, PO Approval). CTO + IT Head
+# are the human authorities; System Manager + Administrator are the
+# break-glass roles. Do not widen without CTO sign-off.
+RST_TAMPER_BYPASS_ROLES = {"CTO", "IT Head", "System Manager", "Administrator"}
 
 
 def _is_flow_v28_enabled():
 	"""v2.8.0 flow: Gross → Tare direct, no Unloading gate. Feature flag on TS Settings."""
 	try:
 		return bool(frappe.db.get_single_value("TS Settings", "ts_flow_v28_enabled"))
+	except Exception:
+		return False
+
+
+def _is_rst_enforcement_enabled():
+	"""v2.8.2: kill-switch for RST Number enforcement.
+
+	Default OFF (0) at deploy per guardian recommendation — flip ON only
+	after production rollout is verified. Lesson 171/172 guarded: `tabSingles`
+	has no `modified` column and Check fields return 0 not None, so wrap
+	in try/except and coerce via bool() for fail-closed safety (treat any
+	exception as 'feature off', since the flag defaults to 0 anyway).
+	"""
+	try:
+		return bool(frappe.db.get_single_value("TS Settings", "ts_rst_enforcement_enabled"))
 	except Exception:
 		return False
 
@@ -51,6 +77,72 @@ class TSWeighbridgeLog(Document):
 		self.calculate_net_weight()
 		self.fetch_po_uom()
 		self.update_status()
+		self.validate_rst_number()
+
+	def validate_rst_number(self):
+		"""v2.8.2: RST Number validation — numeric, mandatory at Gross, unique, tamper-guarded.
+
+		Gated by `ts_rst_enforcement_enabled` feature flag on TS Settings (default OFF).
+		When flag is 0, all validation skipped — backward compat for 89 legacy tokens.
+
+		Validation rules (flag ON):
+		  1. If `gross_weight` is being set for the first time → RST required.
+		  2. If RST present → must match `^[0-9]+$` (digits only).
+		  3. If RST present → length 1..20.
+		  4. If RST present → globally unique across TS Weighbridge Log.
+		  5. If RST changed AND a non-cancelled PR references the OLD value →
+		     block unless user has CTO / IT Head / System Manager / Administrator role.
+		"""
+		if not _is_rst_enforcement_enabled():
+			return
+
+		before = self.get_doc_before_save()
+
+		# Rule 1 — mandatory when gross_weight transitions from empty to set
+		gross_changed = self.has_value_changed("gross_weight")
+		prev_gross = (before.gross_weight if before else None)
+		is_first_gross = bool(self.gross_weight) and gross_changed and not prev_gross
+		if is_first_gross and not self.rst_number:
+			frappe.throw(_("RST Number is required to record Gross Weight"))
+
+		if not self.rst_number:
+			# Nothing more to validate if RST not set (covers pre-gross drafts).
+			return
+
+		# Rule 2 — numeric only
+		if not re.match(r"^[0-9]+$", str(self.rst_number)):
+			frappe.throw(_("RST Number must contain digits only (got '{0}').").format(self.rst_number))
+
+		# Rule 3 — length 1..20
+		rst_len = len(str(self.rst_number))
+		if rst_len < 1 or rst_len > 20:
+			frappe.throw(_("RST Number length must be between 1 and 20 digits (got {0}).").format(rst_len))
+
+		# Rule 4 — global uniqueness (friendly error; DB unique index is the hard guarantee)
+		existing_name = frappe.db.exists(
+			"TS Weighbridge Log",
+			{"rst_number": self.rst_number, "name": ["!=", self.name or ""]},
+		)
+		if existing_name:
+			existing_token = frappe.db.get_value("TS Weighbridge Log", existing_name, "token_number") or "-"
+			frappe.throw(_(
+				"RST Number {0} already used on Weighbridge Log {1} (Token {2}). "
+				"Please verify the slip."
+			).format(self.rst_number, existing_name, existing_token))
+
+		# Rule 5 — tamper guard post-PR
+		if before and before.rst_number and before.rst_number != self.rst_number:
+			pr_using_old = frappe.db.exists(
+				"Purchase Receipt",
+				{"custom_rst_number": before.rst_number, "docstatus": ["!=", 2]},
+			)
+			if pr_using_old:
+				user_roles = set(frappe.get_roles(frappe.session.user))
+				if not (RST_TAMPER_BYPASS_ROLES & user_roles):
+					frappe.throw(_(
+						"RST Number is locked — Purchase Receipt {0} already uses this RST. "
+						"Contact CTO or IT Head to amend."
+					).format(pr_using_old))
 
 	def set_operators(self):
 		if self.gross_weight and not self.gross_operator:
@@ -237,9 +329,12 @@ class TSWeighbridgeLog(Document):
 			self.db_set("gross_weight_time", self.gross_weight_time)
 
 			token = frappe.get_doc("TS Token", self.token_number)
+			# v2.8.2: mirror RST Number onto Token (custom field) so it
+			# propagates downstream to Purchase Receipt at GRN creation.
 			token.db_set({
 				"wb_gross_time": now_datetime(),
-				"status": "Gross Weighed"
+				"status": "Gross Weighed",
+				"custom_rst_number": self.rst_number,
 			})
 
 	def on_update(self):
@@ -265,3 +360,14 @@ class TSWeighbridgeLog(Document):
 					"wb_tare_time": now_datetime(),
 					"status": "Tare Weighed"
 				})
+
+		# v2.8.2: mirror rst_number to Token when entered/edited AFTER first
+		# save (after_insert's update_token_gross runs only once). Without
+		# this, typing RST in a subsequent save would never propagate to
+		# Token.custom_rst_number, so Purchase Receipt would get an empty RST.
+		if self.has_value_changed("rst_number") and self.rst_number and self.token_number:
+			frappe.db.set_value(
+				"TS Token", self.token_number,
+				"custom_rst_number", self.rst_number,
+				update_modified=False,
+			)

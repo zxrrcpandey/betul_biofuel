@@ -96,7 +96,11 @@
    "fieldname": "rst_number",
    "fieldtype": "Data",
    "label": "RST Number",
-   "description": "Weighbridge RST slip number"
+   "description": "Weighbridge RST slip number (numeric, unique). Mandatory to record Gross Weight when ts_rst_enforcement_enabled flag is ON (enforced in controller validate_rst_number — NOT via DocType reqd so kill-switch remains effective).",
+   "unique": 1,
+   "length": 20,
+   "in_list_view": 1,
+   "in_standard_filter": 1
   },
   {
    "fieldname": "status",

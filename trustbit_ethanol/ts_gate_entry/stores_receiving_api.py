@@ -35,7 +35,7 @@ INSPECTION_PASS_STATES = {"Approved", "Not Required"}
 STATUS_TARE_WEIGHED = "Tare Weighed"
 
 
-def _copy_po_header_fields(pr, po):
+def _copy_po_header_fields(pr, po, token=None):
 	"""v2.8.1.3: copy PO header fields that ERPNext's make_purchase_receipt mapper
 	would normally propagate. We build PR programmatically, so these need to be
 	explicit. Covers tax template, project, cost center, terms, payment terms,
@@ -43,6 +43,11 @@ def _copy_po_header_fields(pr, po):
 
 	Safe to call regardless of whether fields are already set (only copies when
 	PR field is empty/missing to avoid overwriting explicit values).
+
+	v2.8.2: also propagates `custom_rst_number` from TS Token (which mirrored it
+	from TS Weighbridge Log at Gross save) onto the Purchase Receipt header.
+	`token` parameter is optional — when omitted (e.g., legacy callers), RST is
+	simply not copied and the PR field stays empty (admin can backfill).
 	"""
 	HEADER_FIELDS = [
 		"tax_category",
@@ -82,6 +87,14 @@ def _copy_po_header_fields(pr, po):
 				"row_id": tax.row_id,
 				"account_currency": tax.account_currency,
 			})
+
+	# v2.8.2: propagate RST Number from TS Token (mirrored from Weighbridge Log)
+	if token is not None:
+		rst = token.get("custom_rst_number") if isinstance(token, dict) else getattr(token, "custom_rst_number", None)
+		if rst and not pr.get("custom_rst_number"):
+			pr.set("custom_rst_number", rst)
+
+
 STATUS_GRN_CREATED = "GRN Created"
 FLOW_NON_RM = "Non-Raw Material"
 FLOW_TYPE_DIRECT_PO = "Direct PO"
@@ -611,7 +624,8 @@ def create_grn_for_weighed_token(token_name):
 	# mapper would normally propagate (tax template, project, cost center, terms,
 	# payment terms, addresses, contact, discount). We build PR programmatically
 	# so these need explicit copying. taxes child table also copied below.
-	_copy_po_header_fields(pr, po)
+	# v2.8.2: `token` passed so RST Number flows through to PR.
+	_copy_po_header_fields(pr, po, token)
 
 	frappe.flags.in_stores_dashboard_mutation = True
 	try:
@@ -812,7 +826,8 @@ def create_grn_for_non_weighing_token(token_name):
 	})
 
 	# v2.8.1.3: copy missing PO header fields (tax template, project, terms, etc.)
-	_copy_po_header_fields(pr, po)
+	# v2.8.2: `token` passed so RST Number flows through to PR.
+	_copy_po_header_fields(pr, po, token)
 
 	# ignore_permissions: caller already validated via _check_mutate() (MUTATE_ROLES)
 	# and po.check_permission("read") above; Stores User has PR create via Custom DocPerm.

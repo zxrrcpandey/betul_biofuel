@@ -198,6 +198,7 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup.seed_navbar_website_settings",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_over_receipt_allowance",
 	"trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config.cleanup_unrestricted_user_permissions",
+	"trustbit_ethanol.ts_gate_entry.setup_rst.seed_rst_custom_fields",
 ]
 
 # Scheduled Tasks

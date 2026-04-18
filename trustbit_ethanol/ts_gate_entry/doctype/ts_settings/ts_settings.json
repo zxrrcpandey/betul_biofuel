@@ -23,6 +23,7 @@
   "block_grn_on_inspection_pending",
   "ts_flow_v28_enabled",
   "ts_qc_gate_enabled",
+  "ts_rst_enforcement_enabled",
   "tab_approval",
   "approval_section",
   "enable_po_approval",
@@ -185,6 +186,14 @@
    "default": "0",
    "permlevel": 1,
    "description": "v2.8.1 Phase B: when ON, Purchase Invoice save is blocked unless every linked Token has an Approved Quality Inspection. Default OFF at deploy \u2014 flip ON only after QI team is ready to sign invoices. CEO/SM/IT Head can override per-PI via ts_qc_override. Writable by IT Head / System Manager only (permlevel 1)."
+  },
+  {
+   "fieldname": "ts_rst_enforcement_enabled",
+   "fieldtype": "Check",
+   "label": "Enforce RST Number on Weighbridge",
+   "default": "0",
+   "permlevel": 1,
+   "description": "v2.8.2: When enabled, makes RST Number mandatory on Weighbridge Gross entry + enforces numeric/uniqueness checks. Kill-switch for rollback. Writable by IT Head / System Manager only (permlevel 1)."
   },
   {
    "fieldname": "tab_approval",

@@ -1,3 +1,7 @@
+// v2.8.2: RST uniqueness check debounce timer (module-scoped so we only
+// hit the server once per typing pause, not on every keystroke).
+let _ts_rst_debounce_timer = null;
+
 frappe.ui.form.on("TS Weighbridge Log", {
 	refresh(frm) {
 		// Color-code status
@@ -19,6 +23,20 @@ frappe.ui.form.on("TS Weighbridge Log", {
 		// Lock tare_weight after it has been recorded
 		if (frm.doc.tare_weight) {
 			frm.set_df_property("tare_weight", "read_only", 1);
+		}
+
+		// v2.8.2: RST Number UX — numeric keypad, mobile input hints,
+		// and read-only once the token has reached Completed (PR likely exists).
+		if (frm.fields_dict.rst_number && frm.fields_dict.rst_number.$input) {
+			frm.fields_dict.rst_number.$input
+				.attr("inputmode", "numeric")
+				.attr("pattern", "[0-9]*");
+		}
+		// If Completed (weighbridge flow finished), downstream PR may reference
+		// this RST — lock to avoid silent propagation drift. CTO/IT Head can still
+		// amend via server-side tamper-guard logic.
+		if (!frm.is_new() && frm.doc.rst_number && frm.doc.status === "Completed") {
+			frm.set_df_property("rst_number", "read_only", 1);
 		}
 
 		// v2.8 flow: Gross → Tare direct (no unloading gate).
@@ -67,7 +85,46 @@ frappe.ui.form.on("TS Weighbridge Log", {
 				}
 			});
 		}
-	}
+	},
+
+	rst_number(frm) {
+		// v2.8.2: strip non-digit characters + debounced uniqueness check.
+		if (!frm.doc.rst_number) {
+			return;
+		}
+		const cleaned = String(frm.doc.rst_number).replace(/[^0-9]/g, "");
+		if (cleaned !== frm.doc.rst_number) {
+			// Recursive set is guarded by the (cleaned !== current) check above.
+			frm.set_value("rst_number", cleaned);
+			return;
+		}
+		if (!cleaned) {
+			return;
+		}
+
+		// Debounced live uniqueness check (500ms pause after last keystroke).
+		if (_ts_rst_debounce_timer) {
+			clearTimeout(_ts_rst_debounce_timer);
+		}
+		_ts_rst_debounce_timer = setTimeout(() => {
+			frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.rst_api.check_rst_unique",
+				args: {
+					rst_number: cleaned,
+					current_log: frm.doc.name || null,
+				},
+				callback(r) {
+					if (r && r.message && r.message.unique === false) {
+						frappe.show_alert({
+							message: __("RST Number {0} already used on log {1} (Token {2})",
+								[cleaned, r.message.conflict_log, r.message.conflict_token || "-"]),
+							indicator: "red",
+						}, 7);
+					}
+				},
+			});
+		}, 500);
+	},
 });
 
 
