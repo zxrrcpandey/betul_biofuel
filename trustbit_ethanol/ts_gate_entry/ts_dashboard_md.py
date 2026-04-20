@@ -194,7 +194,7 @@ def _get_company_overview(today_date, start_date, end_date, fiscal_year, fy_star
 
 	vehicles_inside = frappe.db.sql("""
 		SELECT COUNT(*) FROM `tabTS Token`
-		WHERE entry_type = 'Material' AND status NOT IN ('Exited', 'Token Generated')
+		WHERE entry_type = 'Material' AND status NOT IN ('Exited', 'Campus Exited', 'Token Generated')
 	""")[0][0] or 0
 
 	today_inward = frappe.db.sql("""
@@ -214,7 +214,7 @@ def _get_company_overview(today_date, start_date, end_date, fiscal_year, fy_star
 	avg_ta = frappe.db.sql("""
 		SELECT AVG(TIMESTAMPDIFF(MINUTE, g1_entry_time, g1_exit_time))
 		FROM `tabTS Token`
-		WHERE entry_date = %s AND status = 'Exited' AND entry_type = 'Material'
+		WHERE entry_date = %s AND status IN ('Exited', 'Campus Exited') AND entry_type = 'Material'
 		AND g1_entry_time IS NOT NULL AND g1_exit_time IS NOT NULL
 	""", today_date)[0][0] or 0
 
@@ -236,7 +236,7 @@ def _get_company_overview(today_date, start_date, end_date, fiscal_year, fy_star
 		) as last_ts
 		FROM `tabTS Token`
 		WHERE entry_type = 'Material'
-		AND status NOT IN ('Exited', 'Token Generated', 'GRN Created', 'Dispatch Ready')
+		AND status NOT IN ('Exited', 'Campus Exited', 'Plant Exited', 'Token Generated', 'GRN Created', 'Dispatch Ready')
 	""", as_dict=True)
 	stuck_count = sum(1 for t in stuck if t.last_ts and time_diff_in_seconds(now, t.last_ts) / 60 > threshold)
 
@@ -286,7 +286,7 @@ def _get_gate_operations(today_date):
 	flow = frappe.db.sql("""
 		SELECT
 			COUNT(*) as total_entries,
-			SUM(CASE WHEN status = 'Exited' THEN 1 ELSE 0 END) as exits,
+			SUM(CASE WHEN status IN ('Exited', 'Campus Exited') THEN 1 ELSE 0 END) as exits,
 			SUM(CASE WHEN entry_type = 'Material' AND (stock_direction IS NULL OR stock_direction = 'Stock IN' OR stock_direction = '') THEN 1 ELSE 0 END) as stock_in,
 			SUM(CASE WHEN entry_type = 'Material' AND stock_direction = 'Stock OUT' THEN 1 ELSE 0 END) as stock_out,
 			SUM(CASE WHEN entry_type = 'Gate Pass' THEN 1 ELSE 0 END) as visitors
@@ -298,11 +298,12 @@ def _get_gate_operations(today_date):
 	stages = frappe.db.sql("""
 		SELECT status as stage, COUNT(*) as count
 		FROM `tabTS Token`
-		WHERE entry_type = 'Material' AND status NOT IN ('Exited', 'Token Generated')
+		WHERE entry_type = 'Material' AND status NOT IN ('Exited', 'Campus Exited', 'Token Generated')
 		GROUP BY status
 		ORDER BY FIELD(status,
+			'G1 Entered', 'G2 Entered',
 			'PO Linked', 'Gross Weighed', 'Quality Done', 'Graded',
-			'Unloading', 'Tare Weighed', 'GRN Created',
+			'Unloading', 'Tare Weighed', 'GRN Created', 'Plant Exited',
 			'SI Linked', 'Tare Recorded', 'Loading Done', 'Gross Recorded', 'Dispatch Ready')
 	""", as_dict=True)
 

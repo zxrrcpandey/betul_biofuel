@@ -15,7 +15,7 @@ class TSQualityInspection(Document):
 		token_status = frappe.db.get_value("TS Token", self.token_number, "status")
 		# v2.8.1 Phase B: QI can now run at any stage after weighing (flexible flow)
 		# Under QC gate feature flag, we allow QI from Gross Weighed onwards.
-		allowed_new = ("Gross Weighed", "Tare Weighed", "GRN Created", "Exited")
+		allowed_new = ("Gross Weighed", "Tare Weighed", "GRN Created", "Plant Exited", "Campus Exited", "Exited")
 		allowed_legacy = ("Gross Weighed",)
 		try:
 			qc_gate_on = bool(frappe.db.get_single_value("TS Settings", "ts_qc_gate_enabled"))

@@ -170,7 +170,7 @@ function _gwd_render(data, page) {
 	html += '<div class="gwd-section-title">Recent Activity</div>';
 	if (data.recent_activity && data.recent_activity.length) {
 		data.recent_activity.slice(0, 10).forEach((t) => {
-			const sc = t.status === "Exited" ? "#22c55e" : t.status === "Token Generated" ? "#64748b" : "#f59e0b";
+			const sc = ["Exited", "Campus Exited"].includes(t.status) ? "#22c55e" : t.status === "Plant Exited" ? "#fbbf24" : t.status === "Token Generated" ? "#64748b" : "#f59e0b";
 			const time = t.g1_entry_time ? t.g1_entry_time.split(" ")[1]?.substring(0, 5) : "";
 			html += '<div class="gwd-activity-row">';
 			html += `<div><span style="color:#f8fafc;font-weight:500;">${esc(t.token_number)}</span> <span style="color:#64748b;">${esc(t.vehicle_number || "")}</span></div>`;

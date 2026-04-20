@@ -14,6 +14,18 @@ def get_g2_print_mode():
 
 
 @frappe.whitelist()
+def get_two_pass_flag():
+	"""v2.8.3 Lesson 168: role-scoped getter for ts_two_pass_gates_enabled.
+	Direct frappe.db.get_single_value from JS fails for roles (G2 Gate Operator, CTO)
+	without TS Settings read perm. Exposes ONLY the boolean — no other settings fields.
+	"""
+	try:
+		return {"enabled": bool(frappe.db.get_single_value("TS Settings", "ts_two_pass_gates_enabled"))}
+	except Exception:
+		return {"enabled": False}
+
+
+@frappe.whitelist()
 def get_purchase_orders(po_id=None, po_date=None, **kwargs):
 	filters = {"docstatus": 1, "status": ["not in", ["Closed", "Cancelled", "Completed"]], "per_received": ["<", 100]}
 
@@ -70,7 +82,7 @@ def check_sla_breaches():
 
 	active_tokens = frappe.get_all(
 		"TS Token",
-		filters={"status": ["not in", ["Exited", "Token Generated"]]},
+		filters={"status": ["not in", ["Exited", "Campus Exited", "Token Generated"]]},
 		fields=["name", "token_number", "status", "g1_entry_time", "g2_link_time",
 				"wb_gross_time", "quality_time", "grading_time",
 				"unload_start_time", "unload_end_time",
@@ -285,11 +297,20 @@ def _build_lifecycle_steps(token_status, stock_direction, material_flow, require
 		]
 		order = ["Token Generated", "PO Linked", "GRN Created", "Exited"]
 
+	# v2.8.3: "Campus Exited" and "Plant Exited" are treated as the terminal
+	# "Exited" for pipeline visualisation purposes. G1/G2 Entered collapse
+	# to the existing "PO Linked" bucket so the tile layout does not change.
+	_normalised = token_status
+	if _normalised in ("Campus Exited", "Plant Exited"):
+		_normalised = "Exited"
+	elif _normalised in ("G1 Entered", "G2 Entered"):
+		_normalised = "PO Linked"
+
 	status_map = {s: i for i, s in enumerate(order)}
-	current_idx = status_map.get(token_status, 0)
+	current_idx = status_map.get(_normalised, 0)
 
 	for i, step in enumerate(steps):
-		if token_status == "Exited":
+		if _normalised == "Exited":
 			step["status"] = "done"
 		elif i < current_idx:
 			step["status"] = "done"

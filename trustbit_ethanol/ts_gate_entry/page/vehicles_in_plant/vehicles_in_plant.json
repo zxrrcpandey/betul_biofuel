@@ -1,0 +1,27 @@
+{
+ "content": null,
+ "creation": "2026-04-20 00:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-04-20 12:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "vehicles-in-plant",
+ "owner": "Administrator",
+ "page_name": "vehicles-in-plant",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "IT Head"},
+  {"role": "CTO"},
+  {"role": "G1 Security"},
+  {"role": "G2 Gate Operator"},
+  {"role": "Stores User"},
+  {"role": "Admin Reception"}
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Vehicles In Plant"
+}

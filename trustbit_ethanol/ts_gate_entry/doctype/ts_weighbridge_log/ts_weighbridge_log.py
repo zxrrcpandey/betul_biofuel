@@ -69,8 +69,15 @@ class TSWeighbridgeLog(Document):
 			if token.status not in ("SI Linked", "Tare Recorded", "Loading Done"):
 				frappe.throw(f"Token {self.token_number} is at stage '{token.status}'. Stock OUT tokens need status 'SI Linked', 'Tare Recorded', or 'Loading Done'.")
 		else:
-			if token.status not in ("PO Linked",):
-				frappe.throw(f"Token {self.token_number} is at stage '{token.status}'. Only tokens with status 'PO Linked' can be weighed.")
+			# v2.8.3: when two-pass flag ON, Stock IN WB log is accepted at
+			# 'G2 Entered' (validate_two_pass_gate will enforce the hard gate
+			# at Gross save). Legacy tokens still gated on 'PO Linked'.
+			allowed = ("PO Linked", "G2 Entered")
+			if token.status not in allowed:
+				frappe.throw(
+					f"Token {self.token_number} is at stage '{token.status}'. "
+					f"Only tokens with status 'PO Linked' or 'G2 Entered' can be weighed."
+				)
 
 	def validate(self):
 		self.set_operators()
@@ -78,6 +85,36 @@ class TSWeighbridgeLog(Document):
 		self.fetch_po_uom()
 		self.update_status()
 		self.validate_rst_number()
+		self.validate_two_pass_gate()
+
+	def validate_two_pass_gate(self):
+		"""v2.8.3: if two-pass flag ON, block WB Gross save unless the Token
+		has passed G2 Entry (status == 'G2 Entered'). Backward compat:
+		- flag OFF → skip (legacy flow).
+		- no token_number / no gross_weight → skip (drafts, Tare-only rows).
+		- not the first Gross save → skip (already past the gate; avoid
+		  spurious throws on Tare update, operator corrections, etc.).
+		"""
+		try:
+			flag = bool(frappe.db.get_single_value("TS Settings", "ts_two_pass_gates_enabled"))
+		except Exception:
+			flag = False
+		if not flag:
+			return
+		if not self.token_number or not self.gross_weight:
+			return
+		if self._is_stock_out():
+			return
+		before = self.get_doc_before_save()
+		prev_gross = (before.gross_weight if before else None)
+		is_first_gross = bool(self.gross_weight) and not prev_gross
+		if not is_first_gross:
+			return
+		token_status = frappe.db.get_value("TS Token", self.token_number, "status")
+		if token_status != "G2 Entered":
+			frappe.throw(
+				_("Two-Pass Gate Flow: Token must be at status 'G2 Entered' before Gross weighing (currently '{0}'). Ask G2 Gate Operator to record G2 Entry first.").format(token_status)
+			)
 
 	def validate_rst_number(self):
 		"""v2.8.2: RST Number validation — numeric, mandatory at Gross, unique, tamper-guarded.

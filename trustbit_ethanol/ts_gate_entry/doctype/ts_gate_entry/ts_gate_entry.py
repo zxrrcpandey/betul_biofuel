@@ -149,6 +149,12 @@ class TSGateEntry(Document):
 
 	def update_token_status(self):
 		token = frappe.get_doc("TS Token", self.token_number)
+		# v2.8.3: flag-aware status on Gate Entry submit — when two-pass gates are ON,
+		# Stock IN tokens stop at 'G1 Entered' so g2_mat_log_entry can then advance them.
+		try:
+			two_pass_on = bool(frappe.db.get_single_value("TS Settings", "ts_two_pass_gates_enabled"))
+		except Exception:
+			two_pass_on = False
 		if self.stock_direction == "Stock OUT":
 			token.db_set({
 				"g2_link_time": now_datetime(),
@@ -157,9 +163,10 @@ class TSGateEntry(Document):
 				"stock_direction": "Stock OUT"
 			})
 		else:
+			new_status = "G1 Entered" if two_pass_on else "PO Linked"
 			token.db_set({
 				"g2_link_time": now_datetime(),
-				"status": "PO Linked",
+				"status": new_status,
 				"purpose": self.material_flow,
 				"stock_direction": "Stock IN"
 			})

@@ -6,3 +6,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 trustbit_ethanol.patches.v2_8_0.drop_unloading_entry_table
 trustbit_ethanol.patches.v2_8.add_rst_unique_index
+trustbit_ethanol.patches.v2_8.rename_exited_status

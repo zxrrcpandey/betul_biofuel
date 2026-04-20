@@ -318,7 +318,7 @@ def _fetch_section_b_non_weighing():
 			continue
 		if tok.get("purchase_receipt"):
 			continue
-		if tok.get("status") in (STATUS_GRN_CREATED, "Exited", "Cancelled"):
+		if tok.get("status") in (STATUS_GRN_CREATED, "Exited", "Campus Exited", "Plant Exited", "Cancelled"):
 			continue
 
 		insp_status = _get_inspection_status_label(tok["name"])
@@ -711,7 +711,7 @@ def create_grn_for_non_weighing_token(token_name):
 		frappe.throw(_("Cannot create GRN for a cancelled token"))
 	if token.purchase_receipt:
 		frappe.throw(_("Purchase Receipt {0} already exists for this token").format(token.purchase_receipt))
-	if token.status in (STATUS_GRN_CREATED, "Exited", "Cancelled"):
+	if token.status in (STATUS_GRN_CREATED, "Exited", "Campus Exited", "Plant Exited", "Cancelled"):
 		frappe.throw(_("Token status '{0}' does not allow GRN creation").format(token.status))
 
 	# Find linked gate entry (must be Non-RM + not requiring weighing)

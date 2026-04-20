@@ -1,0 +1,33 @@
+<!--
+ v2.8.3 Vehicles In Plant — live list of Material tokens currently on premises.
+ 3-step flush (Lesson 174): bench build + bench clear-website-cache + hard refresh.
+-->
+<div class="vip-wrapper" style="padding:15px 20px;">
+    <div class="vip-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap;">
+        <h3 style="margin:0;font-weight:700;color:#0f172a;">Vehicles In Plant</h3>
+        <div style="display:flex;gap:12px;align-items:center;">
+            <span id="vip-count-badge" style="background:#2563eb;color:white;padding:4px 12px;border-radius:999px;font-weight:600;font-size:13px;">0 vehicles</span>
+            <span id="vip-last-refresh" style="font-size:11px;color:#64748b;">-</span>
+            <button id="vip-refresh-btn" class="btn btn-sm btn-primary">Refresh</button>
+        </div>
+    </div>
+    <div id="vip-table-wrap" style="background:white;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+        <table class="table table-hover" style="margin:0;">
+            <thead style="background:#f8fafc;">
+                <tr>
+                    <th>Token</th>
+                    <th>Vehicle</th>
+                    <th>Driver</th>
+                    <th>Supplier</th>
+                    <th>PO</th>
+                    <th>G2 Entry</th>
+                    <th>Time on Premises</th>
+                    <th>Current Stage</th>
+                </tr>
+            </thead>
+            <tbody id="vip-tbody">
+                <tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:30px;">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>

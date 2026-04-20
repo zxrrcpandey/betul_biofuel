@@ -36,11 +36,12 @@ def _get_vehicles_inside():
 		SELECT status, COUNT(*) as cnt
 		FROM `tabTS Token`
 		WHERE entry_type = 'Material'
-		AND status NOT IN ('Exited', 'Token Generated')
+		AND status NOT IN ('Exited', 'Campus Exited', 'Token Generated')
 		GROUP BY status
 		ORDER BY FIELD(status,
+			'G1 Entered', 'G2 Entered',
 			'PO Linked', 'Gross Weighed', 'Quality Done', 'Graded',
-			'Unloading', 'Tare Weighed', 'GRN Created',
+			'Unloading', 'Tare Weighed', 'GRN Created', 'Plant Exited',
 			'SI Linked', 'Tare Recorded', 'Loading Done', 'Gross Recorded', 'Dispatch Ready'
 		)
 	""", as_dict=True)
@@ -71,7 +72,7 @@ def _get_today_summary(target_date):
 	row = frappe.db.sql("""
 		SELECT
 			COUNT(*) as entries,
-			SUM(CASE WHEN status = 'Exited' THEN 1 ELSE 0 END) as exits,
+			SUM(CASE WHEN status IN ('Exited', 'Campus Exited') THEN 1 ELSE 0 END) as exits,
 			SUM(CASE WHEN entry_type = 'Material' AND (stock_direction IS NULL OR stock_direction = 'Stock IN' OR stock_direction = '') THEN 1 ELSE 0 END) as stock_in,
 			SUM(CASE WHEN entry_type = 'Material' AND stock_direction = 'Stock OUT' THEN 1 ELSE 0 END) as stock_out,
 			SUM(CASE WHEN entry_type = 'Gate Pass' THEN 1 ELSE 0 END) as gate_pass
@@ -95,7 +96,7 @@ def _get_avg_turnaround(target_date):
 		SELECT AVG(TIMESTAMPDIFF(MINUTE, g1_entry_time, g1_exit_time)) as avg_min
 		FROM `tabTS Token`
 		WHERE entry_date = %s
-		AND status = 'Exited'
+		AND status IN ('Exited', 'Campus Exited')
 		AND entry_type = 'Material'
 		AND g1_entry_time IS NOT NULL
 		AND g1_exit_time IS NOT NULL
@@ -132,7 +133,7 @@ def _get_stage_pending():
 			)) as avg_wait_min
 		FROM `tabTS Token`
 		WHERE entry_type = 'Material'
-		AND status NOT IN ('Exited', 'Token Generated', 'GRN Created', 'Dispatch Ready')
+		AND status NOT IN ('Exited', 'Campus Exited', 'Plant Exited', 'Token Generated', 'GRN Created', 'Dispatch Ready')
 		GROUP BY status
 		ORDER BY cnt DESC
 	""", now, as_dict=True)
@@ -169,7 +170,7 @@ def _get_sla_breaches():
 			unload_start_time, wb_tare_time
 		FROM `tabTS Token`
 		WHERE entry_type = 'Material'
-		AND status NOT IN ('Exited', 'Token Generated')
+		AND status NOT IN ('Exited', 'Campus Exited', 'Token Generated')
 	""", as_dict=True)
 
 	breaches = []

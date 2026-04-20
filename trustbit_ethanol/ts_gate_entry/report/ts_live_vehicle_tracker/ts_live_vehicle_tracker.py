@@ -29,7 +29,7 @@ def get_columns():
 def get_data():
 	tokens = frappe.get_all(
 		"TS Token",
-		filters={"status": ["!=", "Exited"]},
+		filters={"status": ["not in", ["Exited", "Campus Exited"]]},
 		fields=[
 			"token_number", "status", "g1_entry_time", "g2_link_time",
 			"wb_gross_time", "quality_time", "grading_time",

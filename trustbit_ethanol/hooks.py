@@ -199,6 +199,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup.seed_over_receipt_allowance",
 	"trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config.cleanup_unrestricted_user_permissions",
 	"trustbit_ethanol.ts_gate_entry.setup_rst.seed_rst_custom_fields",
+	"trustbit_ethanol.ts_gate_entry.setup_two_pass_gates.seed_two_pass_gate_fields",
+	"trustbit_ethanol.ts_gate_entry.setup_two_pass_gates.patch_number_card_exited_filters",
 ]
 
 # Scheduled Tasks

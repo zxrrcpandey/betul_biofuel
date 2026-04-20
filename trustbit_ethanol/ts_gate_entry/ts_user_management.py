@@ -215,7 +215,7 @@ def _get_pending_work(email):
     # Active tokens (for gate operators)
     active_tokens = frappe.db.count("TS Token", filters={
         "owner": email,
-        "status": ["not in", ["Exited", ""]],
+        "status": ["not in", ["Exited", "Campus Exited", ""]],
     })
     if active_tokens:
         warnings.append("{0} active gate tokens owned by this user".format(active_tokens))

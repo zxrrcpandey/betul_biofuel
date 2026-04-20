@@ -1,7 +1,23 @@
 import random
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime, time_diff_in_seconds, getdate, nowtime, flt
+
+
+# v2.8.3 Two-Pass Gate Flow role constants
+TWO_PASS_G2_ROLE = "G2 Gate Operator"
+TWO_PASS_G1_ROLE = "G1 Security"
+
+
+def _two_pass_flag_on():
+	"""v2.8.3: feature flag for two-pass material gate flow.
+	Fail-closed: any exception treated as OFF (legacy behavior preserved).
+	Lesson 171/172: tabSingles has no `modified` column; Check fields return 0 not None."""
+	try:
+		return bool(frappe.db.get_single_value("TS Settings", "ts_two_pass_gates_enabled"))
+	except Exception:
+		return False
 
 
 class TSToken(Document):
@@ -400,6 +416,15 @@ class TSToken(Document):
 
 	@frappe.whitelist()
 	def mark_exit(self):
+		# v2.8.3: when two-pass flag is ON, the final transitions for Material
+		# are owned by g2_mat_log_exit + g1_final_exit. Gate Pass path is
+		# UNTOUCHED — it continues to go through mark_exit. Reject Material
+		# callers with a clear message pointing them at the new buttons.
+		if self.entry_type == "Material" and _two_pass_flag_on():
+			frappe.throw(
+				"Two-Pass Gate Flow is enabled. Use 'G2 Record Exit' then 'G1 Record Exit' buttons."
+			)
+
 		# Prevent double-exit
 		if self.entry_type == "Gate Pass":
 			if self.gate_pass_status == "Exited":
@@ -407,7 +432,7 @@ class TSToken(Document):
 			if self.gate_pass_status == "Inside Plant":
 				frappe.throw("Visitor is still inside the plant. Please log G2 exit first.")
 		else:
-			if self.status == "Exited":
+			if self.status in ("Exited", "Campus Exited"):
 				frappe.throw("This token is already marked as exited")
 
 		# Admin Reception can mark exit too
@@ -721,3 +746,109 @@ class TSToken(Document):
 			)
 
 		transporter.save(ignore_permissions=True)
+
+
+# =============================================================================
+# v2.8.3 Two-Pass Gate Flow — module-level whitelisted POST APIs
+# -----------------------------------------------------------------------------
+# These methods own the final 3 status transitions when `ts_two_pass_gates_enabled`
+# is ON. All mutation endpoints declare methods=["POST"] (Lesson 175).
+# Role checks are enforced server-side (IT Head / System Manager retain break-glass
+# override). No `allow_guest` — operators authenticate via standard Frappe session.
+# =============================================================================
+
+
+@frappe.whitelist(methods=["POST"])
+def g2_mat_log_entry(token_name):
+	"""Record G2 Entry for a Material token.
+
+	Role: G2 Gate Operator (IT Head / System Manager may override).
+	Required prior status: 'G1 Entered' (flag ON) or legacy 'PO Linked' (backward compat).
+	Writes: g2_mat_entry_time, g2_mat_entry_by, status='G2 Entered'.
+	"""
+	# v2.8.3 Phase 4 Fix 7: hard existence check before any load (defence in depth).
+	if not frappe.db.exists("TS Token", token_name):
+		frappe.throw(_("Token {0} not found").format(token_name))
+	user_roles = set(frappe.get_roles())
+	if TWO_PASS_G2_ROLE not in user_roles and "IT Head" not in user_roles and "System Manager" not in user_roles:
+		frappe.throw(_("Only G2 Gate Operator can record G2 entry"), frappe.PermissionError)
+	tok = frappe.get_doc("TS Token", token_name)
+	if tok.entry_type != "Material":
+		frappe.throw(_("G2 material entry is only valid for Material tokens (not Gate Pass)."))
+	valid_prev = ("G1 Entered", "PO Linked")
+	if tok.status not in valid_prev:
+		frappe.throw(_("Token {0} is at '{1}' — cannot record G2 Entry (expected 'G1 Entered').").format(token_name, tok.status))
+	tok.db_set({
+		"g2_mat_entry_time": now_datetime(),
+		"g2_mat_entry_by": frappe.session.user,
+		"status": "G2 Entered",
+	})
+	return {"ok": True, "token": token_name, "status": "G2 Entered"}
+
+
+@frappe.whitelist(methods=["POST"])
+def g2_mat_log_exit(token_name):
+	"""Record G2 Exit (first exit checkpoint — leaving the plant area).
+
+	Role: G2 Gate Operator (IT Head / System Manager may override).
+	Required prior status: 'Tare Weighed' or 'GRN Created'.
+	Writes: g2_mat_exit_time, g2_mat_exit_by, status='Plant Exited'.
+	"""
+	# v2.8.3 Phase 4 Fix 7: hard existence check before any load (defence in depth).
+	if not frappe.db.exists("TS Token", token_name):
+		frappe.throw(_("Token {0} not found").format(token_name))
+	user_roles = set(frappe.get_roles())
+	if TWO_PASS_G2_ROLE not in user_roles and "IT Head" not in user_roles and "System Manager" not in user_roles:
+		frappe.throw(_("Only G2 Gate Operator can record G2 exit"), frappe.PermissionError)
+	tok = frappe.get_doc("TS Token", token_name)
+	if tok.entry_type != "Material":
+		frappe.throw(_("G2 material exit is only valid for Material tokens (not Gate Pass)."))
+	if tok.status not in ("Tare Weighed", "GRN Created"):
+		frappe.throw(_("Token {0} is at '{1}' — cannot record G2 Exit (expected 'Tare Weighed' or 'GRN Created').").format(token_name, tok.status))
+	tok.db_set({
+		"g2_mat_exit_time": now_datetime(),
+		"g2_mat_exit_by": frappe.session.user,
+		"status": "Plant Exited",
+	})
+	return {"ok": True, "token": token_name, "status": "Plant Exited"}
+
+
+@frappe.whitelist(methods=["POST"])
+def g1_final_exit(token_name):
+	"""Record G1 Final Exit (vehicle physically leaves the campus — terminal).
+
+	Role: G1 Security (IT Head / System Manager / Admin Reception may override).
+	Required prior status: 'Plant Exited' (when flag ON). When flag OFF we accept
+	legacy 'Tare Weighed' / 'GRN Created' / 'Exited' / 'Campus Exited' so existing
+	tokens aren't stranded. Always transitions status to 'Campus Exited'.
+	"""
+	# v2.8.3 Phase 4 Fix 7: hard existence check before any load (defence in depth).
+	if not frappe.db.exists("TS Token", token_name):
+		frappe.throw(_("Token {0} not found").format(token_name))
+	user_roles = set(frappe.get_roles())
+	if (TWO_PASS_G1_ROLE not in user_roles
+			and "IT Head" not in user_roles
+			and "System Manager" not in user_roles
+			and "Admin Reception" not in user_roles):
+		frappe.throw(_("Only G1 Security can record final G1 exit"), frappe.PermissionError)
+	tok = frappe.get_doc("TS Token", token_name)
+	if tok.entry_type != "Material":
+		frappe.throw(_("G1 final exit API is only for Material tokens (use mark_exit for Gate Pass)."))
+	if _two_pass_flag_on():
+		if tok.status != "Plant Exited":
+			frappe.throw(_("Token {0} is at '{1}' — G2 Exit must be recorded first (expected 'Plant Exited').").format(token_name, tok.status))
+	else:
+		if tok.status not in ("Tare Weighed", "GRN Created", "Exited", "Campus Exited", "Plant Exited"):
+			frappe.throw(_("Token {0} at '{1}' cannot record G1 final exit.").format(token_name, tok.status))
+	tok.db_set({
+		"g1_exit_time": now_datetime(),
+		"status": "Campus Exited",
+	})
+	# Refresh vehicle/transport masters to capture turnaround even on the new path
+	try:
+		tok.reload()
+		tok._update_vehicle_master()
+		tok._update_transport_master()
+	except Exception as e:
+		frappe.log_error(message=f"g1_final_exit post-write update: {e}", title="g1_final_exit")
+	return {"ok": True, "token": token_name, "status": "Campus Exited"}

@@ -167,9 +167,11 @@ frappe.ui.form.on("TS Token", {
 					}, __("Actions"));
 				}
 
-				// Mark Exit for Material tokens
+				// Mark Exit for Material tokens (legacy button — hidden when
+				// v2.8.3 two-pass flag is ON; the new G2/G1 buttons below own
+				// the final transitions).
 				let show_mark_exit = false;
-				if (frm.doc.status && frm.doc.status !== "Exited") {
+				if (frm.doc.status && !["Exited", "Campus Exited"].includes(frm.doc.status) && !frm._ts_two_pass_flag) {
 					if (frm.doc.stock_direction === "Stock OUT") {
 						show_mark_exit = ["Gross Recorded", "Dispatch Ready"].includes(frm.doc.status);
 					} else if (frm.doc.purpose === "Raw Material") {
@@ -194,6 +196,115 @@ frappe.ui.form.on("TS Token", {
 							}
 						);
 					}, __("Actions"));
+				}
+
+				// =====================================================================
+				// v2.8.3 Two-Pass Gate Flow buttons (Material tokens only).
+				// All three gated on:
+				//   - saved token (frm.is_new() === false — Lesson 166)
+				//   - feature flag ts_two_pass_gates_enabled on TS Settings
+				//   - the user's role (G2 Gate Operator / G1 Security + IT Head override)
+				//   - the token's current status
+				// The flag is fetched once per form load and cached on frm._ts_two_pass_flag
+				// so the three buttons render synchronously on subsequent refreshes.
+				// =====================================================================
+				const _render_two_pass_buttons = () => {
+					if (!frm._ts_two_pass_flag) return;
+					if (frappe.session.user === "Guest") return;
+
+					const has_g2 = frappe.user.has_role("G2 Gate Operator")
+						|| frappe.user.has_role("IT Head")
+						|| frappe.user.has_role("System Manager");
+					const has_g1 = frappe.user.has_role("G1 Security")
+						|| frappe.user.has_role("IT Head")
+						|| frappe.user.has_role("System Manager")
+						|| frappe.user.has_role("Admin Reception");
+
+					// B1 — Record G2 Entry (status=G1 Entered)
+					if (has_g2 && frm.doc.status === "G1 Entered") {
+						frm.add_custom_button(__("Record G2 Entry"), function () {
+							frappe.confirm(
+								__("Confirm vehicle {0} has physically entered the plant at G2?", [frm.doc.vehicle_number || ""]),
+								function () {
+									frappe.call({
+										method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.g2_mat_log_entry",
+										args: { token_name: frm.doc.name },
+										callback: () => {
+											frm.reload_doc();
+											frappe.show_alert({ message: __("G2 Entry recorded"), indicator: "green" });
+										}
+									});
+								}
+							);
+						}, __("Gate Actions")).addClass("btn-primary");
+					}
+
+					// B2 — Record G2 Exit (status=Tare Weighed or GRN Created)
+					if (has_g2 && ["Tare Weighed", "GRN Created"].includes(frm.doc.status)) {
+						frm.add_custom_button(__("Record G2 Exit"), function () {
+							frappe.confirm(
+								__("Confirm vehicle has completed unloading and is leaving the plant via G2?"),
+								function () {
+									frappe.call({
+										method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.g2_mat_log_exit",
+										args: { token_name: frm.doc.name },
+										callback: () => {
+											frm.reload_doc();
+											frappe.show_alert({ message: __("G2 Exit recorded — status: Plant Exited"), indicator: "yellow" });
+										}
+									});
+								}
+							);
+						}, __("Gate Actions")).addClass("btn-warning");
+					}
+
+					// B3 — Record G1 Final Exit (status=Plant Exited)
+					if (has_g1 && frm.doc.status === "Plant Exited") {
+						frm.add_custom_button(__("Record G1 Final Exit"), function () {
+							frappe.confirm(
+								__("Confirm vehicle has physically left the campus via G1?"),
+								function () {
+									frappe.call({
+										method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.g1_final_exit",
+										args: { token_name: frm.doc.name },
+										callback: () => {
+											frm.reload_doc();
+											frappe.show_alert({ message: __("Vehicle exited — status: Campus Exited"), indicator: "green" });
+										}
+									});
+								}
+							);
+						}, __("Gate Actions")).addClass("btn-danger");
+					}
+				};
+
+				if (!is_gate_pass) {
+					// v2.8.3 Lesson 168: use whitelisted helper instead of get_single_value
+					// (G2 Gate Operator / CTO roles lack TS Settings read perm). Cache on
+					// frappe.boot so we don't re-fetch across refreshes in the same session.
+					const _apply_flag = () => {
+						if (frm._ts_two_pass_flag) {
+							_render_two_pass_buttons();
+						}
+					};
+					if (frm._ts_two_pass_flag !== undefined) {
+						_apply_flag();
+					} else if (frappe.boot && frappe.boot._two_pass_flag !== undefined) {
+						frm._ts_two_pass_flag = !!frappe.boot._two_pass_flag;
+						_apply_flag();
+					} else {
+						frappe.call({
+							method: "trustbit_ethanol.ts_gate_entry.api.get_two_pass_flag",
+							type: "GET",
+							callback: (r) => {
+								const enabled = !!(r && r.message && r.message.enabled);
+								frm._ts_two_pass_flag = enabled;
+								if (frappe.boot) frappe.boot._two_pass_flag = enabled;
+								_apply_flag();
+							},
+							error: () => { frm._ts_two_pass_flag = false; },
+						});
+					}
 				}
 			}
 
@@ -282,12 +393,16 @@ frappe.ui.form.on("TS Token", {
 			}
 		} else {
 			// Material token status indicators
-			if (frm.doc.status === "Exited") {
-				frm.page.set_indicator(__("Exited"), "green");
+			if (frm.doc.status === "Campus Exited" || frm.doc.status === "Exited") {
+				frm.page.set_indicator(__("Campus Exited"), "green");
+			} else if (frm.doc.status === "Plant Exited") {
+				frm.page.set_indicator(__("Plant Exited"), "yellow");
 			} else if (frm.doc.status === "GRN Created") {
 				frm.page.set_indicator(__("GRN Created"), "green");
 			} else if (frm.doc.status === "Token Generated") {
 				frm.page.set_indicator(__("Token Generated"), "blue");
+			} else if (frm.doc.status === "G1 Entered" || frm.doc.status === "G2 Entered") {
+				frm.page.set_indicator(__(frm.doc.status), "blue");
 			} else {
 				frm.page.set_indicator(__(frm.doc.status), "orange");
 			}
