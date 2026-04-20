@@ -349,16 +349,34 @@ class TSWeighbridgeLog(Document):
 			self.update_token_gross()
 
 	def _update_token_tare_first(self):
-		"""Stock OUT: tare weight is recorded first (empty vehicle)."""
+		"""Stock OUT: tare weight is recorded first (empty vehicle).
+
+		v2.8.3.1: handle one-shot insert where BOTH tare AND gross are
+		saved together (back-dated entries, bulk imports, hardware feeds).
+		Without this, Token would get stuck at 'Tare Recorded' because
+		on_update does NOT fire on the insert-only transaction.
+		"""
 		if self.tare_weight and self.token_number:
 			self.db_set("tare_weight_time", now_datetime())
 			self.db_set("tare_operator", frappe.session.user)
 
 			token = frappe.get_doc("TS Token", self.token_number)
-			token.db_set({
+			token_updates = {
 				"wb_tare_time": now_datetime(),
-				"status": "Tare Recorded"
-			})
+				"status": "Tare Recorded",
+			}
+
+			# v2.8.3.1: one-shot insert gross mirror for Stock OUT.
+			# If gross_weight is also set at insert time, mirror it too so
+			# Token reaches 'Gross Recorded' directly. Normal 2-save flow
+			# leaves gross_weight empty at first save — this block is skipped.
+			if self.gross_weight:
+				self.db_set("gross_weight_time", now_datetime())
+				self.db_set("gross_operator", frappe.session.user)
+				token_updates["wb_gross_time"] = now_datetime()
+				token_updates["status"] = "Gross Recorded"
+
+			token.db_set(token_updates)
 
 	def update_token_gross(self):
 		if self.gross_weight and self.token_number:
@@ -368,11 +386,39 @@ class TSWeighbridgeLog(Document):
 			token = frappe.get_doc("TS Token", self.token_number)
 			# v2.8.2: mirror RST Number onto Token (custom field) so it
 			# propagates downstream to Purchase Receipt at GRN creation.
-			token.db_set({
+			token_updates = {
 				"wb_gross_time": now_datetime(),
 				"status": "Gross Weighed",
 				"custom_rst_number": self.rst_number,
-			})
+			}
+
+			# v2.8.3.1: one-shot insert tare mirror for Stock IN.
+			# If tare_weight is ALSO set at insert time (back-dated entry,
+			# bulk import, or hardware feed that posts both weights together),
+			# mirror the tare state to Token too. Without this the Token
+			# would be stuck at 'Gross Weighed' and Stores Receiving Dashboard
+			# wouldn't pick it up — exactly the BBPL-TKN-2026-00309 incident.
+			#
+			# Gated by the SAME flow conditions update_status() uses for the
+			# Awaiting-Tare transition (v2.8 flag ON OR Non-RM weighing OR
+			# unloading_complete). Legacy flow (v28=0) with no unloading
+			# confirmation still respects the Unloading gate.
+			#
+			# Normal 2-save UI flow leaves tare_weight empty at first save,
+			# so this block is skipped there — zero regression risk.
+			if self.tare_weight:
+				flow_ok = (
+					_is_flow_v28_enabled()
+					or self._is_non_rm_weighing()
+					or self.unloading_complete
+				)
+				if flow_ok:
+					self.db_set("tare_weight_time", now_datetime())
+					self.db_set("tare_operator", frappe.session.user)
+					token_updates["wb_tare_time"] = now_datetime()
+					token_updates["status"] = "Tare Weighed"
+
+			token.db_set(token_updates)
 
 	def on_update(self):
 		if self._is_stock_out():
