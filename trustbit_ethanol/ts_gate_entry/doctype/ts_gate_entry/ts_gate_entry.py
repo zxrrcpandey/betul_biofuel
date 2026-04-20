@@ -1,4 +1,5 @@
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime, flt, getdate
 
@@ -128,6 +129,66 @@ class TSGateEntry(Document):
 					f"Driver <b>{self.driver}</b> is blacklisted.<br><b>Reason:</b> {reason}<br>Contact IT Head.",
 					title="Blacklisted Driver"
 				)
+
+	def on_cancel(self):
+		"""v2.8.3.2: reset Token when Gate Entry is cancelled.
+
+		Mirrors the existing `pr_on_cancel_clear_token` hook pattern.
+		Behavior depends on Token's current status:
+
+		- **Pre-weighing** (PO Linked / G1 Entered / G2 Entered / SI Linked) →
+		  no WB Log created yet, so it's safe to reset Token.status back to
+		  'Token Generated'. User can then amend the Gate Entry or create a
+		  fresh one.
+		- **Post-weighing** (Gross Weighed / Tare Weighed / Gross Recorded /
+		  Tare Recorded / Loading Done / Dispatch Ready) → Weighbridge Log
+		  exists with real weights; cancelling Gate Entry would orphan it.
+		  Block with a clear instruction to delete the WB Log first.
+		- **Post-GRN** (GRN Created / Plant Exited / Campus Exited / Exited) →
+		  Purchase Receipt exists; the PR cancel hook owns the Token reset.
+		  Block with instruction to cancel PR first.
+		- **Already reset** (Token Generated) → nothing to do.
+
+		Frappe rolls back the docstatus transition if this hook throws, so
+		`frappe.throw` here correctly prevents an orphaning cancel.
+		"""
+		if not self.token_number:
+			return
+		token = frappe.db.get_value(
+			"TS Token", self.token_number, ["name", "status"], as_dict=True
+		)
+		if not token:
+			return
+
+		PRE_WEIGHING = ("PO Linked", "G1 Entered", "G2 Entered", "SI Linked")
+		POST_WEIGHING = (
+			"Gross Weighed", "Tare Weighed",
+			"Gross Recorded", "Tare Recorded",
+			"Loading Done", "Dispatch Ready",
+		)
+		POST_GRN = ("GRN Created", "Plant Exited", "Campus Exited", "Exited")
+
+		if token.status in PRE_WEIGHING:
+			frappe.db.set_value("TS Token", token.name, "status", "Token Generated")
+			frappe.msgprint(
+				_("Token {0} has been reset to 'Token Generated'. You can now amend or re-enter.").format(token.name),
+				alert=True, indicator="blue",
+			)
+		elif token.status in POST_WEIGHING:
+			frappe.throw(_(
+				"Cannot cancel Gate Entry — Token {0} is at '{1}'. "
+				"A Weighbridge Log exists for this token. "
+				"Delete the Weighbridge Log first (IT Head has delete permission), "
+				"then cancel this Gate Entry."
+			).format(token.name, token.status))
+		elif token.status in POST_GRN:
+			frappe.throw(_(
+				"Cannot cancel Gate Entry — Token {0} is at '{1}'. "
+				"A Purchase Receipt has been created. "
+				"Cancel the Purchase Receipt first (the PR cancel will auto-reset "
+				"the Token), then cancel this Gate Entry."
+			).format(token.name, token.status))
+		# If status is already "Token Generated" — no-op, safe to continue cancel.
 
 	def _copy_vehicle_driver_to_token(self):
 		"""Copy vehicle master and driver details from Gate Entry to Token."""
