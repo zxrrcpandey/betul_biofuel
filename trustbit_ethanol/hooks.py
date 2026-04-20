@@ -202,6 +202,7 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_two_pass_gates.seed_two_pass_gate_fields",
 	"trustbit_ethanol.ts_gate_entry.setup_two_pass_gates.patch_number_card_exited_filters",
 	"trustbit_ethanol.ts_gate_entry.setup_admin_cancel_perms.seed_admin_cancel_perms",
+	"trustbit_ethanol.ts_gate_entry.setup_pi_lr_fields.seed_pi_lr_fields",
 ]
 
 # Scheduled Tasks
