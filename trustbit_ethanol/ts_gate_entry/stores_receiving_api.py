@@ -100,6 +100,16 @@ FLOW_NON_RM = "Non-Raw Material"
 FLOW_TYPE_DIRECT_PO = "Direct PO"
 
 
+def _is_kg_uom(uom):
+	"""v2.8.9 — UOM normalization helper (predictor non-negotiable #1).
+
+	Normalizes UOM comparison: case-insensitive + whitespace-trim.
+	Treats "Kg", "KG", " kg ", "kilogram" variants consistently.
+	Use EVERYWHERE UOM is compared in this module.
+	"""
+	return (uom or "").strip().lower() == "kg"
+
+
 def _check_read():
 	roles = set(frappe.get_roles(frappe.session.user))
 	if not (READ_ROLES & roles):
@@ -460,15 +470,33 @@ def _get_inspection_doc(token_name):
 # ═══════════════════════════════════════════════════════════════════════
 
 @frappe.whitelist(methods=["POST"])
-def create_grn_for_weighed_token(token_name):
+def create_grn_for_weighed_token(token_name, manual_qty_per_po=None):
 	"""Section A action — create Draft PR for a Tare-Weighed token.
 
 	Uses weighbridge net weight (gross − tare) as pre-filled qty, converted
 	to PO item UOM. Replicates the logic from the locked Token.create_grn()
 	but creates a DRAFT so user can review/edit qty before submitting.
 	Does NOT touch the locked ts_token.py create_grn().
+
+	v2.8.9 — `manual_qty_per_po` (optional dict: {po_name: {item_code: qty_float}})
+	allows the Stores Receiving dashboard to pass user-entered received qty in the
+	PO's UOM for non-KG items (Litre/Quintal/MT etc.). When provided, the KG↔UOM
+	conversion lookup is SKIPPED for that (po, item) pair and the manual qty is
+	used directly. Backward compatible: default None preserves existing behavior
+	for all-KG tokens. See predictor non-negotiables #1 (_is_kg_uom) and #2
+	(multi-item per PO dict-of-dict).
 	"""
 	_check_mutate()
+
+	# Parse manual_qty_per_po — Frappe can deliver JSON-string from JS clients
+	if manual_qty_per_po and isinstance(manual_qty_per_po, str):
+		try:
+			import json
+			manual_qty_per_po = json.loads(manual_qty_per_po)
+		except (ValueError, TypeError):
+			frappe.throw(_("Invalid manual_qty_per_po payload — expected JSON object."))
+	if manual_qty_per_po is not None and not isinstance(manual_qty_per_po, dict):
+		frappe.throw(_("manual_qty_per_po must be a dict of {po_name: {item_code: qty}}."))
 
 	if not token_name:
 		frappe.throw(_("Token name is required"))
@@ -560,19 +588,40 @@ def create_grn_for_weighed_token(token_name):
 			weight_kg = net_weight_kg * proportion
 
 		item_uom = ge_item["uom"] or "Kg"
+		item_po_name = ge_item["purchase_order"] or po.name
 
-		# Convert KG to PO item UOM
-		if item_uom == "Kg":
+		# v2.8.9 — UOM normalization + fail-loud on missing conversion/manual qty.
+		# Three paths:
+		#   (a) KG item: use weighbridge weight directly (existing behavior).
+		#   (b) Non-KG + manual qty provided: use as-is, skip density lookup.
+		#   (c) Non-KG + no manual qty: FAIL LOUD (was silent KG fallback → ERPNext
+		#       rejects later with confusing "UOM must be equal to 'Litre'" error).
+		if _is_kg_uom(item_uom):
 			received_qty = weight_kg
 		else:
-			conversion_factor = _get_uom_conversion_to_kg(ge_item["item_code"], item_uom)
-			if conversion_factor and flt(conversion_factor) > 0:
-				received_qty = flt(weight_kg / conversion_factor, 3)
+			manual_for_po = (manual_qty_per_po or {}).get(item_po_name) or {}
+			manual_qty = manual_for_po.get(ge_item["item_code"])
+			if manual_qty is not None:
+				try:
+					received_qty = flt(manual_qty, 3)
+				except (ValueError, TypeError):
+					frappe.throw(_("Manual qty for item {0} is not a valid number.").format(
+						ge_item["item_code"]))
+				if received_qty <= 0:
+					frappe.throw(_("Manual qty for item {0} must be greater than zero.").format(
+						ge_item["item_code"]))
+				# item_uom stays as ge_item["uom"] (the PO UOM) — no fallback.
 			else:
-				received_qty = weight_kg
-				item_uom = "Kg"
+				conversion_factor = _get_uom_conversion_to_kg(ge_item["item_code"], item_uom)
+				if conversion_factor and flt(conversion_factor) > 0:
+					received_qty = flt(weight_kg / conversion_factor, 3)
+				else:
+					frappe.throw(_(
+						"Item {0} has PO UOM '{1}' but no KG conversion configured and no "
+						"manual qty provided. Stores must use the 'Receive with Custom Qty' "
+						"dialog on the Stores Receiving Dashboard to enter received qty in {1}."
+					).format(ge_item["item_code"], item_uom))
 
-		item_po_name = ge_item["purchase_order"] or po.name
 		po_item = frappe.db.get_value("Purchase Order Item",
 			{"parent": item_po_name, "item_code": ge_item["item_code"]},
 			["name", "rate", "ts_delivery_location", "ts_item_remark"],
@@ -618,6 +667,8 @@ def create_grn_for_weighed_token(token_name):
 		"lr_date": gate_entry["lr_date"],
 		"transporter_name": gate_entry["transporter"] or "",
 		"ts_stores_dashboard_source": "Section A",
+		# v2.8.9 — WB net (kg) audit field for reconciliation when PO UOM is non-KG.
+		"ts_wb_net_kg": net_weight_kg,
 	})
 
 	# v2.8.1.3: copy missing header fields that ERPNext's make_purchase_receipt
@@ -655,6 +706,69 @@ def create_grn_for_weighed_token(token_name):
 	frappe.db.commit()
 
 	return {"purchase_receipt": pr.name, "docstatus": pr.docstatus}
+
+
+@frappe.whitelist()
+def get_token_uom_summary(token_name):
+	"""v2.8.9 — return per-(PO, item) UOM summary so the Stores dashboard JS can
+	decide whether to open the manual-qty dialog (any non-KG item → dialog).
+
+	Read-only; gated by READ_ROLES. Returns a list of dicts, one per GE item:
+	  {po_name, item_code, item_name, uom, ordered_qty, received_qty_so_far,
+	   wb_net_kg, rate}
+	plus a sidecar `wb_net_kg` on every row for convenience (same value repeated,
+	matching the token's single weighbridge log).
+	"""
+	_check_read()
+
+	if not token_name:
+		frappe.throw(_("Token name is required"))
+
+	token = frappe.db.get_value("TS Token", token_name,
+		["name", "docstatus", "status", "purchase_receipt"], as_dict=True)
+	if not token:
+		frappe.throw(_("Token {0} not found").format(token_name))
+
+	gate_entry = frappe.db.get_value("TS Gate Entry",
+		{"token_number": token_name, "docstatus": 1},
+		["name", "purchase_order"], as_dict=True)
+	if not gate_entry:
+		return {"token": token_name, "wb_net_kg": 0, "rows": []}
+
+	wb = frappe.db.get_value("TS Weighbridge Log",
+		{"token_number": token_name},
+		["net_weight"], as_dict=True) or {}
+	wb_net_kg = flt(wb.get("net_weight"))
+
+	ge_items = frappe.db.get_all("TS Gate Entry Item",
+		filters={"parent": gate_entry["name"]},
+		fields=["item_code", "item_name", "ordered_qty", "uom", "purchase_order"])
+
+	rows = []
+	for it in ge_items:
+		po_name = it.get("purchase_order") or gate_entry.get("purchase_order") or ""
+		po_item = frappe.db.get_value("Purchase Order Item",
+			{"parent": po_name, "item_code": it["item_code"]},
+			["qty", "received_qty", "rate", "uom"],
+			as_dict=True) or {}
+		rows.append({
+			"po_name": po_name,
+			"item_code": it["item_code"],
+			"item_name": it.get("item_name") or it["item_code"],
+			"uom": it.get("uom") or po_item.get("uom") or "",
+			"is_kg": _is_kg_uom(it.get("uom") or po_item.get("uom") or ""),
+			"ordered_qty": flt(po_item.get("qty") or it.get("ordered_qty") or 0),
+			"received_qty_so_far": flt(po_item.get("received_qty") or 0),
+			"rate": flt(po_item.get("rate") or 0),
+			"wb_net_kg": wb_net_kg,
+		})
+
+	return {
+		"token": token_name,
+		"wb_net_kg": wb_net_kg,
+		"rows": rows,
+		"any_non_kg": any(not r["is_kg"] for r in rows),
+	}
 
 
 def _get_uom_conversion_to_kg(item_code, uom):

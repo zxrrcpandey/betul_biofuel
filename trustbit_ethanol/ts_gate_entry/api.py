@@ -46,7 +46,10 @@ def get_purchase_orders(po_id=None, po_date=None, **kwargs):
 @frappe.whitelist()
 def get_weighbridge_tokens(doctype, txt, searchfield, start, page_len, filters):
 	"""Return tokens eligible for weighbridge:
-	- Stock IN: Raw Material OR Non-RM with requires_weighing (status=PO Linked)
+	- Stock IN: Raw Material OR Non-RM with requires_weighing.
+	  Accepts both 'PO Linked' (legacy / two-pass flag OFF) and 'G2 Entered'
+	  (v2.8.3 two-pass flag ON — token transitions to G2 Entered after G2
+	  Gate Operator records entry, at which point it's eligible for weighing).
 	- Stock OUT: SI Linked, Tare Recorded, or Loading Done
 	"""
 	return frappe.db.sql("""
@@ -54,8 +57,8 @@ def get_weighbridge_tokens(doctype, txt, searchfield, start, page_len, filters):
 		FROM `tabTS Token` t
 		WHERE t.entry_type = 'Material'
 		AND (
-			/* Stock IN: PO Linked + (Raw Material OR requires_weighing) */
-			(t.status = 'PO Linked' AND (
+			/* Stock IN: eligible status (PO Linked or G2 Entered) + (Raw Material OR requires_weighing) */
+			(t.status IN ('PO Linked', 'G2 Entered') AND (
 				t.purpose = 'Raw Material'
 				OR EXISTS (
 					SELECT 1 FROM `tabTS Gate Entry` ge

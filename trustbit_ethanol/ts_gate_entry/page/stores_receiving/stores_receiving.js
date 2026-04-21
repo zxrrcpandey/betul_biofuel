@@ -6,7 +6,7 @@
      C — Approved Direct PO (new, no token)
    ═══════════════════════════════════════════════════════════════════ */
 
-const SR_VERSION = "v6.0-2026-04-16";
+const SR_VERSION = "v6.1-2026-04-20-v2.8.9";
 const SR_API = "trustbit_ethanol.ts_gate_entry.stores_receiving_api";
 console.log("[stores-receiving]", SR_VERSION, "loaded");
 
@@ -178,54 +178,245 @@ function _sr_render_section_a() {
 		const btn = $(this);
 		const token = btn.data("token");
 		console.log("[stores-receiving] Section A click → token", token);
-		_sr_confirm_create(`Create Draft GRN from weighed token ${token}? Net weight will be pre-filled — you can edit quantities on the PR form.`, async () => {
-			console.log("[stores-receiving] Confirmed, calling API", token);
-			btn.prop("disabled", true).text("Creating…");
-			let succeeded = false;
+		_sr_section_a_start(btn, token);
+	});
+}
+
+// v2.8.9 — UOM-aware Create GRN entry point. Fetches UOM summary first; if ALL
+// items are KG, falls through to the legacy direct path. Otherwise opens the
+// manual-qty dialog so the operator can enter received qty in the PO's UOM.
+function _sr_is_kg_uom(uom) {
+	return String(uom || "").trim().toLowerCase() === "kg";
+}
+
+async function _sr_section_a_start(btn, token) {
+	btn.prop("disabled", true).text("Checking UOM…");
+	let restore = true;
+	try {
+		const r = await frappe.call({
+			method: `${SR_API}.get_token_uom_summary`,
+			args: { token_name: token },
+		});
+		const summary = (r && r.message) || {};
+		const rows = Array.isArray(summary.rows) ? summary.rows : [];
+		if (!rows.length) {
+			frappe.msgprint({
+				title: "No items",
+				message: "This token has no Gate Entry items — cannot create GRN.",
+				indicator: "orange",
+			});
+			return;
+		}
+		const anyNonKg = rows.some(row => !_sr_is_kg_uom(row.uom));
+		if (!anyNonKg) {
+			// Legacy all-KG path — no dialog, weighbridge net weight used directly.
+			restore = await _sr_confirm_and_create_grn_kg(btn, token);
+			return;
+		}
+		// Non-KG path — dialog.
+		restore = true;
+		_sr_open_manual_qty_dialog(btn, token, summary);
+	} catch (e) {
+		console.error("[stores-receiving] UOM summary fetch failed:", e);
+		const has_server_msg = e && (e._server_messages || (e.responseJSON && e.responseJSON._server_messages));
+		if (!has_server_msg) {
+			frappe.msgprint({
+				title: "Could not fetch UOM summary",
+				message: frappe.utils.escape_html((e && (e.message || e.statusText)) || "Network or script error."),
+				indicator: "red",
+			});
+		}
+	} finally {
+		if (restore) btn.prop("disabled", false).text("Create GRN");
+	}
+}
+
+function _sr_confirm_and_create_grn_kg(btn, token) {
+	return new Promise((resolve) => {
+		_sr_confirm_create(
+			`Create Draft GRN from weighed token ${token}? Net weight will be pre-filled — you can edit quantities on the PR form.`,
+			async () => {
+				btn.text("Creating…");
+				let succeeded = false;
+				try {
+					const r = await frappe.call({
+						method: `${SR_API}.create_grn_for_weighed_token`,
+						args: { token_name: token },
+						freeze: true, freeze_message: "Creating GRN…",
+					});
+					if (r && r.message && r.message.purchase_receipt) {
+						succeeded = true;
+						frappe.show_alert({
+							message: `Draft Purchase Receipt ${r.message.purchase_receipt} created — review quantities and submit.`,
+							indicator: "blue",
+						}, 8);
+						frappe.set_route("Form", "Purchase Receipt", r.message.purchase_receipt);
+					} else {
+						frappe.msgprint({
+							title: "GRN not created",
+							message: "The server returned no Purchase Receipt. Check the browser console and server error log.",
+							indicator: "orange",
+						});
+					}
+				} catch (e) {
+					console.error("[stores-receiving] API error:", e);
+					const has_server_msg = e && (e._server_messages || (e.responseJSON && e.responseJSON._server_messages));
+					if (!has_server_msg) {
+						frappe.msgprint({
+							title: "GRN creation failed",
+							message: frappe.utils.escape_html((e && (e.message || e.statusText)) || "Network or script error — see browser console."),
+							indicator: "red",
+						});
+					}
+				} finally {
+					resolve(!succeeded);
+				}
+			},
+			() => resolve(true),  // user cancelled → restore button
+		);
+	});
+}
+
+function _sr_open_manual_qty_dialog(btn, token, summary) {
+	const rows = summary.rows || [];
+	const wbNet = Number(summary.wb_net_kg || 0);
+	const safeToken = frappe.utils.escape_html(token);
+
+	// Build table HTML. KG rows are pre-filled from wb_net_kg, read-only.
+	// Non-KG rows expose an input; implied density is live-computed.
+	const tableRows = rows.map((row, idx) => {
+		const isKg = _sr_is_kg_uom(row.uom);
+		const itemLabel = `${frappe.utils.escape_html(row.item_code)} <span style="color:#6b7280">${frappe.utils.escape_html(row.item_name || "")}</span>`;
+		const ordered = `${Number(row.ordered_qty || 0)} ${frappe.utils.escape_html(row.uom || "")}`;
+		const poLink = row.po_name
+			? `<a href="/app/purchase-order/${encodeURIComponent(row.po_name)}" target="_blank">${frappe.utils.escape_html(row.po_name)}</a>`
+			: "—";
+		if (isKg) {
+			return `<tr>
+				<td>${poLink}</td>
+				<td>${itemLabel}</td>
+				<td>${ordered}</td>
+				<td><input type="number" class="form-control sr-qty-input" data-idx="${idx}" value="${wbNet}" readonly style="background:#f1f5f9;"></td>
+				<td><span class="text-muted">KG (direct)</span></td>
+			</tr>`;
+		}
+		return `<tr>
+			<td>${poLink}</td>
+			<td>${itemLabel}</td>
+			<td>${ordered}</td>
+			<td><input type="number" step="0.001" min="0" class="form-control sr-qty-input" data-idx="${idx}" placeholder="${Number(row.ordered_qty || 0)}"></td>
+			<td><span class="sr-density" data-idx="${idx}" style="color:#6b7280; font-size:12px;">—</span></td>
+		</tr>`;
+	}).join("");
+
+	const html = `
+		<div style="margin-bottom:12px;">
+			<div style="font-weight:600;">Token ${safeToken}</div>
+			<div style="color:#6b7280; font-size:13px;">Weighbridge Net: <strong>${wbNet}</strong> KG <span style="color:#9ca3af;">(reference — not auto-applied to non-KG items)</span></div>
+		</div>
+		<table class="table table-bordered" style="font-size:13px; margin-bottom:0;">
+			<thead><tr style="background:#f8fafc;">
+				<th>PO</th><th>Item</th><th>Ordered</th><th>Received Qty</th><th>Implied Density</th>
+			</tr></thead>
+			<tbody>${tableRows}</tbody>
+		</table>
+	`;
+
+	const dlg = new frappe.ui.Dialog({
+		title: `Receive — Token ${token}`,
+		size: "extra-large",
+		fields: [{ fieldtype: "HTML", fieldname: "body" }],
+		primary_action_label: "Create GRN",
+		primary_action: async () => {
+			// Build manual_qty_per_po from inputs.
+			const manual = {};
+			let bad = null;
+			dlg.$wrapper.find(".sr-qty-input").each(function () {
+				const idx = Number($(this).data("idx"));
+				const row = rows[idx];
+				if (!row) return;
+				const raw = $(this).val();
+				const qty = Number(raw);
+				if (!raw || !(qty > 0)) {
+					bad = row.item_code;
+					return false;
+				}
+				if (_sr_is_kg_uom(row.uom)) {
+					// KG rows don't go into manual_qty_per_po — backend uses wb_net_kg
+					// directly for KG items. Skip.
+					return;
+				}
+				const po = row.po_name || "";
+				if (!manual[po]) manual[po] = {};
+				manual[po][row.item_code] = qty;
+			});
+			if (bad) {
+				frappe.msgprint({
+					title: "Missing quantity",
+					message: `Enter a received quantity greater than zero for item ${frappe.utils.escape_html(bad)}.`,
+					indicator: "orange",
+				});
+				return;
+			}
+			dlg.disable_primary_action();
 			try {
 				const r = await frappe.call({
 					method: `${SR_API}.create_grn_for_weighed_token`,
-					args: { token_name: token },
+					args: { token_name: token, manual_qty_per_po: manual },
 					freeze: true, freeze_message: "Creating GRN…",
 				});
-				console.log("[stores-receiving] API response", r);
 				if (r && r.message && r.message.purchase_receipt) {
-					succeeded = true;
+					dlg.hide();
 					frappe.show_alert({
-						message: `Draft Purchase Receipt ${r.message.purchase_receipt} created — review quantities and submit.`,
-						indicator: "blue"
+						message: `Draft Purchase Receipt ${r.message.purchase_receipt} created — review and submit.`,
+						indicator: "blue",
 					}, 8);
 					frappe.set_route("Form", "Purchase Receipt", r.message.purchase_receipt);
 				} else {
-					console.warn("[stores-receiving] API returned without purchase_receipt:", r);
+					dlg.enable_primary_action();
 					frappe.msgprint({
 						title: "GRN not created",
-						message: "The server returned no Purchase Receipt. Check the browser console and server error log.",
-						indicator: "orange"
+						message: "Server returned no Purchase Receipt.",
+						indicator: "orange",
 					});
 				}
 			} catch (e) {
-				console.error("[stores-receiving] API error:", e);
-				// Frappe's native AJAX error handler already shows a dialog with the
-				// server's frappe.throw message. Only show our fallback for non-server
-				// errors (network, JS) where _server_messages is absent.
+				console.error("[stores-receiving] manual-qty API error:", e);
+				dlg.enable_primary_action();
 				const has_server_msg = e && (e._server_messages || (e.responseJSON && e.responseJSON._server_messages));
 				if (!has_server_msg) {
 					frappe.msgprint({
 						title: "GRN creation failed",
-						message: frappe.utils.escape_html(
-							(e && (e.message || e.statusText)) || "Network or script error — see browser console."
-						),
-						indicator: "red"
+						message: frappe.utils.escape_html((e && (e.message || e.statusText)) || "Network or script error."),
+						indicator: "red",
 					});
 				}
-			} finally {
-				if (!succeeded) {
-					btn.prop("disabled", false).text("Create GRN");
-				}
 			}
-		});
+		},
+		secondary_action_label: "Cancel",
+		secondary_action: () => dlg.hide(),
 	});
+
+	dlg.fields_dict.body.$wrapper.html(html);
+
+	// Live density hint: (wb_net / qty) kg/uom per row.
+	dlg.$wrapper.on("input", ".sr-qty-input", function () {
+		const idx = Number($(this).data("idx"));
+		const row = rows[idx];
+		if (!row || _sr_is_kg_uom(row.uom)) return;
+		const qty = Number($(this).val());
+		const $d = dlg.$wrapper.find(`.sr-density[data-idx="${idx}"]`);
+		if (qty > 0 && wbNet > 0) {
+			$d.text(`${(wbNet / qty).toFixed(3)} kg/${row.uom}`);
+		} else {
+			$d.text("—");
+		}
+	});
+
+	dlg.onhide = () => {
+		btn.prop("disabled", false).text("Create GRN");
+	};
+	dlg.show();
 }
 
 function _sr_render_section_b() {
@@ -309,8 +500,8 @@ function _sr_render_section_b() {
 	});
 }
 
-function _sr_confirm_create(msg, onYes) {
-	frappe.confirm(msg, onYes);
+function _sr_confirm_create(msg, onYes, onNo) {
+	frappe.confirm(msg, onYes, onNo);
 }
 
 function _sr_items_detail(items, colSpan) {

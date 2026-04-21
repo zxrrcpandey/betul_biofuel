@@ -211,6 +211,7 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_pi_po_ref.seed_pi_po_ref_field",
 	"trustbit_ethanol.ts_gate_entry.setup_po_stats_tab.seed_po_stats_tab",
 	"trustbit_ethanol.ts_gate_entry.setup_cc_standard_filter.seed_cc_standard_filter",
+	"trustbit_ethanol.ts_gate_entry.setup_pr_wb_audit.seed_pr_wb_audit_fields",
 ]
 
 # Scheduled Tasks
