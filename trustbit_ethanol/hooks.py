@@ -159,7 +159,10 @@ doc_events = {
 		"after_delete": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_after_delete_clear_token",
 	},
 	"Purchase Invoice": {
-		"validate": "trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_qc_approved",
+		"validate": [
+			"trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_qc_approved",
+			"trustbit_ethanol.ts_gate_entry.setup_pi_po_ref.populate_ts_po_reference",
+		],
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate._block_pi_qc_override_tampering",
 	},
 	"TS Quality Inspection": {
@@ -204,6 +207,7 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_admin_cancel_perms.seed_admin_cancel_perms",
 	"trustbit_ethanol.ts_gate_entry.setup_pi_lr_fields.seed_pi_lr_fields",
 	"trustbit_ethanol.ts_gate_entry.setup_msme_fields.seed_msme_fields",
+	"trustbit_ethanol.ts_gate_entry.setup_pi_po_ref.seed_pi_po_ref_field",
 ]
 
 # Scheduled Tasks
