@@ -15,10 +15,14 @@ registration details on the Supplier master for MSME Act 2006 compliance:
 
 ## Placement
 
-Inserted after `tax_withholding_category` (idx 29, native ERPNext field on
-the Tax tab). Places MSME Registration inside the Tax tab, right below the
-Tax Withholding Category field, keeping all tax/compliance classification
-together.
+Inserted after `language` (idx 23, native ERPNext field — last field in
+the Supplier Details tab before `dashboard_tab` break). Places MSME
+Registration as the bottom section of the Details tab so it's visible
+on the main Supplier view without switching tabs.
+
+(v2.8.5 originally placed it in the Tax tab after tax_withholding_category;
+v2.8.5.1 moved it to Details tab per CTO Rahul's feedback for better
+front-and-center visibility on Supplier onboarding.)
 
 ## Why isolated from setup.py
 
@@ -28,18 +32,18 @@ module so one seed failure does not cascade to all others.
 
 ## Idempotency
 
-Uses `ignore_if_duplicate=True` + existence check. Safe to re-run on every
-bench migrate. If someone manually edits a MSME field's label via the
-Customize Form UI, this seed will NOT overwrite — it only creates missing
-rows. (Contrast with setup_pi_lr_fields.py which DOES override because
-GST India installs those fields with wrong labels.)
+If a Custom Field already exists, the seed UPDATES `insert_after` + `label`
+properties (v2.8.5.1 relocation). For fresh installs, the seed INSERTS
+with correct placement immediately. Safe to re-run on every bench migrate.
 """
 
 import frappe
 
 
 def seed_msme_fields():
-	"""Seed 4 MSME Custom Fields on Supplier. Idempotent."""
+	"""Seed 4 MSME Custom Fields on Supplier. Idempotent — updates
+	insert_after on existing rows to ensure placement stays at the bottom
+	of the Supplier Details tab across BBF re-seeds."""
 	fields = [
 		{
 			"doctype": "Custom Field",
@@ -47,7 +51,7 @@ def seed_msme_fields():
 			"fieldname": "msme_section",
 			"label": "MSME Registration",
 			"fieldtype": "Section Break",
-			"insert_after": "tax_withholding_category",
+			"insert_after": "language",
 			"collapsible": 1,
 			"description": "MSME (Udyam) registration details for MSME Act 2006 compliance. Micro/Small suppliers must be paid within 45 days.",
 		},
@@ -85,6 +89,25 @@ def seed_msme_fields():
 	for f in fields:
 		cf_name = f"Supplier-{f['fieldname']}"
 		if frappe.db.exists("Custom Field", cf_name):
+			# v2.8.5.1: update placement + label on existing rows so the
+			# re-seed correctly relocates MSME section from Tax tab (v2.8.5)
+			# to Details tab (v2.8.5.1) per CTO feedback.
+			try:
+				frappe.db.set_value(
+					"Custom Field", cf_name,
+					{
+						"insert_after": f["insert_after"],
+						"label": f["label"],
+					},
+				)
+				frappe.logger().info(
+					f"[seed_msme] Updated {cf_name} insert_after={f['insert_after']}"
+				)
+			except Exception as e:
+				frappe.log_error(
+					message=f"seed_msme update failure on {cf_name}: {e}",
+					title="seed_msme_fields",
+				)
 			continue
 		try:
 			frappe.get_doc(f).insert(
