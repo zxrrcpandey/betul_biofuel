@@ -125,6 +125,27 @@ window.ts_check_submit_on_behalf = function(frm) {
 	// Returns Promise<boolean>: true = proceed with submit, false = cancel
 	return new Promise((resolve) => {
 		if (!frm || !frm.doc) return resolve(true);
+
+		// v2.8.11.1 HOTFIX: only show the warning on the INITIAL submit by the
+		// creator. Approvers (AVP, CEO, MD etc.) clicking Approve also trigger
+		// before_submit — their status is already "Pending X" so we skip.
+		// Without this guard, every Approve click showed the dialog inappropriately.
+		const approval_status_field_map = {
+			"Material Request": "ts_mr_status",
+			"Purchase Order": "ts_approval_status",
+			"TS Post Dated Entry Request": "status",
+			"TS Budget Proposal": "status",
+		};
+		const status_field = approval_status_field_map[frm.doctype];
+		if (status_field) {
+			const current_status = frm.doc[status_field];
+			// If already in an approval state (not Draft/Not Submitted/empty),
+			// this is a mid-chain Approve click — skip the warning entirely.
+			if (current_status && current_status !== "Draft" && current_status !== "Not Submitted") {
+				return resolve(true);
+			}
+		}
+
 		const owner = frm.doc.owner;
 		const current_user = frappe.session.user;
 		if (!owner || owner === current_user) return resolve(true);  // no warning
