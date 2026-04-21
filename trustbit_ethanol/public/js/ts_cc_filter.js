@@ -1,111 +1,21 @@
 /**
- * ts_cc_filter.js — v2.8.8
+ * ts_cc_filter.js — v2.8.8.3
  *
- * Adds a "Filter: Cost Centers" multi-select button to a list view.
- * Called from po_list.js (Purchase Order) and mr_list.js (Material Request)
- * via the `ts_add_cc_filter_button(listview)` function.
+ * No-op helper kept for backward compatibility with po_list.js / mr_list.js
+ * which still call `window.ts_add_cc_filter_button(listview)`.
  *
- * UX:
- *   - Click button → MultiSelectDialog listing non-disabled Cost Centers
- *     for the current default company (Frappe defaults).
- *   - Pick multiple CCs → Apply → list filters with `cost_center in [...]`.
- *   - Button label shows active count: "Cost Centers (3 selected)".
- *   - Click again to modify / clear.
- *   - Clear button in the dialog removes the filter.
+ * As of v2.8.8.3, Cost Center filtering is handled by a native Frappe
+ * standard filter (via Property Setter `cost_center.in_standard_filter=1`
+ * seeded by `setup_cc_standard_filter.py`). Frappe renders the Link
+ * autocomplete in `.standard-filter-section` automatically — no JS needed.
  *
- * Notes:
- *   - Safe on re-render: button is added exactly once per listview instance
- *     (guarded by listview._ts_cc_filter_wired).
- *   - No @frappe.whitelist or server code — pure client-side Frappe APIs.
- *   - Uses standard `cost_center` field which exists natively on PO + MR.
+ * Users can multi-select via the existing `+ Filter` button with the
+ * `in` operator if they need more than one CC at a time.
+ *
+ * This no-op keeps the callers wired without needing to edit the
+ * PO_FULL / MR_FULL-locked list JS files.
  */
-
 window.ts_add_cc_filter_button = function (listview) {
-	if (!listview || listview._ts_cc_filter_wired) return;
-	listview._ts_cc_filter_wired = true;
-
-	const getBtnLabel = () => {
-		const count = (listview._ts_cc_selected || []).length;
-		return count > 0 ? __(`Cost Centers (${count} selected)`) : __("Filter: Cost Centers");
-	};
-
-	const refreshBtnLabel = () => {
-		const $btn = listview.page.wrapper.find(".ts-cc-filter-btn");
-		if ($btn.length) {
-			$btn.text(getBtnLabel());
-			$btn.toggleClass("btn-primary", (listview._ts_cc_selected || []).length > 0);
-			$btn.toggleClass("btn-default", (listview._ts_cc_selected || []).length === 0);
-		}
-	};
-
-	const applyFilter = (values) => {
-		listview._ts_cc_selected = values || [];
-		// Remove any existing cost_center filter first
-		listview.filter_area.remove("cost_center");
-		if (values && values.length) {
-			listview.filter_area.add([[listview.doctype, "cost_center", "in", values]]);
-		} else {
-			listview.refresh();
-		}
-		refreshBtnLabel();
-	};
-
-	const openDialog = () => {
-		const currentSelection = listview._ts_cc_selected || [];
-		const d = new frappe.ui.form.MultiSelectDialog({
-			doctype: "Cost Center",
-			target: listview,
-			setters: {
-				cost_center_name: null,
-				company: frappe.defaults.get_user_default("Company") || null,
-			},
-			date_field: "creation",
-			get_query() {
-				// Only non-disabled CCs (disabled=0 or NULL treated as enabled)
-				return {
-					filters: { disabled: 0 },
-				};
-			},
-			action(selections) {
-				const values = (selections || []).map(r => r.name || r);
-				applyFilter(values);
-				d.dialog.hide && d.dialog.hide();
-			},
-			primary_action_label: __("Apply"),
-		});
-
-		// Prefill current selection when dialog opens (best-effort — frappe internals)
-		try {
-			if (currentSelection.length && d.dialog && d.dialog.get_values) {
-				setTimeout(() => {
-					currentSelection.forEach(cc => {
-						const $row = d.dialog.$wrapper.find(`[data-name="${cc}"] input[type="checkbox"]`);
-						if ($row.length) $row.prop("checked", true).trigger("change");
-					});
-				}, 200);
-			}
-		} catch (e) { /* best-effort prefill only */ }
-	};
-
-	// Add button to list toolbar (primary menu area, left side)
-	listview.page.add_inner_button(
-		getBtnLabel(),
-		openDialog,
-		null,  // no group
-		"default"  // button type
-	);
-
-	// Tag the rendered button so we can update its label
-	setTimeout(() => {
-		const $allBtns = listview.page.wrapper.find(".inner-toolbar .btn");
-		$allBtns.each(function () {
-			if ($(this).text().trim().startsWith("Filter: Cost Centers") ||
-			    $(this).text().trim().startsWith("Cost Centers (")) {
-				$(this).addClass("ts-cc-filter-btn");
-			}
-		});
-	}, 100);
-
-	// Also expose a "Clear Cost Center Filter" menu item when filter is active
-	// (kept simple: user can click the main button then Clear in the dialog or remove via filter pills)
+	// Intentionally empty — standard Frappe filter handles CC filtering.
+	// See setup_cc_standard_filter.py for the Property Setter seed.
 };
