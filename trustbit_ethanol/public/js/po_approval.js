@@ -595,16 +595,30 @@ function _render_lifecycle_badge(frm, deliveries) {
 		$layout.before(html);
 	}
 
-	// Wire "See all in Stats tab" to switch to the stats tab.
-	$(frm.page.wrapper).find(".bbf-lc-stats-jump").off("click").on("click", function () {
-		if (frm.fields_dict.stats_tab) {
-			frm.set_active_tab && frm.set_active_tab("stats_tab");
-			const $tab = $(frm.wrapper).find('[data-fieldname="stats_tab"]').first();
-			if ($tab.length) $tab.trigger("click");
+	// Wire "See all in Stats tab" — v2.8.7.1: use Frappe v15 tab instance API.
+	// frm.layout.tabs is an array of tab objects each with .df.fieldname + .set_active().
+	// Previous version used frm.set_active_tab("stats_tab") which expects a tab instance,
+	// not a string, so silently did nothing.
+	$(frm.page.wrapper).find(".bbf-lc-stats-jump").off("click").on("click", function (e) {
+		e.preventDefault();
+		let switched = false;
+
+		// Primary: Frappe v15 tab instance API
+		if (frm.layout && Array.isArray(frm.layout.tabs)) {
+			const tab = frm.layout.tabs.find(t => t && t.df && t.df.fieldname === "stats_tab");
+			if (tab && typeof tab.set_active === "function") {
+				tab.set_active();
+				switched = true;
+			}
 		}
-		$("html, body").animate({
-			scrollTop: $(frm.wrapper).find(".bbf-lifecycle-tracker").offset().top - 80
-		}, 300);
+
+		// Fallback: click the Bootstrap tab anchor directly
+		if (!switched) {
+			const $tab_link = $(frm.$wrapper || frm.wrapper).find('.form-tabs-list a[data-fieldname="stats_tab"]').first();
+			if ($tab_link.length) {
+				$tab_link.tab ? $tab_link.tab("show") : $tab_link.trigger("click");
+			}
+		}
 	});
 }
 
