@@ -35,6 +35,11 @@ function _patch_po_list(listview) {
 		_fix_docstatus_for_approval_filter(listview);
 		return orig_refresh();
 	};
+
+	// v2.8.8: Multi-select Cost Center filter button
+	if (typeof window.ts_add_cc_filter_button === "function") {
+		window.ts_add_cc_filter_button(listview);
+	}
 }
 
 function _fix_docstatus_for_approval_filter(listview) {
