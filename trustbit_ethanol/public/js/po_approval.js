@@ -540,9 +540,141 @@ function _load_lifecycle_tracker(frm) {
 
 function _render_lifecycle(frm, data) {
 	$(frm.page.wrapper).find(".bbf-lifecycle-tracker").remove();
+	$(frm.page.wrapper).find(".bbf-lifecycle-badge").remove();
 
 	const deliveries = data.deliveries || [];
-	if (!deliveries.length) return;
+	if (!deliveries.length) {
+		// v2.8.7: even with zero deliveries, clear the Stats tab HTML if present
+		_render_stats_tab_placeholder(frm, 0);
+		return;
+	}
+
+	// v2.8.7: threshold-based rendering.
+	// - count ≤ threshold: render full tracker inline on main form (UNCHANGED legacy behavior)
+	// - count >  threshold: render compact badge on main form + full tracker inside Stats tab
+	const threshold = data.stats_threshold || 5;
+	const count = deliveries.length;
+	const useStatsTab = count > threshold;
+
+	if (useStatsTab) {
+		_render_lifecycle_badge(frm, deliveries);
+		_render_stats_tab_full(frm, data);
+		return;
+	}
+
+	// Legacy inline rendering continues below for ≤ threshold (preserves v2.7+ behavior).
+	_render_stats_tab_placeholder(frm, count);
+	_render_lifecycle_inline(frm, data);
+}
+
+function _render_lifecycle_badge(frm, deliveries) {
+	// v2.8.7: compact badge for >threshold POs — replaces the long inline tracker.
+	const count = deliveries.length;
+	const exited = deliveries.filter(d =>
+		d.token_status === "Exited" ||
+		d.token_status === "Campus Exited" ||
+		d.token_status === "GRN Created"
+	).length;
+	const active = count - exited;
+
+	let html = '<div class="bbf-lifecycle-badge" style="margin: 10px 15px 15px; padding: 12px 15px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f0f9ff; display: flex; justify-content: space-between; align-items: center; gap: 10px;">';
+	html += '<div style="display: flex; align-items: center; gap: 12px;">';
+	html += `<div style="font-size: 20px; font-weight: 700; color: #1d4ed8;">${count}</div>`;
+	html += '<div>';
+	html += '<div style="font-weight: 600; font-size: 13px; color: #0f172a;">Deliveries</div>';
+	let summary = [];
+	if (exited) summary.push(`<span style="color: #10b981;">${exited} completed</span>`);
+	if (active) summary.push(`<span style="color: #f59e0b;">${active} in progress</span>`);
+	html += `<div style="font-size: 11px; color: #64748b;">${summary.join(" &middot; ") || "&nbsp;"}</div>`;
+	html += '</div></div>';
+	html += '<a class="bbf-lc-stats-jump" href="javascript:void(0)" style="font-size: 12px; color: #1d4ed8; text-decoration: none; font-weight: 600;">See all in Stats tab &rarr;</a>';
+	html += '</div>';
+
+	const $layout = $(frm.layout.wrapper);
+	if ($layout.length) {
+		$layout.before(html);
+	}
+
+	// Wire "See all in Stats tab" to switch to the stats tab.
+	$(frm.page.wrapper).find(".bbf-lc-stats-jump").off("click").on("click", function () {
+		if (frm.fields_dict.stats_tab) {
+			frm.set_active_tab && frm.set_active_tab("stats_tab");
+			const $tab = $(frm.wrapper).find('[data-fieldname="stats_tab"]').first();
+			if ($tab.length) $tab.trigger("click");
+		}
+		$("html, body").animate({
+			scrollTop: $(frm.wrapper).find(".bbf-lifecycle-tracker").offset().top - 80
+		}, 300);
+	});
+}
+
+function _render_stats_tab_full(frm, data) {
+	// v2.8.7: render summary stats + full lifecycle tracker inside Stats tab HTML field.
+	const $html = frm.fields_dict.po_stats_html && frm.fields_dict.po_stats_html.$wrapper;
+	if (!$html || !$html.length) return;
+
+	const deliveries = data.deliveries || [];
+	const count = deliveries.length;
+	const statusCounts = {};
+	let totalNetKg = 0;
+	deliveries.forEach(d => {
+		const s = d.token_status || "Unknown";
+		statusCounts[s] = (statusCounts[s] || 0) + 1;
+		const wb = d.docs && d.docs.weighbridge;
+		if (wb && wb.net_weight) totalNetKg += parseFloat(wb.net_weight) || 0;
+	});
+
+	// Stats summary card
+	let summary = '<div style="padding: 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 15px;">';
+	summary += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
+	summary += '<div style="font-weight: 700; font-size: 14px; color: #0f172a;">PO Delivery Statistics</div>';
+	summary += `<div style="font-size: 12px; color: #64748b;">Threshold: ${data.stats_threshold} (configurable in TS Settings)</div>`;
+	summary += '</div>';
+	summary += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;">';
+	summary += _lc_stat_cell("Total Deliveries", count, "#1d4ed8");
+	summary += _lc_stat_cell("Total Net Weight", _lc_fmt_wt(totalNetKg), "#10b981");
+	Object.keys(statusCounts).sort().forEach(s => {
+		summary += _lc_stat_cell(s, statusCounts[s], _lc_status_color(s).text);
+	});
+	summary += '</div>';
+	summary += '</div>';
+
+	$html.html(summary);
+
+	// Reuse the existing tracker renderer but inject INTO the Stats tab HTML field
+	// instead of before frm.layout.wrapper. Build the same markup as legacy path.
+	const trackerHtml = _build_lifecycle_tracker_html(data);
+	$html.append(trackerHtml);
+}
+
+function _render_stats_tab_placeholder(frm, count) {
+	const $html = frm.fields_dict.po_stats_html && frm.fields_dict.po_stats_html.$wrapper;
+	if (!$html || !$html.length) return;
+	const msg = count === 0
+		? "No deliveries yet for this Purchase Order."
+		: `This PO has ${count} delivery(ies) — shown on the main form (below threshold).`;
+	$html.html(`<div style="padding: 20px; text-align: center; color: #94a3b8; font-style: italic;">${msg}</div>`);
+}
+
+function _lc_stat_cell(label, value, color) {
+	return `<div style="padding: 10px; background: white; border: 1px solid #e2e8f0; border-radius: 6px;">`
+		+ `<div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">${_lc_esc(label)}</div>`
+		+ `<div style="font-size: 16px; font-weight: 700; color: ${color}; margin-top: 3px;">${value}</div>`
+		+ `</div>`;
+}
+
+function _render_lifecycle_inline(frm, data) {
+	// Inline path (≤ threshold): original v2.7 behavior preserved.
+	const trackerHtml = _build_lifecycle_tracker_html(data);
+	const $layout = $(frm.layout.wrapper);
+	if ($layout.length) {
+		$layout.before(trackerHtml);
+	}
+}
+
+function _build_lifecycle_tracker_html(data) {
+	const deliveries = data.deliveries || [];
+	if (!deliveries.length) return "";
 
 	// Inject pulse animation for lifecycle (amber)
 	if (!document.getElementById("bbf-lifecycle-pulse-style")) {
@@ -650,11 +782,9 @@ function _render_lifecycle(frm, data) {
 
 	html += "</div>"; // end tracker
 
-	// Insert before form-layout (between dashboard and form fields)
-	const $layout = $(frm.layout.wrapper);
-	if ($layout.length) {
-		$layout.before(html);
-	}
+	// v2.8.7: return built HTML for caller to decide insertion point
+	// (inline before frm.layout.wrapper for ≤threshold, or inside Stats tab for >threshold).
+	return html;
 }
 
 function _lc_esc(v) {

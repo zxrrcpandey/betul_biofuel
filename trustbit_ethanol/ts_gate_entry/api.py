@@ -244,7 +244,22 @@ def get_po_lifecycle(po_name):
 		deliveries.append(delivery)
 
 	deliveries.sort(key=lambda d: d.get("g1_entry_time", ""), reverse=True)
-	return {"deliveries": deliveries, "total": len(deliveries)}
+
+	# v2.8.7: include the Stats tab threshold so JS can decide inline vs tab rendering
+	# without a second API call. Default 5 if setting missing/unreadable.
+	try:
+		threshold = frappe.db.get_single_value(
+			"TS Settings", "po_deliveries_stats_threshold"
+		)
+		threshold = int(threshold) if threshold else 5
+	except Exception:
+		threshold = 5
+
+	return {
+		"deliveries": deliveries,
+		"total": len(deliveries),
+		"stats_threshold": threshold,
+	}
 
 
 def _build_lifecycle_steps(token_status, stock_direction, material_flow, requires_weighing):
