@@ -1,15 +1,20 @@
 // v2.8.10 Phase 1 — Bilingual approval UX helpers for MR + PO
+// v2.8.11 Phase 2 — Extended to Post-Dated Entry Request + Budget Proposal
 // Always bilingual (EN + हिन्दी in every message)
 // Loaded FIRST in app_include_js so window.* helpers are defined before consumers.
 
 window.TS_APPROVAL_TRANSLATIONS = {
 	// Status labels
+	"Draft": "प्रारूप",
+	"Pending Approval": "अनुमोदन हेतु लंबित",
 	"Pending Department Head": "विभाग प्रमुख की स्वीकृति हेतु लंबित",
 	"Pending AVP": "AVP की स्वीकृति हेतु लंबित",
 	"Pending Purchase Manager": "क्रय प्रबंधक की स्वीकृति हेतु लंबित",
 	"Pending CEO": "CEO की स्वीकृति हेतु लंबित",
 	"Pending MD": "MD की स्वीकृति हेतु लंबित",
 	"Pending Stock User": "भंडार उपयोगकर्ता की समीक्षा हेतु लंबित",
+	"Active": "सक्रिय",
+	"Expired": "समाप्त",
 	"Approved": "अनुमोदित",
 	"Rejected": "अस्वीकृत",
 	"Revised": "संशोधित",
@@ -30,6 +35,11 @@ window.TS_APPROVAL_TRANSLATIONS = {
 	"AVP": "AVP",
 	"CEO": "CEO",
 	"MD": "MD",
+	// Document-type labels
+	"Material Request": "सामग्री अनुरोध",
+	"Purchase Order": "क्रय आदेश",
+	"Post-Dated Entry Request": "पूर्व-तिथि प्रविष्टि अनुरोध",
+	"Budget Proposal": "बजट प्रस्ताव",
 	// Common phrases
 	"Current Status": "वर्तमान स्थिति",
 	"Next Action": "अगली कार्रवाई",
@@ -58,29 +68,48 @@ window.ts_render_approval_banner = function(frm) {
 	// Remove any previous banner to avoid duplicates on refresh
 	$(frm.page.wrapper).find(".ts-approval-banner").remove();
 
-	if (!frm || !frm.doc || frm.doc.docstatus !== 0) return;
+	if (!frm || !frm.doc) return;
 
-	// Detect approval route context (MR or PO Custom Fields)
+	// Map DocType -> status field. MR/PO use Custom Fields; others use native `status`.
+	const status_field_map = {
+		"Material Request": "ts_mr_status",
+		"Purchase Order": "ts_approval_status",
+		"TS Post Dated Entry Request": "status",
+		"TS Budget Proposal": "status",
+	};
+	const status_field = status_field_map[frm.doctype];
+	if (!status_field) return;  // not a supported approval doctype
+
+	// MR/PO banner limited to drafts (docstatus=0). Post-Dated + Budget Proposal
+	// are non-submittable DocTypes (docstatus stays 0), so same check works.
+	if (frm.doc.docstatus !== 0) return;
+
+	const status = frm.doc[status_field];
+	if (!status || status === "Draft" || status === "Not Submitted") return;
+
+	// Step info only meaningful for MR/PO (they have step tracking)
 	const is_mr = frm.doctype === "Material Request";
 	const is_po = frm.doctype === "Purchase Order";
-	if (!is_mr && !is_po) return;
-
-	const status = is_mr ? frm.doc.ts_mr_status : frm.doc.ts_approval_status;
-	const current_step = is_mr ? frm.doc.ts_mr_current_step : frm.doc.ts_current_step;
-	const total_steps = is_mr ? frm.doc.ts_mr_total_steps : frm.doc.ts_total_steps;
-
-	if (!status || status === "Not Submitted") return;
+	let step_label = "";
+	if (is_mr || is_po) {
+		const current_step = is_mr ? frm.doc.ts_mr_current_step : frm.doc.ts_current_step;
+		const total_steps = is_mr ? frm.doc.ts_mr_total_steps : frm.doc.ts_total_steps;
+		step_label = `${window.ts_bilingual("Step")} ${current_step || "?"} ${window.ts_bilingual("of")} ${total_steps || "?"}`;
+	}
 
 	const status_bi = window.ts_bilingual(status);
-	const step_label = `${window.ts_bilingual("Step")} ${current_step || "?"} ${window.ts_bilingual("of")} ${total_steps || "?"}`;
 
 	// Escape dynamic values
 	const esc = (s) => frappe.utils.escape_html(String(s || ""));
 
+	const step_html = step_label
+		? `<span style="color: var(--text-muted, #64748b); font-weight: normal; margin-left: 8px;">(${esc(step_label)})</span>`
+		: "";
+
 	const html = `
 		<div class="ts-approval-banner" style="margin: 10px 15px 8px; padding: 10px 14px; border-left: 4px solid var(--primary-color, #1d4ed8); background: var(--bg-light-gray, #f0f9ff); border-radius: 6px; font-size: 12px;">
 			<div style="font-weight: 600; color: var(--heading-color, #0f172a); margin-bottom: 4px;">
-				📋 ${esc(window.ts_bilingual("Current Status"))}: <span style="color: var(--primary-color, #1d4ed8);">${esc(status_bi)}</span> <span style="color: var(--text-muted, #64748b); font-weight: normal; margin-left: 8px;">(${esc(step_label)})</span>
+				📋 ${esc(window.ts_bilingual("Current Status"))}: <span style="color: var(--primary-color, #1d4ed8);">${esc(status_bi)}</span> ${step_html}
 			</div>
 			<div style="color: var(--text-muted, #64748b); font-size: 11px;">
 				${esc(window.ts_bilingual("Created by"))}: ${esc(frm.doc.owner || "?")}

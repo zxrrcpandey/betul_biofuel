@@ -88,6 +88,23 @@ frappe.ui.form.on("TS Post Dated Entry Request", {
 				"red"
 			);
 		}
+
+		// v2.8.11 Phase 2: bilingual approval banner
+		if (typeof window.ts_render_approval_banner === "function") {
+			window.ts_render_approval_banner(frm);
+		}
+	},
+
+	before_submit(frm) {
+		// v2.8.11 Phase 2: submit-on-behalf warning
+		if (typeof window.ts_check_submit_on_behalf === "function") {
+			return window.ts_check_submit_on_behalf(frm).then(proceed => {
+				if (!proceed) {
+					frappe.validated = false;
+					return Promise.reject();
+				}
+			});
+		}
 	},
 
 	request_type(frm) {
