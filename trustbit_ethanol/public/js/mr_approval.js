@@ -12,6 +12,10 @@ frappe.ui.form.on("Material Request", {
 		_ts_add_mr_print_button(frm);
 		// Load approval context first (adds buttons), then budget banner
 		_load_mr_context(frm);
+		// v2.8.10: bilingual approval banner
+		if (typeof window.ts_render_approval_banner === "function") {
+			window.ts_render_approval_banner(frm);
+		}
 		// Show budget warning if CC is set (after approval context)
 		if (frm.doc.cost_center) {
 			setTimeout(() => _check_cc_budget(frm), 500);
@@ -46,6 +50,17 @@ frappe.ui.form.on("Material Request", {
 		});
 		// Show budget status warning
 		_check_cc_budget(frm);
+	},
+	before_submit(frm) {
+		// v2.8.10: bilingual submit-on-behalf warning
+		if (typeof window.ts_check_submit_on_behalf === "function") {
+			return window.ts_check_submit_on_behalf(frm).then(proceed => {
+				if (!proceed) {
+					frappe.validated = false;  // blocks submit
+					return Promise.reject();
+				}
+			});
+		}
 	}
 });
 

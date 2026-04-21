@@ -7,6 +7,10 @@ frappe.ui.form.on("Purchase Order", {
 		_load_approval_context(frm);
 		_load_budget_indicator(frm);
 		_load_lifecycle_tracker(frm);
+		// v2.8.10: bilingual approval banner
+		if (typeof window.ts_render_approval_banner === "function") {
+			window.ts_render_approval_banner(frm);
+		}
 	},
 	cost_center(frm) {
 		if (!frm.is_new()) _load_budget_indicator(frm);
@@ -15,6 +19,17 @@ frappe.ui.form.on("Purchase Order", {
 		if (!frm.doc.cost_center) {
 			frappe.validated = false;
 			frappe.throw(__("Cost Center is mandatory on Purchase Orders for budget control."));
+		}
+	},
+	before_submit(frm) {
+		// v2.8.10: bilingual submit-on-behalf warning
+		if (typeof window.ts_check_submit_on_behalf === "function") {
+			return window.ts_check_submit_on_behalf(frm).then(proceed => {
+				if (!proceed) {
+					frappe.validated = false;  // blocks submit
+					return Promise.reject();
+				}
+			});
 		}
 	}
 });
