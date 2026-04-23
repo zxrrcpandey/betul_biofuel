@@ -59,6 +59,18 @@ def _copy_po_header_fields(pr, po, token=None):
 		"tc_name",
 		"payment_terms_template",
 		"supplier_address",
+		# v2.8.11.2 hotfix — India Compliance GST validator depends on all 5
+		# fields below. When PR is built via frappe.get_doc({...}) instead of
+		# make_purchase_receipt mapper, these fields stay None → validator
+		# falls back to company_gstin for source state → intra-state
+		# classification → "Cannot charge IGST" error on inter-state
+		# suppliers (supplier state ≠ company state). Fixes BBPL-TKN-00375
+		# and BBPL-TKN-00400 (Adson GJ → BBPL MP, IGST 18%).
+		"billing_address",
+		"place_of_supply",
+		"gst_category",
+		"supplier_gstin",
+		"company_gstin",
 		"contact_person",
 		"shipping_address",
 		"apply_discount_on",
