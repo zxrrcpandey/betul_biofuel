@@ -1113,6 +1113,14 @@ def pr_before_save_audit_guard(doc, method=None):
 	if "Administrator" in user_roles or frappe.session.user == "Administrator":
 		return
 
+	# v2.8.11.3 hotfix — amend flow exemption. ERPNext's amend creates a new
+	# doc with field values copied from the cancelled source PR (including
+	# our audit markers). is_new() is True but amended_from is set. The
+	# markers are legitimate — inherited provenance from the original PR,
+	# not user-forged. Allow.
+	if doc.is_new() and doc.get("amended_from"):
+		return
+
 	# New doc: reject if any marker is set (only our API should set these)
 	if doc.is_new():
 		for f in _AUDIT_MARKER_FIELDS:
