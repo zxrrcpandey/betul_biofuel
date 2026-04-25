@@ -20,12 +20,15 @@ frappe.ui.form.on("Material Request", {
 		if (frm.doc.cost_center) {
 			setTimeout(() => _check_cc_budget(frm), 500);
 		}
-		// Service Request: allow PO creation (same as Purchase)
+		// Service Request: PO creation via custom v2.8.11.4 helper that
+		// flips type before calling the standard mapper. ERPNext native
+		// make_purchase_order rejects Service Request type; helper
+		// converts to Purchase + logs audit comment + returns the PO.
 		if (frm.doc.material_request_type === "Service Request"
 			&& frm.doc.docstatus === 1
 			&& frm.doc.per_ordered < 100) {
 			frm.add_custom_button(__("Purchase Order"),
-				() => frm.events.make_purchase_order(frm),
+				() => _ts_create_po_from_service_request(frm),
 				__("Create"));
 		}
 		// Post-approval "Request Revision" button (Path 3 — soft revise / notify-only).
@@ -698,6 +701,52 @@ function _check_cc_budget(frm) {
 		}
 	});
 }
+
+// ═══════════════════════════════════════════════════════════
+//  v2.8.11.4 — Service Request → Purchase Order helper
+// ═══════════════════════════════════════════════════════════
+
+function _ts_create_po_from_service_request(frm) {
+	// Bilingual confirmation — ERPNext mapper rejects Service Request type;
+	// this flips to Purchase + logs audit before creating PO.
+	const en = "This MR is a Service Request. Creating a Purchase Order will convert its type to Purchase. Proceed?";
+	const hi = "यह सामग्री अनुरोध एक सेवा अनुरोध है। क्रय आदेश बनाने पर इसका प्रकार Purchase में बदल जाएगा। आगे बढ़ें?";
+	const dialog_html = `
+		<div style="padding: 6px 0; font-size: 13px; line-height: 1.55;">
+			<div style="margin-bottom: 10px;">${en}</div>
+			<div style="color: #475569; padding-top: 8px; border-top: 1px dashed #cbd5e1;">${hi}</div>
+		</div>
+	`;
+	const d = new frappe.ui.Dialog({
+		title: __("Convert Service Request → Purchase Order"),
+		fields: [{ fieldtype: "HTML", options: dialog_html }],
+		primary_action_label: __("Proceed"),
+		primary_action: () => {
+			d.hide();
+			frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.ts_sr_to_po.convert_sr_to_po",
+				args: { mr_name: frm.doc.name },
+				freeze: true,
+				freeze_message: __("Creating Purchase Order..."),
+				callback: function (r) {
+					if (r && r.message) {
+						// frappe returns a frappe.get_doc-like dict; sync + open
+						frappe.model.sync(r.message);
+						frappe.set_route("Form", "Purchase Order", r.message.name);
+					}
+				},
+				error: function () {
+					// Frappe's native AJAX error handler shows server frappe.throw msgs.
+					// Don't double-display.
+				},
+			});
+		},
+		secondary_action_label: __("Cancel"),
+		secondary_action: () => d.hide(),
+	});
+	d.show();
+}
+
 
 // ═══════════════════════════════════════════════════════════
 //  CUSTOM PRINT BUTTON — Direct PDF download
