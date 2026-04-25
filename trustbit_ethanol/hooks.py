@@ -220,6 +220,7 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_cc_standard_filter.seed_cc_standard_filter",
 	"trustbit_ethanol.ts_gate_entry.setup_pr_wb_audit.seed_pr_wb_audit_fields",
 	"trustbit_ethanol.ts_gate_entry.setup_my_approvals.seed_my_approvals",
+	"trustbit_ethanol.ts_gate_entry.setup_bank_ifsc.seed_bank_ifsc",
 ]
 
 # Scheduled Tasks
