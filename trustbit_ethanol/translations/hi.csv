@@ -43,3 +43,10 @@
 "Convert Service Request → Purchase Order","सेवा अनुरोध को क्रय आदेश में बदलें"
 "Proceed","आगे बढ़ें"
 "Creating Purchase Order...","क्रय आदेश बनाया जा रहा है..."
+"My Pending Approvals","मेरे लंबित अनुमोदन",
+"My Pending","मेरे लंबित",
+"My Submissions","मेरे जमा किए गए",
+"All Records","सभी रिकॉर्ड",
+"No pending approvals","कोई लंबित अनुमोदन नहीं",
+"Error loading dashboard","डैशबोर्ड लोड करने में त्रुटि",
+"Pending","लंबित",

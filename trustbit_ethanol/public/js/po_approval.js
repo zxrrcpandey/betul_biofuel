@@ -468,6 +468,13 @@ function _lock_fields(frm, ctx) {
 	// NOTE: "Revised" intentionally excluded — creator must edit items before resubmitting (Lesson 81)
 	if (!should_lock) return;
 
+	// v2.8.12 — CEO + MD get unrestricted field access on unsubmitted docs.
+	// Server-side before_save is the source of truth; Python re-checks roles.
+	if (frm.doc.docstatus === 0 && typeof window.ts_is_executive_override_user === "function"
+		&& window.ts_is_executive_override_user()) {
+		return;
+	}
+
 	const fields_to_lock = [
 		"supplier", "supplier_name", "schedule_date", "transaction_date",
 		"currency", "buying_price_list", "price_list_currency",

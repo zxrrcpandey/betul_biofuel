@@ -14,10 +14,14 @@ app_license = "mit"
 app_include_css = "/assets/trustbit_ethanol/css/ts_theme.css"
 web_include_css = "/assets/trustbit_ethanol/css/ts_login.css"
 app_include_js = [
+	"/assets/trustbit_ethanol/js/ts_executive_override.js",
 	"/assets/trustbit_ethanol/js/ts_approval_ux.js",
+	"/assets/trustbit_ethanol/js/ts_my_approvals.js",
 	"/assets/trustbit_ethanol/js/ts_cc_filter.js",
 	"/assets/trustbit_ethanol/js/po_list.js",
 	"/assets/trustbit_ethanol/js/mr_list.js",
+	"/assets/trustbit_ethanol/js/ts_post_dated_entry_request_list.js",
+	"/assets/trustbit_ethanol/js/ts_budget_proposal_list.js",
 	"/assets/trustbit_ethanol/js/ts_post_dated.js",
 	"/assets/trustbit_ethanol/js/item_list.js",
 	"/assets/trustbit_ethanol/js/ts_version_badge.js",
@@ -147,11 +151,13 @@ doc_events = {
 		"on_cancel": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_cancel",
 		"before_insert": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_amend",
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_before_save",
+		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_update",
 	},
 	"Material Request": {
 		"autoname": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_autoname",
 		"before_insert": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_before_insert",
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
+		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_update",
 	},
 	"Purchase Receipt": {
 		"validate": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.validate_unique_supplier_bill",
@@ -213,6 +219,7 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_po_stats_tab.seed_po_stats_tab",
 	"trustbit_ethanol.ts_gate_entry.setup_cc_standard_filter.seed_cc_standard_filter",
 	"trustbit_ethanol.ts_gate_entry.setup_pr_wb_audit.seed_pr_wb_audit_fields",
+	"trustbit_ethanol.ts_gate_entry.setup_my_approvals.seed_my_approvals",
 ]
 
 # Scheduled Tasks

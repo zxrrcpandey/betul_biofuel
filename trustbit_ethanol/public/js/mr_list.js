@@ -36,6 +36,11 @@ function _patch_mr_list(listview) {
 	if (typeof window.ts_add_cc_filter_button === "function") {
 		window.ts_add_cc_filter_button(listview);
 	}
+
+	// v2.8.13: Role-scoped "My Pending Approvals" default filter + toggle
+	if (typeof window.ts_apply_my_approvals_filter === "function") {
+		window.ts_apply_my_approvals_filter(listview);
+	}
 }
 
 function _fix_mr_docstatus_for_approval_filter(listview) {

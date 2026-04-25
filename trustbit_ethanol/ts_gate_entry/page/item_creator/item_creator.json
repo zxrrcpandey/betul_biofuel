@@ -13,7 +13,9 @@
  "roles": [
   {"role": "System Manager"},
   {"role": "IT Head"},
-  {"role": "Stores User"}
+  {"role": "Stores User"},
+  {"role": "Accounts Manager"},
+  {"role": "Accounts User"}
  ],
  "standard": "Yes",
  "system_page": 0,

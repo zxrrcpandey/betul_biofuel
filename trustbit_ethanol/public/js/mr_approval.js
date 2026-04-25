@@ -469,6 +469,13 @@ function _lock_mr_fields(frm, ctx) {
 	const should_lock = ctx.is_pending || ctx.is_on_hold || status === "Rejected";
 	if (!should_lock) return;
 
+	// v2.8.12 — CEO + MD get unrestricted field access on unsubmitted docs.
+	// Server-side before_save is the source of truth; Python re-checks roles.
+	if (frm.doc.docstatus === 0 && typeof window.ts_is_executive_override_user === "function"
+		&& window.ts_is_executive_override_user()) {
+		return;
+	}
+
 	const fields_to_lock = [
 		"material_request_type", "schedule_date", "transaction_date",
 		"items", "cost_center", "project",

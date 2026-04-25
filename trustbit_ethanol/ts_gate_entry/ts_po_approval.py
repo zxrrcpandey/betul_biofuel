@@ -6,6 +6,12 @@ from trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval
 	get_cc_config, get_cc_users_for_step, get_cc_approvers_for_step,
 	get_cc_creators, get_cc_notify_only_users,
 )
+from trustbit_ethanol.ts_gate_entry.ts_executive_override import (
+	is_executive_override_user,
+	collect_business_changes,
+	log_executive_edit,
+	notify_executive_edit,
+)
 
 
 ALLOWED_DOCTYPES = ("Purchase Order", "Material Request")
@@ -1803,7 +1809,18 @@ def po_before_save(doc, method):
 		_copy_project_from_mr(doc)
 
 	# ── Gate-field tamper guard (Security #14) ──
+	# CEO + MD do NOT bypass this — control-plane fields stay protected.
 	_block_gate_field_tampering(doc, _PO_GATE_FIELDS)
+
+	# ── Executive (CEO + MD) override (v2.8.12) ──
+	# Allow full business-field edit on Draft + in-approval docs. Capture
+	# the changed-field set now; audit log + email are written in
+	# po_on_update after the save has committed.
+	if not doc.is_new() and doc.docstatus == 0 and is_executive_override_user():
+		changes = collect_business_changes(doc)
+		if changes:
+			doc.flags.executive_override_changes = changes
+		return  # skip amount guard for CEO/MD
 
 	if not doc.ts_approval_status:
 		return
@@ -1817,6 +1834,31 @@ def po_before_save(doc, method):
 				_("Cannot change PO amount while it is in the approval chain. "
 				  "The approver must revise the PO first.")
 			)
+
+
+def po_on_update(doc, method):
+	"""v2.8.12 — write executive override audit log + email after successful save.
+
+	Wired as Frappe `on_update` doc_event (fires after both Insert and Update
+	saves commit). If amount changed during override + PO is mid-chain, sync
+	ts_amount_at_submission so subsequent approvers don't get blocked by
+	_validate_amount_unchanged. db_set writes bypass the tamper guard
+	(same pattern as legitimate controller writes).
+	"""
+	changes = getattr(doc.flags, "executive_override_changes", None)
+	if not changes:
+		return
+
+	# Keep the approval chain silent: if amount changed, update the
+	# baseline so the next approver's _validate_amount_unchanged passes.
+	if "grand_total" in changes or "items" in changes or "taxes" in changes:
+		if doc.ts_approval_status and doc.ts_approval_status.startswith("Pending"):
+			new_amount = flt(doc.grand_total)
+			if new_amount and flt(doc.ts_amount_at_submission) != new_amount:
+				doc.db_set("ts_amount_at_submission", new_amount, update_modified=False)
+
+	log_executive_edit(doc, changes)
+	notify_executive_edit(doc, changes)
 
 
 def _check_duplicate_po_from_mr(doc):
@@ -1843,7 +1885,15 @@ def _copy_project_from_mr(doc):
 def mr_before_save(doc, method):
 	"""Prevent changes while MR is in approval chain."""
 	# ── Gate-field tamper guard (Security #14) ──
+	# CEO + MD do NOT bypass this — control-plane fields stay protected.
 	_block_gate_field_tampering(doc, _MR_GATE_FIELDS)
+
+	# ── Executive (CEO + MD) override (v2.8.12) ──
+	if not doc.is_new() and doc.docstatus == 0 and is_executive_override_user():
+		changes = collect_business_changes(doc)
+		if changes:
+			doc.flags.executive_override_changes = changes
+		return  # skip items-in-chain guard for CEO/MD
 
 	if not hasattr(doc, "ts_mr_status") or not doc.ts_mr_status:
 		return
@@ -1855,6 +1905,17 @@ def mr_before_save(doc, method):
 				_("Cannot modify MR items while it is in the approval chain (status: {0}). "
 				  "The approver must revise the MR first.").format(status)
 			)
+
+
+def mr_on_update(doc, method):
+	"""v2.8.12 — write executive override audit log + email after successful save.
+
+	Wired as Frappe `on_update` doc_event (fires after both Insert and Update).
+	"""
+	changes = getattr(doc.flags, "executive_override_changes", None)
+	if changes:
+		log_executive_edit(doc, changes)
+		notify_executive_edit(doc, changes)
 
 
 # ═══════════════════════════════════════════════════════════════════════
