@@ -26,6 +26,7 @@
   "ts_rst_enforcement_enabled",
   "ts_two_pass_gates_enabled",
   "ts_qc_v29_enabled",
+  "ts_qc_v29_legacy_converted",
   "tab_approval",
   "approval_section",
   "enable_po_approval",
@@ -212,6 +213,15 @@
    "default": "0",
    "permlevel": 1,
    "description": "v2.9.0: when ON, blocks PI submit if grain item has a submitted Quality Inspection but no submitted Deduction Sheet. Default OFF for safe rollout. Independent of v2.8.1 ts_qc_gate_enabled — both can be active. Writable by IT Head / System Manager only (permlevel 1)."
+  },
+  {
+   "fieldname": "ts_qc_v29_legacy_converted",
+   "fieldtype": "Check",
+   "label": "v2.9.0 Legacy QI Conversion Flag",
+   "default": "0",
+   "permlevel": 1,
+   "hidden": 1,
+   "description": "v2.9.0 Day 5A migration patch sets this to 1 after one-time legacy QI conversion runs. Do NOT toggle manually — used as idempotency guard. Writable by IT Head / System Manager only (permlevel 1)."
   },
   {
    "fieldname": "tab_approval",

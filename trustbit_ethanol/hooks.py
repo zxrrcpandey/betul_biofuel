@@ -226,6 +226,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_po_deduction_terms.seed_po_deduction_terms",
 	# v2.9.0 Phase 4 Day 4 — PI Custom Fields for DS propagation
 	"trustbit_ethanol.ts_gate_entry.setup_pi_ds_fields.seed_pi_ds_fields",
+	# v2.9.0 Day 6 — QC Yearly Dashboard workspace reload (Lesson 173)
+	"trustbit_ethanol.ts_gate_entry.setup_qc_dashboard.reload_quality_lab_workspace",
 ]
 
 # Scheduled Tasks

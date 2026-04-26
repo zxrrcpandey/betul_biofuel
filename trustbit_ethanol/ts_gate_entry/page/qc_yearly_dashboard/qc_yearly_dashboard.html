@@ -1,0 +1,171 @@
+<!--
+  QC Yearly Dashboard — v2.9.0 Day 6
+  Lesson 166: banner DOM (no set_headline) | Lesson 174: 3-step cache + version badge
+  Container shell only — JS hydrates via /api/method calls.
+-->
+<div class="qc-yearly-dashboard">
+
+  <!-- Banner (Lesson 166: append to .page-head, never set_headline) -->
+  <div id="qc-banner" class="qc-banner"></div>
+
+  <!-- Version badge (Lesson 174) -->
+  <div id="qc-version" class="qc-version-badge"></div>
+
+  <!-- Filter bar -->
+  <div class="qc-filter-bar">
+    <label for="qc-year-select">{{ __("Fiscal Year") }}</label>
+    <select id="qc-year-select" class="form-control"></select>
+    <button id="qc-refresh" class="btn btn-default btn-sm">
+      <i class="fa fa-refresh"></i> {{ __("Refresh") }}
+    </button>
+    <span id="qc-status" class="qc-status text-muted"></span>
+  </div>
+
+  <!-- Hero KPI cards (4 cards) -->
+  <div class="qc-hero-grid">
+    <div class="qc-hero-card qc-hero-blue" data-kpi="total_inspections">
+      <div class="qc-hero-label">{{ __("Total Inspections") }}</div>
+      <div class="qc-hero-value">—</div>
+      <div class="qc-hero-sub">{{ __("(Submitted in selected year)") }}</div>
+    </div>
+    <div class="qc-hero-card qc-hero-green" data-kpi="total_deduction_kg">
+      <div class="qc-hero-label">{{ __("Total Deduction (Kg)") }}</div>
+      <div class="qc-hero-value">—</div>
+      <div class="qc-hero-sub">{{ __("Sum across all DS") }}</div>
+    </div>
+    <div class="qc-hero-card qc-hero-purple" data-kpi="avg_deduction_pct">
+      <div class="qc-hero-label">{{ __("Average Deduction %") }}</div>
+      <div class="qc-hero-value">—</div>
+      <div class="qc-hero-sub">{{ __("Weighted by Inspection") }}</div>
+    </div>
+    <div class="qc-hero-card qc-hero-orange" data-kpi="variance_pct">
+      <div class="qc-hero-label">{{ __("Tilok-System Variance %") }}</div>
+      <div class="qc-hero-value">—</div>
+      <div class="qc-hero-sub">{{ __("Actual vs System Avg") }}</div>
+    </div>
+  </div>
+
+  <!-- Monthly breakdown -->
+  <div class="qc-section">
+    <h4>{{ __("Monthly Breakdown") }}</h4>
+    <div class="qc-table-wrap">
+      <table class="table table-bordered qc-monthly-table" id="qc-monthly-table">
+        <thead>
+          <tr>
+            <th>{{ __("Month") }}</th>
+            <th class="text-right">{{ __("Inspections") }}</th>
+            <th class="text-right">{{ __("System Avg %") }}</th>
+            <th class="text-right">{{ __("Tilok Avg %") }}</th>
+            <th class="text-right">{{ __("Variance %") }}</th>
+            <th class="text-right">{{ __("Total Kg") }}</th>
+          </tr>
+        </thead>
+        <tbody><tr><td colspan="6" class="text-center text-muted">{{ __("Loading...") }}</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Top suppliers -->
+  <div class="qc-section">
+    <h4>{{ __("Top 5 Suppliers by Deduction") }}</h4>
+    <div class="qc-table-wrap">
+      <table class="table table-bordered qc-suppliers-table" id="qc-suppliers-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>{{ __("Supplier") }}</th>
+            <th class="text-right">{{ __("Inspections") }}</th>
+            <th class="text-right">{{ __("Avg Deduction %") }}</th>
+            <th class="text-right">{{ __("Total Kg") }}</th>
+          </tr>
+        </thead>
+        <tbody><tr><td colspan="5" class="text-center text-muted">{{ __("Loading...") }}</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Insights box -->
+  <div class="qc-section qc-insights-section">
+    <h4>{{ __("Insights") }}</h4>
+    <div id="qc-insights" class="qc-insights">
+      <div class="text-muted">{{ __("Computing insights...") }}</div>
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .qc-yearly-dashboard { padding: 14px; }
+  .qc-banner {
+    background: linear-gradient(90deg, #1f4e79 0%, #2e75b6 100%);
+    color: #fff; padding: 12px 18px; border-radius: 6px;
+    margin-bottom: 14px; font-size: 14px; font-weight: 500;
+  }
+  .qc-version-badge {
+    position: fixed; bottom: 8px; right: 12px;
+    background: #f1f3f5; color: #6c757d; padding: 3px 10px;
+    border-radius: 12px; font-size: 11px; font-family: monospace;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06); z-index: 10;
+  }
+  .qc-filter-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; background: #f8f9fa; border-radius: 6px;
+    margin-bottom: 14px;
+  }
+  .qc-filter-bar select { width: 140px; }
+  .qc-status { margin-left: auto; font-size: 12px; }
+  .qc-hero-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 14px; margin-bottom: 18px;
+  }
+  .qc-hero-card {
+    padding: 18px; border-radius: 8px; color: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); transition: transform 0.15s;
+  }
+  .qc-hero-card:hover { transform: translateY(-2px); }
+  .qc-hero-blue   { background: linear-gradient(135deg, #2e75b6, #1f4e79); }
+  .qc-hero-green  { background: linear-gradient(135deg, #28a745, #1e7e34); }
+  .qc-hero-purple { background: linear-gradient(135deg, #6f42c1, #4a2d83); }
+  .qc-hero-orange { background: linear-gradient(135deg, #fd7e14, #c45a05); }
+  .qc-hero-label { font-size: 13px; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.5px; }
+  .qc-hero-value { font-size: 28px; font-weight: 600; margin: 6px 0 4px; }
+  .qc-hero-sub   { font-size: 11px; opacity: 0.8; }
+  .qc-section { background: #fff; border: 1px solid #e9ecef; border-radius: 6px; padding: 14px; margin-bottom: 14px; }
+  .qc-section h4 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+  .qc-table-wrap { overflow-x: auto; }
+  .qc-monthly-table th, .qc-suppliers-table th {
+    background: #f1f3f5; font-size: 12px; padding: 8px;
+  }
+  .qc-monthly-table td, .qc-suppliers-table td {
+    font-size: 13px; padding: 8px;
+  }
+  .qc-insights { padding: 8px; }
+  .qc-insight-item { padding: 8px 12px; margin-bottom: 6px; background: #fff8e1; border-left: 3px solid #ffc107; border-radius: 3px; font-size: 13px; }
+
+  /* Dark mode (Frappe theme switch) */
+  body.dark-theme .qc-section,
+  [data-theme="dark"] .qc-section {
+    background: #1e1f22; border-color: #2c2d31; color: #e0e0e0;
+  }
+  body.dark-theme .qc-filter-bar,
+  [data-theme="dark"] .qc-filter-bar { background: #2a2b30; color: #e0e0e0; }
+  body.dark-theme .qc-monthly-table th,
+  body.dark-theme .qc-suppliers-table th,
+  [data-theme="dark"] .qc-monthly-table th,
+  [data-theme="dark"] .qc-suppliers-table th { background: #2a2b30; color: #e0e0e0; }
+  body.dark-theme .qc-version-badge,
+  [data-theme="dark"] .qc-version-badge { background: #2a2b30; color: #b0b0b0; }
+  body.dark-theme .qc-insight-item,
+  [data-theme="dark"] .qc-insight-item { background: #3a2f0a; border-left-color: #ffc107; color: #ffe082; }
+
+  /* Mobile responsive */
+  @media (max-width: 768px) {
+    .qc-hero-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .qc-hero-value { font-size: 22px; }
+    .qc-filter-bar { flex-wrap: wrap; }
+    .qc-status { width: 100%; margin-left: 0; }
+  }
+  @media (max-width: 480px) {
+    .qc-hero-grid { grid-template-columns: 1fr; }
+  }
+</style>

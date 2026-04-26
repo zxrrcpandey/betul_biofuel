@@ -1,0 +1,26 @@
+{
+ "content": null,
+ "creation": "2026-04-26 10:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-04-26 10:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "qc-yearly-dashboard",
+ "owner": "Administrator",
+ "page_name": "qc-yearly-dashboard",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "IT Head"},
+  {"role": "Accounts Manager"},
+  {"role": "Grain Manager"},
+  {"role": "CEO"},
+  {"role": "MD"}
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "QC Yearly Dashboard"
+}

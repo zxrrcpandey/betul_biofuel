@@ -8,3 +8,7 @@ trustbit_ethanol.patches.v2_8_0.drop_unloading_entry_table
 trustbit_ethanol.patches.v2_8.add_rst_unique_index
 trustbit_ethanol.patches.v2_8.rename_exited_status
 trustbit_ethanol.patches.v2_8.backfill_pi_po_reference
+# v2.9.0
+trustbit_ethanol.patches.v2_9.convert_legacy_qis
+trustbit_ethanol.patches.v2_9.migrate_bag_type_to_master
+trustbit_ethanol.patches.v2_9.po_deduction_backward_compat
