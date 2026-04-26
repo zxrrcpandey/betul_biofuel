@@ -53,7 +53,7 @@ def _seed_threshold_setting():
 		"fieldtype": "Int",
 		"default": "5",
 		"permlevel": 1,
-		"insert_after": "ts_two_pass_gates_enabled",
+		"insert_after": "ts_qc_v29_enabled",
 		"description": "When a Purchase Order has MORE than this many deliveries (tokens), the PO Lifecycle Tracker moves into the Stats tab and a compact badge replaces the inline view on the main form. Default 5. Writable by IT Head / System Manager only (permlevel 1).",
 	}
 	if frappe.db.exists("Custom Field", cf_name):

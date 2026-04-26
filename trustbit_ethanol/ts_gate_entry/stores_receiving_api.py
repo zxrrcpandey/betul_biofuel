@@ -1172,13 +1172,17 @@ def pr_on_cancel_clear_token(doc, method=None):
 	if current_pr != doc.name:
 		return
 
-	# Find previous status (Non-RM without weighing → "PO Linked" or fallback)
+	# Find previous status. v2.9.1: Non-RM without weighing flows
+	# G1 Entered → G2 Entered → GRN Created (no WB step). PR cancel reverts
+	# to G2 Entered so the operator can re-create GRN. Pre-v2.9.1 tokens
+	# may still have 'PO Linked' as the saved revert intent — both values
+	# are kept allow-listed in the Token status options for compatibility.
 	ge = frappe.db.get_value("TS Gate Entry",
 		{"token_number": token_name, "docstatus": 1},
 		["requires_weighing", "material_flow"], as_dict=True)
 
 	if ge and ge.material_flow == FLOW_NON_RM and not cint(ge.requires_weighing):
-		revert_status = "PO Linked"
+		revert_status = "G2 Entered"
 	else:
 		revert_status = "Tare Weighed"
 

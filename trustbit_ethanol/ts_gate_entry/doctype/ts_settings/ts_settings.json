@@ -24,7 +24,6 @@
   "ts_flow_v28_enabled",
   "ts_qc_gate_enabled",
   "ts_rst_enforcement_enabled",
-  "ts_two_pass_gates_enabled",
   "ts_qc_v29_enabled",
   "ts_qc_v29_legacy_converted",
   "tab_approval",
@@ -197,14 +196,6 @@
    "default": "0",
    "permlevel": 1,
    "description": "v2.8.2: When enabled, makes RST Number mandatory on Weighbridge Gross entry + enforces numeric/uniqueness checks. Kill-switch for rollback. Writable by IT Head / System Manager only (permlevel 1)."
-  },
-  {
-   "fieldname": "ts_two_pass_gates_enabled",
-   "fieldtype": "Check",
-   "label": "Enable Two-Pass Gate Flow (G2 Entry/Exit for Material)",
-   "default": "0",
-   "permlevel": 1,
-   "description": "v2.8.3: when ON, Material flow requires G2 Entry before WB Gross + G2 Exit before G1 Exit. Token.status uses new values 'G1 Entered', 'G2 Entered', 'Plant Exited', 'Campus Exited'. Writable by IT Head / System Manager only (permlevel 1)."
   },
   {
    "fieldname": "ts_qc_v29_enabled",

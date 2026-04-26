@@ -69,14 +69,17 @@ class TSWeighbridgeLog(Document):
 			if token.status not in ("SI Linked", "Tare Recorded", "Loading Done"):
 				frappe.throw(f"Token {self.token_number} is at stage '{token.status}'. Stock OUT tokens need status 'SI Linked', 'Tare Recorded', or 'Loading Done'.")
 		else:
-			# v2.8.3: when two-pass flag ON, Stock IN WB log is accepted at
-			# 'G2 Entered' (validate_two_pass_gate will enforce the hard gate
-			# at Gross save). Legacy tokens still gated on 'PO Linked'.
-			allowed = ("PO Linked", "G2 Entered")
+			# v2.9.1: two-pass flow mandatory — Stock IN tokens must be at
+			# 'G2 Entered' before any weighbridge save. Legacy 'PO Linked' is
+			# kept allow-listed only for the rare amend path where a fresh row
+			# is created against a token whose history pre-dated the v2.9.1
+			# migration; routine flow goes G1 Entered → G2 Entered → here.
+			allowed = ("G2 Entered", "PO Linked")
 			if token.status not in allowed:
 				frappe.throw(
 					f"Token {self.token_number} is at stage '{token.status}'. "
-					f"Only tokens with status 'PO Linked' or 'G2 Entered' can be weighed."
+					f"Only tokens with status 'G2 Entered' can be weighed. "
+					f"Ask G2 Gate Operator to record G2 Entry first."
 				)
 
 	def validate(self):
@@ -85,22 +88,17 @@ class TSWeighbridgeLog(Document):
 		self.fetch_po_uom()
 		self.update_status()
 		self.validate_rst_number()
-		self.validate_two_pass_gate()
+		self.validate_gate_state()
 
-	def validate_two_pass_gate(self):
-		"""v2.8.3: if two-pass flag ON, block WB Gross save unless the Token
-		has passed G2 Entry (status == 'G2 Entered'). Backward compat:
-		- flag OFF → skip (legacy flow).
-		- no token_number / no gross_weight → skip (drafts, Tare-only rows).
-		- not the first Gross save → skip (already past the gate; avoid
-		  spurious throws on Tare update, operator corrections, etc.).
+	def validate_gate_state(self):
+		"""v2.9.1: two-pass gate flow is mandatory. Block WB Gross save unless
+		the Stock IN Material token has passed G2 Entry (status == 'G2 Entered').
+		Skip cases:
+		- no token_number / no gross_weight → drafts, Tare-only rows.
+		- Stock OUT → has its own status flow (SI Linked / Tare Recorded / etc.).
+		- not the first Gross save → already past the gate; avoid spurious
+		  throws on Tare update, operator corrections, etc.
 		"""
-		try:
-			flag = bool(frappe.db.get_single_value("TS Settings", "ts_two_pass_gates_enabled"))
-		except Exception:
-			flag = False
-		if not flag:
-			return
 		if not self.token_number or not self.gross_weight:
 			return
 		if self._is_stock_out():

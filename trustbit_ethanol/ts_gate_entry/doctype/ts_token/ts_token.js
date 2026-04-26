@@ -167,17 +167,13 @@ frappe.ui.form.on("TS Token", {
 					}, __("Actions"));
 				}
 
-				// Mark Exit for Material tokens (legacy button — hidden when
-				// v2.8.3 two-pass flag is ON; the new G2/G1 buttons below own
-				// the final transitions).
+				// v2.9.1: legacy "Mark Exit" button is now Stock OUT only. Stock IN
+				// Material tokens use the mandatory two-pass G2 Exit + G1 Final Exit
+				// buttons below — they own the terminal transitions.
 				let show_mark_exit = false;
-				if (frm.doc.status && !["Exited", "Campus Exited"].includes(frm.doc.status) && !frm._ts_two_pass_flag) {
+				if (frm.doc.status && !["Exited", "Campus Exited"].includes(frm.doc.status)) {
 					if (frm.doc.stock_direction === "Stock OUT") {
 						show_mark_exit = ["Gross Recorded", "Dispatch Ready"].includes(frm.doc.status);
-					} else if (frm.doc.purpose === "Raw Material") {
-						show_mark_exit = frm.doc.status === "GRN Created";
-					} else {
-						show_mark_exit = true;
 					}
 				}
 
@@ -199,19 +195,14 @@ frappe.ui.form.on("TS Token", {
 				}
 
 				// =====================================================================
-				// v2.8.3 Two-Pass Gate Flow buttons (Material tokens only).
-				// All three gated on:
+				// v2.9.1 Two-Pass Gate Flow buttons (Material tokens, mandatory).
+				// Gated on:
 				//   - saved token (frm.is_new() === false — Lesson 166)
-				//   - feature flag ts_two_pass_gates_enabled on TS Settings
 				//   - the user's role (G2 Gate Operator / G1 Security + IT Head override)
 				//   - the token's current status
-				// The flag is fetched once per form load and cached on frm._ts_two_pass_flag
-				// so the three buttons render synchronously on subsequent refreshes.
+				// Renders synchronously — no boot/server flag fetch (kill switch removed).
 				// =====================================================================
-				const _render_two_pass_buttons = () => {
-					if (!frm._ts_two_pass_flag) return;
-					if (frappe.session.user === "Guest") return;
-
+				if (frappe.session.user !== "Guest") {
 					const has_g2 = frappe.user.has_role("G2 Gate Operator")
 						|| frappe.user.has_role("IT Head")
 						|| frappe.user.has_role("System Manager");
@@ -275,35 +266,6 @@ frappe.ui.form.on("TS Token", {
 								}
 							);
 						}, __("Gate Actions")).addClass("btn-danger");
-					}
-				};
-
-				if (!is_gate_pass) {
-					// v2.8.3 Lesson 168: use whitelisted helper instead of get_single_value
-					// (G2 Gate Operator / CTO roles lack TS Settings read perm). Cache on
-					// frappe.boot so we don't re-fetch across refreshes in the same session.
-					const _apply_flag = () => {
-						if (frm._ts_two_pass_flag) {
-							_render_two_pass_buttons();
-						}
-					};
-					if (frm._ts_two_pass_flag !== undefined) {
-						_apply_flag();
-					} else if (frappe.boot && frappe.boot._two_pass_flag !== undefined) {
-						frm._ts_two_pass_flag = !!frappe.boot._two_pass_flag;
-						_apply_flag();
-					} else {
-						frappe.call({
-							method: "trustbit_ethanol.ts_gate_entry.api.get_two_pass_flag",
-							type: "GET",
-							callback: (r) => {
-								const enabled = !!(r && r.message && r.message.enabled);
-								frm._ts_two_pass_flag = enabled;
-								if (frappe.boot) frappe.boot._two_pass_flag = enabled;
-								_apply_flag();
-							},
-							error: () => { frm._ts_two_pass_flag = false; },
-						});
 					}
 				}
 			}

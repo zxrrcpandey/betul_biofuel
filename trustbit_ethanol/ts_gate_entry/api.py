@@ -14,18 +14,6 @@ def get_g2_print_mode():
 
 
 @frappe.whitelist()
-def get_two_pass_flag():
-	"""v2.8.3 Lesson 168: role-scoped getter for ts_two_pass_gates_enabled.
-	Direct frappe.db.get_single_value from JS fails for roles (G2 Gate Operator, CTO)
-	without TS Settings read perm. Exposes ONLY the boolean — no other settings fields.
-	"""
-	try:
-		return {"enabled": bool(frappe.db.get_single_value("TS Settings", "ts_two_pass_gates_enabled"))}
-	except Exception:
-		return {"enabled": False}
-
-
-@frappe.whitelist()
 def get_purchase_orders(po_id=None, po_date=None, **kwargs):
 	filters = {"docstatus": 1, "status": ["not in", ["Closed", "Cancelled", "Completed"]], "per_received": ["<", 100]}
 
@@ -46,19 +34,20 @@ def get_purchase_orders(po_id=None, po_date=None, **kwargs):
 @frappe.whitelist()
 def get_weighbridge_tokens(doctype, txt, searchfield, start, page_len, filters):
 	"""Return tokens eligible for weighbridge:
-	- Stock IN: Raw Material OR Non-RM with requires_weighing.
-	  Accepts both 'PO Linked' (legacy / two-pass flag OFF) and 'G2 Entered'
-	  (v2.8.3 two-pass flag ON — token transitions to G2 Entered after G2
-	  Gate Operator records entry, at which point it's eligible for weighing).
-	- Stock OUT: SI Linked, Tare Recorded, or Loading Done
+	- Stock IN: Raw Material OR Non-RM with requires_weighing, at status 'G2 Entered'.
+	  v2.9.1: 'PO Linked' dropped — two-pass gate flow is mandatory, so every
+	  Stock IN token must pass G2 Entry before becoming weighable. The v2.9.1
+	  `strip_two_pass_flag` migration patch advances any legacy PO Linked / G1
+	  Entered tokens to G2 Entered so they remain visible in this dropdown.
+	- Stock OUT: SI Linked, Tare Recorded, or Loading Done.
 	"""
 	return frappe.db.sql("""
 		SELECT t.name, t.token_number, t.purpose, t.entry_date, t.stock_direction
 		FROM `tabTS Token` t
 		WHERE t.entry_type = 'Material'
 		AND (
-			/* Stock IN: eligible status (PO Linked or G2 Entered) + (Raw Material OR requires_weighing) */
-			(t.status IN ('PO Linked', 'G2 Entered') AND (
+			/* Stock IN: G2 Entered + (Raw Material OR requires_weighing) */
+			(t.status = 'G2 Entered' AND (
 				t.purpose = 'Raw Material'
 				OR EXISTS (
 					SELECT 1 FROM `tabTS Gate Entry` ge

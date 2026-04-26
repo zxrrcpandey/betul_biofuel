@@ -61,9 +61,12 @@ def execute():
 		ge.insert(ignore_permissions=True)
 		ge.submit()
 
-		# Token should now be PO Linked
+		# v2.9.1: two-pass flow mandatory — Stock IN tokens stop at G1 Entered
+		# after Gate Entry submit. G2 Gate Operator advances to G2 Entered.
 		token.reload()
-		assert token.status == "PO Linked", f"Expected PO Linked, got {token.status}"
+		assert token.status == "G1 Entered", f"Expected G1 Entered, got {token.status}"
+		# Advance to G2 Entered so WB Log can save (validate_token_status gate)
+		token.db_set("status", "G2 Entered")
 
 		# Create Weighbridge Log
 		wb = frappe.new_doc("TS Weighbridge Log")
@@ -94,6 +97,8 @@ def execute():
 		ge.requires_weighing = 1
 		ge.insert(ignore_permissions=True)
 		ge.submit()
+		# v2.9.1: advance G1 Entered → G2 Entered to satisfy WB gate
+		token.db_set("status", "G2 Entered")
 
 		# Create WB with gross only
 		wb = frappe.new_doc("TS Weighbridge Log")
@@ -104,15 +109,21 @@ def execute():
 		token.reload()
 		assert token.status == "Gross Weighed"
 
+		# v2.9.1: Stock IN Material tokens are blocked from mark_exit (must use
+		# G2/G1 final exit buttons). Test still validates "can't exit before
+		# weighing complete" — same intent, just via the new path.
 		try:
 			token.mark_exit()
-			raise Exception("Should have thrown — weighing not complete")
+			raise Exception("Should have thrown — Stock IN Material must use two-pass exit buttons")
 		except frappe.exceptions.ValidationError:
 			pass
 	test("S4: Non-RM with weighing can't exit before tare", s4)
 
-	# S5: Non-RM with weighing can exit after tare
+	# S5: Non-RM with weighing can exit after tare via two-pass G2 → G1 sequence
 	def s5():
+		from trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token import (
+			g2_mat_log_exit, g1_final_exit,
+		)
 		token = frappe.new_doc("TS Token")
 		token.entry_type = "Material"
 		token.purpose = "Non-Raw Material"
@@ -124,6 +135,8 @@ def execute():
 		ge.requires_weighing = 1
 		ge.insert(ignore_permissions=True)
 		ge.submit()
+		# v2.9.1: advance G1 Entered → G2 Entered to satisfy WB gate
+		token.db_set("status", "G2 Entered")
 
 		wb = frappe.new_doc("TS Weighbridge Log")
 		wb.token_number = token.name
@@ -137,10 +150,14 @@ def execute():
 		token.reload()
 		assert token.status == "Tare Weighed", f"Expected Tare Weighed, got {token.status}"
 
-		# Now exit should work
-		token.mark_exit()
+		# v2.9.1: terminal exit goes via the two-pass APIs.
+		g2_mat_log_exit(token.name)
 		token.reload()
-		assert token.status == "Exited"
+		assert token.status == "Plant Exited", f"Expected Plant Exited, got {token.status}"
+
+		g1_final_exit(token.name)
+		token.reload()
+		assert token.status == "Campus Exited", f"Expected Campus Exited, got {token.status}"
 	test("S5: Non-RM with weighing can exit after tare", s5)
 
 	# Print results

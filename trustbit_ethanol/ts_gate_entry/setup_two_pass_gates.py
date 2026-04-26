@@ -1,20 +1,21 @@
-"""Two-Pass Gate Flow (v2.8.3) — Custom Field seeding for TS Token only.
+"""Two-Pass Gate Flow — Custom Field seeding for TS Token + cleanup flag.
 
-Isolated from setup.py (which is partially locked under MR_FULL/PO_FULL).
-Fields are audit/tracking — set exclusively via the 3 new POST APIs
-(g2_mat_log_entry, g2_mat_log_exit, g1_final_exit on TS Token).
+History:
+  - v2.8.3: introduced behind kill switch `ts_two_pass_gates_enabled`.
+  - v2.9.1: kill switch REMOVED — two-pass flow is mandatory. The flag
+    field is gone from `ts_settings.json`. The 4 g2_mat_* tracking fields
+    on TS Token still exist and are still set exclusively via the 3 POST
+    APIs (g2_mat_log_entry, g2_mat_log_exit, g1_final_exit). This module
+    also seeds the v2.9.1 idempotency flag `ts_two_pass_cleanup_done`
+    (hidden Check on TS Settings, permlevel=1) read by
+    `patches.v2_9.strip_two_pass_flag`.
 
-Also extends TS Token.status Select options via Property Setter to include
-the new values introduced by the two-pass flow:
-  - G1 Entered
-  - G2 Entered
-  - Plant Exited
-  - Campus Exited
-
-The legacy "Exited" value is preserved in the Select list during the
-transition cycle so (a) existing tokens don't fail validation and (b)
-rollback is possible without data loss. The patch
-`trustbit_ethanol.patches.v2_8.rename_exited_status` migrates rows.
+Status options Select (Property Setter): keeps the full list including
+the legacy "Exited" + "PO Linked" values. PO Linked stays in the option
+list so amended tokens with that historical value validate cleanly even
+though the migration patch advances live rows to G2 Entered. The patch
+`trustbit_ethanol.patches.v2_8.rename_exited_status` already migrated
+"Exited" → "Campus Exited" for new rows; the literal stays for rollback.
 """
 
 import json
@@ -23,8 +24,30 @@ import frappe
 
 
 def seed_two_pass_gate_fields():
-	"""Seed 4 Custom Fields on TS Token for two-pass (G2 Entry/Exit) material flow
-	and extend Token.status Select options. Idempotent."""
+	"""Seed 4 Custom Fields on TS Token for two-pass (G2 Entry/Exit) material flow,
+	extend Token.status Select options, and seed the v2.9.1 cleanup idempotency
+	flag on TS Settings. Idempotent."""
+	# v2.9.1: hidden Check field on TS Settings used by `patches.v2_9.strip_two_pass_flag`
+	# as an idempotency marker. Permlevel=1, hidden — should never be toggled by hand.
+	cleanup_flag = {
+		"doctype": "Custom Field",
+		"dt": "TS Settings",
+		"fieldname": "ts_two_pass_cleanup_done",
+		"label": "v2.9.1 Two-Pass Cleanup Done",
+		"fieldtype": "Check",
+		"default": "0",
+		"permlevel": 1,
+		"hidden": 1,
+		"insert_after": "ts_qc_v29_legacy_converted",
+		"description": "v2.9.1 idempotency flag set to 1 once strip_two_pass_flag patch has migrated tokens. Do NOT toggle manually.",
+	}
+	try:
+		frappe.get_doc(cleanup_flag).insert(ignore_if_duplicate=True, ignore_permissions=True)
+	except frappe.DuplicateEntryError:
+		pass
+	except Exception as e:
+		frappe.log_error(message=f"seed cleanup_flag: {e}", title="seed_two_pass_gate_fields")
+
 	fields = [
 		{
 			"doctype": "Custom Field",

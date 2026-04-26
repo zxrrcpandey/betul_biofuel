@@ -5,19 +5,10 @@ from frappe.model.document import Document
 from frappe.utils import now_datetime, time_diff_in_seconds, getdate, nowtime, flt
 
 
-# v2.8.3 Two-Pass Gate Flow role constants
+# Two-Pass Gate Flow role constants (v2.8.3 introduced behind flag,
+# v2.9.1 promoted to mandatory — flag removed).
 TWO_PASS_G2_ROLE = "G2 Gate Operator"
 TWO_PASS_G1_ROLE = "G1 Security"
-
-
-def _two_pass_flag_on():
-	"""v2.8.3: feature flag for two-pass material gate flow.
-	Fail-closed: any exception treated as OFF (legacy behavior preserved).
-	Lesson 171/172: tabSingles has no `modified` column; Check fields return 0 not None."""
-	try:
-		return bool(frappe.db.get_single_value("TS Settings", "ts_two_pass_gates_enabled"))
-	except Exception:
-		return False
 
 
 class TSToken(Document):
@@ -416,13 +407,14 @@ class TSToken(Document):
 
 	@frappe.whitelist()
 	def mark_exit(self):
-		# v2.8.3: when two-pass flag is ON, the final transitions for Material
-		# are owned by g2_mat_log_exit + g1_final_exit. Gate Pass path is
-		# UNTOUCHED — it continues to go through mark_exit. Reject Material
-		# callers with a clear message pointing them at the new buttons.
-		if self.entry_type == "Material" and _two_pass_flag_on():
+		# v2.9.1: two-pass gate flow is mandatory for Material tokens. Final
+		# transitions are owned by g2_mat_log_exit + g1_final_exit. Gate Pass
+		# path is UNTOUCHED — it continues to go through mark_exit. Stock OUT
+		# Material remains valid here (single-gate dispatch flow). Stock IN
+		# Material callers are rejected with a pointer to the new buttons.
+		if self.entry_type == "Material" and self.stock_direction != "Stock OUT":
 			frappe.throw(
-				"Two-Pass Gate Flow is enabled. Use 'G2 Record Exit' then 'G1 Record Exit' buttons."
+				"Two-Pass Gate Flow is mandatory. Use 'Record G2 Exit' then 'Record G1 Final Exit' buttons."
 			)
 
 		# Prevent double-exit
@@ -749,10 +741,11 @@ class TSToken(Document):
 
 
 # =============================================================================
-# v2.8.3 Two-Pass Gate Flow — module-level whitelisted POST APIs
+# Two-Pass Gate Flow — module-level whitelisted POST APIs
 # -----------------------------------------------------------------------------
-# These methods own the final 3 status transitions when `ts_two_pass_gates_enabled`
-# is ON. All mutation endpoints declare methods=["POST"] (Lesson 175).
+# These methods own the final 3 status transitions for Material tokens.
+# v2.8.3 introduced behind a kill switch; v2.9.1 made the flow mandatory and
+# stripped the flag. All mutation endpoints declare methods=["POST"] (Lesson 175).
 # Role checks are enforced server-side (IT Head / System Manager retain break-glass
 # override). No `allow_guest` — operators authenticate via standard Frappe session.
 # =============================================================================
@@ -763,10 +756,12 @@ def g2_mat_log_entry(token_name):
 	"""Record G2 Entry for a Material token.
 
 	Role: G2 Gate Operator (IT Head / System Manager may override).
-	Required prior status: 'G1 Entered' (flag ON) or legacy 'PO Linked' (backward compat).
+	Required prior status: 'G1 Entered'. v2.9.1 dropped the legacy 'PO Linked'
+	allow-listed value — the strip_two_pass_flag patch advanced any such
+	tokens straight to 'G2 Entered' on migrate, so they never hit this path.
 	Writes: g2_mat_entry_time, g2_mat_entry_by, status='G2 Entered'.
 	"""
-	# v2.8.3 Phase 4 Fix 7: hard existence check before any load (defence in depth).
+	# Hard existence check before any load (defence in depth — Phase 4 Fix 7).
 	if not frappe.db.exists("TS Token", token_name):
 		frappe.throw(_("Token {0} not found").format(token_name))
 	user_roles = set(frappe.get_roles())
@@ -775,8 +770,7 @@ def g2_mat_log_entry(token_name):
 	tok = frappe.get_doc("TS Token", token_name)
 	if tok.entry_type != "Material":
 		frappe.throw(_("G2 material entry is only valid for Material tokens (not Gate Pass)."))
-	valid_prev = ("G1 Entered", "PO Linked")
-	if tok.status not in valid_prev:
+	if tok.status != "G1 Entered":
 		frappe.throw(_("Token {0} is at '{1}' — cannot record G2 Entry (expected 'G1 Entered').").format(token_name, tok.status))
 	tok.db_set({
 		"g2_mat_entry_time": now_datetime(),
@@ -818,11 +812,11 @@ def g1_final_exit(token_name):
 	"""Record G1 Final Exit (vehicle physically leaves the campus — terminal).
 
 	Role: G1 Security (IT Head / System Manager / Admin Reception may override).
-	Required prior status: 'Plant Exited' (when flag ON). When flag OFF we accept
-	legacy 'Tare Weighed' / 'GRN Created' / 'Exited' / 'Campus Exited' so existing
-	tokens aren't stranded. Always transitions status to 'Campus Exited'.
+	Required prior status: 'Plant Exited' (G2 Exit must be recorded first).
+	v2.9.1: dropped the flag-OFF branch — two-pass flow is mandatory, so the
+	only valid pre-state is 'Plant Exited'. Transitions status to 'Campus Exited'.
 	"""
-	# v2.8.3 Phase 4 Fix 7: hard existence check before any load (defence in depth).
+	# Hard existence check before any load (defence in depth — Phase 4 Fix 7).
 	if not frappe.db.exists("TS Token", token_name):
 		frappe.throw(_("Token {0} not found").format(token_name))
 	user_roles = set(frappe.get_roles())
@@ -834,12 +828,8 @@ def g1_final_exit(token_name):
 	tok = frappe.get_doc("TS Token", token_name)
 	if tok.entry_type != "Material":
 		frappe.throw(_("G1 final exit API is only for Material tokens (use mark_exit for Gate Pass)."))
-	if _two_pass_flag_on():
-		if tok.status != "Plant Exited":
-			frappe.throw(_("Token {0} is at '{1}' — G2 Exit must be recorded first (expected 'Plant Exited').").format(token_name, tok.status))
-	else:
-		if tok.status not in ("Tare Weighed", "GRN Created", "Exited", "Campus Exited", "Plant Exited"):
-			frappe.throw(_("Token {0} at '{1}' cannot record G1 final exit.").format(token_name, tok.status))
+	if tok.status != "Plant Exited":
+		frappe.throw(_("Token {0} is at '{1}' — G2 Exit must be recorded first (expected 'Plant Exited').").format(token_name, tok.status))
 	tok.db_set({
 		"g1_exit_time": now_datetime(),
 		"status": "Campus Exited",

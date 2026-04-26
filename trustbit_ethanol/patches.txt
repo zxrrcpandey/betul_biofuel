@@ -12,3 +12,5 @@ trustbit_ethanol.patches.v2_8.backfill_pi_po_reference
 trustbit_ethanol.patches.v2_9.convert_legacy_qis
 trustbit_ethanol.patches.v2_9.migrate_bag_type_to_master
 trustbit_ethanol.patches.v2_9.po_deduction_backward_compat
+# v2.9.1
+trustbit_ethanol.patches.v2_9.strip_two_pass_flag

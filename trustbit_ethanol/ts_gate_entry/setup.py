@@ -1599,7 +1599,7 @@ def seed_number_cards():
 		# Amber — waiting
 		{"name": "Pending Deductions", "label": "Pending Deductions", "document_type": "TS Deduction Sheet", "filters_json": '[["TS Deduction Sheet", "status", "=", "Calculated"]]', "color": "#f59e0b", "bg": "#fef3c7", "module": "TS Gate Entry"},
 		{"name": "Awaiting PO Link", "label": "Awaiting PO Link", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Token Generated"]]', "color": "#f59e0b", "bg": "#fef3c7"},
-		{"name": "Awaiting Gross Weight", "label": "Awaiting Gross", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "PO Linked"]]', "color": "#f59e0b", "bg": "#fef3c7"},
+		{"name": "Awaiting Gross Weight", "label": "Awaiting Gross", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "in", ["G1 Entered", "G2 Entered", "PO Linked"]]]', "color": "#f59e0b", "bg": "#fef3c7"},
 		{"name": "Pending Quality", "label": "Pending Quality", "document_type": "TS Token", "filters_json": '[["TS Token", "status", "=", "Tare Weighed"]]', "color": "#f59e0b", "bg": "#fef3c7"},
 		{"name": "Visitors Inside Plant", "label": "Visitors Inside Plant", "document_type": "TS Token", "filters_json": '[["TS Token", "entry_type", "=", "Gate Pass"], ["TS Token", "gate_pass_status", "=", "Inside Plant"]]', "color": "#f59e0b", "bg": "#fef3c7"},
 		# Purple
