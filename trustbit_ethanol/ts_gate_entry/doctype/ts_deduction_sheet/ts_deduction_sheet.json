@@ -4,18 +4,31 @@
  "creation": "2026-03-08 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
+ "is_submittable": 1,
+ "track_changes": 1,
  "field_order": [
   "naming_series",
-  "token_number",
+  "ds_number",
   "quality_inspection",
+  "token_number",
   "gate_entry",
   "purchase_order",
-  "status",
   "column_break_ref",
   "supplier_name",
   "item_code",
   "item_name",
   "item_category",
+  "system_section",
+  "system_deduction_pct",
+  "column_break_system",
+  "system_deduction_kg",
+  "actual_section",
+  "actual_deduction_pct",
+  "actual_deduction_kg",
+  "actual_deduction_reason",
+  "column_break_actual",
+  "filled_by",
+  "filled_at",
   "weight_section",
   "invoice_qty",
   "item_rate",
@@ -49,25 +62,28 @@
   "net_payable",
   "column_break_summary",
   "decision",
-  "decision_remarks"
+  "decision_remarks",
+  "amended_from"
  ],
  "fields": [
   {
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
-   "options": "BBF-DED-.YYYY.-.#####",
-   "default": "BBF-DED-.YYYY.-.#####",
+   "options": "BBPL-DS-.YY.-.#####",
+   "default": "BBPL-DS-.YY.-.#####",
    "hidden": 1
   },
   {
-   "fieldname": "token_number",
-   "fieldtype": "Link",
-   "label": "Token Number",
-   "options": "TS Token",
-   "reqd": 1,
+   "fieldname": "ds_number",
+   "fieldtype": "Data",
+   "label": "DS Number",
+   "read_only": 1,
    "in_list_view": 1,
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "bold": 1,
+   "no_copy": 1,
+   "description": "Auto = name (BBPL-DS-YY-#####). Mirrored for list view convenience."
   },
   {
    "fieldname": "quality_inspection",
@@ -75,7 +91,18 @@
    "label": "Quality Inspection",
    "options": "TS Quality Inspection",
    "reqd": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "1:1 link to a SUBMITTED Quality Inspection."
+  },
+  {
+   "fieldname": "token_number",
+   "fieldtype": "Link",
+   "label": "Token Number",
+   "options": "TS Token",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
   },
   {
    "fieldname": "gate_entry",
@@ -89,16 +116,6 @@
    "fieldtype": "Link",
    "label": "Purchase Order",
    "options": "Purchase Order",
-   "read_only": 1
-  },
-  {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Status",
-   "options": "Draft\nCalculated\nApproved",
-   "default": "Draft",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
    "read_only": 1
   },
   {
@@ -132,9 +149,87 @@
    "read_only": 1
   },
   {
+   "fieldname": "system_section",
+   "fieldtype": "Section Break",
+   "label": "Layer 1 — System Deduction (from QI)"
+  },
+  {
+   "fieldname": "system_deduction_pct",
+   "fieldtype": "Percent",
+   "label": "System Deduction %",
+   "read_only": 1,
+   "permlevel": 1,
+   "no_copy": 1,
+   "precision": "3",
+   "bold": 1,
+   "description": "Auto-fetched from QI total_deduction_pct on insert. Tamper-protected (permlevel 1)."
+  },
+  {
+   "fieldname": "column_break_system",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "system_deduction_kg",
+   "fieldtype": "Float",
+   "label": "System Deduction (Kg)",
+   "read_only": 1,
+   "permlevel": 1,
+   "no_copy": 1,
+   "precision": "3",
+   "bold": 1,
+   "description": "Auto-fetched from QI total_deduction_kg. Tamper-protected (permlevel 1)."
+  },
+  {
+   "fieldname": "actual_section",
+   "fieldtype": "Section Break",
+   "label": "Layer 2 — Actual Deduction (Grain Manager)"
+  },
+  {
+   "fieldname": "actual_deduction_pct",
+   "fieldtype": "Percent",
+   "label": "Actual Deduction %",
+   "precision": "3",
+   "bold": 1,
+   "description": "Grain Manager (Tilok) enters final deduction %. Defaults to system value; if differs, reason is mandatory."
+  },
+  {
+   "fieldname": "actual_deduction_kg",
+   "fieldtype": "Float",
+   "label": "Actual Deduction (Kg)",
+   "precision": "3",
+   "read_only": 1,
+   "bold": 1,
+   "description": "Auto = (Actual %) × Bag Count × Bag Weight Kg from QI."
+  },
+  {
+   "fieldname": "actual_deduction_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for Difference",
+   "description": "Mandatory when Actual % differs from System % by more than 0.01%."
+  },
+  {
+   "fieldname": "column_break_actual",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filled_by",
+   "fieldtype": "Link",
+   "label": "Filled By",
+   "options": "User",
+   "read_only": 1,
+   "description": "Auto-set when actual_deduction_pct is set/changed."
+  },
+  {
+   "fieldname": "filled_at",
+   "fieldtype": "Datetime",
+   "label": "Filled At",
+   "read_only": 1
+  },
+  {
    "fieldname": "weight_section",
    "fieldtype": "Section Break",
-   "label": "Invoice & Weight Details"
+   "label": "Invoice & Weight Details (Legacy)",
+   "collapsible": 1
   },
   {
    "fieldname": "invoice_qty",
@@ -188,8 +283,9 @@
   {
    "fieldname": "quality_section",
    "fieldtype": "Section Break",
-   "label": "Quality Results - Grain",
+   "label": "Quality Results - Grain (Legacy)",
    "depends_on": "eval:doc.item_category=='Grain'",
+   "collapsible": 1,
    "read_only": 1
   },
   {
@@ -213,8 +309,9 @@
   {
    "fieldname": "coal_quality_section",
    "fieldtype": "Section Break",
-   "label": "Quality Results - Coal",
+   "label": "Quality Results - Coal (Legacy)",
    "depends_on": "eval:doc.item_category=='Coal'",
+   "collapsible": 1,
    "read_only": 1
   },
   {
@@ -266,23 +363,22 @@
   {
    "fieldname": "rates_section",
    "fieldtype": "Section Break",
-   "label": "Deduction Rates (from PO Terms)",
-   "depends_on": "eval:doc.item_category=='Grain'"
+   "label": "Deduction Rates (Legacy)",
+   "depends_on": "eval:doc.item_category=='Grain'",
+   "collapsible": 1
   },
   {
    "fieldname": "unloading_rate_per_bag",
    "fieldtype": "Currency",
    "label": "Unloading Rate (Rs/Bag)",
-   "precision": "2",
-   "description": "From PO terms"
+   "precision": "2"
   },
   {
    "fieldname": "dhalta_rate_gm_per_qtl",
    "fieldtype": "Float",
    "label": "Dhalta (gm per Qtl)",
    "precision": "1",
-   "default": "500",
-   "description": "Spillage allowance, default 500g per quintal"
+   "default": "500"
   },
   {
    "fieldname": "column_break_rates",
@@ -292,19 +388,19 @@
    "fieldname": "brokerage_rate_per_mt",
    "fieldtype": "Currency",
    "label": "Brokerage Rate (Rs/MT)",
-   "precision": "2",
-   "description": "From PO terms"
+   "precision": "2"
   },
   {
    "fieldname": "calculate_deductions_button",
    "fieldtype": "Button",
-   "label": "Calculate Deductions",
-   "depends_on": "eval:doc.status=='Draft' || doc.status=='Calculated'"
+   "label": "Calculate Legacy Deductions",
+   "depends_on": "eval:doc.docstatus===0"
   },
   {
    "fieldname": "deductions_section",
    "fieldtype": "Section Break",
-   "label": "Deduction Lines"
+   "label": "Legacy Deduction Lines (optional)",
+   "collapsible": 1
   },
   {
    "fieldname": "deductions",
@@ -320,7 +416,7 @@
   {
    "fieldname": "total_deduction",
    "fieldtype": "Currency",
-   "label": "Total Deduction",
+   "label": "Total Deduction (₹)",
    "read_only": 1,
    "precision": "2",
    "bold": 1
@@ -348,10 +444,20 @@
    "fieldname": "decision_remarks",
    "fieldtype": "Small Text",
    "label": "Remarks"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "TS Deduction Sheet",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1,
+   "ignore_user_permissions": 1
   }
  ],
  "links": [],
- "modified": "2026-03-08 00:00:00",
+ "modified": "2026-04-26 00:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Deduction Sheet",
@@ -363,18 +469,56 @@
    "delete": 1,
    "read": 1,
    "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1,
    "role": "System Manager"
   },
   {
    "create": 1,
    "read": 1,
    "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
    "role": "Accounts Manager"
   },
   {
    "create": 1,
    "read": 1,
    "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "role": "System Manager",
+   "permlevel": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "Grain Manager"
+  },
+  {
+   "read": 1,
+   "role": "Accounts User"
+  },
+  {
+   "read": 1,
    "role": "Stores User"
   },
   {
@@ -391,17 +535,11 @@
   },
   {
    "read": 1,
-   "write": 1,
-   "role": "IT Head"
-  },
-  {
-   "read": 1,
    "role": "Quality Inspector"
   }
  ],
- "search_fields": "token_number, item_category, status",
+ "search_fields": "ds_number, quality_inspection, token_number, item_category",
  "sort_field": "creation",
  "sort_order": "DESC",
- "title_field": "token_number",
- "track_changes": 1
+ "title_field": "ds_number"
 }

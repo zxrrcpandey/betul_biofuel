@@ -1,0 +1,112 @@
+{
+ "actions": [],
+ "autoname": "field:bag_type_name",
+ "creation": "2026-04-25 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "bag_type_name",
+  "is_active",
+  "column_break_1",
+  "standard_weight_kg",
+  "tolerance_kg",
+  "description_section",
+  "description"
+ ],
+ "fields": [
+  {
+   "fieldname": "bag_type_name",
+   "fieldtype": "Data",
+   "label": "Bag Type Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "bold": 1,
+   "description": "E.g., HDPE 50kg, Jute 40kg, PP Woven 25kg"
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Active",
+   "default": "1",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Inactive bag types are hidden from selection dropdowns"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "standard_weight_kg",
+   "fieldtype": "Float",
+   "label": "Standard Weight (Kg)",
+   "precision": "3",
+   "in_list_view": 1,
+   "description": "Nominal weight per filled bag in kilograms"
+  },
+  {
+   "fieldname": "tolerance_kg",
+   "fieldtype": "Float",
+   "label": "Tolerance (± Kg)",
+   "precision": "3",
+   "default": "0",
+   "description": "Acceptable weight deviation per bag"
+  },
+  {
+   "fieldname": "description_section",
+   "fieldtype": "Section Break",
+   "label": "Description"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-04-25 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Bag Type Master",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "read": 1,
+   "role": "Quality Inspector"
+  },
+  {
+   "read": 1,
+   "role": "Grain Manager"
+  },
+  {
+   "read": 1,
+   "role": "Purchase Manager"
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager"
+  }
+ ],
+ "search_fields": "bag_type_name",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

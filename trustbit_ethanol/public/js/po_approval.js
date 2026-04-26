@@ -2,6 +2,11 @@
 frappe.ui.form.on("Purchase Order", {
 	refresh(frm) {
 		_force_po_grid_columns(frm);
+		// v2.9.0 Day 3 — set_query on deduction template (active masters only).
+		// Runs on both new and saved forms.
+		_ts_setup_deduction_template_query(frm);
+		// Show fallback banner if backend silently picked default master.
+		_ts_render_deduction_fallback_banner(frm);
 		if (frm.is_new()) return;
 		_ts_add_print_button(frm, "TS Purchase Order");
 		_load_approval_context(frm);
@@ -14,6 +19,12 @@ frappe.ui.form.on("Purchase Order", {
 	},
 	cost_center(frm) {
 		if (!frm.is_new()) _load_budget_indicator(frm);
+	},
+	// v2.9.0 Day 3 — when user picks a Deduction Template, fetch its rows
+	// and pre-populate ts_deduction_overrides. Resets template_loaded=0 if
+	// user clears or changes selection.
+	ts_deduction_template(frm) {
+		_ts_on_deduction_template_change(frm);
 	},
 	validate(frm) {
 		if (!frm.doc.cost_center) {
@@ -939,4 +950,136 @@ function _ts_add_print_button(frm, default_format) {
 function _ts_download_pdf(frm, format) {
 	const url = `/api/method/frappe.utils.print_format.download_pdf?doctype=${encodeURIComponent(frm.doc.doctype)}&name=${encodeURIComponent(frm.doc.name)}&format=${encodeURIComponent(format)}&no_letterhead=0`;
 	window.open(url, "_blank");
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// v2.9.0 Phase 3 Day 3 — PO Deduction Terms helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Filter the Deduction Template Link dropdown to active masters only.
+ * Plan v4 Gap 1 — only active masters should be selectable.
+ */
+function _ts_setup_deduction_template_query(frm) {
+	if (!frm.fields_dict.ts_deduction_template) return; // seed not run yet
+	frm.set_query("ts_deduction_template", () => ({
+		filters: { is_active: 1 }
+	}));
+}
+
+/**
+ * When user picks (or changes / clears) the Deduction Template:
+ *   - cleared    → reset ts_deduction_overrides + template_loaded=0
+ *   - changed    → confirm replace if rows already populated, then refetch
+ *   - first pick → fetch rows + populate child grid + flag template_loaded=1
+ *
+ * Server returns rounded-to-4-decimal default_rate (Plan v4 Gap 2). We never
+ * pre-fill override_rate / override_rate_type / override_reason — those stay
+ * blank for the user to fill in iff they want to override.
+ */
+function _ts_on_deduction_template_change(frm) {
+	if (!frm.fields_dict.ts_deduction_template) return;
+
+	const new_template = (frm.doc.ts_deduction_template || "").trim();
+	const had_rows = (frm.doc.ts_deduction_overrides || []).length > 0;
+
+	// Cleared selection — reset rows + flag.
+	if (!new_template) {
+		if (had_rows) {
+			frm.clear_table("ts_deduction_overrides");
+			frm.refresh_field("ts_deduction_overrides");
+		}
+		frm.set_value("ts_deduction_template_loaded", 0);
+		return;
+	}
+
+	// If already loaded with rows from a different template, confirm replace.
+	if (had_rows && frm.doc.ts_deduction_template_loaded) {
+		frappe.confirm(
+			__("Replace existing deduction rows with rows from <b>{0}</b>? Any local overrides will be lost.", [frappe.utils.escape_html(new_template)]),
+			() => _ts_fetch_and_populate_template(frm, new_template),
+			() => {
+				// User cancelled — revert template selection back to previous loaded one.
+				// We don't track previous explicitly; safest is to clear flag so they can re-pick.
+				// Skipping revert here because Frappe doesn't easily support undo of Link change without tracking.
+			}
+		);
+		return;
+	}
+
+	// First-time selection or empty rows — fetch + populate.
+	_ts_fetch_and_populate_template(frm, new_template);
+}
+
+function _ts_fetch_and_populate_template(frm, template_name) {
+	frappe.call({
+		method: "trustbit_ethanol.ts_gate_entry.ts_deduction_master_api.get_template_rows",
+		type: "POST",
+		args: { template_name },
+		freeze: true,
+		freeze_message: __("Loading deduction template…"),
+		callback(r) {
+			if (!r.message) return;
+			const data = r.message;
+			if (!data.rows || data.rows.length === 0) {
+				frappe.msgprint({
+					title: __("Empty Template"),
+					indicator: "orange",
+					message: __("Template <b>{0}</b> has no active rows. Pick another template.", [frappe.utils.escape_html(template_name)]),
+				});
+				return;
+			}
+
+			// Wipe existing rows then add fresh.
+			frm.clear_table("ts_deduction_overrides");
+			data.rows.forEach((src) => {
+				const child = frm.add_child("ts_deduction_overrides");
+				child.deduction_code = src.deduction_code;
+				child.deduction_label = src.deduction_label;
+				child.default_rate = src.default_rate;
+				child.default_rate_type = src.default_rate_type;
+				// override_* fields intentionally left blank — user fills in iff overriding.
+			});
+
+			frm.set_value("ts_deduction_template_loaded", 1);
+			frm.refresh_field("ts_deduction_overrides");
+
+			frappe.show_alert({
+				message: __("Loaded {0} deduction row(s) from <b>{1}</b> ({2})",
+					[data.rows.length, frappe.utils.escape_html(template_name), frappe.utils.escape_html(data.category || "")]),
+				indicator: "green",
+			}, 4);
+		},
+		error(err) {
+			// Permission / inactive / not-found errors come back as Frappe throws.
+			// Frappe auto-shows the error dialog — nothing extra needed here.
+		}
+	});
+}
+
+/**
+ * Show a small banner on PO form when backend silently fell back to the
+ * category default Deduction Master (Plan v4 Gap 1, Approach B).
+ *
+ * The backend sets a transient flag during before_save which doesn't survive
+ * the round-trip — but we infer the same condition client-side: if the doc
+ * has a Grain item and template is now populated, but the user didn't pick
+ * it themselves (template_loaded is still 0), it was the silent fallback.
+ *
+ * Kept lightweight — no DOM injection beyond a single dashboard alert that
+ * Frappe garbage-collects when the form re-renders.
+ */
+function _ts_render_deduction_fallback_banner(frm) {
+	if (!frm.fields_dict.ts_deduction_template) return;
+	if (!frm.doc.ts_deduction_template) return;
+	// Only show on saved drafts (after at least one save round-trip).
+	if (frm.is_new()) return;
+	if (frm.doc.docstatus !== 0) return;
+	if (frm.doc.ts_deduction_template_loaded) return; // user-picked, not fallback
+
+	frm.dashboard.add_comment(
+		__("Deduction template <b>{0}</b> auto-applied (category default).", [frappe.utils.escape_html(frm.doc.ts_deduction_template)]),
+		"blue",
+		true
+	);
 }

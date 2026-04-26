@@ -1798,6 +1798,139 @@ def _block_gate_field_tampering(doc, gate_fields):
 			)
 
 
+# ── v2.9.0 Day 3: PO Deduction Terms ──────────────────────────────────────
+# Tolerance threshold for "override differs from default" — beyond this, a
+# reason MUST be supplied. 5% per Plan v4 Day 3 Step E.
+_PO_DEDUCTION_OVERRIDE_TOLERANCE_PCT = 5.0
+
+
+def _validate_po_deduction_terms(doc):
+	"""Validate v2.9.0 PO deduction terms section (Plan v4 Gaps 1, 2 + inactive guard).
+
+	Rules enforced:
+	1. If `ts_deduction_template` is empty AND PO has Grain-category items →
+	   silent fallback to category default master (Plan v4 Gap 1, Approach B).
+	   Sets the field via db_set so it shows on the form after save.
+	2. If template is inactive → throw clear error.
+	3. For every override row, round default_rate + override_rate to 4 decimals
+	   (Plan v4 Gap 2). Round in-place on the row docfield.
+	4. If override_rate is set AND differs from default_rate by more than
+	   _PO_DEDUCTION_OVERRIDE_TOLERANCE_PCT → require override_reason. (Frappe's
+	   `mandatory_depends_on` on the child JSON catches the "any override → reason"
+	   case at form level; this server-side check enforces the >5% delta rule
+	   that JSON cannot express, and acts as a defense-in-depth guard against
+	   REST mutation.)
+
+	Skips entirely if the Custom Fields are not yet seeded (defensive — covers
+	the migrate-not-yet-run window).
+	"""
+	# Defensive: if seed hasn't run yet, the fields don't exist on the doc.
+	if not hasattr(doc, "ts_deduction_template"):
+		return
+
+	# Rule 1 — Silent fallback to category default for Grain.
+	# Only fire on draft (docstatus=0). On submitted/cancelled docs we don't
+	# silently mutate — those edits go through the executive-override path.
+	if doc.docstatus == 0 and not (doc.ts_deduction_template or "").strip():
+		if _po_has_grain_items(doc):
+			default_master = frappe.db.get_value(
+				"TS Deduction Master",
+				{"category": "Grain", "is_default": 1, "is_active": 1},
+				"name",
+			)
+			if default_master:
+				doc.ts_deduction_template = default_master
+				# Banner / note message — flagged so JS can display "fallback applied".
+				doc.flags.ts_deduction_template_fallback = default_master
+
+	# Rule 2 — Inactive template guard.
+	if doc.ts_deduction_template:
+		template_active = frappe.db.get_value(
+			"TS Deduction Master", doc.ts_deduction_template, "is_active"
+		)
+		if template_active is None:
+			frappe.throw(
+				_("Deduction Template '{0}' does not exist.").format(
+					doc.ts_deduction_template
+				)
+			)
+		if not template_active:
+			frappe.throw(
+				_("Deduction Template '{0}' is inactive. Pick an active template "
+				  "or clear the field.").format(doc.ts_deduction_template)
+			)
+
+	# Rules 3 & 4 — round + check override-vs-default delta + enforce reason.
+	for row in (doc.get("ts_deduction_overrides") or []):
+		# Round to 4 decimals in place (Plan v4 Gap 2).
+		row.default_rate = _round4(row.default_rate)
+		row.override_rate = _round4(row.override_rate)
+
+		default_rate = flt(row.default_rate)
+		override_rate = flt(row.override_rate)
+
+		# Only enforce the >5% reason rule when an override is actually present
+		# AND a default exists to compare against.
+		if not override_rate:
+			continue
+		if not default_rate:
+			# No master rate to compare — JSON `mandatory_depends_on` already
+			# made reason required; skip the delta check.
+			continue
+
+		delta_pct = abs(override_rate - default_rate) / default_rate * 100.0
+		if delta_pct > _PO_DEDUCTION_OVERRIDE_TOLERANCE_PCT:
+			if not (row.override_reason or "").strip():
+				frappe.throw(
+					_("Deduction row '{0}': override rate ({1}) differs from "
+					  "master rate ({2}) by {3:.1f}% (>{4:.0f}%). Please provide "
+					  "an override reason.").format(
+						row.deduction_code or row.deduction_label or f"#{row.idx}",
+						override_rate, default_rate, delta_pct,
+						_PO_DEDUCTION_OVERRIDE_TOLERANCE_PCT,
+					),
+					title=_("Override Reason Required"),
+				)
+
+
+def _po_has_grain_items(doc) -> bool:
+	"""True if at least one item on the PO maps to category=Grain.
+
+	Mapping: Item → Item Group → ts_purchase_category (custom link). Falls back
+	to checking item_group name contains 'grain' (case-insensitive) only if the
+	custom category link is missing on Item Group. Defense-in-depth — never
+	throws on missing meta.
+	"""
+	for item in (doc.get("items") or []):
+		if not item.item_code:
+			continue
+		try:
+			ig = frappe.db.get_value("Item", item.item_code, "item_group")
+			if not ig:
+				continue
+			# Try the custom purchase category link first.
+			category = frappe.db.get_value("Item Group", ig, "ts_purchase_category")
+			if category and frappe.db.get_value(
+				"TS Purchase Category", category, "category_name"
+			) == "Grain":
+				return True
+			# Fallback heuristic — item group name contains 'grain'.
+			if "grain" in (ig or "").lower():
+				return True
+		except Exception:
+			continue
+	return False
+
+
+def _round4(val) -> float:
+	"""Round to 4 decimals (Plan v4 Gap 2). Returns 0.0 if val is None / non-numeric."""
+	try:
+		return round(float(val or 0), 4)
+	except (TypeError, ValueError):
+		return 0.0
+# ───────────────────────────────────────────────────────────────────────────
+
+
 def po_before_save(doc, method):
 	"""Prevent amount changes while PO is in approval chain + block duplicate PO from MR + copy project from MR."""
 	# ── Duplicate PO from MR block ──
@@ -1807,6 +1940,13 @@ def po_before_save(doc, method):
 	# ── Copy project from MR to PO ──
 	if not doc.project:
 		_copy_project_from_mr(doc)
+
+	# ── v2.9.0 Day 3: PO Deduction Terms validation (Plan v4 Gaps 1, 2, inactive guard) ──
+	# Runs BEFORE tamper guard so even CEO/MD edits to template/overrides get
+	# the rounding + reason-required + inactive-template checks. The new fields
+	# are NOT control-plane (no permlevel=1 on parent Custom Field), so the
+	# tamper guard does not need them in _PO_GATE_FIELDS.
+	_validate_po_deduction_terms(doc)
 
 	# ── Gate-field tamper guard (Security #14) ──
 	# CEO + MD do NOT bypass this — control-plane fields stay protected.

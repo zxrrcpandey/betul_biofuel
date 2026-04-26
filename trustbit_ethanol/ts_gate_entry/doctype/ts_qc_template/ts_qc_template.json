@@ -1,0 +1,143 @@
+{
+ "actions": [],
+ "autoname": "field:template_name",
+ "creation": "2026-04-25 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "template_name",
+  "category",
+  "is_active",
+  "column_break_1",
+  "version",
+  "description",
+  "bagging_section",
+  "supports_bags",
+  "bag_type",
+  "parameters_section",
+  "parameters"
+ ],
+ "fields": [
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "label": "Template Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "bold": 1,
+   "description": "E.g., Maize QC Standard, Rice Husk QC, Coal Lignite QC"
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "Grain\nCoal\nOther",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Active",
+   "default": "1",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "version",
+   "fieldtype": "Data",
+   "label": "Version",
+   "default": "1.0",
+   "description": "Template version (manual; bump when parameters change)"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "bagging_section",
+   "fieldtype": "Section Break",
+   "label": "Bagging (Optional)"
+  },
+  {
+   "fieldname": "supports_bags",
+   "fieldtype": "Check",
+   "label": "Supports Bag Inspection",
+   "default": "0",
+   "description": "When checked, inspector can pick a bag type and bag count is captured"
+  },
+  {
+   "fieldname": "bag_type",
+   "fieldtype": "Link",
+   "label": "Default Bag Type",
+   "options": "TS Bag Type Master",
+   "depends_on": "eval:doc.supports_bags",
+   "description": "Default bag type pre-selected on inspection (inspector can override)"
+  },
+  {
+   "fieldname": "parameters_section",
+   "fieldtype": "Section Break",
+   "label": "QC Parameters"
+  },
+  {
+   "fieldname": "parameters",
+   "fieldtype": "Table",
+   "label": "Parameters",
+   "options": "TS QC Inspection Row",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-04-25 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS QC Template",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "Quality Inspector"
+  },
+  {
+   "read": 1,
+   "role": "Grain Manager"
+  },
+  {
+   "read": 1,
+   "role": "Purchase Manager"
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager"
+  }
+ ],
+ "search_fields": "template_name, category",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

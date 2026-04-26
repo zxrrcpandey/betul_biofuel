@@ -25,6 +25,7 @@
   "ts_qc_gate_enabled",
   "ts_rst_enforcement_enabled",
   "ts_two_pass_gates_enabled",
+  "ts_qc_v29_enabled",
   "tab_approval",
   "approval_section",
   "enable_po_approval",
@@ -203,6 +204,14 @@
    "default": "0",
    "permlevel": 1,
    "description": "v2.8.3: when ON, Material flow requires G2 Entry before WB Gross + G2 Exit before G1 Exit. Token.status uses new values 'G1 Entered', 'G2 Entered', 'Plant Exited', 'Campus Exited'. Writable by IT Head / System Manager only (permlevel 1)."
+  },
+  {
+   "fieldname": "ts_qc_v29_enabled",
+   "fieldtype": "Check",
+   "label": "v2.9.0 QC + DS Gate at Purchase Invoice (block PI until DS submitted)",
+   "default": "0",
+   "permlevel": 1,
+   "description": "v2.9.0: when ON, blocks PI submit if grain item has a submitted Quality Inspection but no submitted Deduction Sheet. Default OFF for safe rollout. Independent of v2.8.1 ts_qc_gate_enabled — both can be active. Writable by IT Head / System Manager only (permlevel 1)."
   },
   {
    "fieldname": "tab_approval",

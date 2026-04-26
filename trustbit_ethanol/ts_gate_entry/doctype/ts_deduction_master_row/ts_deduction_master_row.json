@@ -1,0 +1,88 @@
+{
+ "actions": [],
+ "creation": "2026-04-25 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "deduction_code",
+  "deduction_label",
+  "rate",
+  "rate_type",
+  "applies_when",
+  "moisture_threshold_pct",
+  "is_active"
+ ],
+ "fields": [
+  {
+   "fieldname": "deduction_code",
+   "fieldtype": "Data",
+   "label": "Code",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Short identifier (e.g., MOIST_OVER, IMPURITY_HIGH)"
+  },
+  {
+   "fieldname": "deduction_label",
+   "fieldtype": "Data",
+   "label": "Label",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Float",
+   "label": "Rate",
+   "precision": "4",
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "rate_type",
+   "fieldtype": "Select",
+   "label": "Rate Type",
+   "options": "Percentage\nPer Bag\nPer MT\nPer Qtl\nPer KG\nFixed",
+   "default": "Percentage",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "applies_when",
+   "fieldtype": "Select",
+   "label": "Applies When",
+   "options": "Always\nAbove Moisture Threshold\nBelow Moisture Threshold\nManual Trigger",
+   "default": "Always",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "moisture_threshold_pct",
+   "fieldtype": "Float",
+   "label": "Moisture Threshold %",
+   "precision": "3",
+   "depends_on": "eval:doc.applies_when=='Above Moisture Threshold' || doc.applies_when=='Below Moisture Threshold'",
+   "mandatory_depends_on": "eval:doc.applies_when=='Above Moisture Threshold' || doc.applies_when=='Below Moisture Threshold'"
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Active",
+   "default": "1",
+   "in_list_view": 1,
+   "columns": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-04-25 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Deduction Master Row",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

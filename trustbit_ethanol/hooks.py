@@ -169,6 +169,7 @@ doc_events = {
 	"Purchase Invoice": {
 		"validate": [
 			"trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_qc_approved",
+			"trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_ds_required",
 			"trustbit_ethanol.ts_gate_entry.setup_pi_po_ref.populate_ts_po_reference",
 		],
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate._block_pi_qc_override_tampering",
@@ -221,6 +222,10 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_pr_wb_audit.seed_pr_wb_audit_fields",
 	"trustbit_ethanol.ts_gate_entry.setup_my_approvals.seed_my_approvals",
 	"trustbit_ethanol.ts_gate_entry.setup_bank_ifsc.seed_bank_ifsc",
+	# v2.9.0 Phase 3 Day 3 — PO Deduction Terms Custom Fields + Grain Manager role
+	"trustbit_ethanol.ts_gate_entry.setup_po_deduction_terms.seed_po_deduction_terms",
+	# v2.9.0 Phase 4 Day 4 — PI Custom Fields for DS propagation
+	"trustbit_ethanol.ts_gate_entry.setup_pi_ds_fields.seed_pi_ds_fields",
 ]
 
 # Scheduled Tasks

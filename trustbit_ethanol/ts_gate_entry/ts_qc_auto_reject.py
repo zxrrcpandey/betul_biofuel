@@ -1,15 +1,23 @@
 """
 v2.8.1 Phase B — Auto-draft Purchase Return on QI Rejected.
+v2.9.0 Day 4   — TS QI is now submittable (docstatus 0/1/2). Reads `decision`
+                 instead of legacy `status` field (dropped). Hook fires on_submit
+                 (docstatus 1) — driven by Frappe submit lifecycle, not custom
+                 status enum.
 
 QI submit hook:
-  - On Approved  → sets linked PR.ts_qc_status = 'Approved'
-  - On Rejected  → sets linked PR.ts_qc_status = 'Rejected' + auto-drafts a Purchase Return
-  - Other statuses → no-op
+  - decision == 'Accept'  → sets linked PR.ts_qc_status = 'Approved'
+  - decision == 'Reject'  → sets PR.ts_qc_status = 'Rejected' + auto-drafts a
+                            Purchase Return
+  - decision == 'Hold' or unset → no-op (PR stays at Pending; Stores Receiving
+                                  Dashboard surfaces the hold)
 
 Never cancels the original PR (preserves audit trail). Draft Return needs Stores
 user to review + submit.
 
-Refs: memory/project_flow_revamp_v2.8.md (Q11 decision)
+Refs:
+  - memory/project_flow_revamp_v2.8.md (Q11 decision)
+  - Lesson 192 (use on_update / submit lifecycle, not after_save)
 """
 
 import frappe
@@ -18,17 +26,22 @@ from frappe.utils import flt
 
 
 def on_qi_submitted(doc, method=None):
-	"""TS Quality Inspection on_submit hook — route by status."""
-	status = (getattr(doc, "status", "") or "").strip()
+	"""TS Quality Inspection on_submit hook — route by decision."""
+	# v2.9.0: decision (Accept/Reject/Hold) replaces the dropped status field.
+	# Backwards-compat: if a legacy doc still has status, fall back to it.
+	decision = (getattr(doc, "decision", "") or "").strip()
+	legacy_status = (getattr(doc, "status", "") or "").strip()
 	token = getattr(doc, "token_number", None) or getattr(doc, "token", None)
 
 	if not token:
 		return
 
-	if status == "Approved":
+	# Map decision → action. Hold = no PR side-effect.
+	if decision == "Accept" or legacy_status in ("Approved", "Completed"):
 		_mark_prs_approved(token, doc.name)
-	elif status == "Rejected":
+	elif decision == "Reject" or legacy_status == "Rejected":
 		_mark_prs_rejected_and_draft_return(token, doc)
+	# decision == "Hold" or unset → no-op
 
 
 def _mark_prs_approved(token, qi_name):
@@ -57,7 +70,12 @@ def _mark_prs_rejected_and_draft_return(token, qi_doc):
 		pluck="name",
 	)
 
-	reason = getattr(qi_doc, "rejection_reason", None) or getattr(qi_doc, "remarks", None) or "Rejected by QI"
+	reason = (
+		getattr(qi_doc, "rejection_reason", None)
+		or getattr(qi_doc, "hold_reason", None)
+		or getattr(qi_doc, "remarks", None)
+		or "Rejected by QI"
+	)
 
 	frappe.flags.in_qc_auto_update = True
 	drafted = []

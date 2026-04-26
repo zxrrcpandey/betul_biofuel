@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "creation": "2026-04-26 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "parameter_code",
+  "parameter_label",
+  "parameter_type",
+  "uom",
+  "standard_value",
+  "min_value",
+  "max_value",
+  "actual_value",
+  "deduction_pct",
+  "is_critical",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "parameter_code",
+   "fieldtype": "Data",
+   "label": "Code",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Parameter code (copied from QC Template row)."
+  },
+  {
+   "fieldname": "parameter_label",
+   "fieldtype": "Data",
+   "label": "Parameter",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "parameter_type",
+   "fieldtype": "Select",
+   "label": "Type",
+   "options": "Numeric\nBoolean\nText\nSelect",
+   "read_only": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Data",
+   "label": "UOM",
+   "read_only": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "standard_value",
+   "fieldtype": "Data",
+   "label": "Standard",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Target/expected value from QC Template (e.g. '70 kg/hl', 'OK', '14%')."
+  },
+  {
+   "fieldname": "min_value",
+   "fieldtype": "Float",
+   "label": "Min",
+   "read_only": 1,
+   "precision": "3",
+   "columns": 1
+  },
+  {
+   "fieldname": "max_value",
+   "fieldtype": "Float",
+   "label": "Max",
+   "read_only": 1,
+   "precision": "3",
+   "columns": 1
+  },
+  {
+   "fieldname": "actual_value",
+   "fieldtype": "Data",
+   "label": "Actual Value",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Inspector enters the measured value."
+  },
+  {
+   "fieldname": "deduction_pct",
+   "fieldtype": "Percent",
+   "label": "Deduction %",
+   "in_list_view": 1,
+   "columns": 1,
+   "default": "0",
+   "precision": "3",
+   "description": "Per-parameter deduction % entered by inspector. Sums into Total Deduction %."
+  },
+  {
+   "fieldname": "is_critical",
+   "fieldtype": "Check",
+   "label": "Critical",
+   "read_only": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-04-26 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS QI Parameter Result",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

@@ -4,18 +4,33 @@
  "creation": "2026-03-08 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
+ "is_submittable": 1,
+ "track_changes": 1,
  "field_order": [
   "naming_series",
+  "quality_report_no",
+  "lab_register_no",
   "token_number",
   "gate_entry",
   "purchase_order",
-  "status",
   "column_break_ref",
   "item_code",
   "item_name",
   "item_category",
   "inspection_date",
   "inspector",
+  "template_section",
+  "qc_template",
+  "column_break_template",
+  "bag_type",
+  "bag_count",
+  "bag_weight_kg",
+  "parameters_section",
+  "parameters",
+  "totals_section",
+  "total_deduction_pct",
+  "column_break_totals",
+  "total_deduction_kg",
   "grain_section",
   "moisture_percent",
   "impurity_percent",
@@ -35,16 +50,36 @@
   "decision",
   "column_break_result",
   "hold_reason",
-  "remarks"
+  "remarks",
+  "amended_from"
  ],
  "fields": [
   {
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
-   "options": "BBF-QI-.YYYY.-.#####",
-   "default": "BBF-QI-.YYYY.-.#####",
+   "options": "BBPL-QI-.YYYY.-.#####",
+   "default": "BBPL-QI-.YYYY.-.#####",
    "hidden": 1
+  },
+  {
+   "fieldname": "quality_report_no",
+   "fieldtype": "Data",
+   "label": "Quality Report No",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "bold": 1,
+   "no_copy": 1,
+   "unique": 1,
+   "description": "Auto-generated BBPL-QR-YY-##### on first save. Globally unique."
+  },
+  {
+   "fieldname": "lab_register_no",
+   "fieldtype": "Data",
+   "label": "Lab Register No (Manual)",
+   "in_standard_filter": 1,
+   "description": "Optional manual reference to physical lab register / book entry. NOT same as Quality Report No."
   },
   {
    "fieldname": "token_number",
@@ -67,16 +102,6 @@
    "fieldtype": "Link",
    "label": "Purchase Order",
    "options": "Purchase Order",
-   "read_only": 1
-  },
-  {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Status",
-   "options": "Pending\nIn Progress\nCompleted\nRejected",
-   "default": "Pending",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
    "read_only": 1
   },
   {
@@ -120,10 +145,94 @@
    "read_only": 1
   },
   {
+   "fieldname": "template_section",
+   "fieldtype": "Section Break",
+   "label": "QC Template & Bag Info",
+   "depends_on": "eval:doc.item_category"
+  },
+  {
+   "fieldname": "qc_template",
+   "fieldtype": "Link",
+   "label": "QC Template",
+   "options": "TS QC Template",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Pick a QC Template — its parameters populate the rows below."
+  },
+  {
+   "fieldname": "column_break_template",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "bag_type",
+   "fieldtype": "Link",
+   "label": "Bag Type",
+   "options": "TS Bag Type Master",
+   "description": "Optional. Pick a Bag Type — its standard_weight_kg fetches into bag_weight_kg."
+  },
+  {
+   "fieldname": "bag_count",
+   "fieldtype": "Int",
+   "label": "Bag Count",
+   "default": "0",
+   "description": "Number of bags inspected."
+  },
+  {
+   "fieldname": "bag_weight_kg",
+   "fieldtype": "Float",
+   "label": "Bag Weight (Kg)",
+   "fetch_from": "bag_type.standard_weight_kg",
+   "precision": "3",
+   "read_only": 1,
+   "description": "Per-bag weight in kg (fetched from Bag Type)."
+  },
+  {
+   "fieldname": "parameters_section",
+   "fieldtype": "Section Break",
+   "label": "Inspection Parameters",
+   "depends_on": "eval:doc.qc_template"
+  },
+  {
+   "fieldname": "parameters",
+   "fieldtype": "Table",
+   "label": "Parameters",
+   "options": "TS QI Parameter Result",
+   "description": "Auto-populated from QC Template on selection. Edit values per inspection."
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Total Deduction"
+  },
+  {
+   "fieldname": "total_deduction_pct",
+   "fieldtype": "Percent",
+   "label": "Total Deduction %",
+   "read_only": 1,
+   "precision": "3",
+   "bold": 1,
+   "description": "Sum of all parameter deduction % from rows above."
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_deduction_kg",
+   "fieldtype": "Float",
+   "label": "Total Deduction (Kg)",
+   "read_only": 1,
+   "precision": "3",
+   "bold": 1,
+   "description": "Total Deduction % x Bag Count x Bag Weight Kg."
+  },
+  {
    "fieldname": "grain_section",
    "fieldtype": "Section Break",
-   "label": "Quality Parameters - Grain",
-   "depends_on": "eval:doc.item_category=='Grain'"
+   "label": "Quality Parameters - Grain (Legacy)",
+   "depends_on": "eval:doc.item_category=='Grain'",
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:doc.qc_template"
   },
   {
    "fieldname": "moisture_percent",
@@ -156,8 +265,10 @@
   {
    "fieldname": "coal_section",
    "fieldtype": "Section Break",
-   "label": "Quality Parameters - Coal",
-   "depends_on": "eval:doc.item_category=='Coal'"
+   "label": "Quality Parameters - Coal (Legacy)",
+   "depends_on": "eval:doc.item_category=='Coal'",
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:doc.qc_template"
   },
   {
    "fieldname": "po_gcv",
@@ -221,7 +332,9 @@
    "fieldtype": "Select",
    "label": "Decision",
    "options": "\nAccept\nReject\nHold",
-   "in_list_view": 1
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Accept / Reject / Hold. Determines downstream auto-Return on rejection (v2.8.1)."
   },
   {
    "fieldname": "column_break_result",
@@ -238,6 +351,16 @@
    "fieldname": "remarks",
    "fieldtype": "Small Text",
    "label": "Remarks"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "TS Quality Inspection",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1,
+   "ignore_user_permissions": 1
   }
  ],
  "links": [
@@ -246,7 +369,7 @@
    "link_fieldname": "quality_inspection"
   }
  ],
- "modified": "2026-03-08 00:00:00",
+ "modified": "2026-04-26 00:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Quality Inspection",
@@ -258,12 +381,35 @@
    "delete": 1,
    "read": 1,
    "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1,
    "role": "System Manager"
   },
   {
    "create": 1,
    "read": 1,
    "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "role": "Quality Inspector"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "submit": 1,
+   "report": 1,
    "role": "Stores User"
   },
   {
@@ -281,22 +427,31 @@
   {
    "read": 1,
    "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
    "role": "Accounts Manager"
   },
   {
    "read": 1,
-   "role": "IT Head"
+   "role": "Accounts User"
   },
   {
-   "create": 1,
    "read": 1,
    "write": 1,
-   "role": "Quality Inspector"
+   "role": "Grain Manager"
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "role": "IT Head"
   }
  ],
- "search_fields": "token_number, item_category, decision",
+ "search_fields": "quality_report_no, token_number, item_category, decision",
  "sort_field": "creation",
  "sort_order": "DESC",
- "title_field": "token_number",
- "track_changes": 1
+ "title_field": "quality_report_no"
 }
