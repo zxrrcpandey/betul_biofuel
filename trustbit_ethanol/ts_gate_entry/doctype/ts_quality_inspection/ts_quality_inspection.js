@@ -83,15 +83,26 @@ frappe.ui.form.on("TS Quality Inspection", {
 				if (t.message.custom_rst_number) frm.set_value("rst_number", t.message.custom_rst_number);
 			}
 		});
+		// v2.9.0.10: RST primary source is the submitted Weighbridge Log's rst_number
+		// (Token.custom_rst_number is mirror-populated but may be empty). Fall back path.
+		frappe.db.get_value("TS Weighbridge Log",
+			{ token_number: frm.doc.token_number, docstatus: 1 },
+			"rst_number"
+		).then(w => {
+			const wb_rst = w && w.message && w.message.rst_number;
+			if (wb_rst && !frm.doc.rst_number) {
+				frm.set_value("rst_number", wb_rst);
+			}
+		});
 		// Auto-fetch item info from Gate Entry + party_name from PO
 		frappe.db.get_value("TS Gate Entry",
 			{ token_number: frm.doc.token_number, docstatus: 1 },
 			["name", "purchase_order"]
 		).then(r => {
 			if (r.message && r.message.name) {
-				// v2.9.0.9: fetch supplier_name from PO → party_name
+				// v2.9.0.10 FIX: pass field as ARRAY so get_value returns dict (not raw string)
 				if (r.message.purchase_order) {
-					frappe.db.get_value("Purchase Order", r.message.purchase_order, "supplier_name").then(po => {
+					frappe.db.get_value("Purchase Order", r.message.purchase_order, ["supplier_name"]).then(po => {
 						if (po.message && po.message.supplier_name) {
 							frm.set_value("party_name", po.message.supplier_name);
 						}
