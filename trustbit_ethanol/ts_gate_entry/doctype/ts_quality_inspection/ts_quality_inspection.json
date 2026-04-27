@@ -34,20 +34,6 @@
   "totals_section",
   "total_deduction_pct",
   "column_break_totals",
-  "grain_section",
-  "moisture_percent",
-  "impurity_percent",
-  "column_break_grain",
-  "foreign_matter_percent",
-  "starch_content",
-  "coal_section",
-  "po_gcv",
-  "actual_gcv",
-  "gcv_variance_percent",
-  "column_break_coal",
-  "po_moisture_percent",
-  "actual_moisture_percent",
-  "moisture_variance_percent",
   "result_section",
   "decision",
   "column_break_result",
@@ -277,34 +263,46 @@
    "depends_on": "eval:doc.item_category=='Grain' && !doc.qc_template",
    "fieldname": "grain_section",
    "fieldtype": "Section Break",
-   "label": "Quality Parameters - Grain (Legacy)"
+   "hidden": 1,
+   "label": "Quality Parameters - Grain (Legacy)",
+   "no_copy": 1
   },
   {
    "fieldname": "moisture_percent",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "Moisture %",
+   "no_copy": 1,
    "precision": "2"
   },
   {
    "fieldname": "impurity_percent",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "Impurity %",
+   "no_copy": 1,
    "precision": "2"
   },
   {
    "fieldname": "column_break_grain",
-   "fieldtype": "Column Break"
+   "fieldtype": "Column Break",
+   "hidden": 1,
+   "no_copy": 1
   },
   {
    "fieldname": "foreign_matter_percent",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "Foreign Matter %",
+   "no_copy": 1,
    "precision": "2"
   },
   {
    "fieldname": "starch_content",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "Starch Content %",
+   "no_copy": 1,
    "precision": "2"
   },
   {
@@ -313,51 +311,67 @@
    "depends_on": "eval:doc.item_category=='Coal' && !doc.qc_template",
    "fieldname": "coal_section",
    "fieldtype": "Section Break",
-   "label": "Quality Parameters - Coal (Legacy)"
+   "hidden": 1,
+   "label": "Quality Parameters - Coal (Legacy)",
+   "no_copy": 1
   },
   {
    "description": "GCV from Purchase Order",
    "fieldname": "po_gcv",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "PO GCV",
+   "no_copy": 1,
    "precision": "2",
    "read_only": 1
   },
   {
    "fieldname": "actual_gcv",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "Actual GCV",
+   "no_copy": 1,
    "precision": "2"
   },
   {
    "fieldname": "gcv_variance_percent",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "GCV Variance %",
+   "no_copy": 1,
    "precision": "2",
    "read_only": 1
   },
   {
    "fieldname": "column_break_coal",
-   "fieldtype": "Column Break"
+   "fieldtype": "Column Break",
+   "hidden": 1,
+   "no_copy": 1
   },
   {
    "description": "Moisture % from Purchase Order",
    "fieldname": "po_moisture_percent",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "PO Moisture %",
+   "no_copy": 1,
    "precision": "3",
    "read_only": 1
   },
   {
    "fieldname": "actual_moisture_percent",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "Actual Moisture %",
+   "no_copy": 1,
    "precision": "3"
   },
   {
    "fieldname": "moisture_variance_percent",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "Moisture Variance %",
+   "no_copy": 1,
    "precision": "3",
    "read_only": 1
   },
@@ -417,7 +431,7 @@
    "link_fieldname": "quality_inspection"
   }
  ],
- "modified": "2026-04-27 19:30:00",
+ "modified": "2026-04-27 20:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Quality Inspection",
