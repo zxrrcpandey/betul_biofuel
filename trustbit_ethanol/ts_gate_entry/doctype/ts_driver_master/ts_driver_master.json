@@ -25,18 +25,18 @@
   {
    "fieldname": "driver_name",
    "fieldtype": "Data",
-   "label": "Driver Name",
-   "reqd": 1,
    "in_list_view": 1,
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "label": "Driver Name",
+   "reqd": 1
   },
   {
    "fieldname": "license_number",
    "fieldtype": "Data",
-   "label": "License Number",
-   "unique": 1,
    "in_list_view": 1,
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "label": "License Number",
+   "unique": 1
   },
   {
    "fieldname": "column_break_1",
@@ -60,22 +60,22 @@
    "permlevel": 1
   },
   {
+   "default": "0",
+   "description": "If checked, this driver cannot generate tokens or gate passes",
    "fieldname": "is_blacklisted",
    "fieldtype": "Check",
-   "label": "Blacklisted",
-   "default": "0",
-   "permlevel": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "description": "If checked, this driver cannot generate tokens or gate passes"
+   "label": "Blacklisted",
+   "permlevel": 1
   },
   {
+   "depends_on": "eval:doc.is_blacklisted",
    "fieldname": "blacklist_reason",
    "fieldtype": "Small Text",
    "label": "Blacklist Reason",
-   "permlevel": 1,
    "mandatory_depends_on": "eval:doc.is_blacklisted",
-   "depends_on": "eval:doc.is_blacklisted"
+   "permlevel": 1
   },
   {
    "fieldname": "column_break_bl",
@@ -83,21 +83,21 @@
    "permlevel": 1
   },
   {
+   "depends_on": "eval:doc.is_blacklisted",
    "fieldname": "blacklisted_by",
    "fieldtype": "Link",
    "label": "Blacklisted By",
    "options": "User",
-   "read_only": 1,
    "permlevel": 1,
-   "depends_on": "eval:doc.is_blacklisted"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.is_blacklisted",
    "fieldname": "blacklisted_on",
    "fieldtype": "Date",
    "label": "Blacklisted On",
-   "read_only": 1,
    "permlevel": 1,
-   "depends_on": "eval:doc.is_blacklisted"
+   "read_only": 1
   },
   {
    "fieldname": "trip_section",
@@ -105,11 +105,11 @@
    "label": "Trip History"
   },
   {
+   "default": "0",
    "fieldname": "total_trips",
    "fieldtype": "Int",
    "label": "Total Trips",
-   "read_only": 1,
-   "default": "0"
+   "read_only": 1
   },
   {
    "fieldname": "column_break_trip",
@@ -128,45 +128,50 @@
    "link_fieldname": "driver"
   }
  ],
- "modified": "2026-03-22 00:00:00",
+ "modified": "2026-04-27 13:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Driver Master",
  "naming_rule": "By fieldname",
  "owner": "Administrator",
- "quick_entry": 1,
  "permissions": [
   {
    "create": 1,
    "delete": 1,
    "read": 1,
-   "write": 1,
-   "role": "System Manager"
+   "role": "System Manager",
+   "write": 1
   },
   {
+   "permlevel": 1,
    "read": 1,
-   "write": 1,
    "role": "System Manager",
-   "permlevel": 1
+   "write": 1
   },
   {
    "create": 1,
    "read": 1,
-   "write": 1,
-   "role": "G1 Security"
+   "role": "G1 Security",
+   "write": 1
   },
   {
    "read": 1,
-   "write": 1,
-   "role": "IT Head"
-  },
-  {
-   "read": 1,
-   "write": 1,
    "role": "IT Head",
-   "permlevel": 1
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "IT Head",
+   "write": 1
+  },
+  {
+   "permlevel": 0,
+   "read": 1,
+   "role": "G2 Gate Operator"
   }
  ],
+ "quick_entry": 1,
  "search_fields": "driver_name, license_number, mobile_number",
  "sort_field": "modified",
  "sort_order": "DESC",

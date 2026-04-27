@@ -28,18 +28,18 @@
   {
    "fieldname": "vehicle_number",
    "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Vehicle Number",
    "reqd": 1,
-   "unique": 1,
-   "in_list_view": 1,
-   "in_standard_filter": 1
+   "unique": 1
   },
   {
    "fieldname": "vehicle_type",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Vehicle Type",
-   "options": "\nTruck\nFour Wheeler\nTwo Wheeler\nThree Wheeler\nTanker\nOther",
-   "in_list_view": 1
+   "options": "\nTruck\nFour Wheeler\nTwo Wheeler\nThree Wheeler\nTanker\nOther"
   },
   {
    "fieldname": "column_break_1",
@@ -73,22 +73,22 @@
    "permlevel": 1
   },
   {
+   "default": "0",
+   "description": "If checked, this vehicle cannot generate tokens or gate passes",
    "fieldname": "is_blacklisted",
    "fieldtype": "Check",
-   "label": "Blacklisted",
-   "default": "0",
-   "permlevel": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "description": "If checked, this vehicle cannot generate tokens or gate passes"
+   "label": "Blacklisted",
+   "permlevel": 1
   },
   {
+   "depends_on": "eval:doc.is_blacklisted",
    "fieldname": "blacklist_reason",
    "fieldtype": "Small Text",
    "label": "Blacklist Reason",
-   "permlevel": 1,
    "mandatory_depends_on": "eval:doc.is_blacklisted",
-   "depends_on": "eval:doc.is_blacklisted"
+   "permlevel": 1
   },
   {
    "fieldname": "column_break_bl",
@@ -96,21 +96,21 @@
    "permlevel": 1
   },
   {
+   "depends_on": "eval:doc.is_blacklisted",
    "fieldname": "blacklisted_by",
    "fieldtype": "Link",
    "label": "Blacklisted By",
    "options": "User",
-   "read_only": 1,
    "permlevel": 1,
-   "depends_on": "eval:doc.is_blacklisted"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.is_blacklisted",
    "fieldname": "blacklisted_on",
    "fieldtype": "Date",
    "label": "Blacklisted On",
-   "read_only": 1,
    "permlevel": 1,
-   "depends_on": "eval:doc.is_blacklisted"
+   "read_only": 1
   },
   {
    "fieldname": "trip_log_section",
@@ -118,18 +118,18 @@
    "label": "Trip Log"
   },
   {
+   "default": "0",
    "fieldname": "total_trips",
    "fieldtype": "Int",
    "label": "Total Trips",
-   "read_only": 1,
-   "default": "0"
+   "read_only": 1
   },
   {
    "fieldname": "avg_turnaround_minutes",
    "fieldtype": "Float",
    "label": "Avg Turnaround (Minutes)",
-   "read_only": 1,
-   "precision": "1"
+   "precision": "1",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_2",
@@ -143,52 +143,57 @@
   }
  ],
  "links": [],
- "modified": "2026-03-22 00:00:00",
+ "modified": "2026-04-27 13:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Vehicle Master",
  "naming_rule": "By fieldname",
  "owner": "Administrator",
- "quick_entry": 1,
  "permissions": [
   {
    "create": 1,
    "delete": 1,
    "read": 1,
-   "write": 1,
-   "role": "Accounts Manager"
+   "role": "Accounts Manager",
+   "write": 1
   },
   {
    "create": 1,
    "delete": 1,
    "read": 1,
-   "write": 1,
-   "role": "System Manager"
+   "role": "System Manager",
+   "write": 1
   },
   {
+   "permlevel": 1,
    "read": 1,
-   "write": 1,
    "role": "System Manager",
-   "permlevel": 1
+   "write": 1
   },
   {
    "create": 1,
    "read": 1,
-   "write": 1,
-   "role": "G1 Security"
+   "role": "G1 Security",
+   "write": 1
   },
   {
    "read": 1,
-   "write": 1,
-   "role": "IT Head"
-  },
-  {
-   "read": 1,
-   "write": 1,
    "role": "IT Head",
-   "permlevel": 1
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "IT Head",
+   "write": 1
+  },
+  {
+   "permlevel": 0,
+   "read": 1,
+   "role": "G2 Gate Operator"
   }
  ],
+ "quick_entry": 1,
  "search_fields": "vehicle_number, vehicle_type",
  "sort_field": "modified",
  "sort_order": "DESC",
