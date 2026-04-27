@@ -73,6 +73,12 @@ frappe.ui.form.on("TS Quality Inspection", {
 	},
 
 	token_number(frm) {
+		// v2.9.0.12: clear stale auto-fetched fields when token changes (or cleared)
+		// so re-selecting a different token shows correct values (not old ones).
+		frm.set_value("vehicle_number", null);
+		frm.set_value("party_name", null);
+		frm.set_value("rst_number", null);
+		// note: operator_name stays — manual entry should NOT be wiped on token change
 		if (!frm.doc.token_number) return;
 		// v2.9.0.9: live auto-fetch vehicle_number + rst_number from Token (before save)
 		frappe.db.get_value("TS Token", frm.doc.token_number,
@@ -83,15 +89,15 @@ frappe.ui.form.on("TS Quality Inspection", {
 				if (t.message.custom_rst_number) frm.set_value("rst_number", t.message.custom_rst_number);
 			}
 		});
-		// v2.9.0.11: RST from any Weighbridge Log (draft or submitted) — drop docstatus filter
-		// since on Gross-Weighed tokens the WB Log is still docstatus=0
+		// v2.9.0.12: RST from any Weighbridge Log (draft or submitted) — overrides if WB has it
 		frappe.db.get_list("TS Weighbridge Log", {
 			filters: { token_number: frm.doc.token_number, docstatus: ["!=", 2] },
 			fields: ["rst_number"],
 			limit: 1,
 			order_by: "creation desc"
 		}).then(wbs => {
-			if (wbs && wbs.length && wbs[0].rst_number && !frm.doc.rst_number) {
+			if (wbs && wbs.length && wbs[0].rst_number) {
+				// Always set — overrides Token.custom_rst_number (WB is the source of truth)
 				frm.set_value("rst_number", wbs[0].rst_number);
 			}
 		});
