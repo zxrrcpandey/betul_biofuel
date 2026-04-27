@@ -74,12 +74,29 @@ frappe.ui.form.on("TS Quality Inspection", {
 
 	token_number(frm) {
 		if (!frm.doc.token_number) return;
-		// Auto-fetch item info from Gate Entry
+		// v2.9.0.9: live auto-fetch vehicle_number + rst_number from Token (before save)
+		frappe.db.get_value("TS Token", frm.doc.token_number,
+			["vehicle_number", "custom_rst_number"]
+		).then(t => {
+			if (t.message) {
+				if (t.message.vehicle_number) frm.set_value("vehicle_number", t.message.vehicle_number);
+				if (t.message.custom_rst_number) frm.set_value("rst_number", t.message.custom_rst_number);
+			}
+		});
+		// Auto-fetch item info from Gate Entry + party_name from PO
 		frappe.db.get_value("TS Gate Entry",
 			{ token_number: frm.doc.token_number, docstatus: 1 },
 			["name", "purchase_order"]
 		).then(r => {
 			if (r.message && r.message.name) {
+				// v2.9.0.9: fetch supplier_name from PO → party_name
+				if (r.message.purchase_order) {
+					frappe.db.get_value("Purchase Order", r.message.purchase_order, "supplier_name").then(po => {
+						if (po.message && po.message.supplier_name) {
+							frm.set_value("party_name", po.message.supplier_name);
+						}
+					});
+				}
 				frappe.db.get_list("TS Gate Entry Item", {
 					filters: { parent: r.message.name },
 					fields: ["item_code", "item_name"],
