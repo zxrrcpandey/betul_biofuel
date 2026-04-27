@@ -55,8 +55,8 @@ class TSQualityInspection(Document):
 		# Hard gates on submit
 		if not self.decision:
 			frappe.throw("Please set a Decision (Accept / Reject / Hold) before submitting.")
-		if not self.grade:
-			frappe.throw("Please set a Grade before submitting.")
+		# v2.9.0.13: grade mandatory check removed (field hidden per user request).
+		# Field kept in schema for backward compat with existing 380+ QIs that have grade values.
 		if not self.qc_template:
 			frappe.throw("QC Template is mandatory before submitting.")
 		# Parameter rows recommended (not strictly mandatory — some templates may have 0 params)
