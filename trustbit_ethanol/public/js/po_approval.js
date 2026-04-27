@@ -20,6 +20,49 @@ frappe.ui.form.on("Purchase Order", {
 	cost_center(frm) {
 		if (!frm.is_new()) _load_budget_indicator(frm);
 	},
+	// v2.9.0.7 (Bug 11.G): when company is changed, the previous company's
+	// set_warehouse + all item-row warehouses become invalid. ERPNext core
+	// does NOT clear these on company change → user could submit a PO with
+	// a warehouse belonging to the wrong company → stock posting errors.
+	// Fix: clear set_warehouse + item warehouses + show informative message
+	// so user picks the right warehouse for the new company.
+	company(frm) {
+		if (!frm.doc.company) return;
+		const old_set_warehouse = frm.doc.set_warehouse;
+		const items_with_wh = (frm.doc.items || []).filter(r => r.warehouse).length;
+
+		// Clear parent set_warehouse if it was set
+		if (old_set_warehouse) {
+			frm.set_value("set_warehouse", null);
+		}
+		// Clear all item rows' warehouses
+		(frm.doc.items || []).forEach(row => {
+			if (row.warehouse) {
+				frappe.model.set_value(row.doctype, row.name, "warehouse", null);
+			}
+		});
+
+		// Count available warehouses for the new company so user knows where to pick
+		frappe.db.count("Warehouse", {
+			filters: { company: frm.doc.company, is_group: 0, disabled: 0 }
+		}).then(count => {
+			let parts = [
+				`Company changed to <b>${frappe.utils.escape_html(frm.doc.company)}</b>.`
+			];
+			if (old_set_warehouse || items_with_wh > 0) {
+				parts.push(
+					`Cleared previous warehouse selections (parent ${old_set_warehouse ? "+ " : ""}${items_with_wh} item row${items_with_wh !== 1 ? "s" : ""}).`
+				);
+			}
+			parts.push(
+				`<b>${count}</b> warehouse${count !== 1 ? "s" : ""} available for this company. Please pick the right warehouse.`
+			);
+			frappe.show_alert({
+				message: parts.join(" "),
+				indicator: "orange"
+			}, 8);
+		});
+	},
 	// v2.9.0 Day 3 — when user picks a Deduction Template, fetch its rows
 	// and pre-populate ts_deduction_overrides. Resets template_loaded=0 if
 	// user clears or changes selection.
