@@ -83,31 +83,46 @@ frappe.ui.form.on("TS Quality Inspection", {
 				if (t.message.custom_rst_number) frm.set_value("rst_number", t.message.custom_rst_number);
 			}
 		});
-		// v2.9.0.10: RST primary source is the submitted Weighbridge Log's rst_number
-		// (Token.custom_rst_number is mirror-populated but may be empty). Fall back path.
-		frappe.db.get_value("TS Weighbridge Log",
-			{ token_number: frm.doc.token_number, docstatus: 1 },
-			"rst_number"
-		).then(w => {
-			const wb_rst = w && w.message && w.message.rst_number;
-			if (wb_rst && !frm.doc.rst_number) {
-				frm.set_value("rst_number", wb_rst);
+		// v2.9.0.11: RST from any Weighbridge Log (draft or submitted) — drop docstatus filter
+		// since on Gross-Weighed tokens the WB Log is still docstatus=0
+		frappe.db.get_list("TS Weighbridge Log", {
+			filters: { token_number: frm.doc.token_number, docstatus: ["!=", 2] },
+			fields: ["rst_number"],
+			limit: 1,
+			order_by: "creation desc"
+		}).then(wbs => {
+			if (wbs && wbs.length && wbs[0].rst_number && !frm.doc.rst_number) {
+				frm.set_value("rst_number", wbs[0].rst_number);
 			}
 		});
-		// Auto-fetch item info from Gate Entry + party_name from PO
-		frappe.db.get_value("TS Gate Entry",
-			{ token_number: frm.doc.token_number, docstatus: 1 },
-			["name", "purchase_order"]
-		).then(r => {
-			if (r.message && r.message.name) {
-				// v2.9.0.10 FIX: pass field as ARRAY so get_value returns dict (not raw string)
-				if (r.message.purchase_order) {
-					frappe.db.get_value("Purchase Order", r.message.purchase_order, ["supplier_name"]).then(po => {
-						if (po.message && po.message.supplier_name) {
-							frm.set_value("party_name", po.message.supplier_name);
+		// Auto-fetch item info from Gate Entry + party_name from PO (use get_list for explicit dict response)
+		frappe.db.get_list("TS Gate Entry", {
+			filters: { token_number: frm.doc.token_number, docstatus: 1 },
+			fields: ["name", "purchase_order"],
+			limit: 1
+		}).then(ges => {
+			if (ges && ges.length && ges[0].name) {
+				const ge = ges[0];
+				// v2.9.0.11 FIX: use get_list to guarantee dict return
+				if (ge.purchase_order) {
+					frappe.db.get_list("Purchase Order", {
+						filters: { name: ge.purchase_order },
+						fields: ["supplier_name", "supplier"],
+						limit: 1
+					}).then(pos => {
+						if (pos && pos.length) {
+							const sup = pos[0].supplier_name || pos[0].supplier;
+							if (sup) frm.set_value("party_name", sup);
 						}
 					});
 				}
+				// alias for downstream item-fetch (still uses ge.name)
+				const r = { message: { name: ge.name, purchase_order: ge.purchase_order } };
+				return r;
+			}
+			return null;
+		}).then(r => {
+			if (r && r.message && r.message.name) {
 				frappe.db.get_list("TS Gate Entry Item", {
 					filters: { parent: r.message.name },
 					fields: ["item_code", "item_name"],
