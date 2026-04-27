@@ -2028,6 +2028,17 @@ def mr_before_save(doc, method):
 	# CEO + MD do NOT bypass this — control-plane fields stay protected.
 	_block_gate_field_tampering(doc, _MR_GATE_FIELDS)
 
+	# ── v2.9.0.6 (Bug 11.F): defensive CC fill ──
+	# Frappe auto-fills item rows' cost_center from Item.default_cost_center
+	# (often "Main - BBPL"), causing User Permission errors for users
+	# restricted to specific CCs. JS handles the proactive fix; this is the
+	# server-side safety net for API-driven creates / imports / programmatic
+	# saves that bypass the JS layer.
+	if doc.cost_center:
+		for row in (doc.items or []):
+			if not row.cost_center or row.cost_center != doc.cost_center:
+				row.cost_center = doc.cost_center
+
 	# ── Executive (CEO + MD) override (v2.8.12) ──
 	if not doc.is_new() and doc.docstatus == 0 and is_executive_override_user():
 		changes = collect_business_changes(doc)

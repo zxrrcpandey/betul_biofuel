@@ -1,4 +1,32 @@
 // TS MR Approval v2.5 — Cost-center-based routing with stepper, Hold/Resume, CC config
+//
+// v2.9.0.6 (Bug 11.F): Auto-default item row Cost Center from parent MR's CC.
+// Previously item rows inherited cost_center from Item.default_cost_center
+// (often "Main - BBPL"), causing User Permission errors for users restricted
+// to specific CCs (e.g. Capex - BBPL only). Now row CC always matches parent.
+frappe.ui.form.on("Material Request Item", {
+	items_add(frm, cdt, cdn) {
+		// When a new row is added, immediately default cost_center to parent MR's CC
+		const row = locals[cdt][cdn];
+		if (frm.doc.cost_center && !row.cost_center) {
+			frappe.model.set_value(cdt, cdn, "cost_center", frm.doc.cost_center);
+		}
+	},
+	item_code(frm, cdt, cdn) {
+		// After Frappe's native item fetch_from auto-fills row.cost_center
+		// from Item.default_cost_center, override it with parent MR's CC if set.
+		// 150ms delay ensures Frappe's fetch_from completes first.
+		const row = locals[cdt][cdn];
+		if (frm.doc.cost_center) {
+			setTimeout(() => {
+				if (row.cost_center !== frm.doc.cost_center) {
+					frappe.model.set_value(cdt, cdn, "cost_center", frm.doc.cost_center);
+				}
+			}, 150);
+		}
+	}
+});
+
 frappe.ui.form.on("Material Request", {
 	refresh(frm) {
 		// CC filter: show only CCs where user is Creator (if CC config exists)
@@ -37,6 +65,14 @@ frappe.ui.form.on("Material Request", {
 	},
 	cost_center(frm) {
 		if (!frm.doc.cost_center) return;
+		// v2.9.0.6 (Bug 11.F): propagate parent CC to all existing item rows
+		// so user doesn't hit User Permission errors mid-form when item rows
+		// inherited a different (Item.default_cost_center) CC like "Main - BBPL".
+		(frm.doc.items || []).forEach(row => {
+			if (row.cost_center !== frm.doc.cost_center) {
+				frappe.model.set_value(row.doctype, row.name, "cost_center", frm.doc.cost_center);
+			}
+		});
 		// Check if selected CC is Direct PO
 		frappe.call({
 			method: "trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config.check_direct_po_cc",
