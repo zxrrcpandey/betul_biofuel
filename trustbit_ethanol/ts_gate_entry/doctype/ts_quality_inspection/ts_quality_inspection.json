@@ -52,12 +52,12 @@
  ],
  "fields": [
   {
-   "default": "BBPL-QI-.YYYY.-.#####",
+   "default": "BBF-QI-.YYYY.-.#####",
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "hidden": 1,
    "label": "Series",
-   "options": "BBPL-QI-.YYYY.-.#####"
+   "options": "BBF-QI-.YYYY.-.#####"
   },
   {
    "bold": 1,
@@ -369,7 +369,7 @@
    "link_fieldname": "quality_inspection"
   }
  ],
- "modified": "2026-04-27 11:30:00",
+ "modified": "2026-04-27 12:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Quality Inspection",
