@@ -17,6 +17,12 @@
   "item_category",
   "inspection_date",
   "inspector",
+  "vehicle_party_section",
+  "vehicle_number",
+  "party_name",
+  "column_break_vehicle_party",
+  "operator_name",
+  "rst_number",
   "template_section",
   "qc_template",
   "column_break_template",
@@ -139,6 +145,47 @@
    "fieldtype": "Link",
    "label": "Inspector",
    "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "vehicle_party_section",
+   "fieldtype": "Section Break",
+   "label": "Vehicle & Party Info",
+   "collapsible": 0
+  },
+  {
+   "description": "Auto-fetched from Token. Vehicle registration number.",
+   "fieldname": "vehicle_number",
+   "fieldtype": "Data",
+   "label": "Vehicle Number",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Auto-fetched from PO Supplier (via Gate Entry).",
+   "fieldname": "party_name",
+   "fieldtype": "Data",
+   "label": "Party Name",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_vehicle_party",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Optional. Name of the QC operator performing the inspection (manual entry).",
+   "fieldname": "operator_name",
+   "fieldtype": "Data",
+   "label": "Operator Name"
+  },
+  {
+   "description": "Auto-fetched from Token (Weighbridge RST slip number).",
+   "fieldname": "rst_number",
+   "fieldtype": "Data",
+   "label": "RST Number",
+   "in_standard_filter": 1,
    "read_only": 1
   },
   {
@@ -369,7 +416,7 @@
    "link_fieldname": "quality_inspection"
   }
  ],
- "modified": "2026-04-27 12:00:00",
+ "modified": "2026-04-27 18:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Quality Inspection",

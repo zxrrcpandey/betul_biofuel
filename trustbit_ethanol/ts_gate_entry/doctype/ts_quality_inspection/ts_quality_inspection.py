@@ -47,6 +47,8 @@ class TSQualityInspection(Document):
 
 	def validate(self):
 		self._calculate_variances()
+		# v2.9.0.8: rate-based per-row recalc BEFORE summing into total
+		self._recalc_param_deductions()
 		self._calculate_total_deductions()
 
 	def before_submit(self):
@@ -133,6 +135,18 @@ class TSQualityInspection(Document):
 	def _auto_fetch_references(self):
 		if not self.token_number:
 			return
+		# v2.9.0.8: pull vehicle_number + custom_rst_number directly from Token
+		token_data = frappe.db.get_value(
+			"TS Token",
+			self.token_number,
+			["vehicle_number", "custom_rst_number"],
+			as_dict=True,
+		)
+		if token_data:
+			if not self.vehicle_number:
+				self.vehicle_number = token_data.get("vehicle_number")
+			if not self.rst_number:
+				self.rst_number = token_data.get("custom_rst_number")
 		gate_entry = frappe.db.get_value(
 			"TS Gate Entry",
 			{"token_number": self.token_number, "docstatus": 1},
@@ -152,6 +166,15 @@ class TSQualityInspection(Document):
 				self.item_code = items[0].item_code
 				if not self.item_name:
 					self.item_name = items[0].item_name
+			# v2.9.0.8: pull supplier_name from PO → party_name
+			if gate_entry.purchase_order and not self.party_name:
+				supplier_name = frappe.db.get_value(
+					"Purchase Order",
+					gate_entry.purchase_order,
+					"supplier_name",
+				)
+				if supplier_name:
+					self.party_name = supplier_name
 
 	def _generate_quality_report_no(self):
 		"""
@@ -176,6 +199,34 @@ class TSQualityInspection(Document):
 				self.moisture_variance_percent = round(
 					flt(self.actual_moisture_percent) - flt(self.po_moisture_percent), 3
 				)
+
+	def _recalc_param_deductions(self):
+		"""v2.9.0.8 rate-based deduction calc. Per row:
+
+		    deduction_pct = max(0, (actual_value - max_value)) * deduction_per_unit
+
+		Default rate = 1.0 if deduction_per_unit empty (matches Option A simple subtract).
+		Only Numeric parameter_type rows are processed; Boolean/Text/Select skipped.
+		Lesson 200: amend cycle preserves amended_from. We still recalc on validate
+		but the JSON makes deduction_pct read_only so the field remains tamper-protected
+		via standard Frappe permissions (no manual entry).
+		"""
+		for row in (self.parameters or []):
+			if row.parameter_type != "Numeric":
+				continue  # skip Pass/Fail / Boolean / Text / Select
+			try:
+				actual = flt(row.actual_value)
+				max_val = flt(row.max_value)
+				rate = flt(row.deduction_per_unit) or 1.0
+			except (TypeError, ValueError):
+				continue
+			# Guard: empty/null actual_value flt() returns 0; if user hasn't entered
+			# a value yet, leave deduction at 0 instead of "0 - max" negative.
+			if not row.actual_value or str(row.actual_value).strip() == "":
+				row.deduction_pct = 0
+				continue
+			excess = max(0, actual - max_val)
+			row.deduction_pct = round(excess * rate, 3)
 
 	def _calculate_total_deductions(self):
 		"""Sum row-level deduction_pct → total_deduction_pct → total_deduction_kg."""
@@ -312,6 +363,8 @@ class TSQualityInspection(Document):
 				"min_value": tpl_row.min_value,
 				"max_value": tpl_row.max_value,
 				"is_critical": tpl_row.is_critical,
+				# v2.9.0.8: copy rate from template (default 1.0 = simple subtract)
+				"deduction_per_unit": flt(tpl_row.get("deduction_per_unit")) or 1.0,
 				"deduction_pct": 0,
 			})
 		# Auto-set bag_type from template default if blank
@@ -362,6 +415,8 @@ def populate_template_rows(qi_name=None, template_name=None, qi_doc=None):
 			"min_value": tpl_row.min_value,
 			"max_value": tpl_row.max_value,
 			"is_critical": tpl_row.is_critical,
+			# v2.9.0.8: rate-based deduction calc
+			"deduction_per_unit": flt(tpl_row.get("deduction_per_unit")) or 1.0,
 			"deduction_pct": 0,
 		})
 

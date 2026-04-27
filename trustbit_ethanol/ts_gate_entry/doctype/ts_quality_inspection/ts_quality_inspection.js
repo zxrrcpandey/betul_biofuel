@@ -175,6 +175,13 @@ frappe.ui.form.on("TS Quality Inspection", {
 
 // Child table — recompute totals when deduction_pct changes
 frappe.ui.form.on("TS QI Parameter Result", {
+	// v2.9.0.8: actual_value entry triggers rate-based recalc
+	actual_value(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		_ts_recalc_deduction(row);
+		frm.refresh_field("parameters");
+		calc_totals(frm);
+	},
 	deduction_pct(frm) {
 		calc_totals(frm);
 	},
@@ -182,6 +189,29 @@ frappe.ui.form.on("TS QI Parameter Result", {
 		calc_totals(frm);
 	}
 });
+
+// v2.9.0.8: rate-based per-row recalc (Option B).
+// Mirror of server-side _recalc_param_deductions in ts_quality_inspection.py.
+function _ts_recalc_deduction(row) {
+	if (!row) return;
+	if (row.parameter_type && row.parameter_type !== "Numeric") {
+		return;  // Only Numeric rows auto-calc
+	}
+	if (!row.actual_value || String(row.actual_value).trim() === "") {
+		row.deduction_pct = 0;
+		return;
+	}
+	const actual = parseFloat(row.actual_value);
+	const max_val = parseFloat(row.max_value);
+	if (isNaN(actual)) {
+		row.deduction_pct = 0;
+		return;
+	}
+	const max_safe = isNaN(max_val) ? 0 : max_val;
+	const excess = Math.max(0, actual - max_safe);
+	const rate = parseFloat(row.deduction_per_unit) || 1.0;  // default 1.0 if not set
+	row.deduction_pct = Math.round(excess * rate * 1000) / 1000;  // 3 decimal precision
+}
 
 function calc_totals(frm) {
 	let total_pct = 0;
