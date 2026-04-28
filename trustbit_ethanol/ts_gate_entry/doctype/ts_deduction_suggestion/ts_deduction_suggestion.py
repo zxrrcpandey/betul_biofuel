@@ -200,31 +200,70 @@ def get_grain_manager_recipients():
 
 
 def notify_grain_manager_for_qi(qi_doc):
-	"""Bell + email to all Grain Manager users when QI is submitted."""
+	"""Bell + email to all Grain Manager users when QI is submitted.
+
+	v2.9.6.3 — points the notification at the auto-created draft Suggestion
+	(not the QI), so Tilok lands directly on the form he needs to fill.
+	Falls back to QI as the target if no Suggestion exists (legacy/race path).
+	"""
 	recipients = get_grain_manager_recipients()
 	if not recipients:
 		return
 	from frappe.utils import escape_html
 
+	# Find the linked Suggestion (created by auto_create_suggestion_for_qi just before).
+	suggestion_name = frappe.db.get_value(
+		"TS Deduction Suggestion",
+		{"quality_inspection": qi_doc.name, "docstatus": ["!=", 2]},
+		"name",
+	)
+	if suggestion_name:
+		target_doctype = "TS Deduction Suggestion"
+		target_name = suggestion_name
+		target_url = f"/app/ts-deduction-suggestion/{suggestion_name}"
+		subject = f"Action required: review Deduction Suggestion {suggestion_name} (QI {qi_doc.name})"
+	else:
+		target_doctype = "TS Quality Inspection"
+		target_name = qi_doc.name
+		target_url = f"/app/ts-quality-inspection/{qi_doc.name}"
+		subject = f"QI {qi_doc.name} submitted — Deduction review required"
+
 	esc_qi = escape_html(qi_doc.name or "")
 	esc_user = escape_html(frappe.session.user or "")
 	esc_total = escape_html(str(qi_doc.total_deduction_pct or 0))
-	subject = f"QI {esc_qi} submitted — Deduction Suggestion ready for review"
-	message = (
-		f"<p>Quality Inspection <b>{esc_qi}</b> has been submitted by {esc_user}.</p>"
-		f"<p>System Total Deduction: <b>{esc_total}%</b></p>"
-		f"<p>A draft <b>Deduction Suggestion</b> has been auto-created. "
-		f"Please review and submit it.</p>"
-		f"<p><a href='/app/ts-quality-inspection/{esc_qi}'>View QI</a></p>"
-	)
+	esc_target_url = escape_html(target_url)
+	esc_suggestion = escape_html(suggestion_name or "")
+
+	if suggestion_name:
+		message = (
+			f"<p>Quality Inspection <b>{esc_qi}</b> has been submitted by {esc_user}.</p>"
+			f"<p>System Total Deduction: <b>{esc_total}%</b></p>"
+			f"<p>A draft <b>Deduction Suggestion ({esc_suggestion})</b> has been auto-created. "
+			f"Please review the Actual Deduction % and submit it to release the Deduction Sheet.</p>"
+			f"<p style='margin:12px 0;'>"
+			f"<a href='{esc_target_url}' "
+			f"style='display:inline-block;padding:8px 16px;background:#5e64ff;color:#fff;"
+			f"text-decoration:none;border-radius:4px;font-weight:600;'>"
+			f"Open Deduction Suggestion</a></p>"
+			f"<p style='color:#666;font-size:13px;'>"
+			f"Source QI: <a href='/app/ts-quality-inspection/{esc_qi}'>{esc_qi}</a></p>"
+		)
+	else:
+		message = (
+			f"<p>Quality Inspection <b>{esc_qi}</b> has been submitted by {esc_user}.</p>"
+			f"<p>System Total Deduction: <b>{esc_total}%</b></p>"
+			f"<p>Please review the QI.</p>"
+			f"<p><a href='{esc_target_url}'>View QI</a></p>"
+		)
+
 	for user in recipients:
 		try:
 			note = frappe.new_doc("Notification Log")
 			note.subject = subject
 			note.email_content = message
 			note.for_user = user
-			note.document_type = "TS Quality Inspection"
-			note.document_name = qi_doc.name
+			note.document_type = target_doctype
+			note.document_name = target_name
 			note.from_user = frappe.session.user or "Administrator"
 			note.insert(ignore_permissions=True)
 		except Exception:
@@ -234,8 +273,8 @@ def notify_grain_manager_for_qi(qi_doc):
 			recipients=list(recipients),
 			subject=subject,
 			message=message,
-			reference_doctype="TS Quality Inspection",
-			reference_name=qi_doc.name,
+			reference_doctype=target_doctype,
+			reference_name=target_name,
 			delayed=False,
 		)
 	except Exception as e:
