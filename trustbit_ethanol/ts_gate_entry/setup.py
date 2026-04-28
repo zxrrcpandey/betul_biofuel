@@ -1906,6 +1906,11 @@ def seed_cc_codes():
 		"RM MAIZE/RICE/DORB - BBPL": "RM",
 		"RTS Betul - BBPL": "RTS",
 		"TRIVENI TURBINE - BBPL": "TRV-TRB",
+		# v2.9.5 — CFBBPL company cost centers (sister concern Cattle Feed BBF Pvt Ltd).
+		# Discovered missing during build phase — added so MR naming on CFBBPL
+		# doesn't fall through to the "MISC" fallback.
+		"Main - CFBBPL": "CFB-MAIN",
+		"Cattle Feed Betul Biofuel Private Limited - CFBBPL": "CFBBPL",
 	}
 
 	for cc_name, code in CC_CODES.items():

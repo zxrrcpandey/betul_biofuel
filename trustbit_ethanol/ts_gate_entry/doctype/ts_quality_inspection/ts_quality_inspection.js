@@ -1,63 +1,114 @@
-// TS Quality Inspection — v2.9.0 Day 4
+// TS Quality Inspection — v2.9.6
 // Submittable. Dual naming display. Template-driven param table.
 // Total Deduction auto-calc. Cancel + Amend supported via Frappe native UI.
+//
+// v2.9.6: Actual Deduction layer moved to TS Deduction Suggestion (per-role doctype).
+//         QI form is now QI-Inspector-only. On submit, a draft Suggestion is
+//         auto-created and Grain Manager is notified.
+
+const QI_LOCK_FIELDS = [
+	"item_category", "qc_template", "bag_type", "bag_count",
+	"moisture_percent", "impurity_percent", "foreign_matter_percent",
+	"starch_content", "actual_gcv", "actual_moisture_percent",
+	"grade", "decision", "hold_reason", "remarks"
+];
 
 frappe.ui.form.on("TS Quality Inspection", {
 	refresh(frm) {
-		// Title hint: show Quality Report No prominently in the header
 		if (frm.doc.quality_report_no) {
-			frm.dashboard.set_headline(
-				`<b>Quality Report No:</b> ${frappe.utils.escape_html(frm.doc.quality_report_no)}`
+			frm.set_intro(
+				`Quality Report No: ${frappe.utils.escape_html(frm.doc.quality_report_no)}`,
+				"blue"
 			);
+		}
+
+		// v2.9.6.1 — pure inline grid for fast Actual Value entry.
+		// CSS-based block: hide the row-form expansion + the open-row pencil.
+		// This is robust to Frappe's internal API changes.
+		if (frm.fields_dict.parameters && frm.fields_dict.parameters.$wrapper) {
+			const $w = frm.fields_dict.parameters.$wrapper;
+			$w.addClass("ts-qi-inline-only");
+			// Inject style once globally (idempotent — second .find returns same element).
+			if (!document.getElementById("ts-qi-inline-only-style")) {
+				const css = `
+.ts-qi-inline-only .grid-form-row { display: none !important; }
+.ts-qi-inline-only .btn-open-row { display: none !important; }
+.ts-qi-inline-only .grid-row-open { display: none !important; }
+.ts-qi-inline-only .row-edit { display: none !important; }
+.ts-qi-inline-only .grid-row.grid-row-open { display: none !important; }
+				`;
+				const style = document.createElement("style");
+				style.id = "ts-qi-inline-only-style";
+				style.textContent = css;
+				document.head.appendChild(style);
+			}
+			// Also kill the JS-side row-form open methods.
+			if (frm.fields_dict.parameters.grid) {
+				const grid = frm.fields_dict.parameters.grid;
+				grid.no_open = true;
+				if (grid.df) grid.df.editable_grid = 1;
+				const _killToggle = function () {
+					(grid.grid_rows || []).forEach(function (row) {
+						if (!row) return;
+						row.toggle_view = function () { return this; };
+						row.show_form = function () { return this; };
+						row.open_form = function () { return this; };
+					});
+				};
+				_killToggle();
+				setTimeout(_killToggle, 100);
+				const _origRefresh = grid.refresh.bind(grid);
+				grid.refresh = function () {
+					_origRefresh.apply(this, arguments);
+					_killToggle();
+				};
+			}
 		}
 
 		// Submitted state — lock all editable fields
 		if (frm.doc.docstatus === 1) {
-			frm.set_df_property("item_category", "read_only", 1);
-			frm.set_df_property("qc_template", "read_only", 1);
-			frm.set_df_property("bag_type", "read_only", 1);
-			frm.set_df_property("bag_count", "read_only", 1);
-			frm.set_df_property("moisture_percent", "read_only", 1);
-			frm.set_df_property("impurity_percent", "read_only", 1);
-			frm.set_df_property("foreign_matter_percent", "read_only", 1);
-			frm.set_df_property("starch_content", "read_only", 1);
-			frm.set_df_property("actual_gcv", "read_only", 1);
-			frm.set_df_property("actual_moisture_percent", "read_only", 1);
-			frm.set_df_property("grade", "read_only", 1);
-			frm.set_df_property("decision", "read_only", 1);
-			frm.set_df_property("hold_reason", "read_only", 1);
-			frm.set_df_property("remarks", "read_only", 1);
+			QI_LOCK_FIELDS.forEach(function (f) {
+				frm.set_df_property(f, "read_only", 1);
+			});
 		}
 
-		// "Create Deduction Sheet" button — only on submitted + decision Accept and no DS yet
-		if (frm.doc.docstatus === 1 && frm.doc.decision === "Accept") {
-			frappe.db.count("TS Deduction Sheet", {
-				quality_inspection: frm.doc.name,
-				docstatus: ["!=", 2]
-			}).then(count => {
-				if (count === 0) {
-					frm.add_custom_button(__("Create Deduction Sheet"), function () {
-						frappe.new_doc("TS Deduction Sheet", {
-							quality_inspection: frm.doc.name,
-							token_number: frm.doc.token_number
-						});
-					}).addClass("btn-primary");
+		// v2.9.6 — show Suggestion + DS reference buttons if linked records exist
+		if (frm.doc.docstatus === 1) {
+			frappe.db.get_list("TS Deduction Suggestion", {
+				filters: {
+					quality_inspection: frm.doc.name,
+					docstatus: ["!=", 2]
+				},
+				fields: ["name"],
+				limit: 1
+			}).then(rows => {
+				if (rows && rows.length) {
+					frm.add_custom_button(__("View Deduction Suggestion"), function () {
+						frappe.set_route("Form", "TS Deduction Suggestion", rows[0].name);
+					});
+				}
+			});
+			frappe.db.get_list("TS Deduction Sheet", {
+				filters: {
+					quality_inspection: frm.doc.name,
+					docstatus: ["!=", 2]
+				},
+				fields: ["name"],
+				limit: 1
+			}).then(rows => {
+				if (rows && rows.length) {
+					frm.add_custom_button(__("View Deduction Sheet"), function () {
+						frappe.set_route("Form", "TS Deduction Sheet", rows[0].name);
+					});
 				}
 			});
 		}
 	},
 
 	setup(frm) {
-		// Filter token dropdown — Gross Weighed onwards (when QC gate ON, broader)
 		frm.set_query("token_number", function () {
-			return {
-				filters: {
-					purpose: "Raw Material"
-				}
-			};
+			return { filters: { purpose: "Raw Material" } };
 		});
-
-		// Filter QC Template dropdown to Active templates matching item_category
 		frm.set_query("qc_template", function () {
 			let filters = { is_active: 1 };
 			if (frm.doc.item_category) {
@@ -65,22 +116,17 @@ frappe.ui.form.on("TS Quality Inspection", {
 			}
 			return { filters: filters };
 		});
-
-		// Filter bag_type to Active bag types only
 		frm.set_query("bag_type", function () {
 			return { filters: { is_active: 1 } };
 		});
 	},
 
 	token_number(frm) {
-		// v2.9.0.12: clear stale auto-fetched fields when token changes (or cleared)
-		// so re-selecting a different token shows correct values (not old ones).
+		// v2.9.0.12: clear stale auto-fetched fields when token changes
 		frm.set_value("vehicle_number", null);
 		frm.set_value("party_name", null);
 		frm.set_value("rst_number", null);
-		// note: operator_name stays — manual entry should NOT be wiped on token change
 		if (!frm.doc.token_number) return;
-		// v2.9.0.9: live auto-fetch vehicle_number + rst_number from Token (before save)
 		frappe.db.get_value("TS Token", frm.doc.token_number,
 			["vehicle_number", "custom_rst_number"]
 		).then(t => {
@@ -89,7 +135,6 @@ frappe.ui.form.on("TS Quality Inspection", {
 				if (t.message.custom_rst_number) frm.set_value("rst_number", t.message.custom_rst_number);
 			}
 		});
-		// v2.9.0.12: RST from any Weighbridge Log (draft or submitted) — overrides if WB has it
 		frappe.db.get_list("TS Weighbridge Log", {
 			filters: { token_number: frm.doc.token_number, docstatus: ["!=", 2] },
 			fields: ["rst_number"],
@@ -97,11 +142,9 @@ frappe.ui.form.on("TS Quality Inspection", {
 			order_by: "creation desc"
 		}).then(wbs => {
 			if (wbs && wbs.length && wbs[0].rst_number) {
-				// Always set — overrides Token.custom_rst_number (WB is the source of truth)
 				frm.set_value("rst_number", wbs[0].rst_number);
 			}
 		});
-		// Auto-fetch item info from Gate Entry + party_name from PO (use get_list for explicit dict response)
 		frappe.db.get_list("TS Gate Entry", {
 			filters: { token_number: frm.doc.token_number, docstatus: 1 },
 			fields: ["name", "purchase_order"],
@@ -109,7 +152,6 @@ frappe.ui.form.on("TS Quality Inspection", {
 		}).then(ges => {
 			if (ges && ges.length && ges[0].name) {
 				const ge = ges[0];
-				// v2.9.0.11 FIX: use get_list to guarantee dict return
 				if (ge.purchase_order) {
 					frappe.db.get_list("Purchase Order", {
 						filters: { name: ge.purchase_order },
@@ -122,9 +164,7 @@ frappe.ui.form.on("TS Quality Inspection", {
 						}
 					});
 				}
-				// alias for downstream item-fetch (still uses ge.name)
-				const r = { message: { name: ge.name, purchase_order: ge.purchase_order } };
-				return r;
+				return { message: { name: ge.name, purchase_order: ge.purchase_order } };
 			}
 			return null;
 		}).then(r => {
@@ -137,7 +177,6 @@ frappe.ui.form.on("TS Quality Inspection", {
 					if (items && items.length) {
 						frm.set_value("item_code", items[0].item_code);
 						frm.set_value("item_name", items[0].item_name);
-						// Auto-detect category from item_group
 						frappe.db.get_value("Item", items[0].item_code, "item_group").then(ig => {
 							if (ig.message && ig.message.item_group) {
 								let group = ig.message.item_group.toLowerCase();
@@ -155,19 +194,16 @@ frappe.ui.form.on("TS Quality Inspection", {
 	},
 
 	qc_template(frm) {
-		// On QC Template change: populate parameters child table.
-		// If rows already exist, confirm before clearing.
 		if (!frm.doc.qc_template) return;
-		if (frm.doc.docstatus !== 0) return;  // submitted/cancelled — never repopulate
+		if (frm.doc.docstatus !== 0) return;
 
 		const populate = function () {
 			frappe.call({
 				method: "trustbit_ethanol.ts_gate_entry.doctype.ts_quality_inspection.ts_quality_inspection.populate_template_rows",
-				type: "POST",  // Lesson 175 — server endpoint declares methods=["POST"]
+				type: "POST",
 				args: {
 					qi_name: frm.doc.name || null,
-					template_name: frm.doc.qc_template,
-					qi_doc: frm.doc
+					template_name: frm.doc.qc_template
 				},
 				callback: function (r) {
 					if (r.message && r.message.parameters) {
@@ -176,7 +212,6 @@ frappe.ui.form.on("TS Quality Inspection", {
 							let child = frm.add_child("parameters");
 							Object.assign(child, row);
 						});
-						// Auto-fetch bag_type from template if user hasn't picked one yet
 						if (r.message.bag_type && !frm.doc.bag_type) {
 							frm.set_value("bag_type", r.message.bag_type);
 						}
@@ -196,7 +231,7 @@ frappe.ui.form.on("TS Quality Inspection", {
 			frappe.confirm(
 				__("Replacing parameters will discard {0} existing row(s). Continue?", [frm.doc.parameters.length]),
 				populate,
-				function () { /* cancel — preserve existing rows */ }
+				function () { /* cancel */ }
 			);
 		} else {
 			populate();
@@ -208,8 +243,6 @@ frappe.ui.form.on("TS Quality Inspection", {
 	},
 
 	bag_type(frm) {
-		// fetch_from on bag_weight_kg pulls from bag_type.standard_weight_kg automatically.
-		// Then recalc.
 		setTimeout(() => calc_totals(frm), 100);
 	},
 
@@ -224,7 +257,6 @@ frappe.ui.form.on("TS Quality Inspection", {
 
 // Child table — recompute totals when deduction_pct changes
 frappe.ui.form.on("TS QI Parameter Result", {
-	// v2.9.0.8: actual_value entry triggers rate-based recalc
 	actual_value(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		_ts_recalc_deduction(row);
@@ -239,27 +271,40 @@ frappe.ui.form.on("TS QI Parameter Result", {
 	}
 });
 
-// v2.9.0.8: rate-based per-row recalc (Option B).
-// Mirror of server-side _recalc_param_deductions in ts_quality_inspection.py.
+// v2.9.6: direction-aware rate-based per-row recalc (mirror of server-side _recalc_param_deductions).
+// Direction controls which side(s) fire:
+//   "Higher is Better" → only shortfall (deduct when actual < min, e.g. Starch)
+//   "Lower is Better"  → only excess    (deduct when actual > max, e.g. Moisture)
+//   "In Range" / blank → both (deduct outside [min, max])
 function _ts_recalc_deduction(row) {
 	if (!row) return;
-	if (row.parameter_type && row.parameter_type !== "Numeric") {
-		return;  // Only Numeric rows auto-calc
-	}
+	if (row.parameter_type && row.parameter_type !== "Numeric") return;
 	if (!row.actual_value || String(row.actual_value).trim() === "") {
 		row.deduction_pct = 0;
 		return;
 	}
 	const actual = parseFloat(row.actual_value);
-	const max_val = parseFloat(row.max_value);
 	if (isNaN(actual)) {
 		row.deduction_pct = 0;
 		return;
 	}
-	const max_safe = isNaN(max_val) ? 0 : max_val;
-	const excess = Math.max(0, actual - max_safe);
-	const rate = parseFloat(row.deduction_per_unit) || 1.0;  // default 1.0 if not set
-	row.deduction_pct = Math.round(excess * rate * 1000) / 1000;  // 3 decimal precision
+	const min_val = parseFloat(row.min_value);
+	const max_val = parseFloat(row.max_value);
+	const shortfall = (!isNaN(min_val) && row.min_value !== null && row.min_value !== undefined)
+		? Math.max(0, min_val - actual) : 0;
+	const excess = (!isNaN(max_val) && row.max_value !== null && row.max_value !== undefined)
+		? Math.max(0, actual - max_val) : 0;
+	const direction = row.direction || "In Range";
+	let counted = 0;
+	if (direction === "Higher is Better") {
+		counted = shortfall;
+	} else if (direction === "Lower is Better") {
+		counted = excess;
+	} else {
+		counted = shortfall + excess;
+	}
+	const rate = parseFloat(row.deduction_per_unit) || 1.0;
+	row.deduction_pct = Math.round(counted * rate * 1000) / 1000;
 }
 
 function calc_totals(frm) {

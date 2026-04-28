@@ -1,8 +1,13 @@
 """
-TS Quality Inspection — v2.9.0 Day 4 restructure.
+TS Quality Inspection — v2.9.6.
 
-Submittable DocType (docstatus 0/1/2). Drops legacy `status` field.
-Adds:
+QI Inspector creates → fills parameters + decision → submits.
+On QI submit: a draft TS Deduction Suggestion is auto-created and Grain Manager
+is notified. Grain Manager confirms/overrides the deduction in the Suggestion
+form (per-role doctype boundary, Lesson 205). DS auto-creates from Suggestion
+on Suggestion submit.
+
+Submittable DocType (docstatus 0/1/2). Fields:
   - quality_report_no: auto-generated BBPL-QR-YY-##### (race-safe via make_autoname)
   - lab_register_no: optional manual reference
   - qc_template: drives parameters child table population
@@ -12,26 +17,47 @@ Adds:
 
 Lifecycle:
   before_insert  → autofetch refs (token, GE, PO, item) + auto-generate Quality Report No
-  validate       → calc legacy variances + total_deduction_pct + total_deduction_kg
-  before_submit  → mandate decision + grade + parameters
-  on_submit      → kept for ts_qc_auto_reject hook (now reads decision instead of status)
-  on_cancel      → unwind PR.ts_qc_status flag
+  validate       → calc legacy variances + per-row deductions + total_deduction_pct
+  before_submit  → mandate decision + qc_template + parameters actual values
+  on_submit      → auto-create draft TS Deduction Suggestion + notify Grain Manager
+  on_cancel      → cascade-cancel linked Suggestion (which cascades to draft DS)
 
 Lesson references:
-  - 192: NEVER use `after_save` doc_event — use `on_update`. We use Frappe's native submit hooks.
-  - 200: amend cycle preserves `amended_from` — exempt from autoname collision (unique idx tolerates).
+  - 175: whitelisted mutation methods declare methods=["POST"].
+  - 176: frappe.flags.in_xxx wrap in try/finally.
+  - 196: notification failure NEVER blocks submit (try/except).
+  - 200: amend cycle preserves `amended_from` — exempt from autoname collision.
+  - 205: per-role doctype boundary (Suggestion replaces inline-edit on QI).
 """
 
 import frappe
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
-from frappe.utils import now_datetime, flt, escape_html
+from frappe.utils import flt, escape_html
 
 
-GRAIN_NOTIFY_RECIPIENTS = [
-	"grain.manager@betulbiofuel.com",  # Tilok Katariya
-]
-GRAIN_NOTIFY_ROLES = ["Accounts Manager", "Accounts User", "Grain Manager"]
+def _format_standard(target, min_v, max_v):
+	"""Format the QI parameter Standard column.
+
+	Priority:
+	  1. target_value if explicitly set on template
+	  2. "min - max" range when both bounds are set (handles Min=0)
+	  3. "≤ max" or "≥ min" when only one bound is set
+	  4. "0" as final fallback
+	"""
+	def _fmt(v):
+		# strip trailing zeros: 4000.000 → "4000", 14.5 → "14.5"
+		return f"{flt(v):g}"
+
+	if target is not None:
+		return _fmt(target)
+	if min_v is not None and max_v is not None:
+		return f"{_fmt(min_v)} - {_fmt(max_v)}"
+	if max_v is not None:
+		return f"≤ {_fmt(max_v)}"
+	if min_v is not None:
+		return f"≥ {_fmt(min_v)}"
+	return "0"
 
 
 class TSQualityInspection(Document):
@@ -50,13 +76,22 @@ class TSQualityInspection(Document):
 		# v2.9.0.8: rate-based per-row recalc BEFORE summing into total
 		self._recalc_param_deductions()
 		self._calculate_total_deductions()
+		# v2.9.6: friendly error when Reject/Hold decision lacks a reason.
+		self._validate_hold_reason()
+
+	def _validate_hold_reason(self):
+		if self.decision in ("Hold", "Reject") and not (self.hold_reason or "").strip():
+			frappe.throw(
+				f"You picked Decision = '{self.decision}'. "
+				"Please type a short reason in the 'Hold / Reject Reason' box and save again.",
+				title="Reason Required",
+			)
 
 	def before_submit(self):
 		# Hard gates on submit
 		if not self.decision:
 			frappe.throw("Please set a Decision (Accept / Reject / Hold) before submitting.")
 		# v2.9.0.13: grade mandatory check removed (field hidden per user request).
-		# Field kept in schema for backward compat with existing 380+ QIs that have grade values.
 		if not self.qc_template:
 			frappe.throw("QC Template is mandatory before submitting.")
 		# Parameter rows recommended (not strictly mandatory — some templates may have 0 params)
@@ -69,10 +104,22 @@ class TSQualityInspection(Document):
 					)
 
 	def on_submit(self):
-		# Send notification to Accounts Manager + Accounts User + Grain Manager (Tilok)
-		# Wrapped in try so notification failure NEVER blocks submit (Lesson 196 spirit).
+		# v2.9.6: auto-create Deduction Suggestion + notify Grain Manager.
+		# Wrapped — Suggestion creation failure NEVER blocks QI submit (Lesson 196).
+		from trustbit_ethanol.ts_gate_entry.doctype.ts_deduction_suggestion.ts_deduction_suggestion import (
+			auto_create_suggestion_for_qi,
+			notify_grain_manager_for_qi,
+		)
+		if self.qc_template:
+			try:
+				auto_create_suggestion_for_qi(self)
+			except Exception as e:
+				frappe.log_error(
+					message=f"QI {self.name} auto-create Suggestion failed: {e}",
+					title="ts_quality_inspection.on_submit auto_suggestion",
+				)
 		try:
-			self._notify_deduction_review()
+			notify_grain_manager_for_qi(self)
 		except Exception as e:
 			frappe.log_error(
 				message=f"QI {self.name} on_submit notification failed: {e}",
@@ -80,6 +127,15 @@ class TSQualityInspection(Document):
 			)
 
 	def on_cancel(self):
+		# v2.9.6: Cascade-cancel linked Suggestion (which then cascades to draft DS).
+		try:
+			self._cancel_linked_suggestions()
+		except Exception as e:
+			frappe.log_error(
+				message=f"QI {self.name} on_cancel Suggestion cascade failed: {e}",
+				title="ts_quality_inspection.on_cancel suggestion_cascade",
+			)
+
 		# Reset linked PR.ts_qc_status to Pending if currently Approved/Rejected
 		# from this QI (best-effort; idempotent).
 		token = self.token_number
@@ -110,23 +166,62 @@ class TSQualityInspection(Document):
 				title="ts_quality_inspection.on_cancel",
 			)
 
+	def _cancel_linked_suggestions(self):
+		"""Cancel any submitted Suggestion linked to this QI when QI is cancelled.
+
+		Suggestion's own on_cancel will cascade to draft DS (or warn for submitted DS).
+		Lesson 176: wrap flag mutation in try/finally.
+		"""
+		linked = frappe.get_all(
+			"TS Deduction Suggestion",
+			filters={"quality_inspection": self.name, "docstatus": 1},
+			pluck="name",
+		)
+		if not linked:
+			return
+		frappe.flags.in_qi_internal = True
+		try:
+			for s_name in linked:
+				try:
+					s = frappe.get_doc("TS Deduction Suggestion", s_name)
+					s.cancel()
+					s.add_comment(
+						"Info",
+						f"[QI_CASCADE_CANCEL] Suggestion auto-cancelled because parent QI {self.name} was cancelled.",
+					)
+				except Exception as e:
+					frappe.log_error(
+						message=f"Suggestion {s_name} cascade-cancel failed: {e}",
+						title="ts_quality_inspection cascade Suggestion cancel",
+					)
+		finally:
+			frappe.flags.in_qi_internal = False
+
 	# ── helpers ────────────────────────────────────────────────────────
 	def _validate_token_status(self):
 		if not self.token_number:
 			return
+		# Lesson 200 — amend cycle bypass: cancelled QI being re-created via amend
+		# legitimately reuses the original token even if status has progressed.
+		if getattr(self, "amended_from", None):
+			return
 		token_status = frappe.db.get_value("TS Token", self.token_number, "status")
-		# Allow QI from Gross Weighed onwards (matches v2.8.1 Phase B flexible flow)
-		allowed_new = (
-			"Gross Weighed", "Tare Weighed", "GRN Created",
+		# QI eligible from Gross Weighed through Unloading and post-weighing stages.
+		# 'Quality Done' is INTENTIONALLY excluded — a QI already exists for this token,
+		# blocking duplicate creation. Re-create via amend instead (handled above).
+		# v2.9.5.2 — removed ts_qc_gate_enabled branch on QI creation.
+		# v2.9.6  — added Unloading; excluded Quality Done.
+		allowed = (
+			"Gross Weighed", "Unloading", "Tare Weighed", "GRN Created",
 			"Plant Exited", "Campus Exited", "Exited",
 		)
-		allowed_legacy = ("Gross Weighed",)
-		try:
-			qc_gate_on = bool(frappe.db.get_single_value("TS Settings", "ts_qc_gate_enabled"))
-		except Exception:
-			qc_gate_on = False
-		allowed = allowed_new if qc_gate_on else allowed_legacy
 		if token_status not in allowed:
+			if token_status == "Quality Done":
+				frappe.throw(
+					f"Token {self.token_number} already has a Quality Inspection "
+					"(stage: 'Quality Done'). To re-do, cancel the existing QI and use the "
+					"'Amend' button on the cancelled record instead of creating a new one."
+				)
 			frappe.throw(
 				f"Token {self.token_number} is at stage '{token_status}'. "
 				f"Quality Inspection can only be created for tokens in: {', '.join(allowed)}."
@@ -177,16 +272,8 @@ class TSQualityInspection(Document):
 					self.party_name = supplier_name
 
 	def _generate_quality_report_no(self):
-		"""
-		Race-safe Quality Report No: BBPL-QR-YY-##### using Frappe's make_autoname.
-
-		make_autoname uses tabSeries with row-level locking — same pattern as
-		BBPL-MR-* counters (Lesson 136). NEVER use SELECT-then-INSERT.
-		"""
-		# Format: BBPL-QR-YY-##### (5-digit zero-padded, year-2-digit)
-		series_pattern = "BBPL-QR-.YY.-.#####"
-		generated = make_autoname(series_pattern)
-		return generated
+		"""Race-safe Quality Report No: BBPL-QR-YY-##### using Frappe's make_autoname."""
+		return make_autoname("BBPL-QR-.YY.-.#####")
 
 	def _calculate_variances(self):
 		"""Legacy coal variance calc (kept for backward compat with dashboards)."""
@@ -201,157 +288,61 @@ class TSQualityInspection(Document):
 				)
 
 	def _recalc_param_deductions(self):
-		"""v2.9.0.8 rate-based deduction calc. Per row:
+		"""v2.9.6 direction-aware deduction calc. Per row:
 
-		    deduction_pct = max(0, (actual_value - max_value)) * deduction_per_unit
+		    shortfall = max(0, min_value - actual)   ← fires when actual is BELOW min
+		    excess    = max(0, actual - max_value)   ← fires when actual is ABOVE max
 
-		Default rate = 1.0 if deduction_per_unit empty (matches Option A simple subtract).
-		Only Numeric parameter_type rows are processed; Boolean/Text/Select skipped.
-		Lesson 200: amend cycle preserves amended_from. We still recalc on validate
-		but the JSON makes deduction_pct read_only so the field remains tamper-protected
-		via standard Frappe permissions (no manual entry).
+		Direction controls which side counts:
+		    - "Higher is Better"  → only shortfall  (e.g. Starch, GCV — low is bad)
+		    - "Lower is Better"   → only excess     (e.g. Moisture, Impurity — high is bad)
+		    - "In Range" / blank  → shortfall + excess  (penalty either side)
+
+		    deduction_pct = (counted_units) * deduction_per_unit
 		"""
 		for row in (self.parameters or []):
 			if row.parameter_type != "Numeric":
-				continue  # skip Pass/Fail / Boolean / Text / Select
+				continue
 			try:
 				actual = flt(row.actual_value)
+				min_val = flt(row.min_value)
 				max_val = flt(row.max_value)
 				rate = flt(row.deduction_per_unit) or 1.0
 			except (TypeError, ValueError):
 				continue
-			# Guard: empty/null actual_value flt() returns 0; if user hasn't entered
-			# a value yet, leave deduction at 0 instead of "0 - max" negative.
 			if not row.actual_value or str(row.actual_value).strip() == "":
 				row.deduction_pct = 0
 				continue
-			excess = max(0, actual - max_val)
-			row.deduction_pct = round(excess * rate, 3)
+			shortfall = max(0, min_val - actual) if row.min_value is not None else 0
+			excess = max(0, actual - max_val) if row.max_value is not None else 0
+			direction = (row.direction or "In Range")
+			if direction == "Higher is Better":
+				counted = shortfall
+			elif direction == "Lower is Better":
+				counted = excess
+			else:  # In Range or blank
+				counted = shortfall + excess
+			row.deduction_pct = round(counted * rate, 3)
 
 	def _calculate_total_deductions(self):
 		"""Sum row-level deduction_pct → total_deduction_pct → total_deduction_kg."""
 		total_pct = sum(flt(row.deduction_pct) for row in (self.parameters or []))
 		self.total_deduction_pct = round(total_pct, 3)
-		# Total kg = total_pct / 100 * bag_count * bag_weight_kg
 		bag_count = flt(self.bag_count) or 0
 		bag_weight = flt(self.bag_weight_kg) or 0
 		self.total_deduction_kg = round((total_pct / 100.0) * bag_count * bag_weight, 3)
 
-	def _notify_deduction_review(self):
-		"""On submit, notify Accounts Manager + Accounts User + grain manager (Tilok)."""
-		# Build recipient set — only enabled users to avoid notifying disabled accounts.
-		recipients = set()
-		role_users = frappe.get_all(
-			"Has Role",
-			filters={"role": ["in", GRAIN_NOTIFY_ROLES], "parenttype": "User"},
-			pluck="parent",
-		)
-		# Filter to enabled User accounts only (avoids notifying retired / disabled users)
-		if role_users:
-			enabled_users = frappe.get_all(
-				"User",
-				filters={"name": ["in", role_users], "enabled": 1},
-				pluck="name",
-			)
-			for u in enabled_users:
-				if u and u not in ("Administrator", "Guest"):
-					recipients.add(u)
-		# Hardcoded grain manager email (Tilok) — only if such user exists AND enabled
-		for email in GRAIN_NOTIFY_RECIPIENTS:
-			if frappe.db.exists("User", {"name": email, "enabled": 1}):
-				recipients.add(email)
-		if not recipients:
-			return
-
-		subject = (
-			f"Quality Report {self.quality_report_no} ready for deduction review"
-		)
-		# DS form pre-linked to this QI:
-		ds_link = (
-			f"/app/ts-deduction-sheet/new?quality_inspection={self.name}"
-		)
-		qi_link = f"/app/ts-quality-inspection/{self.name}"
-		body_html = (
-			f"<p>Quality Report <b>{escape_html(self.quality_report_no or self.name)}</b> "
-			f"has been submitted and is ready for deduction review.</p>"
-			f"<table style='border-collapse:collapse;margin:8px 0;'>"
-			f"<tr><td style='padding:4px 12px 4px 0;'><b>Quality Report No:</b></td>"
-			f"<td>{escape_html(self.quality_report_no or '')}</td></tr>"
-			f"<tr><td style='padding:4px 12px 4px 0;'><b>Token:</b></td>"
-			f"<td>{escape_html(self.token_number or '')}</td></tr>"
-			f"<tr><td style='padding:4px 12px 4px 0;'><b>Item:</b></td>"
-			f"<td>{escape_html(self.item_name or self.item_code or '')}</td></tr>"
-			f"<tr><td style='padding:4px 12px 4px 0;'><b>Total Deduction %:</b></td>"
-			f"<td>{escape_html(str(self.total_deduction_pct or 0))}</td></tr>"
-			f"<tr><td style='padding:4px 12px 4px 0;'><b>Total Deduction (Kg):</b></td>"
-			f"<td>{escape_html(str(self.total_deduction_kg or 0))}</td></tr>"
-			f"<tr><td style='padding:4px 12px 4px 0;'><b>Decision:</b></td>"
-			f"<td>{escape_html(self.decision or '')}</td></tr>"
-			f"</table>"
-			f"<p>"
-			f"<a href='{escape_html(ds_link)}' "
-			f"style='display:inline-block;padding:8px 16px;background:#5e64ff;"
-			f"color:#fff;text-decoration:none;border-radius:4px;font-weight:600;'>"
-			f"View Details &amp; Create Deduction Sheet</a>"
-			f"&nbsp;&nbsp;"
-			f"<a href='{escape_html(qi_link)}' "
-			f"style='display:inline-block;padding:8px 16px;background:#fff;"
-			f"color:#5e64ff;text-decoration:none;border:1px solid #5e64ff;"
-			f"border-radius:4px;font-weight:600;'>"
-			f"View Quality Report</a>"
-			f"</p>"
-		)
-
-		# Bell notifications (Notification Log) for each recipient
-		for user in recipients:
-			try:
-				frappe.get_doc({
-					"doctype": "Notification Log",
-					"for_user": user,
-					"subject": subject,
-					"email_content": body_html,
-					"type": "Alert",
-					"document_type": "TS Quality Inspection",
-					"document_name": self.name,
-				}).insert(ignore_permissions=True)
-			except Exception as e:
-				frappe.log_error(
-					message=f"Notification Log insert failed for {user}: {e}",
-					title="ts_quality_inspection notify",
-				)
-
-		# Email — best-effort, don't block on smtp failure
-		try:
-			frappe.sendmail(
-				recipients=list(recipients),
-				subject=subject,
-				message=body_html,
-				reference_doctype="TS Quality Inspection",
-				reference_name=self.name,
-				now=False,  # queue
-			)
-		except Exception as e:
-			frappe.log_error(
-				message=f"sendmail failed for QI {self.name}: {e}",
-				title="ts_quality_inspection sendmail",
-			)
-
 	# ── whitelisted helpers ────────────────────────────────────────────
-	# Lesson 175: instance method that calls self.save() must be POST-only
-	# to enforce CSRF protection.
 	@frappe.whitelist(methods=["POST"])
 	def populate_from_template(self, template_name=None):
-		"""
-		Populate parameters child table from QC Template (server-side instance method).
+		"""Populate parameters child table from QC Template (server-side instance method).
 
-		Race-safe: clears existing rows then appends. Caller (JS) should
-		confirm before invoking if rows already exist. Persists via .save().
+		Race-safe: clears existing rows then appends. Persists via .save().
 		"""
 		template_name = template_name or self.qc_template
 		if not template_name:
 			frappe.throw("QC Template is required.")
 		tpl = frappe.get_doc("TS QC Template", template_name)
-		# Clear existing parameter rows
 		self.set("parameters", [])
 		for tpl_row in (tpl.parameters or []):
 			self.append("parameters", {
@@ -359,15 +350,16 @@ class TSQualityInspection(Document):
 				"parameter_label": tpl_row.parameter_label,
 				"parameter_type": tpl_row.parameter_type,
 				"uom": tpl_row.uom,
-				"standard_value": tpl_row.target_value,
+				"standard_value": _format_standard(
+					tpl_row.target_value, tpl_row.min_value, tpl_row.max_value
+				),
+				"direction": tpl_row.get("direction") or "In Range",
 				"min_value": tpl_row.min_value,
 				"max_value": tpl_row.max_value,
 				"is_critical": tpl_row.is_critical,
-				# v2.9.0.8: copy rate from template (default 1.0 = simple subtract)
 				"deduction_per_unit": flt(tpl_row.get("deduction_per_unit")) or 1.0,
 				"deduction_pct": 0,
 			})
-		# Auto-set bag_type from template default if blank
 		if tpl.supports_bags and tpl.bag_type and not self.bag_type:
 			self.bag_type = tpl.bag_type
 			weight = frappe.db.get_value("TS Bag Type Master", tpl.bag_type, "standard_weight_kg")
@@ -378,14 +370,9 @@ class TSQualityInspection(Document):
 
 
 @frappe.whitelist(methods=["POST"])
-def populate_template_rows(qi_name=None, template_name=None, qi_doc=None):
-	"""
-	Module-level whitelisted helper. Returns the rows that should populate the
-	child table on the client form WITHOUT persisting (client may not have
-	saved yet). Permission check: caller must have write perm on TS QI
-	(or create perm if qi_name is None).
-
-	Lesson 175: mutation-style endpoint — POST only.
+def populate_template_rows(qi_name=None, template_name=None):
+	"""Module-level whitelisted helper. Returns the rows that should populate the
+	child table on the client form WITHOUT persisting (client may not have saved yet).
 	"""
 	if not template_name:
 		frappe.throw("template_name is required")
@@ -411,11 +398,13 @@ def populate_template_rows(qi_name=None, template_name=None, qi_doc=None):
 			"parameter_label": tpl_row.parameter_label,
 			"parameter_type": tpl_row.parameter_type,
 			"uom": tpl_row.uom,
-			"standard_value": tpl_row.target_value,
+			"standard_value": _format_standard(
+				tpl_row.target_value, tpl_row.min_value, tpl_row.max_value
+			),
+			"direction": tpl_row.get("direction") or "In Range",
 			"min_value": tpl_row.min_value,
 			"max_value": tpl_row.max_value,
 			"is_critical": tpl_row.is_critical,
-			# v2.9.0.8: rate-based deduction calc
 			"deduction_per_unit": flt(tpl_row.get("deduction_per_unit")) or 1.0,
 			"deduction_pct": 0,
 		})

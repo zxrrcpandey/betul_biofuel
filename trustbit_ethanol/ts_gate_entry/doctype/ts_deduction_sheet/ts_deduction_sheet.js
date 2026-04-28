@@ -1,37 +1,55 @@
-// TS Deduction Sheet — v2.9.0 Day 4
+// TS Deduction Sheet — v2.9.0 Day 4 / v2.9.5 snapshot model
 // Submittable. 3-layer display:
 //   Layer 1 (System) — read-only, fetched from QI on insert
-//   Layer 2 (Actual) — Tilok edits; reason mandatory if differs > 0.01%
+//   Layer 2 (Actual) — v2.9.5: snapshot from parent QI, unconditionally read-only
 //   Layer 3 (Submit) — Accounts Manager / SM only
+//
+// v2.9.5: actual_deduction_* fields are ALWAYS read-only here. Editing happens
+// on the source QI before submit. DS auto-creates from QI submit.
 
 frappe.ui.form.on("TS Deduction Sheet", {
 	refresh(frm) {
-		// Header banner: show DS number + linked QI
+		// v2.9.5.1 — use frm.set_intro (NOT set_headline — Lesson 163: dashboard wipes on refresh)
 		if (frm.doc.ds_number || frm.doc.name) {
 			let ds = frappe.utils.escape_html(frm.doc.ds_number || frm.doc.name || "");
-			let qr_part = frm.doc.quality_inspection
-				? ` &middot; QI: <a href="/app/ts-quality-inspection/${encodeURIComponent(frm.doc.quality_inspection)}">${frappe.utils.escape_html(frm.doc.quality_inspection)}</a>`
+			let qi_part = frm.doc.quality_inspection
+				? ` · QI: ${frappe.utils.escape_html(frm.doc.quality_inspection)}`
 				: "";
-			frm.dashboard.set_headline(`<b>DS Number:</b> ${ds}${qr_part}`);
+			frm.set_intro(`DS Number: ${ds}${qi_part}`, "blue");
 		}
 
-		// Layered visibility — system fields ALWAYS read-only on form
-		frm.set_df_property("system_deduction_pct", "read_only", 1);
-		frm.set_df_property("system_deduction_kg", "read_only", 1);
+		// v2.9.5 — Layer-1 system fields + Layer-2 actual_deduction_* are
+		// UNCONDITIONALLY read-only on the form (snapshots from QI).
+		[
+			"system_deduction_pct", "system_deduction_kg",
+			"actual_deduction_pct", "actual_deduction_kg", "actual_deduction_reason",
+			"filled_by", "filled_at"
+		].forEach(function (f) {
+			frm.set_df_property(f, "read_only", 1);
+		});
 
-		// Submitted state — lock all editable fields
+		// v2.9.5 — informational banner pointing to source QI for editing
+		if (frm.doc.docstatus === 0 && frm.doc.quality_inspection) {
+			let qi_link = `/app/ts-quality-inspection/${encodeURIComponent(frm.doc.quality_inspection)}`;
+			frm.dashboard.add_indicator(
+				__("Actual values are snapshots from QI — edit on QI before submit"),
+				"blue"
+			);
+		}
+
+		// Submitted state — lock other editable legacy fields too
 		if (frm.doc.docstatus === 1) {
-			["actual_deduction_pct", "actual_deduction_reason", "decision",
-			 "decision_remarks", "invoice_qty", "item_rate", "weight_deduction",
+			["decision", "decision_remarks",
+			 "invoice_qty", "item_rate", "weight_deduction",
 			 "unloading_rate_per_bag", "dhalta_rate_gm_per_qtl", "brokerage_rate_per_mt"
 			].forEach(function (f) {
 				frm.set_df_property(f, "read_only", 1);
 			});
 		}
 
-		// Cancelled state
+		// v2.9.5.1 — Cancelled state via add_indicator (NOT set_headline_alert — Lesson 163)
 		if (frm.doc.docstatus === 2) {
-			frm.dashboard.set_headline_alert(__("This Deduction Sheet has been Cancelled."), "red");
+			frm.dashboard.add_indicator(__("Cancelled"), "red");
 		}
 
 		// Hold indicators for Coal (legacy)
@@ -69,14 +87,16 @@ frappe.ui.form.on("TS Deduction Sheet", {
 	},
 
 	quality_inspection(frm) {
+		// v2.9.5 — manual DS create still allowed (legacy path / admin override).
+		// Snapshots Layer 1 + Layer 2 from the QI on link change.
 		if (!frm.doc.quality_inspection) return;
-		// Fetch QI total_deduction_pct/kg + bag info to populate system fields and references
 		frappe.db.get_value("TS Quality Inspection", frm.doc.quality_inspection,
 			["total_deduction_pct", "total_deduction_kg", "token_number",
 			 "gate_entry", "purchase_order", "item_code", "item_name",
 			 "item_category", "bag_count", "bag_weight_kg",
 			 "moisture_percent", "impurity_percent",
-			 "po_gcv", "actual_gcv", "po_moisture_percent", "actual_moisture_percent"]
+			 "po_gcv", "actual_gcv", "po_moisture_percent", "actual_moisture_percent",
+			 "actual_deduction_pct", "actual_deduction_kg", "actual_deduction_reason"]
 		).then(r => {
 			if (r.message) {
 				frm.set_value("system_deduction_pct", r.message.total_deduction_pct);
@@ -103,8 +123,13 @@ frappe.ui.form.on("TS Deduction Sheet", {
 						r.message.actual_moisture_percent && r.message.po_moisture_percent && r.message.actual_moisture_percent > r.message.po_moisture_percent ? 1 : 0);
 				}
 
-				// Pre-fill actual if blank (Layer 2 default = system value)
-				if (frm.doc.actual_deduction_pct === null || frm.doc.actual_deduction_pct === undefined) {
+				// v2.9.5 — snapshot Layer-2 from QI (or fall back to system)
+				if (r.message.actual_deduction_pct !== null && r.message.actual_deduction_pct !== undefined) {
+					frm.set_value("actual_deduction_pct", r.message.actual_deduction_pct);
+					frm.set_value("actual_deduction_kg", r.message.actual_deduction_kg);
+					frm.set_value("actual_deduction_reason", r.message.actual_deduction_reason);
+				} else if (frm.doc.actual_deduction_pct === null || frm.doc.actual_deduction_pct === undefined) {
+					// Legacy QI fall-back — use system value
 					frm.set_value("actual_deduction_pct", r.message.total_deduction_pct);
 				}
 
@@ -118,30 +143,6 @@ frappe.ui.form.on("TS Deduction Sheet", {
 				}
 			}
 		});
-	},
-
-	actual_deduction_pct(frm) {
-		// Recalc actual_deduction_kg via QI bag info
-		if (frm.doc.quality_inspection) {
-			frappe.db.get_value("TS Quality Inspection", frm.doc.quality_inspection,
-				["bag_count", "bag_weight_kg"]).then(r => {
-				if (r.message) {
-					let pct = flt(frm.doc.actual_deduction_pct || 0);
-					let count = flt(r.message.bag_count || 0);
-					let weight = flt(r.message.bag_weight_kg || 0);
-					let kg = (pct / 100.0) * count * weight;
-					frm.set_value("actual_deduction_kg", flt(kg, 3));
-				}
-			});
-		}
-
-		// Highlight reason field if differs > 0.01%
-		let delta = Math.abs(flt(frm.doc.actual_deduction_pct || 0) - flt(frm.doc.system_deduction_pct || 0));
-		if (delta > 0.01) {
-			frm.set_df_property("actual_deduction_reason", "reqd", 1);
-		} else {
-			frm.set_df_property("actual_deduction_reason", "reqd", 0);
-		}
 	},
 
 	calculate_deductions_button(frm) {

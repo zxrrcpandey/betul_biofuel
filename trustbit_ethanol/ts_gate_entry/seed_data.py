@@ -128,6 +128,9 @@ CUSTOM_DOCPERM = [
 	{"parent": "TS Quality Inspection", "role": "G2 Gate Operator", "read": 1},
 	{"parent": "TS Quality Inspection", "role": "Weighbridge Operator", "read": 1},
 	{"parent": "TS Quality Inspection", "role": "Accounts Manager", "read": 1},
+	# v2.9.6 — Grain Manager has read on QI (drives Suggestion fetch_from + delegation context).
+	# Edit gating for Actual Deduction lives on TS Deduction Suggestion DocPerm now.
+	{"parent": "TS Quality Inspection", "role": "Grain Manager", "read": 1},
 	{"parent": "TS Settings", "role": "IT Head", "read": 1, "write": 1, "create": 1, "report": 1, "export": 1, "share": 1, "print": 1, "email": 1},
 	{"parent": "TS Token", "role": "IT Head", "read": 1, "write": 1, "create": 1, "delete": 1, "cancel": 1, "amend": 1, "report": 1, "export": 1, "share": 1, "print": 1, "email": 1},
 	{"parent": "Supplier", "role": "Accounts Manager", "read": 1, "write": 1, "create": 1, "report": 1, "export": 1, "share": 1, "print": 1, "email": 1},

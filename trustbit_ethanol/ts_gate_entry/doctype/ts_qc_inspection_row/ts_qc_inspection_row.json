@@ -45,6 +45,17 @@
    "columns": 1
   },
   {
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "label": "Direction",
+   "options": "In Range\nLower is Better\nHigher is Better",
+   "default": "In Range",
+   "depends_on": "eval:doc.parameter_type=='Numeric'",
+   "description": "Higher is Better → deduction when Actual < Min (e.g. Starch, GCV). Lower is Better → deduction when Actual > Max (e.g. Moisture, Impurity). In Range → both sides (e.g. pH).",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
    "fieldname": "min_value",
    "fieldtype": "Float",
    "label": "Min",

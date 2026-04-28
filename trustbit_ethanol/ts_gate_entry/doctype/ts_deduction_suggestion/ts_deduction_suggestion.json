@@ -1,0 +1,170 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "naming_series:",
+ "creation": "2026-04-28 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "quality_inspection",
+  "token_number",
+  "item_category",
+  "column_break_main",
+  "system_pct",
+  "actual_pct",
+  "actual_reason",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Naming Series",
+   "no_copy": 1,
+   "options": "BBPL-DSG-.YYYY.-.#####",
+   "print_hide": 1,
+   "set_only_once": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "quality_inspection",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Quality Inspection",
+   "options": "TS Quality Inspection",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fetch_from": "quality_inspection.token_number",
+   "fieldname": "token_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Token",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "quality_inspection.item_category",
+   "fieldname": "item_category",
+   "fieldtype": "Data",
+   "label": "Item Category",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Snapshot of QI total deduction at the time this Suggestion was created.",
+   "fieldname": "system_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "System Total Deduction %",
+   "no_copy": 1,
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "description": "Final deduction % decided by Grain Manager. Pre-filled with System value; override if needed.",
+   "fieldname": "actual_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Actual Deduction %",
+   "precision": "3"
+  },
+  {
+   "depends_on": "eval:doc.actual_pct !== null && doc.actual_pct !== undefined",
+   "description": "Mandatory when Actual differs from System by more than 0.01%.",
+   "fieldname": "actual_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for Difference"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "TS Deduction Suggestion",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-04-28 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Deduction Suggestion",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IT Head",
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Grain Manager",
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "read": 1,
+   "role": "Accounts User"
+  },
+  {
+   "read": 1,
+   "role": "Quality Inspector"
+  },
+  {
+   "read": 1,
+   "role": "Stores User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "quality_inspection",
+ "track_changes": 1
+}

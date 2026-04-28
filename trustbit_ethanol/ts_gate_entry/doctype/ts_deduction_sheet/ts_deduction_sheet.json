@@ -10,6 +10,7 @@
   "naming_series",
   "ds_number",
   "quality_inspection",
+  "deduction_suggestion",
   "token_number",
   "gate_entry",
   "purchase_order",
@@ -94,6 +95,15 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "description": "1:1 link to a SUBMITTED Quality Inspection."
+  },
+  {
+   "fieldname": "deduction_suggestion",
+   "fieldtype": "Link",
+   "label": "Deduction Suggestion",
+   "options": "TS Deduction Suggestion",
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "description": "v2.9.6 — Source of actual_deduction_* snapshot (Grain Manager submission)."
   },
   {
    "fieldname": "token_number",
@@ -190,7 +200,10 @@
    "label": "Actual Deduction %",
    "precision": "3",
    "bold": 1,
-   "description": "Grain Manager (Tilok) enters final deduction %. Defaults to system value; if differs, reason is mandatory."
+   "read_only": 1,
+   "permlevel": 1,
+   "no_copy": 1,
+   "description": "v2.9.5: Snapshot from parent QI. Tamper-protected (permlevel=1 + read_only). Editing happens on the source QI before submit."
   },
   {
    "fieldname": "actual_deduction_kg",
@@ -198,14 +211,19 @@
    "label": "Actual Deduction (Kg)",
    "precision": "3",
    "read_only": 1,
+   "permlevel": 1,
+   "no_copy": 1,
    "bold": 1,
-   "description": "Auto = (Actual %) × Bag Count × Bag Weight Kg from QI."
+   "description": "v2.9.5: Snapshot from parent QI. Auto = (Actual %) × Bag Count × Bag Weight Kg."
   },
   {
    "fieldname": "actual_deduction_reason",
    "fieldtype": "Small Text",
    "label": "Reason for Difference",
-   "description": "Mandatory when Actual % differs from System % by more than 0.01%."
+   "read_only": 1,
+   "permlevel": 1,
+   "no_copy": 1,
+   "description": "v2.9.5: Snapshot from parent QI. Tamper-protected."
   },
   {
    "fieldname": "column_break_actual",
@@ -457,7 +475,7 @@
   }
  ],
  "links": [],
- "modified": "2026-04-26 00:00:00",
+ "modified": "2026-04-27 22:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Deduction Sheet",
@@ -510,7 +528,6 @@
   },
   {
    "read": 1,
-   "write": 1,
    "role": "Grain Manager"
   },
   {

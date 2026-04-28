@@ -1,20 +1,27 @@
 """
-TS Deduction Sheet — v2.9.0 Day 4 restructure.
+TS Deduction Sheet — v2.9.0 Day 4 / v2.9.5 snapshot model.
 
 Submittable DocType (docstatus 0/1/2). 3-layer model:
   Layer 1 — System: copies from QI total_deduction_pct + total_deduction_kg
             (read_only=1 + permlevel=1 — tamper-protected per Lesson 162).
-  Layer 2 — Tilok (Grain Manager): fills actual_deduction_pct + reason if
-            differs from system value.
+  Layer 2 — Snapshot of QI's actual_deduction_pct/kg/reason — v2.9.5 these are
+            now FILLED ON THE QI BEFORE SUBMIT and DS auto-creates from QI.
+            DS Layer 2 fields are read_only + permlevel=1; mutation guarded.
   Layer 3 — Accounts Manager: submits the doc (only Accounts Manager + SM can submit).
 
 On submit: copies actual_deduction_pct/kg/reason to the linked Purchase Invoice
 custom fields (ts_ds_actual_deduction_pct/kg/reason). PI gate (Step 9) blocks
 PI submit if grain item with submitted QI has no submitted DS.
 
+v2.9.5 changes:
+  - DS auto-creates on QI submit (see ts_quality_inspection._auto_create_deduction_sheet)
+  - Layer 2 actual_deduction_* fields are now SNAPSHOTS from the parent QI
+  - User no longer fills actual_deduction_pct on DS — it is copied
+  - Snapshot-integrity validate enforces DS values match the QI (defence-in-depth)
+
 Lesson references:
-  - 162: control-plane fields (system_deduction_*) need server-side tamper guard
-         even if permlevel=1 — because frappe.client.set_value bypasses JS.
+  - 162: control-plane fields (system_deduction_*, actual_deduction_*) need
+         server-side tamper guard even if permlevel=1 — frappe.client.set_value bypasses JS.
   - 175: whitelisted mutation methods declare methods=["POST"].
   - 176: frappe.flags.in_xxx wrap in try/finally.
   - 197: each DocType has its own audit-log pattern; DS uses doc.add_comment.
@@ -29,6 +36,9 @@ from frappe.utils import flt, now_datetime, escape_html
 SUBMIT_ROLES = {"Accounts Manager", "System Manager", "Administrator"}
 SYSTEM_FIELD_OVERRIDE_ROLES = {"System Manager", "Administrator"}
 SYSTEM_FIELDS = ("system_deduction_pct", "system_deduction_kg")
+# v2.9.5 — snapshot fields copied from parent QI; never user-editable on DS.
+ACTUAL_SNAPSHOT_FIELDS = ("actual_deduction_pct", "actual_deduction_kg", "actual_deduction_reason")
+SNAPSHOT_TOLERANCE = 0.001  # %  — guard against float-rounding when comparing snapshots
 
 
 class TSDeductionSheet(Document):
@@ -36,26 +46,30 @@ class TSDeductionSheet(Document):
 	def before_insert(self):
 		self._auto_fetch_references()
 		self._copy_qi_system_deduction()
-		# Default actual_deduction_pct to system value on create
-		if self.system_deduction_pct is not None and self.actual_deduction_pct is None:
-			self.actual_deduction_pct = self.system_deduction_pct
+		# v2.9.6: snapshot Layer-2 from TS Deduction Suggestion (per-role doctype boundary).
+		# Falls back to system value defaults if no Suggestion is linked (legacy/manual path).
+		self._copy_from_suggestion()
 
 	def before_save(self):
 		# Tamper guard for system_deduction_* fields (Lesson 162).
 		# Honour amended_from exemption (Lesson 200).
 		self._block_system_field_tampering()
-		# Track who filled actual_deduction_pct (Layer 2 audit)
-		if not self.is_new() and self.has_value_changed("actual_deduction_pct"):
-			self.filled_by = frappe.session.user
-			self.filled_at = now_datetime()
+		# v2.9.5: also tamper-guard the actual_deduction_* snapshot fields.
+		self._block_actual_snapshot_tampering()
+		# v2.9.6: filled_by/filled_at reflect the Suggestion's submission (snapshot).
+		# Falls back to current user when no Suggestion is linked (legacy/manual path).
+		if self.is_new() and not self.filled_by and self.actual_deduction_pct is not None:
+			self.filled_by = self._get_suggestion_owner() or frappe.session.user
+			self.filled_at = self._get_suggestion_owner_at() or now_datetime()
 		# Sync ds_number = name on first save
 		if not self.ds_number and self.name:
 			self.ds_number = self.name
 
 	def validate(self):
 		self._validate_qi_link()
-		self._calculate_actual_deduction_kg()
-		self._validate_actual_vs_system()
+		# v2.9.5: enforce snapshot integrity — actual_* must match parent QI.
+		# This is defence-in-depth in case permlevel=1 is bypassed.
+		self._validate_snapshot_integrity()
 		self._calculate_legacy_values()
 		self._update_legacy_override_flags()
 		self._calculate_legacy_totals()
@@ -236,35 +250,118 @@ class TSDeductionSheet(Document):
 					f"cannot be manually edited. Only System Manager / Administrator may override."
 				)
 
-	def _calculate_actual_deduction_kg(self):
-		"""Auto-calc actual_deduction_kg = actual_pct × bag_count × bag_weight_kg from QI."""
-		if not self.quality_inspection:
+	# ── v2.9.6 Suggestion snapshot helpers ────────────────────────────
+	def _copy_from_suggestion(self):
+		"""Snapshot Layer-2 fields from linked TS Deduction Suggestion on insert.
+
+		Suggestion is the source of truth for actual_deduction_*. If no Suggestion
+		is linked (legacy/manual DS create path), fall back to system_* defaults.
+		"""
+		if not self.deduction_suggestion:
+			# Legacy / manual path — fall back to system value
+			if self.system_deduction_pct is not None and self.actual_deduction_pct is None:
+				self.actual_deduction_pct = self.system_deduction_pct
+				self.actual_deduction_kg = self.system_deduction_kg
 			return
-		if self.actual_deduction_pct is None:
+		s = frappe.db.get_value(
+			"TS Deduction Suggestion", self.deduction_suggestion,
+			["docstatus", "actual_pct", "actual_reason"],
+			as_dict=True,
+		)
+		if not s:
 			return
-		qi_data = frappe.db.get_value(
+		self.actual_deduction_pct = s.actual_pct
+		self.actual_deduction_reason = s.actual_reason
+		# Compute kg from the snapshot pct + bag info on the QI (unchanged formula)
+		bag_info = frappe.db.get_value(
 			"TS Quality Inspection", self.quality_inspection,
 			["bag_count", "bag_weight_kg"],
 			as_dict=True,
 		)
-		if qi_data:
-			bag_count = flt(qi_data.bag_count) or 0
-			bag_weight = flt(qi_data.bag_weight_kg) or 0
-			self.actual_deduction_kg = round(
-				(flt(self.actual_deduction_pct) / 100.0) * bag_count * bag_weight, 3
+		if bag_info:
+			pct = flt(s.actual_pct) or 0
+			count = flt(bag_info.bag_count) or 0
+			weight = flt(bag_info.bag_weight_kg) or 0
+			self.actual_deduction_kg = round((pct / 100.0) * count * weight, 3)
+
+	def _get_suggestion_owner(self):
+		if not self.deduction_suggestion:
+			return None
+		return frappe.db.get_value(
+			"TS Deduction Suggestion", self.deduction_suggestion, "owner"
+		)
+
+	def _get_suggestion_owner_at(self):
+		if not self.deduction_suggestion:
+			return None
+		# Use the Suggestion's modified timestamp at submit time (close enough)
+		return frappe.db.get_value(
+			"TS Deduction Suggestion", self.deduction_suggestion, "modified"
+		)
+
+	def _validate_snapshot_integrity(self):
+		"""Defence-in-depth — ensure DS Layer-2 values match the source.
+
+		v2.9.6 source: TS Deduction Suggestion (when linked).
+		Legacy fall-back: skip integrity check when no Suggestion is linked.
+		"""
+		if not self.deduction_suggestion:
+			return  # legacy / manual DS — no Suggestion source to validate against
+		s = frappe.db.get_value(
+			"TS Deduction Suggestion", self.deduction_suggestion,
+			["docstatus", "actual_pct", "actual_reason"],
+			as_dict=True,
+		)
+		if not s or s.docstatus != 1:
+			return  # only validate against submitted Suggestions
+
+		ds_pct = flt(self.actual_deduction_pct or 0)
+		s_pct = flt(s.actual_pct or 0)
+		if abs(ds_pct - s_pct) > SNAPSHOT_TOLERANCE:
+			frappe.throw(
+				f"Snapshot integrity violation: DS actual_deduction_pct ({ds_pct}) "
+				f"does not match parent Suggestion ({s_pct}). DS values are immutable "
+				f"snapshots — edit on the source Suggestion before submit."
+			)
+		ds_reason = (self.actual_deduction_reason or "").strip()
+		s_reason = (s.actual_reason or "").strip()
+		if ds_reason != s_reason:
+			frappe.throw(
+				"Snapshot integrity violation: DS actual_deduction_reason does not "
+				"match parent Suggestion."
 			)
 
-	def _validate_actual_vs_system(self):
-		"""Reason mandatory when actual_pct differs from system_pct by > 0.01%."""
-		if self.actual_deduction_pct is None or self.system_deduction_pct is None:
+	def _block_actual_snapshot_tampering(self):
+		"""Lesson 162 mirror — block mutation of snapshot fields on existing DS.
+
+		Allow:
+		  - Administrator
+		  - migrate / install flags
+		  - frappe.flags.in_qi_internal (auto-create path from QI)
+		  - frappe.flags.in_ds_internal (DS internal propagation)
+		  - new docs (snapshot is filled in before_insert)
+		  - amend cycle (amended_from set on insert)
+		"""
+		if frappe.session.user == "Administrator":
 			return
-		delta = abs(flt(self.actual_deduction_pct) - flt(self.system_deduction_pct))
-		if delta > 0.01:
-			if not (self.actual_deduction_reason or "").strip():
-				frappe.throw(
-					f"Actual Deduction % ({self.actual_deduction_pct}) differs from "
-					f"System Deduction % ({self.system_deduction_pct}) by {delta:.3f}%. "
-					f"Please provide a Reason for Difference."
+		if getattr(frappe.flags, "in_install", False) or getattr(frappe.flags, "in_migrate", False):
+			return
+		if getattr(frappe.flags, "in_qi_internal", False):
+			return
+		if getattr(frappe.flags, "in_ds_internal", False):
+			return
+		if self.is_new():
+			return
+
+		user_roles = set(frappe.get_roles(frappe.session.user))
+		if user_roles & SYSTEM_FIELD_OVERRIDE_ROLES:
+			return
+
+		for f in ACTUAL_SNAPSHOT_FIELDS:
+			if self.has_value_changed(f):
+				raise frappe.PermissionError(
+					f"Field '{f}' is a snapshot from the parent Quality Inspection and "
+					f"cannot be edited on the Deduction Sheet. Edit on the source QI."
 				)
 
 	# ── legacy compute (preserved for backward compat) ────────────────

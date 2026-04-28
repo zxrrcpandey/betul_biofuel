@@ -1,6 +1,8 @@
 [pre_model_sync]
 # Patches added in this section will be executed before doctypes are migrated
 # Read docs to understand patches: https://frappeframework.com/docs/v14/user/en/database-migrations
+# v2.9.6 — must drop actual_* columns BEFORE doctype JSON sync (else sync re-adds them)
+trustbit_ethanol.patches.v2_9_6.clean_qi_v295_inline_fields
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
@@ -12,3 +14,5 @@ trustbit_ethanol.patches.v2_8.backfill_pi_po_reference
 trustbit_ethanol.patches.v2_9.convert_legacy_qis
 trustbit_ethanol.patches.v2_9.migrate_bag_type_to_master
 trustbit_ethanol.patches.v2_9.po_deduction_backward_compat
+# v2.9.5 was reverted in v2.9.6 — see pre_model_sync `clean_qi_v295_inline_fields`.
+# v2.9.5 patch dir intentionally NOT shipped (was demo-only); ref removed to prevent ModuleNotFoundError on prod.

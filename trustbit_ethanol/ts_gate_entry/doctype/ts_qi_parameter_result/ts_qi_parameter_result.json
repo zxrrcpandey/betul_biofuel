@@ -9,6 +9,7 @@
   "parameter_type",
   "uom",
   "standard_value",
+  "direction",
   "min_value",
   "max_value",
   "actual_value",
@@ -60,6 +61,15 @@
    "description": "Target/expected value from QC Template (e.g. '70 kg/hl', 'OK', '14%')."
   },
   {
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "label": "Direction",
+   "options": "In Range\nLower is Better\nHigher is Better",
+   "read_only": 1,
+   "columns": 1,
+   "description": "Copied from QC Template. Drives which side of Min/Max fires deduction."
+  },
+  {
    "fieldname": "min_value",
    "fieldtype": "Float",
    "label": "Min",
@@ -81,7 +91,7 @@
    "label": "Actual Value",
    "in_list_view": 1,
    "columns": 1,
-   "description": "Inspector enters the measured value."
+   "description": "Inspector enters the measured value. v2.9.5: writable by inspectors only — Grain Manager Layer-2 review uses parent QI's actual_deduction_pct."
   },
   {
    "fieldname": "deduction_per_unit",
@@ -117,9 +127,10 @@
    "label": "Remarks"
   }
  ],
+ "editable_grid": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-04-27 18:00:00",
+ "modified": "2026-04-27 22:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS QI Parameter Result",

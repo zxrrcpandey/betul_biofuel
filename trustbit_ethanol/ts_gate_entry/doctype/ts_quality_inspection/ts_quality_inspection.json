@@ -403,10 +403,10 @@
   },
   {
    "depends_on": "eval:doc.decision=='Hold' || doc.decision=='Reject'",
+   "description": "Required when Decision is Reject or Hold. Explain why the load was rejected/held.",
    "fieldname": "hold_reason",
    "fieldtype": "Small Text",
-   "label": "Hold / Reject Reason",
-   "mandatory_depends_on": "eval:doc.decision=='Hold' || doc.decision=='Reject'"
+   "label": "Hold / Reject Reason"
   },
   {
    "fieldname": "remarks",
@@ -431,7 +431,7 @@
    "link_fieldname": "quality_inspection"
   }
  ],
- "modified": "2026-04-27 20:00:00",
+ "modified": "2026-04-27 22:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Quality Inspection",
