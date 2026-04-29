@@ -472,6 +472,79 @@ function _render_mr_buttons(frm, ctx) {
 			);
 		}, null).addClass("btn-primary bbf-mr-btn");
 	}
+
+	// v2.9.7 — AVP Deputy mode: CEO can approve at Pending AVP when AVP unavailable.
+	// Button visibility = (status==Pending AVP) AND (user has CEO role) AND (kill switch ON).
+	// Server re-validates everything; this is just UX gating.
+	if (frm.doc.ts_mr_status === "Pending AVP" && frappe.user_roles.includes("CEO")) {
+		_ts_render_avp_deputy_button(frm);
+	}
+}
+
+function _ts_render_avp_deputy_button(frm) {
+	// v2.9.7 — uses dedicated whitelisted helper because the kill-switch field
+	// is at permlevel=1 (IT Head only) and frappe.client.get_value strips it
+	// from the response for CEO. The helper does a raw-SQL read of tabSingles
+	// (same pattern as server-side _is_deputy_mode_enabled).
+	frappe.call({
+		method: "trustbit_ethanol.ts_gate_entry.ts_avp_deputy.is_avp_deputy_enabled",
+		callback(r) {
+			if (!r || !r.message) return;
+			frm.add_custom_button(__("Approve as AVP Deputy"), () => {
+				_ts_open_avp_deputy_dialog(frm);
+			}, __("Actions")).addClass("btn-warning bbf-mr-btn");
+		}
+	});
+}
+
+function _ts_open_avp_deputy_dialog(frm) {
+	const d = new frappe.ui.Dialog({
+		title: __("Approve as AVP Deputy"),
+		fields: [
+			{
+				fieldtype: "HTML",
+				options: `<div class="alert alert-warning" style="margin-bottom:10px;">
+					<b>${__("AVP Deputy Approval")}</b><br>
+					${__("You are approving this MR on behalf of AVP. This is logged in the audit trail and AVP + creator will be emailed.")}
+				</div>`
+			},
+			{
+				fieldtype: "Small Text",
+				fieldname: "reason",
+				label: __("Reason (optional but recommended)"),
+				description: __("Why are you approving on behalf of AVP? Example: 'AVP unavailable till Friday' or 'Urgent — AVP travelling.'")
+			}
+		],
+		primary_action_label: __("Approve as AVP Deputy"),
+		primary_action(values) {
+			d.hide();
+			frappe.confirm(
+				__("Approve this MR on behalf of AVP? This action is logged."),
+				() => {
+					frappe.call({
+						method: "trustbit_ethanol.ts_gate_entry.ts_avp_deputy.approve_as_avp_deputy",
+						type: "POST",
+						args: {
+							mr_name: frm.doc.name,
+							reason: values.reason || ""
+						},
+						freeze: true,
+						freeze_message: __("Approving as AVP Deputy..."),
+						callback(r) {
+							if (r && r.message && r.message.ok) {
+								frappe.show_alert({
+									message: __("Approved. New status: {0}", [r.message.new_status || ""]),
+									indicator: "green"
+								}, 5);
+								frm.reload_doc();
+							}
+						}
+					});
+				}
+			);
+		}
+	});
+	d.show();
 }
 
 function _show_mr_comment_dialog(frm, title, callback) {

@@ -1080,7 +1080,15 @@ def _validate_user_can_act_on_po(doc):
 def _validate_user_can_act_on_mr(doc):
 	"""Validate user has a role that can act on the MR at its current step.
 	If CC config exists, also validate user is in the config for this step.
+
+	v2.9.7 — AVP Deputy mode bypass: when frappe.flags.in_avp_deputy is set, the
+	caller (ts_avp_deputy.approve_as_avp_deputy) has already validated kill switch
+	+ CEO role + Pending AVP status + self-approval. Skip route/CC checks here so
+	CEO can act at the AVP step on routes where AVP is the final approver
+	(no higher CEO step in the route to enable the standard higher-level override).
 	"""
+	if getattr(frappe.flags, "in_avp_deputy", False):
+		return
 	if not doc.ts_mr_approval_route:
 		return
 

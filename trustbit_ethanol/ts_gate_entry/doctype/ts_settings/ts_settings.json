@@ -31,6 +31,7 @@
   "approval_section",
   "enable_po_approval",
   "enable_mr_approval",
+  "ts_avp_deputy_enabled",
   "column_break_approval",
   "default_po_category",
   "enable_budget_check",
@@ -246,6 +247,14 @@
    "label": "Enable MR Approval",
    "default": "1",
    "description": "Master switch for Material Request approval workflow"
+  },
+  {
+   "fieldname": "ts_avp_deputy_enabled",
+   "fieldtype": "Check",
+   "label": "AVP Deputy Mode (CEO can approve at Pending AVP)",
+   "default": "0",
+   "permlevel": 1,
+   "description": "When ON: CEO sees an 'Approve as AVP Deputy' button on Material Requests at 'Pending AVP' status. When OFF (default): only AVP can approve at this step. Use during AVP unavailability. IT Head only."
   },
   {
    "fieldname": "column_break_approval",
