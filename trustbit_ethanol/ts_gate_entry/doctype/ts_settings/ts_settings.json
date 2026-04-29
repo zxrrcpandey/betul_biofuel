@@ -32,6 +32,7 @@
   "enable_po_approval",
   "enable_mr_approval",
   "ts_avp_deputy_enabled",
+  "ts_ds_full_override_enabled",
   "column_break_approval",
   "default_po_category",
   "enable_budget_check",
@@ -247,6 +248,14 @@
    "label": "Enable MR Approval",
    "default": "1",
    "description": "Master switch for Material Request approval workflow"
+  },
+  {
+   "fieldname": "ts_ds_full_override_enabled",
+   "fieldtype": "Check",
+   "label": "DS Full Override (CEO can edit any deduction line field)",
+   "default": "0",
+   "permlevel": 1,
+   "description": "v2.9.8 — when ON: CEO can edit any field on TS Deduction Line rows (rate, base_value, calculated_amount, actual_amount). When OFF (default): line.rate is locked to the snapshot from Suggestion/PO Override; only line.actual_amount is editable with override_reason. IT Head only."
   },
   {
    "fieldname": "ts_avp_deputy_enabled",

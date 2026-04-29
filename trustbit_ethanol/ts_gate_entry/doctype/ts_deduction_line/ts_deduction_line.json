@@ -9,10 +9,12 @@
   "base_value",
   "rate",
   "rate_type",
+  "unit",
   "calculated_amount",
   "actual_amount",
   "is_overridden",
-  "override_reason"
+  "override_reason",
+  "formula_summary"
  ],
  "fields": [
   {
@@ -84,6 +86,21 @@
    "label": "Override Reason",
    "depends_on": "eval:doc.is_overridden",
    "mandatory_depends_on": "eval:doc.is_overridden"
+  },
+  {
+   "fieldname": "unit",
+   "fieldtype": "Data",
+   "label": "Unit",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Display unit (e.g. '%', 'kg/q', 'Rs/Bag')."
+  },
+  {
+   "fieldname": "formula_summary",
+   "fieldtype": "Small Text",
+   "label": "Calculation",
+   "read_only": 1,
+   "description": "v2.9.8 \u2014 auto-generated explanation of how this deduction's amount was computed."
   }
  ],
  "istable": 1,
@@ -95,5 +112,6 @@
  "owner": "Administrator",
  "permissions": [],
  "sort_field": "modified",
- "sort_order": "DESC"
+ "sort_order": "DESC",
+ "editable_grid": 1
 }

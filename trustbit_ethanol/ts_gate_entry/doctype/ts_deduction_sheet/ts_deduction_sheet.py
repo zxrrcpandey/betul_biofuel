@@ -29,6 +29,7 @@ Lesson references:
 """
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, now_datetime, escape_html
 
@@ -40,6 +41,112 @@ SYSTEM_FIELDS = ("system_deduction_pct", "system_deduction_kg")
 ACTUAL_SNAPSHOT_FIELDS = ("actual_deduction_pct", "actual_deduction_kg", "actual_deduction_reason")
 SNAPSHOT_TOLERANCE = 0.001  # %  — guard against float-rounding when comparing snapshots
 
+# v2.9.8 — standard deduction line types auto-populated on insert.
+# Sourced from PO ts_deduction_overrides[deduction_code] when override exists; skip otherwise.
+STANDARD_DEDUCTION_TYPES = ("Quality Deduction", "Dhalta", "Brokerage", "Unloading Charge")
+DEDUCTION_CODE_MAP = {
+	"Quality Deduction": "Quality",   # rate from Suggestion.actual_pct (not PO Override)
+	"Dhalta": "Dhalta",
+	"Brokerage": "Brokerage",
+	"Unloading Charge": "Unloading",
+}
+# Display units for the line table — DEFAULT (overridden by actual rate_type at calc time)
+DEDUCTION_UNIT_MAP = {
+	"Quality Deduction": "%",
+	"Dhalta": "kg/q",
+	"Brokerage": "%",  # default; flips based on rate_type if overridden
+	"Unloading Charge": "Rs/Bag",
+}
+
+
+def _unit_from_rate_type(rate_type):
+	"""Map a rate_type string to a display unit for the line table."""
+	rt = (rate_type or "").strip().lower()
+	return {
+		"percentage": "%",
+		"per qtl": "Rs/q",
+		"per quintal": "Rs/q",
+		"per mt": "Rs/MT",
+		"per metric ton": "Rs/MT",
+		"per bag": "Rs/Bag",
+		"per kg": "Rs/kg",
+		"kg/q": "kg/q",
+	}.get(rt, rate_type or "")
+
+
+@frappe.whitelist(methods=["POST"])
+def force_refresh_deduction_sheet(name):
+	"""v2.9.8.4 — explicit re-fetch endpoint for the 'Refresh from Sources' button.
+
+	Clears all v2.9.8 derived fields + the deduction lines table, then saves
+	the doc. validate() runs the re-fetch helpers which now find empty fields
+	and re-pull from the upstream chain (PO → PR → QI → Suggestion).
+
+	Only allowed on draft DS. Returns the new state.
+	"""
+	doc = frappe.get_doc("TS Deduction Sheet", name)
+	if doc.docstatus != 0:
+		frappe.throw("Only draft Deduction Sheets can be refreshed.")
+
+	# v2.9.8.x — explicit write-perm check BEFORE ignore_permissions save.
+	# ignore_permissions is needed below to bypass the system_deduction_*
+	# permlevel=1 guard during the controlled re-fetch path; the perm check
+	# here ensures only users authorised to write the DS can trigger it.
+	frappe.has_permission("TS Deduction Sheet", "write", doc=doc, throw=True)
+
+	# v2.9.8.8 — graceful guard: if linked QI is missing/deleted, log + return
+	# diagnostic instead of crashing on the validate path.
+	if doc.quality_inspection and not frappe.db.exists(
+		"TS Quality Inspection", doc.quality_inspection
+	):
+		frappe.log_error(
+			message=f"DS {name} references missing QI {doc.quality_inspection}",
+			title="ts_deduction_sheet.force_refresh orphan",
+		)
+		return {
+			"ok": False,
+			"name": name,
+			"error": f"Linked Quality Inspection '{doc.quality_inspection}' no longer exists. Manual cleanup required.",
+		}
+
+	# Clear derived fields so the `if not self.X` guards in _auto_fetch_v298_fields
+	# don't skip them. These will all be re-fetched in validate().
+	clearable = [
+		"grn_reference", "net_qty_kg", "net_qty_quintal", "rate_per_quintal",
+		"grn_amount", "bag_count",
+		"supplier_name", "item_code", "item_name", "item_category",
+		"purchase_order", "token_number",
+	]
+	for f in clearable:
+		setattr(doc, f, None)
+	# Clear deduction lines so _auto_populate_deduction_lines re-creates them
+	doc.set("deductions", [])
+	doc.flags.ignore_permissions = True
+	doc.save()
+	return {
+		"ok": True,
+		"name": name,
+		"grn_reference": doc.grn_reference,
+		"grn_amount": flt(doc.grn_amount),
+		"total_deduction": flt(doc.total_deduction),
+		"net_payable": flt(doc.net_payable),
+		"line_count": len(doc.deductions or []),
+	}
+
+
+def _is_full_override_enabled():
+	"""v2.9.8 kill switch — when ON, CEO can edit any deduction line field.
+	Raw SQL on tabSingles per Lesson 171/172. Fail closed.
+	"""
+	try:
+		v = frappe.db.sql(
+			"""SELECT value FROM tabSingles
+			   WHERE doctype='TS Settings' AND field='ts_ds_full_override_enabled' LIMIT 1"""
+		)
+		return bool(v and v[0][0] and str(v[0][0]).strip() not in ("0", "", "None", "False", "false"))
+	except Exception:
+		return False
+
 
 class TSDeductionSheet(Document):
 	# ── lifecycle ──────────────────────────────────────────────────────
@@ -49,6 +156,9 @@ class TSDeductionSheet(Document):
 		# v2.9.6: snapshot Layer-2 from TS Deduction Suggestion (per-role doctype boundary).
 		# Falls back to system value defaults if no Suggestion is linked (legacy/manual path).
 		self._copy_from_suggestion()
+		# v2.9.8: auto-fetch new derived fields + populate 3 standard deduction lines
+		self._auto_fetch_v298_fields()
+		self._auto_populate_deduction_lines()
 
 	def before_save(self):
 		# Tamper guard for system_deduction_* fields (Lesson 162).
@@ -70,6 +180,17 @@ class TSDeductionSheet(Document):
 		# v2.9.5: enforce snapshot integrity — actual_* must match parent QI.
 		# This is defence-in-depth in case permlevel=1 is bypassed.
 		self._validate_snapshot_integrity()
+		# v2.9.8.1: re-fetch missing v2.9.8 derived fields on EVERY save —
+		# handles the case where DS was drafted before PR existed (PR created later).
+		# Only fills NULL/0 fields; doesn't overwrite manual values.
+		self._auto_fetch_v298_fields()
+		# v2.9.8.1: also re-populate deduction lines when empty (e.g. DS created
+		# before PO was linked, then PO added). Idempotent — only fires if empty.
+		if not self.deductions:
+			self._auto_populate_deduction_lines()
+		# v2.9.8: recompute deduction line amounts from header values + sources.
+		# Mirrors Quality line.rate to legacy actual_deduction_pct so dashboards stay consistent.
+		self._recalculate_deduction_amounts()
 		self._calculate_legacy_values()
 		self._update_legacy_override_flags()
 		self._calculate_legacy_totals()
@@ -379,7 +500,333 @@ class TSDeductionSheet(Document):
 
 	def _calculate_legacy_totals(self):
 		self.total_deduction = sum(flt(row.actual_amount) for row in (self.deductions or []))
-		self.net_payable = flt(self.mrn_amount) - flt(self.total_deduction)
+		# v2.9.8 hard switch: net_payable = grn_amount − total_deduction.
+		# grn_amount is the new authoritative figure (Net Qty Quintal × Rate per Quintal).
+		# Legacy mrn_amount path is preserved only as fallback for legacy DS rows
+		# that don't have grn_amount populated yet.
+		if flt(self.grn_amount) > 0:
+			self.net_payable = flt(self.grn_amount) - flt(self.total_deduction)
+		else:
+			self.net_payable = flt(self.mrn_amount) - flt(self.total_deduction)
+
+	# ── v2.9.8 — auto-fetch new derived header fields ────────────────────
+	def _auto_fetch_v298_fields(self):
+		"""Populate posting_date, grn_reference, net_qty_kg/quintal,
+		rate_per_quintal, bag_count, grn_amount on insert.
+		"""
+		from frappe.utils import today
+		if not self.posting_date:
+			self.posting_date = today()
+
+		# v2.9.8.1: backfill missing PO from QI (when DS was created before PO chain ran).
+		# QI's purchase_order is set in QI._auto_fetch_references → snapshot to DS.
+		# v2.9.8.8: silently skip if linked QI no longer exists (orphan DS — survives validate).
+		if self.quality_inspection and not frappe.db.exists(
+			"TS Quality Inspection", self.quality_inspection
+		):
+			return  # orphan — leave fields as-is; user must cancel + recreate
+		if self.quality_inspection and not self.purchase_order:
+			qi_po = frappe.db.get_value(
+				"TS Quality Inspection", self.quality_inspection, "purchase_order"
+			)
+			if qi_po:
+				self.purchase_order = qi_po
+		# Same for token_number, supplier_name, item_code if missing
+		if self.quality_inspection:
+			qi_data = frappe.db.get_value(
+				"TS Quality Inspection",
+				self.quality_inspection,
+				["token_number", "item_code", "item_name", "item_category", "party_name"],
+				as_dict=True,
+			)
+			if qi_data:
+				if not self.token_number:
+					self.token_number = qi_data.token_number
+				if not self.item_code:
+					self.item_code = qi_data.item_code
+				if not self.item_name:
+					self.item_name = qi_data.item_name
+				if not self.item_category:
+					self.item_category = qi_data.item_category
+				if not self.supplier_name:
+					self.supplier_name = qi_data.party_name
+
+		# bag_count from QI
+		if self.quality_inspection and not self.bag_count:
+			self.bag_count = frappe.db.get_value(
+				"TS Quality Inspection", self.quality_inspection, "bag_count"
+			) or 0
+
+		# rate_per_quintal from PO Item (kg→quintal conversion if needed)
+		if self.purchase_order and self.item_code and not self.rate_per_quintal:
+			po_item = frappe.db.get_value(
+				"Purchase Order Item",
+				{"parent": self.purchase_order, "item_code": self.item_code},
+				["rate", "uom"],
+				as_dict=True,
+			)
+			if po_item:
+				rate = flt(po_item.rate)
+				uom = (po_item.uom or "").lower()
+				if uom in ("kg", "kilogram"):
+					self.rate_per_quintal = round(rate * 100, 2)
+				elif uom in ("ton", "mt", "metric ton"):
+					self.rate_per_quintal = round(rate / 10, 2)
+				else:  # default = quintal/qtl
+					self.rate_per_quintal = round(rate, 2)
+
+		# grn_reference + net_qty_kg + grn_amount all from PR (the actual GRN doc)
+		# v2.9.8.9: GRN Amount now sourced from PR.net_total (the real receipt value)
+		# instead of computed (qty × po_rate) — keeps DS consistent with what was
+		# actually received + billed at the GRN.
+		if self.token_number and not self.grn_reference:
+			pr = frappe.get_all(
+				"Purchase Receipt",
+				filters={"ts_token": self.token_number, "docstatus": ["!=", 2]},
+				fields=["name", "ts_wb_net_kg", "total_qty", "net_total"],
+				limit=1,
+			)
+			if pr:
+				self.grn_reference = pr[0].name
+				if not self.net_qty_kg:
+					self.net_qty_kg = flt(pr[0].ts_wb_net_kg or 0)
+				# v2.9.8.9: GRN Amount from PR.net_total (authoritative)
+				if not self.grn_amount:
+					self.grn_amount = flt(pr[0].net_total or 0)
+
+		# Derived: net_qty_quintal = kg / 100
+		self.net_qty_quintal = round(flt(self.net_qty_kg) / 100.0, 3)
+		# v2.9.8.9: only fall back to (qty × rate) if PR didn't provide net_total.
+		# Once PR.net_total is set, that's authoritative.
+		if not flt(self.grn_amount):
+			self.grn_amount = round(flt(self.net_qty_quintal) * flt(self.rate_per_quintal), 2)
+
+	# ── v2.9.8 — auto-populate 3 standard deduction lines ────────────────
+	def _auto_populate_deduction_lines(self):
+		"""Idempotent — skip if any existing rows present (amend / reload).
+
+		v2.9.8.1 — restructured so Quality Deduction line populates even when
+		PO is missing (Quality only needs Suggestion/QI). Dhalta + Unloading
+		require PO override rows; skipped if PO/overrides absent.
+		"""
+		if self.deductions:
+			return
+
+		# Row 1: Quality Deduction — rate from Suggestion.actual_pct (already on DS as actual_deduction_pct)
+		# Does NOT require PO — populates whenever a Suggestion is linked OR system_deduction_pct exists.
+		quality_pct = flt(self.actual_deduction_pct) or flt(self.system_deduction_pct) or 0
+		if quality_pct > 0 or self.deduction_suggestion or self.quality_inspection:
+			self.append("deductions", {
+				"deduction_type": "Quality Deduction",
+				"description": "Auto-fetched from Deduction Suggestion (Grain Manager)",
+				"rate": quality_pct,
+				"rate_type": "Percentage",
+				"unit": DEDUCTION_UNIT_MAP["Quality Deduction"],
+				"base_value": flt(self.grn_amount),
+				"calculated_amount": 0,
+				"actual_amount": 0,
+				"is_overridden": 0,
+			})
+
+		# Rows 2 + 3: Dhalta + Unloading — require PO with override rows.
+		# Skip silently if PO missing or no override rows.
+		if not self.purchase_order:
+			return
+		overrides = frappe.get_all(
+			"TS PO Deduction Override",
+			filters={"parent": self.purchase_order, "parenttype": "Purchase Order"},
+			fields=["deduction_code", "default_rate", "default_rate_type", "override_rate", "override_rate_type"],
+		)
+		# Index by uppercase code (case-insensitive — POs may have DHALTA or Dhalta)
+		by_code = {(o.deduction_code or "").strip().upper(): o for o in overrides}
+
+		def _effective_rate(row):
+			"""Return override_rate if user customized (>0), else default_rate."""
+			if not row:
+				return 0, None
+			ov = flt(row.override_rate)
+			if ov > 0:
+				return ov, row.override_rate_type
+			return flt(row.default_rate), row.default_rate_type
+
+		# v2.9.8.7 — GENERIC PO-driven population. Loop through ALL overrides on the PO
+		# (skip QUALITY — that comes from Suggestion above) and create a line for each
+		# code with effective rate > 0. Display label maps known codes to canonical
+		# names; unknown codes use Title-cased code as label. Rate-type-aware formula
+		# in _recalculate_deduction_amounts handles all units uniformly.
+		KNOWN_LABELS = {
+			"DHALTA": ("Dhalta", "kg/q"),
+			"BROKERAGE": ("Brokerage", None),  # unit derived from rate_type
+			"UNLOADING": ("Unloading Charge", "Rs/Bag"),
+		}
+		for o in overrides:
+			code = (o.deduction_code or "").strip().upper()
+			if code in ("", "QUALITY"):  # Quality comes from Suggestion, handled above
+				continue
+			rate, rt = _effective_rate(o)
+			if rate <= 0:
+				continue
+			label_unit = KNOWN_LABELS.get(code)
+			if label_unit:
+				dtype, fixed_unit = label_unit
+				display_unit = fixed_unit if fixed_unit else _unit_from_rate_type(rt)
+			else:
+				# Unknown code — use Title-case of the code
+				dtype = (o.deduction_label or code.title())
+				display_unit = _unit_from_rate_type(rt)
+			self.append("deductions", {
+				"deduction_type": dtype,
+				"description": "Auto-fetched from PO Deduction Terms",
+				"rate": rate,
+				"rate_type": rt or "Percentage",
+				"unit": display_unit,
+				"base_value": 0,  # set in recalc based on rate_type
+				"calculated_amount": 0,
+				"actual_amount": 0,
+				"is_overridden": 0,
+			})
+
+	# ── v2.9.8 — recompute line amounts on every save ────────────────────
+	def _recalculate_deduction_amounts(self):
+		"""Walks the 3 standard rows + applies formulas. Mirrors Quality line.rate
+		back to legacy actual_deduction_pct so qc_dashboard_api stays consistent.
+
+		Default behaviour: line.rate is locked to source (Suggestion / PO Override).
+		If ts_ds_full_override_enabled=1, rate is left as user-edited.
+		"""
+		full_override = _is_full_override_enabled()
+		rate_per_kg = flt(self.rate_per_quintal) / 100.0 if flt(self.rate_per_quintal) else 0
+
+		# Live re-source rates from upstream UNLESS full-override is on
+		# v2.9.8.1 — case-insensitive code lookup + fallback to default_rate when override=0
+		# v2.9.8.5 — also capture rate_type so Brokerage etc. can switch unit semantics
+		if not full_override and self.purchase_order:
+			overrides = frappe.get_all(
+				"TS PO Deduction Override",
+				filters={"parent": self.purchase_order, "parenttype": "Purchase Order"},
+				fields=["deduction_code", "default_rate", "default_rate_type",
+				        "override_rate", "override_rate_type"],
+			)
+			by_code = {}
+			for o in overrides:
+				code = (o.deduction_code or "").strip().upper()
+				ov = flt(o.override_rate)
+				if ov > 0:
+					by_code[code] = (ov, o.override_rate_type)
+				else:
+					by_code[code] = (flt(o.default_rate), o.default_rate_type)
+		else:
+			by_code = {}
+
+		for row in (self.deductions or []):
+			dtype = row.deduction_type or ""
+
+			# Re-source rate + rate_type from PO (snapshot integrity preserved unless full-override on).
+			# v2.9.8.7 — generic: match line.deduction_type back to upstream PO override code.
+			if not full_override:
+				if dtype == "Quality Deduction":
+					row.rate = flt(self.actual_deduction_pct) or flt(self.system_deduction_pct) or 0
+				else:
+					# Map Title-case label back to upstream UPPER code
+					code_lookup = {
+						"Dhalta": "DHALTA",
+						"Brokerage": "BROKERAGE",
+						"Unloading Charge": "UNLOADING",
+					}.get(dtype, (dtype or "").upper())
+					if code_lookup in by_code:
+						rate, rt = by_code[code_lookup]
+						row.rate = rate
+						# Allow rate_type + unit to flip if user changed it on PO
+						if dtype == "Brokerage" and rt:
+							row.rate_type = rt
+							row.unit = _unit_from_rate_type(rt)
+						elif dtype not in ("Dhalta", "Unloading Charge"):
+							# unknown code — adapt rate_type display
+							row.rate_type = rt or row.rate_type
+							row.unit = _unit_from_rate_type(rt) if rt else row.unit
+
+			# Compute amount per type
+			if dtype == "Quality Deduction":
+				amt = flt(self.grn_amount) * flt(row.rate) / 100.0
+				row.base_value = flt(self.grn_amount)
+				row.formula_summary = (
+					f"GRN ₹{flt(self.grn_amount):.2f} × {flt(row.rate):.3f}% = ₹{amt:.2f}"
+				)
+			elif dtype == "Dhalta":
+				kg = flt(self.net_qty_quintal) * flt(row.rate)
+				amt = kg * rate_per_kg
+				row.base_value = flt(self.net_qty_quintal)
+				row.formula_summary = (
+					f"{flt(self.net_qty_quintal):.3f} q × {flt(row.rate):.3f} kg/q × "
+					f"₹{rate_per_kg:.2f}/kg = ₹{amt:.2f}"
+				)
+			elif dtype == "Brokerage":
+				rt = (row.rate_type or "Percentage").strip().lower()
+				rate = flt(row.rate)
+				if rt == "percentage":
+					amt = flt(self.grn_amount) * rate / 100.0
+					row.base_value = flt(self.grn_amount)
+					row.formula_summary = f"GRN ₹{flt(self.grn_amount):.2f} × {rate:.3f}% = ₹{amt:.2f}"
+				elif rt in ("per qtl", "per quintal"):
+					amt = flt(self.net_qty_quintal) * rate
+					row.base_value = flt(self.net_qty_quintal)
+					row.formula_summary = f"{flt(self.net_qty_quintal):.3f} q × ₹{rate:.2f}/q = ₹{amt:.2f}"
+				elif rt in ("per mt", "per metric ton"):
+					mt = flt(self.net_qty_kg) / 1000.0
+					amt = mt * rate
+					row.base_value = mt
+					row.formula_summary = f"{mt:.3f} MT × ₹{rate:.2f}/MT = ₹{amt:.2f}"
+				elif rt == "per bag":
+					amt = flt(self.bag_count) * rate
+					row.base_value = flt(self.bag_count)
+					row.formula_summary = f"{int(flt(self.bag_count))} bags × ₹{rate:.2f}/bag = ₹{amt:.2f}"
+				else:
+					# Unknown rate_type — fallback to percentage of GRN
+					amt = flt(self.grn_amount) * rate / 100.0
+					row.base_value = flt(self.grn_amount)
+					row.formula_summary = f"GRN ₹{flt(self.grn_amount):.2f} × {rate:.3f}% = ₹{amt:.2f} (fallback)"
+			elif dtype == "Unloading Charge":
+				amt = flt(self.bag_count) * flt(row.rate)
+				row.base_value = flt(self.bag_count)
+				row.formula_summary = (
+					f"{int(flt(self.bag_count))} bags × ₹{flt(row.rate):.2f}/bag = ₹{amt:.2f}"
+				)
+			else:
+				# v2.9.8.7 — generic rate_type dispatch for any unknown deduction code.
+				# Same engine as Brokerage: figure out the unit-of-measure from rate_type
+				# and apply the appropriate formula.
+				rt = (row.rate_type or "Percentage").strip().lower()
+				rate = flt(row.rate)
+				if rt == "percentage":
+					amt = flt(self.grn_amount) * rate / 100.0
+					row.base_value = flt(self.grn_amount)
+					row.formula_summary = f"GRN ₹{flt(self.grn_amount):.2f} × {rate:.3f}% = ₹{amt:.2f}"
+				elif rt in ("per qtl", "per quintal"):
+					amt = flt(self.net_qty_quintal) * rate
+					row.base_value = flt(self.net_qty_quintal)
+					row.formula_summary = f"{flt(self.net_qty_quintal):.3f} q × ₹{rate:.2f}/q = ₹{amt:.2f}"
+				elif rt in ("per mt", "per metric ton"):
+					mt = flt(self.net_qty_kg) / 1000.0
+					amt = mt * rate
+					row.base_value = mt
+					row.formula_summary = f"{mt:.3f} MT × ₹{rate:.2f}/MT = ₹{amt:.2f}"
+				elif rt == "per bag":
+					amt = flt(self.bag_count) * rate
+					row.base_value = flt(self.bag_count)
+					row.formula_summary = f"{int(flt(self.bag_count))} bags × ₹{rate:.2f}/bag = ₹{amt:.2f}"
+				elif rt == "per kg":
+					amt = flt(self.net_qty_kg) * rate
+					row.base_value = flt(self.net_qty_kg)
+					row.formula_summary = f"{flt(self.net_qty_kg):.3f} kg × ₹{rate:.2f}/kg = ₹{amt:.2f}"
+				else:
+					# Unknown rate_type — preserve manually-entered amount
+					amt = flt(row.calculated_amount or row.actual_amount)
+					row.formula_summary = f"({rt}) — manual entry: ₹{amt:.2f}"
+
+			row.calculated_amount = round(amt, 2)
+			# actual_amount: respect user's manual override when is_overridden=1; else mirror calculated
+			if not row.is_overridden:
+				row.actual_amount = round(amt, 2)
 
 	# ── PI propagation (on submit) ────────────────────────────────────
 	def _propagate_to_pi(self):

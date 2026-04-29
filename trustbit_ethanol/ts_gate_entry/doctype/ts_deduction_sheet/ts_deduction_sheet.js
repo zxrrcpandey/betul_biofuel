@@ -18,6 +18,120 @@ frappe.ui.form.on("TS Deduction Sheet", {
 			frm.set_intro(`DS Number: ${ds}${qi_part}`, "blue");
 		}
 
+		// v2.9.8 — derived header fields are always RO on form
+		[
+			"posting_date", "grn_reference", "rate_per_quintal",
+			"net_qty_kg", "net_qty_quintal", "bag_count", "grn_amount"
+		].forEach(function (f) {
+			frm.set_df_property(f, "read_only", 1);
+		});
+
+		// v2.9.8.3 — warning banner when GRN not yet linked on draft DS
+		if (frm.doc.docstatus === 0 && !frm.doc.grn_reference && frm.doc.token_number) {
+			frm.dashboard.add_indicator(
+				__("⚠ GRN not linked yet — once a Purchase Receipt is created for this Token, click '🔄 Refresh from Sources' to pull the latest data."),
+				"orange"
+			);
+		}
+
+		// v2.9.8.4 — manual refresh button. Calls server-side endpoint that
+		// CLEARS all derived fields first (defeating the "if not self.X" guards)
+		// then re-fetches from PO / PR / QI / Suggestion via validate().
+		if (frm.doc.docstatus === 0 && !frm.is_new()) {
+			frm.add_custom_button(__("🔄 Refresh from Sources"), function () {
+				frappe.confirm(
+					__("This will clear the Deduction Details table and re-fetch all values from PO / PR / QI / Suggestion. Manual line overrides will be lost. Continue?"),
+					function () {
+						frappe.show_alert({
+							message: __("Refreshing from sources..."),
+							indicator: "blue"
+						}, 3);
+						frappe.call({
+							method: "trustbit_ethanol.ts_gate_entry.doctype.ts_deduction_sheet.ts_deduction_sheet.force_refresh_deduction_sheet",
+							type: "POST",
+							args: { name: frm.doc.name },
+							freeze: true,
+							freeze_message: __("Refreshing from sources..."),
+							callback: function (r) {
+								if (r && r.message && r.message.ok) {
+									const m = r.message;
+									frappe.show_alert({
+										message: __("✓ Refreshed. GRN: {0} · Total: ₹{1} · Lines: {2}",
+											[m.grn_reference || "(none)", m.total_deduction.toFixed(2), m.line_count]),
+										indicator: "green"
+									}, 7);
+									frm.reload_doc();
+								}
+							},
+							error: function (err) {
+								frappe.show_alert({
+									message: __("Refresh failed — see console"),
+									indicator: "red"
+								}, 8);
+								console.error("[v2.9.8.4] force-refresh failed:", err);
+							}
+						});
+					}
+				);
+			}).addClass("btn-default");
+		}
+
+		// v2.9.8.1 — auto-refresh when GRN appears upstream after DS was drafted.
+		// Detect: draft + grn_reference empty + token set → probe for PR.
+		// If a PR now exists for the token, trigger save() to fetch + recalc.
+		// Guard via frm.__ts_v298_auto_refreshed so we only fire once per session.
+		if (
+			frm.doc.docstatus === 0 &&
+			!frm.doc.grn_reference &&
+			frm.doc.token_number &&
+			!frm.__ts_v298_auto_refreshed
+		) {
+			frm.__ts_v298_auto_refreshed = true;
+			frappe.db.get_list("Purchase Receipt", {
+				filters: { ts_token: frm.doc.token_number, docstatus: ["!=", 2] },
+				fields: ["name"],
+				limit: 1
+			}).then(prs => {
+				if (prs && prs.length && !frm.is_new() && !frm.is_dirty()) {
+					frappe.show_alert({
+						message: __("GRN found ({0}) — refreshing deduction values…", [prs[0].name]),
+						indicator: "blue"
+					}, 4);
+					frm.save().then(() => {
+						frappe.show_alert({
+							message: __("Deduction Sheet refreshed with GRN data."),
+							indicator: "green"
+						}, 4);
+					}).catch(err => {
+						// Swallow auto-save errors — user can still save manually
+						console.warn("[v2.9.8.1] auto-refresh save failed:", err);
+					});
+				}
+			}).catch(() => {
+				// Probe failed (network / permission) — silent fall-back
+			});
+		}
+
+		// v2.9.8 — by default, line.rate is locked to its source. Allow editing
+		// only when CEO has flipped ts_ds_full_override_enabled. is_overridden +
+		// override_reason + actual_amount remain editable in the standard path.
+		frappe.call({
+			method: "frappe.client.get_value",
+			args: {doctype: "TS Settings", filters: {}, fieldname: "ts_ds_full_override_enabled"},
+			callback(r) {
+				const full_override = r && r.message
+					&& String(r.message.ts_ds_full_override_enabled || "0") === "1";
+				const grid = frm.fields_dict.deductions && frm.fields_dict.deductions.grid;
+				if (!grid) return;
+				if (frm.doc.docstatus === 0 && !full_override) {
+					grid.update_docfield_property("rate", "read_only", 1);
+					grid.update_docfield_property("base_value", "read_only", 1);
+					grid.update_docfield_property("calculated_amount", "read_only", 1);
+				}
+				grid.refresh();
+			}
+		});
+
 		// v2.9.5 — Layer-1 system fields + Layer-2 actual_deduction_* are
 		// UNCONDITIONALLY read-only on the form (snapshots from QI).
 		[
@@ -62,19 +176,32 @@ frappe.ui.form.on("TS Deduction Sheet", {
 			}
 		}
 
-		// Show delta indicator (system vs actual)
+		// v2.9.8.2 — show delta indicator with the Grain Manager's name (filled_by user)
 		if (frm.doc.system_deduction_pct !== null && frm.doc.system_deduction_pct !== undefined &&
 		    frm.doc.actual_deduction_pct !== null && frm.doc.actual_deduction_pct !== undefined) {
-			let delta = flt(frm.doc.actual_deduction_pct) - flt(frm.doc.system_deduction_pct);
-			let abs_delta = Math.abs(delta);
-			if (abs_delta > 0.01) {
-				let color = delta > 0 ? "orange" : "blue";
-				frm.dashboard.add_indicator(
-					__("Δ vs System: {0}%", [delta.toFixed(3)]),
-					color
-				);
+			const delta = flt(frm.doc.actual_deduction_pct) - flt(frm.doc.system_deduction_pct);
+			const abs_delta = Math.abs(delta);
+			const _render_indicator = (full_name) => {
+				const who = full_name ? `${full_name}` : __("Grain Manager");
+				if (abs_delta > 0.01) {
+					const color = delta > 0 ? "orange" : "blue";
+					frm.dashboard.add_indicator(
+						__("{0}: Δ {1}% vs System", [who, delta.toFixed(3)]),
+						color
+					);
+				} else {
+					frm.dashboard.add_indicator(
+						__("{0}: matches System value", [who]),
+						"green"
+					);
+				}
+			};
+			if (frm.doc.filled_by) {
+				frappe.db.get_value("User", frm.doc.filled_by, "full_name").then(r => {
+					_render_indicator(r && r.message && r.message.full_name);
+				});
 			} else {
-				frm.dashboard.add_indicator(__("Matches System Value"), "green");
+				_render_indicator(null);
 			}
 		}
 	},

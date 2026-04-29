@@ -8,54 +8,25 @@
  "track_changes": 1,
  "field_order": [
   "naming_series",
-  "ds_number",
+  "posting_date",
   "quality_inspection",
   "deduction_suggestion",
-  "token_number",
-  "gate_entry",
   "purchase_order",
+  "token_number",
   "column_break_ref",
   "supplier_name",
   "item_code",
   "item_name",
   "item_category",
-  "system_section",
-  "system_deduction_pct",
-  "column_break_system",
-  "system_deduction_kg",
-  "actual_section",
-  "actual_deduction_pct",
-  "actual_deduction_kg",
-  "actual_deduction_reason",
-  "column_break_actual",
-  "filled_by",
-  "filled_at",
-  "weight_section",
-  "invoice_qty",
-  "item_rate",
-  "invoice_value",
-  "column_break_wt",
-  "weight_deduction",
-  "net_weight",
-  "mrn_amount",
-  "quality_section",
-  "qi_impurity_percent",
-  "column_break_qi_grain",
-  "qi_moisture_percent",
-  "coal_quality_section",
-  "qi_po_gcv",
-  "qi_actual_gcv",
-  "hold_on_gcv",
-  "column_break_qi_coal",
-  "qi_po_moisture",
-  "qi_actual_moisture",
-  "hold_on_moisture",
-  "rates_section",
-  "unloading_rate_per_bag",
-  "dhalta_rate_gm_per_qtl",
-  "column_break_rates",
-  "brokerage_rate_per_mt",
-  "calculate_deductions_button",
+  "grn_reference",
+  "gate_entry",
+  "detail_extras_section",
+  "rate_per_quintal",
+  "net_qty_kg",
+  "bag_count",
+  "column_break_detail",
+  "net_qty_quintal",
+  "grn_amount",
   "deductions_section",
   "deductions",
   "summary_section",
@@ -84,7 +55,8 @@
    "in_standard_filter": 1,
    "bold": 1,
    "no_copy": 1,
-   "description": "Auto = name (BBPL-DS-YY-#####). Mirrored for list view convenience."
+   "description": "Auto = name (BBPL-DS-YY-#####). Mirrored for list view convenience.",
+   "hidden": 1
   },
   {
    "fieldname": "quality_inspection",
@@ -103,7 +75,7 @@
    "options": "TS Deduction Suggestion",
    "in_standard_filter": 1,
    "read_only": 1,
-   "description": "v2.9.6 — Source of actual_deduction_* snapshot (Grain Manager submission)."
+   "description": "v2.9.6 \u2014 Source of actual_deduction_* snapshot (Grain Manager submission)."
   },
   {
    "fieldname": "token_number",
@@ -119,7 +91,8 @@
    "fieldtype": "Link",
    "label": "Gate Entry",
    "options": "TS Gate Entry",
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   },
   {
    "fieldname": "purchase_order",
@@ -161,7 +134,9 @@
   {
    "fieldname": "system_section",
    "fieldtype": "Section Break",
-   "label": "Layer 1 — System Deduction (from QI)"
+   "label": "Layer 1 \u2014 System Deduction (from QI) (Legacy \u2014 hidden in v2.9.8)",
+   "hidden": 1,
+   "collapsible": 1
   },
   {
    "fieldname": "system_deduction_pct",
@@ -192,7 +167,9 @@
   {
    "fieldname": "actual_section",
    "fieldtype": "Section Break",
-   "label": "Layer 2 — Actual Deduction (Grain Manager)"
+   "label": "Layer 2 \u2014 Actual Deduction (Grain Manager) (Legacy \u2014 hidden in v2.9.8)",
+   "hidden": 1,
+   "collapsible": 1
   },
   {
    "fieldname": "actual_deduction_pct",
@@ -214,7 +191,7 @@
    "permlevel": 1,
    "no_copy": 1,
    "bold": 1,
-   "description": "v2.9.5: Snapshot from parent QI. Auto = (Actual %) × Bag Count × Bag Weight Kg."
+   "description": "v2.9.5: Snapshot from parent QI. Auto = (Actual %) \u00d7 Bag Count \u00d7 Bag Weight Kg."
   },
   {
    "fieldname": "actual_deduction_reason",
@@ -246,8 +223,9 @@
   {
    "fieldname": "weight_section",
    "fieldtype": "Section Break",
-   "label": "Invoice & Weight Details (Legacy)",
-   "collapsible": 1
+   "label": "Invoice & Weight Details (Legacy) (Legacy \u2014 hidden in v2.9.8)",
+   "collapsible": 1,
+   "hidden": 1
   },
   {
    "fieldname": "invoice_qty",
@@ -301,10 +279,11 @@
   {
    "fieldname": "quality_section",
    "fieldtype": "Section Break",
-   "label": "Quality Results - Grain (Legacy)",
+   "label": "Quality Results - Grain (Legacy) (Legacy \u2014 hidden in v2.9.8)",
    "depends_on": "eval:doc.item_category=='Grain'",
    "collapsible": 1,
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   },
   {
    "fieldname": "qi_impurity_percent",
@@ -327,10 +306,11 @@
   {
    "fieldname": "coal_quality_section",
    "fieldtype": "Section Break",
-   "label": "Quality Results - Coal (Legacy)",
+   "label": "Quality Results - Coal (Legacy) (Legacy \u2014 hidden in v2.9.8)",
    "depends_on": "eval:doc.item_category=='Coal'",
    "collapsible": 1,
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   },
   {
    "fieldname": "qi_po_gcv",
@@ -381,9 +361,10 @@
   {
    "fieldname": "rates_section",
    "fieldtype": "Section Break",
-   "label": "Deduction Rates (Legacy)",
+   "label": "Deduction Rates (Legacy) (Legacy \u2014 hidden in v2.9.8)",
    "depends_on": "eval:doc.item_category=='Grain'",
-   "collapsible": 1
+   "collapsible": 1,
+   "hidden": 1
   },
   {
    "fieldname": "unloading_rate_per_bag",
@@ -417,7 +398,7 @@
   {
    "fieldname": "deductions_section",
    "fieldtype": "Section Break",
-   "label": "Legacy Deduction Lines (optional)",
+   "label": "Deduction Details",
    "collapsible": 1
   },
   {
@@ -434,7 +415,7 @@
   {
    "fieldname": "total_deduction",
    "fieldtype": "Currency",
-   "label": "Total Deduction (₹)",
+   "label": "Total Deduction (\u20b9)",
    "read_only": 1,
    "precision": "2",
    "bold": 1
@@ -472,6 +453,73 @@
    "print_hide": 1,
    "read_only": 1,
    "ignore_user_permissions": 1
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Posting Date",
+   "default": "Today",
+   "in_list_view": 1,
+   "no_copy": 0,
+   "description": "Date this Deduction Sheet was created."
+  },
+  {
+   "fieldname": "grn_reference",
+   "fieldtype": "Link",
+   "label": "GRN (Purchase Receipt)",
+   "options": "Purchase Receipt",
+   "read_only": 1,
+   "description": "Auto-fetched from the Token's submitted Purchase Receipt.",
+   "in_standard_filter": 0
+  },
+  {
+   "fieldname": "detail_extras_section",
+   "fieldtype": "Section Break",
+   "label": "Quantity & Rate"
+  },
+  {
+   "fieldname": "rate_per_quintal",
+   "fieldtype": "Currency",
+   "label": "Rate (per Quintal)",
+   "precision": "2",
+   "read_only": 1,
+   "description": "Auto-fetched from PO Item rate (kg\u2192quintal converted if needed)."
+  },
+  {
+   "fieldname": "net_qty_kg",
+   "fieldtype": "Float",
+   "label": "Net Qty (Kg)",
+   "precision": "3",
+   "read_only": 1,
+   "description": "Auto-fetched from Purchase Receipt weighbridge net weight."
+  },
+  {
+   "fieldname": "bag_count",
+   "fieldtype": "Int",
+   "label": "No. of Bags",
+   "read_only": 1,
+   "description": "Auto-fetched from Quality Inspection bag count."
+  },
+  {
+   "fieldname": "column_break_detail",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "net_qty_quintal",
+   "fieldtype": "Float",
+   "label": "Net Qty (Quintal)",
+   "precision": "3",
+   "read_only": 1,
+   "description": "Derived = Net Qty Kg \u00f7 100"
+  },
+  {
+   "fieldname": "grn_amount",
+   "fieldtype": "Currency",
+   "label": "GRN Amount",
+   "precision": "2",
+   "read_only": 1,
+   "bold": 1,
+   "description": "Net Qty (Quintal) \u00d7 Rate per Quintal. Reference for Quality Deduction calculation."
   }
  ],
  "links": [],
