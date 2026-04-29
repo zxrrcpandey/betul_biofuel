@@ -38,8 +38,33 @@ def seed_po_stats_tab():
 	"""Seed TS Settings threshold + PO Stats tab + HTML field. Idempotent."""
 	_seed_threshold_setting()
 	_seed_po_custom_fields()
+	# v2.9.8.15 — ensure PO list view has the right column setup so the ID
+	# column lands at position 2, not auto-appended at the end (Lesson 226).
+	_seed_po_list_view_columns()
 	frappe.clear_cache(doctype="TS Settings")
 	frappe.clear_cache(doctype="Purchase Order")
+
+
+def _seed_po_list_view_columns():
+	"""v2.9.8.16 — PO list view column setup (Lesson 226).
+
+	Frappe v15's `setup_columns()` either auto-appends `name` at the END
+	(when `title_field` is set and `hide_name_column` is unset) or omits
+	`name` entirely. Frappe's meta does NOT expose `name` as a regular
+	DocField, so a Property Setter `in_list_view=1` is a no-op. The
+	column injection is therefore done client-side by po_list.js via
+	`frappe.listview_settings["Purchase Order"].onload`.
+
+	Server side we just bump tabList View Settings.total_fields=5 so
+	the slice in setup_columns doesn't drop Grand Total when our JS
+	hook adds name at position 2.
+
+	Idempotent — only writes when current state differs.
+	"""
+	if frappe.db.exists("List View Settings", "Purchase Order"):
+		cur_total = frappe.db.get_value("List View Settings", "Purchase Order", "total_fields")
+		if cur_total != "5":
+			frappe.db.set_value("List View Settings", "Purchase Order", "total_fields", "5")
 
 
 def _seed_threshold_setting():
@@ -90,7 +115,11 @@ def _seed_po_custom_fields():
 			"fieldname": "stats_tab",
 			"label": "Stats",
 			"fieldtype": "Tab Break",
-			"insert_after": "amended_from",
+			# v2.9.8.11 — was `amended_from` (idx 19, inside supplier_section). That
+			# anchor split the native first tab so items_section + totals fell into
+			# the Stats tab. `connections_tab` is the last native Tab Break (idx 154);
+			# anchoring after it makes Stats the new last tab, AFTER Connections.
+			"insert_after": "connections_tab",
 			"description": "Purchase Order Stats tab — shows delivery summary + full Lifecycle Tracker when PO has more than the configured threshold (default 5) of deliveries.",
 		},
 		{

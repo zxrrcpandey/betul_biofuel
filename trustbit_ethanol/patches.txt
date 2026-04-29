@@ -8,6 +8,10 @@ trustbit_ethanol.patches.v2_9_6.clean_qi_v295_inline_fields
 # v2.9.8 — backfill new DS derived fields + 3 standard deduction lines on existing drafts.
 # Must run AFTER doctype sync so new columns (grn_amount, net_qty_kg, etc.) exist.
 trustbit_ethanol.patches.v2_9_8.relayout_ds
+# v2.9.8.13 — remove native Status column from Purchase Order list view
+trustbit_ethanol.patches.v2_9_8.remove_po_status_column
+# v2.9.8.14 — reorder PO list columns: ID in 2nd position
+trustbit_ethanol.patches.v2_9_8.reorder_po_list_columns
 # Patches added in this section will be executed after doctypes are migrated
 trustbit_ethanol.patches.v2_8_0.drop_unloading_entry_table
 trustbit_ethanol.patches.v2_8.add_rst_unique_index
