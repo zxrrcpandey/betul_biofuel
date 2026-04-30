@@ -35,14 +35,61 @@ import frappe
 
 
 def seed_po_stats_tab():
-	"""Seed TS Settings threshold + PO Stats tab + HTML field. Idempotent."""
+	"""Seed TS Settings threshold + PO Stats tab + HTML field + PO/MR list
+	view columns. Idempotent."""
 	_seed_threshold_setting()
 	_seed_po_custom_fields()
-	# v2.9.8.15 — ensure PO list view has the right column setup so the ID
-	# column lands at position 2, not auto-appended at the end (Lesson 226).
+	# v2.9.8.15 — PO list view column setup (ID at position 2 + extras).
 	_seed_po_list_view_columns()
+	# v2.9.8.30 — Same for Material Request list view.
+	_seed_mr_list_view_columns()
 	frappe.clear_cache(doctype="TS Settings")
 	frappe.clear_cache(doctype="Purchase Order")
+	frappe.clear_cache(doctype="Material Request")
+
+
+def _seed_mr_list_view_columns():
+	"""v2.9.8.30 — Material Request list view column setup.
+
+	Mirrors the PO pattern (Lesson 228): hide_name_column=true via JS,
+	prototype monkey-patch on setup_columns injects `name` at index 2.
+	Server side SETS the exact fields JSON + total_fields=7 to deliver the
+	user-requested visible order.
+
+	Desired final visible order (after JS injects name at idx 2):
+	  Title (Subject) | ID | Status | Required By | Approval Status | % Ordered | % Received
+
+	NOT append-only here — we ENFORCE the exact spec because the user listed
+	the columns explicitly. If admins customize via UI later, next migrate
+	will revert; document this trade-off in deploy notes.
+	"""
+	import json
+
+	name = "Material Request"
+	if not frappe.db.exists("List View Settings", name):
+		return
+
+	desired_fields = [
+		{"fieldname": "title", "label": "Title"},
+		{"fieldname": "status_field", "label": "Status", "type": "Status"},
+		{"fieldname": "schedule_date", "label": "Required By"},
+		{"fieldname": "ts_mr_status", "label": "Approval Status"},
+		{"fieldname": "per_ordered", "label": "% Ordered"},
+		{"fieldname": "per_received", "label": "% Received"},
+	]
+	desired_fields_json = json.dumps(desired_fields)
+	target_total = "7"
+
+	cur_fields = frappe.db.get_value("List View Settings", name, "fields")
+	cur_total = frappe.db.get_value("List View Settings", name, "total_fields")
+
+	updates = {}
+	if cur_fields != desired_fields_json:
+		updates["fields"] = desired_fields_json
+	if cur_total != target_total:
+		updates["total_fields"] = target_total
+	if updates:
+		frappe.db.set_value("List View Settings", name, updates)
 
 
 def _seed_po_list_view_columns():

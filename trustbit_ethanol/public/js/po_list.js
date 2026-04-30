@@ -1,34 +1,26 @@
-// TS PO List — Override indicator + fix docstatus filter for approval statuses
-// + force ID column to position 2 of the list (Lesson 226).
-//
-// v2.9.8.22 — Reliable approach: monkey-patch the prototype `setup_columns`
-// method so our `name` column injection runs INSIDE setup_columns. Both the
-// header render and the data render use the same final `this.columns` array
-// snapshot, so they stay aligned. v2.9.8.16's onload-based injection was
-// post-setup and only updated the data render path; the header was already
-// painted from the original (unmodified) array, causing the off-by-one
-// misalignment that broke prod's PO list (6-field config) on 30 Apr.
-// Gated on `this.doctype === "Purchase Order"` so other list views unaffected.
-//
-// hide_name_column=true suppresses Frappe's default auto-append of `name` at
-// the end (which would create a duplicate column at position end + position 2).
+// TS PO + MR List — Override indicator + fix docstatus filter for approval
+// statuses + force ID column to position 2 (Lessons 226, 228).
+// v2.9.8.30 — extend setup_columns monkey-patch + hide_name_column to also
+// handle Material Request (same pattern as Purchase Order).
 
 frappe.listview_settings = frappe.listview_settings || {};
-frappe.listview_settings["Purchase Order"] = frappe.listview_settings["Purchase Order"] || {};
-frappe.listview_settings["Purchase Order"].hide_name_column = true;
+const _TS_LIST_DOCTYPES = ["Purchase Order", "Material Request"];
+_TS_LIST_DOCTYPES.forEach((dt) => {
+	frappe.listview_settings[dt] = frappe.listview_settings[dt] || {};
+	frappe.listview_settings[dt].hide_name_column = true;
+});
 
 (function() {
 	if (!(frappe.views && frappe.views.ListView && frappe.views.ListView.prototype)) return;
 	const _proto = frappe.views.ListView.prototype;
-	if (_proto._ts_setup_columns_patched) return;  // idempotent — patch once per page load
+	if (_proto._ts_setup_columns_patched) return;
 	_proto._ts_setup_columns_patched = true;
 
 	const _orig_setup_columns = _proto.setup_columns;
 	_proto.setup_columns = function() {
 		_orig_setup_columns.apply(this, arguments);
-		if (this.doctype !== "Purchase Order") return;
+		if (!_TS_LIST_DOCTYPES.includes(this.doctype)) return;
 		if (!Array.isArray(this.columns)) return;
-		// Inject `name` column at index 2 (after Subject + Tag) idempotently.
 		if (this.columns[2] && this.columns[2].df && this.columns[2].df.fieldname === "name") return;
 		const idx = this.columns.findIndex(c => c && c.df && c.df.fieldname === "name");
 		let name_col;
