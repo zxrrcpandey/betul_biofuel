@@ -167,15 +167,19 @@ frappe.ui.form.on("TS Token", {
 					}, __("Actions"));
 				}
 
-				// Mark Exit for Material tokens (legacy button — hidden when
-				// v2.8.3 two-pass flag is ON; the new G2/G1 buttons below own
-				// the final transitions).
+				// Mark Exit (legacy single-step exit).
+				// v2.9.8.20: NEVER show for Raw Material — that path is now ALWAYS the
+				// two-step G2 Exit + G1 Final Exit flow (rendered below, regardless of
+				// ts_two_pass_gates_enabled). Mark Exit still shows for Stock OUT and
+				// for Material tokens that aren't Raw Material (per legacy single-pass
+				// fallback when the two-pass entry flow is disabled).
 				let show_mark_exit = false;
-				if (frm.doc.status && !["Exited", "Campus Exited"].includes(frm.doc.status) && !frm._ts_two_pass_flag) {
+				if (frm.doc.status && !["Exited", "Campus Exited", "Plant Exited"].includes(frm.doc.status) && !frm._ts_two_pass_flag) {
 					if (frm.doc.stock_direction === "Stock OUT") {
 						show_mark_exit = ["Gross Recorded", "Dispatch Ready"].includes(frm.doc.status);
 					} else if (frm.doc.purpose === "Raw Material") {
-						show_mark_exit = frm.doc.status === "GRN Created";
+						// v2.9.8.20: Raw Material always uses G2/G1 buttons below.
+						show_mark_exit = false;
 					} else {
 						show_mark_exit = true;
 					}
@@ -200,16 +204,18 @@ frappe.ui.form.on("TS Token", {
 
 				// =====================================================================
 				// v2.8.3 Two-Pass Gate Flow buttons (Material tokens only).
-				// All three gated on:
-				//   - saved token (frm.is_new() === false — Lesson 166)
-				//   - feature flag ts_two_pass_gates_enabled on TS Settings
-				//   - the user's role (G2 Gate Operator / G1 Security + IT Head override)
-				//   - the token's current status
-				// The flag is fetched once per form load and cached on frm._ts_two_pass_flag
-				// so the three buttons render synchronously on subsequent refreshes.
+				// v2.9.8.20: EXIT buttons (B2 + B3) now render UNCONDITIONALLY for
+				// Material — decoupled from the entry-side flag. Entry-side B1
+				// (Record G2 Entry) still gated on ts_two_pass_gates_enabled because
+				// that intermediate G1 Entered → G2 Entered status only exists when
+				// the entry flow is two-pass.
+				//
+				// Gates (per button):
+				//   - B1 (Record G2 Entry) — flag ON + saved + G2 role + status=G1 Entered
+				//   - B2 (Record G2 Exit)  — saved + G2 role + status in (Tare Weighed, GRN Created)
+				//   - B3 (Record G1 Final Exit) — saved + G1 role + status=Plant Exited
 				// =====================================================================
 				const _render_two_pass_buttons = () => {
-					if (!frm._ts_two_pass_flag) return;
 					if (frappe.session.user === "Guest") return;
 
 					const has_g2 = frappe.user.has_role("G2 Gate Operator")
@@ -279,31 +285,32 @@ frappe.ui.form.on("TS Token", {
 				};
 
 				if (!is_gate_pass) {
-					// v2.8.3 Lesson 168: use whitelisted helper instead of get_single_value
-					// (G2 Gate Operator / CTO roles lack TS Settings read perm). Cache on
-					// frappe.boot so we don't re-fetch across refreshes in the same session.
-					const _apply_flag = () => {
-						if (frm._ts_two_pass_flag) {
-							_render_two_pass_buttons();
+					// v2.9.8.20: render two-pass buttons UNCONDITIONALLY for Material.
+					// Exit-side buttons (B2/B3) are now always available — decoupled
+					// from ts_two_pass_gates_enabled. The flag still controls whether
+					// B1 (Record G2 Entry) shows, but B1 only ever appears when status
+					// is "G1 Entered" which only exists when the entry-side flag is ON.
+					// We still fetch the flag so frm._ts_two_pass_flag is populated for
+					// any other consumer that needs it (e.g. the Mark Exit gate above).
+					const _apply_render = () => _render_two_pass_buttons();
+					_apply_render();
+					// Backfill flag in cache (best-effort, async) for the Mark Exit
+					// rendering path which already runs before this block.
+					if (frm._ts_two_pass_flag === undefined) {
+						if (frappe.boot && frappe.boot._two_pass_flag !== undefined) {
+							frm._ts_two_pass_flag = !!frappe.boot._two_pass_flag;
+						} else {
+							frappe.call({
+								method: "trustbit_ethanol.ts_gate_entry.api.get_two_pass_flag",
+								type: "GET",
+								callback: (r) => {
+									const enabled = !!(r && r.message && r.message.enabled);
+									frm._ts_two_pass_flag = enabled;
+									if (frappe.boot) frappe.boot._two_pass_flag = enabled;
+								},
+								error: () => { frm._ts_two_pass_flag = false; },
+							});
 						}
-					};
-					if (frm._ts_two_pass_flag !== undefined) {
-						_apply_flag();
-					} else if (frappe.boot && frappe.boot._two_pass_flag !== undefined) {
-						frm._ts_two_pass_flag = !!frappe.boot._two_pass_flag;
-						_apply_flag();
-					} else {
-						frappe.call({
-							method: "trustbit_ethanol.ts_gate_entry.api.get_two_pass_flag",
-							type: "GET",
-							callback: (r) => {
-								const enabled = !!(r && r.message && r.message.enabled);
-								frm._ts_two_pass_flag = enabled;
-								if (frappe.boot) frappe.boot._two_pass_flag = enabled;
-								_apply_flag();
-							},
-							error: () => { frm._ts_two_pass_flag = false; },
-						});
 					}
 				}
 			}

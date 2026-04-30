@@ -416,13 +416,17 @@ class TSToken(Document):
 
 	@frappe.whitelist()
 	def mark_exit(self):
-		# v2.8.3: when two-pass flag is ON, the final transitions for Material
-		# are owned by g2_mat_log_exit + g1_final_exit. Gate Pass path is
-		# UNTOUCHED — it continues to go through mark_exit. Reject Material
-		# callers with a clear message pointing them at the new buttons.
-		if self.entry_type == "Material" and _two_pass_flag_on():
+		# v2.9.8.20: Raw Material tokens ALWAYS use the two-step exit
+		# (Record G2 Exit → Record G1 Final Exit). mark_exit is for
+		# (a) Gate Pass tokens (visitors), and (b) non-Raw-Material Material
+		# tokens that don't go through GRN — e.g. Stock OUT or short-haul
+		# vehicles without weighing. Reject Raw Material callers with a clear
+		# message pointing at the new buttons.
+		if self.entry_type == "Material" and (self.purpose == "Raw Material" or _two_pass_flag_on()):
 			frappe.throw(
-				"Two-Pass Gate Flow is enabled. Use 'G2 Record Exit' then 'G1 Record Exit' buttons."
+				"This token uses the two-step gate exit flow. Use 'Record G2 Exit' "
+				"(when status = GRN Created) followed by 'Record G1 Final Exit' "
+				"(when status = Plant Exited)."
 			)
 
 		# Prevent double-exit
@@ -834,12 +838,13 @@ def g1_final_exit(token_name):
 	tok = frappe.get_doc("TS Token", token_name)
 	if tok.entry_type != "Material":
 		frappe.throw(_("G1 final exit API is only for Material tokens (use mark_exit for Gate Pass)."))
-	if _two_pass_flag_on():
-		if tok.status != "Plant Exited":
-			frappe.throw(_("Token {0} is at '{1}' — G2 Exit must be recorded first (expected 'Plant Exited').").format(token_name, tok.status))
-	else:
-		if tok.status not in ("Tare Weighed", "GRN Created", "Exited", "Campus Exited", "Plant Exited"):
-			frappe.throw(_("Token {0} at '{1}' cannot record G1 final exit.").format(token_name, tok.status))
+	# v2.9.8.20: G1 Final Exit is now ALWAYS the second step of Material exit —
+	# always require status == "Plant Exited" (set by g2_mat_log_exit). Removed
+	# the flag-aware fallback that accepted legacy single-pass statuses; the
+	# legacy mark_exit path is now blocked for Raw Material tokens entirely
+	# (see mark_exit() below) so this endpoint is the only path to Campus Exited.
+	if tok.status != "Plant Exited":
+		frappe.throw(_("Token {0} is at '{1}' — G2 Exit must be recorded first (expected 'Plant Exited').").format(token_name, tok.status))
 	tok.db_set({
 		"g1_exit_time": now_datetime(),
 		"status": "Campus Exited",
