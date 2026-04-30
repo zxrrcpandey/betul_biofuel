@@ -53,12 +53,19 @@ def _seed_po_list_view_columns():
 	client-side by po_list.js via the prototype monkey-patch on setup_columns
 	(v2.9.8.22).
 
-	v2.9.8.28 — also ensure `per_received` is part of the visible fields list
-	(% Received progress bar). Idempotent: only adds the entry if absent;
-	never removes admin-configured fields.
+	v2.9.8.28 — ensure `per_received` is part of the visible fields list.
+	v2.9.8.29 — also ensure `per_billed` (% Billed). Both idempotent —
+	only adds entries if absent; never removes admin-configured fields.
 
-	Bumps tabList View Settings.total_fields to fit ID + Approval Status +
-	Grand Total + % Received + injected name = 6 (Tag invisible).
+	Bumps tabList View Settings.total_fields = 6 to fit:
+	  Tag (invisible) + Approval Status + Grand Total + % Received + % Billed
+	  + injected name (from po_list.js setup_columns monkey-patch) = 7 cols
+	  in the columns array, 6 visible.
+
+	Note: Subject (Supplier Name) is column 0 and counted separately by
+	Frappe — it doesn't go through the slice, so total_fields=6 results in
+	6 visible columns: Supplier Name | ID | Approval Status | Grand Total |
+	% Received | % Billed.
 	"""
 	import json
 
@@ -66,7 +73,7 @@ def _seed_po_list_view_columns():
 	if not frappe.db.exists("List View Settings", name):
 		return
 
-	# 1. Ensure per_received is in the fields JSON (append if missing).
+	# 1. Ensure per_received + per_billed are in the fields JSON (append if missing).
 	raw = frappe.db.get_value("List View Settings", name, "fields")
 	updated_fields_json = None
 	if raw:
@@ -81,12 +88,17 @@ def _seed_po_list_view_columns():
 
 		if isinstance(fields, list):
 			existing = {(f or {}).get("fieldname") for f in fields}
+			changed = False
 			if "per_received" not in existing:
 				fields.append({"fieldname": "per_received", "label": "% Received"})
+				changed = True
+			if "per_billed" not in existing:
+				fields.append({"fieldname": "per_billed", "label": "% Billed"})
+				changed = True
+			if changed:
 				updated_fields_json = json.dumps(fields)
 
-	# 2. total_fields target = 6 (visible 5 + Tag invisible). Adjust if list
-	# already has more entries than 5 (e.g. prod has per_billed, transaction_date).
+	# 2. total_fields target = 6 (visible 6 + Tag invisible).
 	target_total = "6"
 	cur_total = frappe.db.get_value("List View Settings", name, "total_fields")
 
