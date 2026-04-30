@@ -46,25 +46,57 @@ def seed_po_stats_tab():
 
 
 def _seed_po_list_view_columns():
-	"""v2.9.8.16 — PO list view column setup (Lesson 226).
+	"""PO list view column setup.
 
-	Frappe v15's `setup_columns()` either auto-appends `name` at the END
-	(when `title_field` is set and `hide_name_column` is unset) or omits
-	`name` entirely. Frappe's meta does NOT expose `name` as a regular
-	DocField, so a Property Setter `in_list_view=1` is a no-op. The
-	column injection is therefore done client-side by po_list.js via
-	`frappe.listview_settings["Purchase Order"].onload`.
+	v2.9.8.16 — Frappe v15's `setup_columns()` either auto-appends `name` at
+	the END or omits it entirely. The column injection is therefore done
+	client-side by po_list.js via the prototype monkey-patch on setup_columns
+	(v2.9.8.22).
 
-	Server side we just bump tabList View Settings.total_fields=5 so
-	the slice in setup_columns doesn't drop Grand Total when our JS
-	hook adds name at position 2.
+	v2.9.8.28 — also ensure `per_received` is part of the visible fields list
+	(% Received progress bar). Idempotent: only adds the entry if absent;
+	never removes admin-configured fields.
 
-	Idempotent — only writes when current state differs.
+	Bumps tabList View Settings.total_fields to fit ID + Approval Status +
+	Grand Total + % Received + injected name = 6 (Tag invisible).
 	"""
-	if frappe.db.exists("List View Settings", "Purchase Order"):
-		cur_total = frappe.db.get_value("List View Settings", "Purchase Order", "total_fields")
-		if cur_total != "5":
-			frappe.db.set_value("List View Settings", "Purchase Order", "total_fields", "5")
+	import json
+
+	name = "Purchase Order"
+	if not frappe.db.exists("List View Settings", name):
+		return
+
+	# 1. Ensure per_received is in the fields JSON (append if missing).
+	raw = frappe.db.get_value("List View Settings", name, "fields")
+	updated_fields_json = None
+	if raw:
+		try:
+			fields = json.loads(raw)
+		except Exception as e:
+			frappe.log_error(
+				message=f"_seed_po_list_view_columns: bad fields JSON: {e}",
+				title="seed_po_stats_tab",
+			)
+			fields = None
+
+		if isinstance(fields, list):
+			existing = {(f or {}).get("fieldname") for f in fields}
+			if "per_received" not in existing:
+				fields.append({"fieldname": "per_received", "label": "% Received"})
+				updated_fields_json = json.dumps(fields)
+
+	# 2. total_fields target = 6 (visible 5 + Tag invisible). Adjust if list
+	# already has more entries than 5 (e.g. prod has per_billed, transaction_date).
+	target_total = "6"
+	cur_total = frappe.db.get_value("List View Settings", name, "total_fields")
+
+	updates = {}
+	if updated_fields_json is not None:
+		updates["fields"] = updated_fields_json
+	if cur_total != target_total:
+		updates["total_fields"] = target_total
+	if updates:
+		frappe.db.set_value("List View Settings", name, updates)
 
 
 def _seed_threshold_setting():

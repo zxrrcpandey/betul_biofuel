@@ -105,3 +105,11 @@ function _fix_docstatus_for_approval_filter(listview) {
 		}
 	} catch(e) {}
 }
+
+// v2.9.8.27 — Width-tighten attempts (.23/.24/.25/.26) all caused column
+// alignment bugs in Frappe v15 (header/data shift, blank cells). Reverted
+// the entire width-fix path. ID at position 2 (v2.9.8.22 setup_columns
+// monkey-patch above) still works. Empty space between columns is
+// Frappe's default `flex: 1` distribution — accepted as a known
+// limitation pending a cleaner solution (e.g. add more columns to the
+// list view to fill the gaps; will iterate based on user preference).
