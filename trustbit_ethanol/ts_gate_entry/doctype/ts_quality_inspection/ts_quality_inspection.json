@@ -148,9 +148,10 @@
    "read_only": 1
   },
   {
-   "description": "Auto-fetched from PO Supplier (via Gate Entry).",
+   "description": "Auto-fetched from PO Supplier (via Gate Entry). Hidden from form UI in v2.9.8.17 per user request; DB column preserved for downstream consumers (filters, reports, dashboard).",
    "fieldname": "party_name",
    "fieldtype": "Data",
+   "hidden": 1,
    "in_standard_filter": 1,
    "label": "Party Name",
    "read_only": 1

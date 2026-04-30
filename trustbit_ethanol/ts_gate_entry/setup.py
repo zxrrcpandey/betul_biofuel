@@ -1911,6 +1911,10 @@ def seed_cc_codes():
 		# doesn't fall through to the "MISC" fallback.
 		"Main - CFBBPL": "CFB-MAIN",
 		"Cattle Feed Betul Biofuel Private Limited - CFBBPL": "CFBBPL",
+		# v2.9.8.17 — CF- Production - CFBBPL was missed in the v2.9.5 batch.
+		# Caught by regression test (MR creation against this CC failed with "no
+		# CC Code" error). Pattern matches BBPL counterpart "CF-PRD" with CFB- prefix.
+		"CF- Production - CFBBPL": "CFB-PRD",
 	}
 
 	for cc_name, code in CC_CODES.items():
