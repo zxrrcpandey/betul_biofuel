@@ -204,9 +204,9 @@
    "fieldname": "ts_two_pass_gates_enabled",
    "fieldtype": "Check",
    "label": "Enable Two-Pass Gate Flow (G2 Entry/Exit for Material)",
-   "default": "0",
+   "default": "1",
    "permlevel": 1,
-   "description": "v2.8.3: when ON, Material flow requires G2 Entry before WB Gross + G2 Exit before G1 Exit. Token.status uses new values 'G1 Entered', 'G2 Entered', 'Plant Exited', 'Campus Exited'. Writable by IT Head / System Manager only (permlevel 1)."
+   "description": "v2.8.3: when ON, Material flow requires G2 Entry before WB Gross + G2 Exit before G1 Exit. Token.status uses new values 'G1 Entered', 'G2 Entered', 'Plant Exited', 'Campus Exited'. Writable by IT Head / System Manager only (permlevel 1). v2.9.8.18: default flipped 0→1 for FRESH installs only — existing instances retain their saved tabSingles value (Frappe does NOT overwrite Singles on default change)."
   },
   {
    "fieldname": "ts_qc_v29_enabled",
