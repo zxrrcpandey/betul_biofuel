@@ -8,7 +8,8 @@ frappe.ui.form.on("Purchase Order", {
 		// Show fallback banner if backend silently picked default master.
 		_ts_render_deduction_fallback_banner(frm);
 		if (frm.is_new()) return;
-		_ts_add_print_button(frm, "TS Purchase Order");
+		// v2.9.8.31: default to BBPL Purchase Order (new mockup format).
+		_ts_add_print_button(frm, "BBPL Purchase Order");
 		_load_approval_context(frm);
 		_load_budget_indicator(frm);
 		_load_lifecycle_tracker(frm);
@@ -975,7 +976,8 @@ function _ts_add_print_button(frm, default_format) {
 
 	// Add our custom Print button as standalone (not inside Actions)
 	frm.add_custom_button(__("🖨 Print PDF"), () => {
-		const formats = ["TS Purchase Order", "TS Purchase Order (Clean)"];
+		// v2.9.8.31: BBPL Purchase Order added as the new default per-PDF-mockup format.
+		const formats = ["BBPL Purchase Order", "TS Purchase Order", "TS Purchase Order (Clean)"];
 
 		frappe.prompt({
 			fieldtype: "Select",
