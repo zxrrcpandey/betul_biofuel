@@ -879,13 +879,14 @@ function _ts_add_mr_print_button(frm) {
 
 	// Standalone print button (not inside Actions)
 	frm.add_custom_button(__("🖨 Print PDF"), () => {
-		const formats = ["TS Material Request", "TS Material Request (Clean)"];
+		// v2.9.8.34: BBPL Material Request added as the new default format.
+		const formats = ["BBPL Material Request", "TS Material Request", "TS Material Request (Clean)"];
 		frappe.prompt({
 			fieldtype: "Select",
 			label: "Print Format",
 			fieldname: "format",
 			options: formats.join("\n"),
-			default: "TS Material Request",
+			default: "BBPL Material Request",
 			reqd: 1,
 		}, (values) => {
 			const url = `/api/method/frappe.utils.print_format.download_pdf?doctype=Material%20Request&name=${encodeURIComponent(frm.doc.name)}&format=${encodeURIComponent(values.format)}&no_letterhead=0`;
