@@ -636,7 +636,8 @@ def create_grn_for_weighed_token(token_name, manual_qty_per_po=None):
 
 		po_item = frappe.db.get_value("Purchase Order Item",
 			{"parent": item_po_name, "item_code": ge_item["item_code"]},
-			["name", "rate", "ts_delivery_location", "ts_item_remark"],
+			["name", "rate", "ts_delivery_location", "ts_item_remark",
+			 "material_request", "material_request_item"],
 			as_dict=True)
 
 		rate = flt(po_item.rate) if po_item else 0
@@ -661,6 +662,11 @@ def create_grn_for_weighed_token(token_name, manual_qty_per_po=None):
 			"project": item_po_project,
 			"ts_delivery_location": (po_item.ts_delivery_location if po_item else "") or "",
 			"ts_item_remark": (po_item.ts_item_remark if po_item else "") or "",
+			# v2.9.8.35 — propagate MR link so MR per_received updates on PR submit.
+			# This path bypasses ERPNext's make_purchase_receipt mapper, so we
+			# must copy these fields explicitly.
+			"material_request": (po_item.material_request if po_item else "") or "",
+			"material_request_item": (po_item.material_request_item if po_item else "") or "",
 		})
 
 	pr = frappe.get_doc({
@@ -905,7 +911,8 @@ def create_grn_for_non_weighing_token(token_name):
 		item_po_name = ge_item.purchase_order or po.name
 		po_item = frappe.db.get_value("Purchase Order Item",
 			{"parent": item_po_name, "item_code": ge_item.item_code},
-			["name", "rate", "uom", "stock_uom", "ts_delivery_location", "ts_item_remark"],
+			["name", "rate", "uom", "stock_uom", "ts_delivery_location", "ts_item_remark",
+			 "material_request", "material_request_item"],
 			as_dict=True)
 
 		rate = flt(po_item.rate) if po_item else 0
@@ -930,6 +937,9 @@ def create_grn_for_non_weighing_token(token_name):
 			"project": item_po_project,
 			"ts_delivery_location": delivery_location,
 			"ts_item_remark": item_remark,
+			# v2.9.8.35 — propagate MR link so MR per_received updates on PR submit.
+			"material_request": (po_item.material_request if po_item else "") or "",
+			"material_request_item": (po_item.material_request_item if po_item else "") or "",
 		})
 
 	pr = frappe.get_doc({
