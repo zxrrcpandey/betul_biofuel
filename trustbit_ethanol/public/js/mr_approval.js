@@ -63,6 +63,19 @@ frappe.ui.form.on("Material Request", {
 		// Added directly in refresh() so it works regardless of approval context load state.
 		_maybe_add_post_approval_revision_button(frm);
 	},
+	// v2.9.8.36 — preserve cost_center when ts_project (MR's project field) changes.
+	// MR has NO native `project` field at header level — only ts_project Custom Field.
+	// The framework's Link-field refresh can wipe cost_center as a side-effect of
+	// any dimension/link change. Snapshot+restore handler covers it.
+	ts_project(frm) {
+		const cc_before = frm.doc.cost_center;
+		if (!cc_before) return;
+		setTimeout(() => {
+			if (frm.doc.cost_center !== cc_before) {
+				frm.set_value("cost_center", cc_before);
+			}
+		}, 200);
+	},
 	cost_center(frm) {
 		if (!frm.doc.cost_center) return;
 		// v2.9.0.6 (Bug 11.F): propagate parent CC to all existing item rows

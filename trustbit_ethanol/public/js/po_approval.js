@@ -21,6 +21,18 @@ frappe.ui.form.on("Purchase Order", {
 	cost_center(frm) {
 		if (!frm.is_new()) _load_budget_indicator(frm);
 	},
+	// v2.9.8.36 — preserve cost_center when project changes.
+	// ERPNext's framework can wipe cost_center after a project selection
+	// (Link-field query refresh side-effect). Snapshot before, restore after.
+	project(frm) {
+		const cc_before = frm.doc.cost_center;
+		if (!cc_before) return;
+		setTimeout(() => {
+			if (frm.doc.cost_center !== cc_before) {
+				frm.set_value("cost_center", cc_before);
+			}
+		}, 200);
+	},
 	// v2.9.0.7 (Bug 11.G): when company is changed, the previous company's
 	// set_warehouse + all item-row warehouses become invalid. ERPNext core
 	// does NOT clear these on company change → user could submit a PO with

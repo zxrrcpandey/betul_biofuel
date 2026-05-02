@@ -946,8 +946,28 @@ def create_custom_fields():
 	_setup_admin_reception_permissions()
 	_setup_workspace_roles()
 	_fix_workspace_content()
+	# v2.9.8.36 — hide redundant ts_project Custom Field on PO + MR (native project field exists)
+	_hide_redundant_ts_project()
 	# Legacy v1.0 — TS Approval Limit is no longer used by v2.0 rule-based system
 	# _seed_default_approval_limits()
+
+
+def _hide_redundant_ts_project():
+	"""v2.9.8.36 — Hide our v2.6.0 ts_project Custom Field on PURCHASE ORDER ONLY.
+
+	Frappe's Purchase Order has a NATIVE `project` Link field in the Accounting
+	Dimension section. The v2.6.0 ts_project Custom Field on PO duplicated this.
+	We keep the column in DB (don't delete) so existing data is preserved, just
+	hide it from form UI. Native project is the canonical PO field going forward.
+
+	IMPORTANT: Do NOT hide ts_project on Material Request — MR has NO native
+	project field at the header level (only at the item level). On MR, ts_project
+	is the ONLY project field available. Users still need it.
+	"""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+	if frappe.db.exists("Custom Field", {"dt": "Purchase Order", "fieldname": "ts_project"}):
+		make_property_setter("Purchase Order", "ts_project", "hidden", 1, "Check",
+			validate_fields_for_doctype=False)
 
 
 def _setup_purchase_receipt_permissions():
