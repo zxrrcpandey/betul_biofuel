@@ -946,28 +946,44 @@ def create_custom_fields():
 	_setup_admin_reception_permissions()
 	_setup_workspace_roles()
 	_fix_workspace_content()
-	# v2.9.8.36 — hide redundant ts_project Custom Field on PO + MR (native project field exists)
-	_hide_redundant_ts_project()
+	# v2.9.8.37 — hide redundant NATIVE project field on PO (we use ts_project, downstream reads ts_project)
+	_hide_native_project_on_po()
 	# Legacy v1.0 — TS Approval Limit is no longer used by v2.0 rule-based system
 	# _seed_default_approval_limits()
 
 
-def _hide_redundant_ts_project():
-	"""v2.9.8.36 — Hide our v2.6.0 ts_project Custom Field on PURCHASE ORDER ONLY.
+def _hide_native_project_on_po():
+	"""v2.9.8.37 — REVERSAL of v2.9.8.36. Hide NATIVE Frappe `project` field
+	on Purchase Order (not our `ts_project`).
 
-	Frappe's Purchase Order has a NATIVE `project` Link field in the Accounting
-	Dimension section. The v2.6.0 ts_project Custom Field on PO duplicated this.
-	We keep the column in DB (don't delete) so existing data is preserved, just
-	hide it from form UI. Native project is the canonical PO field going forward.
+	Reason: BBPL's downstream code (reports, automation, deduction-sheet
+	calculations) reads `ts_project`, not the native ERPNext `project` field.
+	If users edit the native field, ts_project stays empty and the downstream
+	stops working. To prevent the duplication confusion AND keep our
+	functionality intact, we hide the native field instead.
 
-	IMPORTANT: Do NOT hide ts_project on Material Request — MR has NO native
-	project field at the header level (only at the item level). On MR, ts_project
-	is the ONLY project field available. Users still need it.
+	v2.9.8.36 had hidden the wrong one (ts_project) — this function reverses
+	by ALSO deleting the v2.9.8.36 Property Setter (so ts_project becomes
+	visible again) before adding the new one.
+
+	IMPORTANT: Do NOT touch Material Request. MR has NO native project field
+	at the header level — only ts_project. Already correct from v2.9.8.36.
+
+	ERPNext mapper compatibility: po_before_save (ts_po_approval.py) mirrors
+	ts_project → project on every save, so the native project column stays
+	populated for PR/PI mappers + project-based reports, even though the
+	field is hidden from the form.
 	"""
 	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
-	if frappe.db.exists("Custom Field", {"dt": "Purchase Order", "fieldname": "ts_project"}):
-		make_property_setter("Purchase Order", "ts_project", "hidden", 1, "Check",
-			validate_fields_for_doctype=False)
+	# Step 1: undo v2.9.8.36 — un-hide ts_project on PO (delete the wrong-direction PS)
+	old_ps = frappe.db.exists("Property Setter", {
+		"doc_type": "Purchase Order", "field_name": "ts_project", "property": "hidden"
+	})
+	if old_ps:
+		frappe.delete_doc("Property Setter", old_ps, ignore_permissions=True)
+	# Step 2: hide the native project field on PO
+	make_property_setter("Purchase Order", "project", "hidden", 1, "Check",
+		validate_fields_for_doctype=False)
 
 
 def _setup_purchase_receipt_permissions():

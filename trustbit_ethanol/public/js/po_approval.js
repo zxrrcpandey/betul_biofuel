@@ -21,10 +21,11 @@ frappe.ui.form.on("Purchase Order", {
 	cost_center(frm) {
 		if (!frm.is_new()) _load_budget_indicator(frm);
 	},
-	// v2.9.8.36 — preserve cost_center when project changes.
-	// ERPNext's framework can wipe cost_center after a project selection
-	// (Link-field query refresh side-effect). Snapshot before, restore after.
-	project(frm) {
+	// v2.9.8.37 — preserve cost_center when ts_project (BBPL's project field) changes.
+	// Native `project` is hidden on PO in v2.9.8.37; users interact with ts_project.
+	// Same defensive snapshot+restore pattern as MR (frame: ts_project triggers a
+	// Link-query refresh side-effect that can wipe cost_center).
+	ts_project(frm) {
 		const cc_before = frm.doc.cost_center;
 		if (!cc_before) return;
 		setTimeout(() => {

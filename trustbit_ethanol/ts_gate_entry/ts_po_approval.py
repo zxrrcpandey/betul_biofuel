@@ -1949,6 +1949,13 @@ def po_before_save(doc, method):
 	if not doc.project:
 		_copy_project_from_mr(doc)
 
+	# ── v2.9.8.37: Mirror ts_project → native project for ERPNext mapper compat ──
+	# Native project field is hidden in form (v2.9.8.37); BBPL downstream reads
+	# ts_project, but ERPNext PR/PI mappers + project-based reports still need
+	# the native `project` column populated. Sync silently on every save.
+	if doc.get("ts_project") and doc.project != doc.ts_project:
+		doc.project = doc.ts_project
+
 	# ── v2.9.0 Day 3: PO Deduction Terms validation (Plan v4 Gaps 1, 2, inactive guard) ──
 	# Runs BEFORE tamper guard so even CEO/MD edits to template/overrides get
 	# the rounding + reason-required + inactive-template checks. The new fields
