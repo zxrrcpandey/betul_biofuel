@@ -221,8 +221,11 @@ def submit_for_stores_approval(mr_name):
 		_("Submitted for Stores Manager approval by {0}.").format(user),
 	)
 
-	_notify_stores_managers(doc.name)
-	_notify_stores_managers_system(doc.name)  # v2.9.9.7 — in-app bell notification
+	# v2.9.9.10 — defensive: notification failure must NEVER block submission
+	try: _notify_stores_managers(doc.name)
+	except Exception: pass
+	try: _notify_stores_managers_system(doc.name)
+	except Exception: pass
 	frappe.db.commit()
 
 	return {
@@ -296,10 +299,13 @@ def approve_transfer(mr_name):
 		se_name = se.name
 	except Exception as e:
 		se_error = str(e)
-		frappe.log_error(
-			f"v2.9.9: Stock Entry creation from MR {mr_name} failed: {e}",
-			"v2.9.9 approve_transfer",
-		)
+		try:
+			frappe.log_error(
+				title="v2.9.9 approve_transfer SE failed",
+				message=f"MR {mr_name}: {e}",
+			)
+		except Exception:
+			pass
 
 	# Update MR status regardless of SE outcome (per spec — surface SE error to user)
 	doc.db_set("ts_mr_status", "Approved", update_modified=False)
@@ -315,8 +321,11 @@ def approve_transfer(mr_name):
 			  "Please create Stock Entry manually.").format(user, se_error or "unknown"),
 		)
 
-	_notify_creator(doc.name, "approved", stock_entry=se_name)
-	_notify_creator_system(doc.name, "approved", stock_entry=se_name)  # v2.9.9.7
+	# v2.9.9.10 — defensive: notification failure must NEVER block approval
+	try: _notify_creator(doc.name, "approved", stock_entry=se_name)
+	except Exception: pass
+	try: _notify_creator_system(doc.name, "approved", stock_entry=se_name)
+	except Exception: pass
 	frappe.db.commit()
 
 	return {
@@ -371,8 +380,11 @@ def reject_transfer(mr_name, reason):
 		_("Rejected by {0}. Reason: {1}").format(user, frappe.utils.escape_html(reason)),
 	)
 
-	_notify_creator(doc.name, "rejected", reason=reason)
-	_notify_creator_system(doc.name, "rejected", reason=reason)  # v2.9.9.7
+	# v2.9.9.10 — defensive: notification failure must NEVER block rejection
+	try: _notify_creator(doc.name, "rejected", reason=reason)
+	except Exception: pass
+	try: _notify_creator_system(doc.name, "rejected", reason=reason)
+	except Exception: pass
 	frappe.db.commit()
 
 	return {
@@ -414,16 +426,21 @@ def cleanup_draft_se_on_mr_cancel(doc, method=None):
 			se_doc = frappe.get_doc("Stock Entry", se_name)
 			se_doc.flags.ignore_permissions = True
 			se_doc.delete()
-			frappe.log_error(
-				f"v2.9.9.9: deleted orphan draft Stock Entry {se_name} "
-				f"after MR {doc.name} cancellation",
-				"v2.9.9.9 cleanup",
-			)
+			try:
+				frappe.log_error(
+					title="v2.9.9.9 cleanup",
+					message=f"Deleted orphan draft SE {se_name} after MR {doc.name} cancel",
+				)
+			except Exception:
+				pass
 		except Exception as e:
-			frappe.log_error(
-				f"v2.9.9.9: failed to delete orphan SE {se_name}: {e}",
-				"v2.9.9.9 cleanup",
-			)
+			try:
+				frappe.log_error(
+					title="v2.9.9.9 cleanup failed",
+					message=f"SE {se_name}: {e}",
+				)
+			except Exception:
+				pass
 
 
 def revert_on_stock_entry_cancel(doc, method=None):
@@ -496,10 +513,13 @@ def _create_system_notification(for_user, subject, mr_name, content=None):
 			"email_content": content or subject,
 		}).insert(ignore_permissions=True)
 	except Exception as e:
-		frappe.log_error(
-			f"v2.9.9: system notification to {for_user} failed: {e}",
-			"v2.9.9 notification",
-		)
+		try:
+			frappe.log_error(
+				title="v2.9.9 notification failed",
+				message=f"User {for_user}: {e}",
+			)
+		except Exception:
+			pass
 
 
 def _notify_stores_managers_system(mr_name):
@@ -586,10 +606,13 @@ def _notify_stores_managers(mr_name):
 			now=False,
 		)
 	except Exception as e:
-		frappe.log_error(
-			f"v2.9.9: notify_stores_managers failed for {mr_name}: {e}",
-			"v2.9.9 email",
-		)
+		try:
+			frappe.log_error(
+				title="v2.9.9 email failed (stores managers)",
+				message=f"MR {mr_name}: {e}",
+			)
+		except Exception:
+			pass
 
 
 def _notify_creator(mr_name, action, stock_entry=None, reason=None):
@@ -626,10 +649,13 @@ def _notify_creator(mr_name, action, stock_entry=None, reason=None):
 			now=False,
 		)
 	except Exception as e:
-		frappe.log_error(
-			f"v2.9.9: notify_creator failed for {mr_name}: {e}",
-			"v2.9.9 email",
-		)
+		try:
+			frappe.log_error(
+				title="v2.9.9 email failed (creator)",
+				message=f"MR {mr_name}: {e}",
+			)
+		except Exception:
+			pass
 
 
 def _build_submit_email_html(doc, link):
