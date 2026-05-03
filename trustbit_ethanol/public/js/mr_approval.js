@@ -1065,6 +1065,11 @@ function _load_transfer_context(frm) {
 			const ctx = r.message;
 			if (ctx.flow !== "transfer") return;  // safety net
 
+			// v2.9.9.2 — hide Frappe's native Submit button + intro banner so
+			// only the Stores Workflow buttons drive the docstatus transition.
+			// The Submit-for-Stores-Approval handler calls doc.submit() server-side.
+			_hide_standard_submit(frm, {status: ctx.ts_mr_status});
+
 			// Status indicator (color-coded pill)
 			const STATUS_COLOR = {
 				"Not Submitted": "gray",
