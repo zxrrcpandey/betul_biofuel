@@ -40,9 +40,13 @@ frappe.ui.form.on("Material Request", {
 		// uses Stores Manager workflow, NOT the Purchase chain. Skip
 		// _load_mr_context, budget banner, AVP banner, Service Request
 		// PO button — none of those apply.
+		// v2.9.9.6 — Print PDF button only shown when Approved (so Stores
+		// Manager + creator can print the slip post-approval).
 		if (frm.doc.material_request_type === "Material Transfer"
 				|| frm.doc.material_request_type === "Material Issue") {
-			_ts_add_mr_print_button(frm);
+			if (frm.doc.ts_mr_status === "Approved") {
+				_ts_add_mr_print_button(frm);
+			}
 			_load_transfer_context(frm);
 			return;
 		}
