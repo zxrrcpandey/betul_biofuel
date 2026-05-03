@@ -270,10 +270,16 @@ def approve_transfer(mr_name):
 			exc=frappe.PermissionError,
 		)
 
-	# v2.9.9.11 — Direct approval path: validate + submit the doc first
-	# (covers the case where Stores Manager edits an amended draft and
-	# approves directly without going through Submit for Stores Approval)
+	# v2.9.9.11/12 — Direct approval path is restricted to AMENDED drafts only.
+	# Fresh drafts must go through Submit → Pending → Approve to enforce
+	# separation of duties (creator cannot self-approve their own fresh doc).
 	if doc.ts_mr_status == "Not Submitted":
+		if not doc.get("amended_from") and not is_admin:
+			frappe.throw(
+				_("Direct approval is only available for amended drafts. "
+				  "For fresh drafts, please use 'Submit for Stores Approval' first."),
+				exc=frappe.ValidationError,
+			)
 		_validate_transfer_for_submit(doc)
 		if doc.docstatus == 0:
 			doc.flags.ignore_permissions = True
@@ -753,9 +759,10 @@ def get_transfer_context(doc):
 	is_creator = (user == doc.owner)
 	is_stores_manager = "Stores Manager" in roles
 	is_admin = (user == "Administrator") or ("System Manager" in roles)
+	is_amend = bool(doc.get("amended_from"))  # v2.9.9.12 — distinguish fresh vs amended
 	status = doc.ts_mr_status or "Not Submitted"
 
-	actions = _compute_transfer_actions(status, is_creator, is_stores_manager, is_admin, doc.docstatus)
+	actions = _compute_transfer_actions(status, is_creator, is_stores_manager, is_admin, doc.docstatus, is_amend)
 
 	stock_entry = frappe.db.get_value(
 		"Stock Entry",
@@ -784,14 +791,24 @@ def get_transfer_context(doc):
 	}
 
 
-def _compute_transfer_actions(status, is_creator, is_stores_manager, is_admin, docstatus):
-	"""Compute the list of action buttons available to the current user based on state + role."""
+def _compute_transfer_actions(status, is_creator, is_stores_manager, is_admin, docstatus, is_amend=False):
+	"""Compute the list of action buttons available to the current user based on state + role.
+
+	v2.9.9.12 — Direct Approve (skipping Submit) is restricted to amended drafts
+	only. Fresh drafts from any creator (even Stores Manager creators) must go
+	through the Submit → Pending → Approve path. This enforces separation-of-duties
+	on initial creation while preserving the amend-after-rejection convenience flow.
+	"""
 	actions = []
 
 	if status == "Not Submitted":
-		# v2.9.9.11 — Stores Manager on a draft (e.g. their own amended doc)
-		# can approve directly, skipping the Submit-then-Pending intermediate step.
-		if is_stores_manager or is_admin:
+		# Direct Approve allowed only on AMENDED drafts (where original was
+		# rejected + cancelled and now being corrected by a Stores Manager).
+		# Fresh drafts must go through Submit-for-Stores-Approval, even if
+		# the creator has Stores Manager role (separation of duties).
+		can_direct_approve = is_amend and (is_stores_manager or is_admin)
+
+		if can_direct_approve:
 			actions.append({
 				"key": "approve_transfer",
 				"label": _("Approve & Create Stock Entry"),
@@ -799,8 +816,8 @@ def _compute_transfer_actions(status, is_creator, is_stores_manager, is_admin, d
 				"color": "green",
 				"icon": "✅",
 				"confirm_msg": _(
-					"Approve this request directly? It will be submitted and a draft "
-					"Stock Entry will be created."
+					"Approve this amended request directly? It will be submitted "
+					"and a draft Stock Entry will be created."
 				),
 			})
 		elif is_creator:
