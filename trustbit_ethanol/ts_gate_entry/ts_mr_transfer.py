@@ -82,6 +82,15 @@ def handle_before_save(doc):
 	if not _is_stores_flow_type(doc.material_request_type):
 		return  # defense-in-depth (caller already guards)
 
+	# v2.9.9.8 — On Frappe amend (new doc with amended_from set), reset
+	# ts_mr_status from terminal "Rejected" / "Approved" to "Not Submitted"
+	# so the user can resubmit through the Stores Workflow. Without this
+	# reset, the form sticks on the previous terminal status and shows no
+	# action buttons (since Rejected is terminal in _compute_transfer_actions).
+	if doc.is_new() and doc.get("amended_from"):
+		if doc.ts_mr_status in ("Rejected", "Approved", "Pending Stores Manager"):
+			doc.ts_mr_status = "Not Submitted"
+
 	# Default initial status for new drafts
 	if doc.is_new() and not doc.ts_mr_status:
 		doc.ts_mr_status = "Not Submitted"
