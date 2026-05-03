@@ -386,6 +386,46 @@ def reject_transfer(mr_name, reason):
 #  STOCK ENTRY ON-CANCEL HOOK — registered in hooks.py
 # ─────────────────────────────────────────────────────────────────────────
 
+def cleanup_draft_se_on_mr_cancel(doc, method=None):
+	"""v2.9.9.9 — Material Request on_cancel hook for Stores flow MRs.
+
+	When a Stores-flow MR (Transfer / Issue) is cancelled while having a
+	DRAFT auto-created Stock Entry, that SE becomes an orphan — it can
+	never be submitted because ERPNext blocks linking to cancelled docs.
+	This hook deletes the orphan draft SE so the form list stays clean.
+
+	Only acts on:
+	- Stores flow types (Material Transfer / Material Issue)
+	- DRAFT (docstatus=0) Stock Entries
+	Submitted SEs are NOT touched (they have stock impact already).
+	"""
+	if not _is_stores_flow_type(doc.material_request_type):
+		return
+	# Find draft SEs created from this MR
+	draft_se_names = frappe.db.sql_list("""
+		SELECT DISTINCT se.name
+		FROM `tabStock Entry` se
+		INNER JOIN `tabStock Entry Detail` sed ON sed.parent = se.name
+		WHERE sed.material_request = %s
+		  AND se.docstatus = 0
+	""", (doc.name,))
+	for se_name in draft_se_names:
+		try:
+			se_doc = frappe.get_doc("Stock Entry", se_name)
+			se_doc.flags.ignore_permissions = True
+			se_doc.delete()
+			frappe.log_error(
+				f"v2.9.9.9: deleted orphan draft Stock Entry {se_name} "
+				f"after MR {doc.name} cancellation",
+				"v2.9.9.9 cleanup",
+			)
+		except Exception as e:
+			frappe.log_error(
+				f"v2.9.9.9: failed to delete orphan SE {se_name}: {e}",
+				"v2.9.9.9 cleanup",
+			)
+
+
 def revert_on_stock_entry_cancel(doc, method=None):
 	"""Stock Entry on_cancel hook. If the SE was created from an Approved
 	Material Transfer/Issue MR, revert the MR back to Pending Stores Manager

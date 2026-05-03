@@ -158,6 +158,8 @@ doc_events = {
 		"before_insert": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_before_insert",
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_update",
+		# v2.9.9.9 — clean up orphan draft Stock Entries when a Stores-flow MR is cancelled
+		"on_cancel": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.cleanup_draft_se_on_mr_cancel",
 	},
 	"Purchase Receipt": {
 		"validate": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.validate_unique_supplier_bill",
