@@ -213,12 +213,13 @@ def submit_for_stores_approval(mr_name):
 	)
 
 	_notify_stores_managers(doc.name)
+	_notify_stores_managers_system(doc.name)  # v2.9.9.7 — in-app bell notification
 	frappe.db.commit()
 
 	return {
 		"status": "ok",
 		"ts_mr_status": "Pending Stores Manager",
-		"message": _("Submitted to Stores Manager. They have been notified by email."),
+		"message": _("Submitted to Stores Manager. They have been notified."),
 	}
 
 
@@ -306,6 +307,7 @@ def approve_transfer(mr_name):
 		)
 
 	_notify_creator(doc.name, "approved", stock_entry=se_name)
+	_notify_creator_system(doc.name, "approved", stock_entry=se_name)  # v2.9.9.7
 	frappe.db.commit()
 
 	return {
@@ -361,6 +363,7 @@ def reject_transfer(mr_name, reason):
 	)
 
 	_notify_creator(doc.name, "rejected", reason=reason)
+	_notify_creator_system(doc.name, "rejected", reason=reason)  # v2.9.9.7
 	frappe.db.commit()
 
 	return {
@@ -418,6 +421,87 @@ def revert_on_stock_entry_cancel(doc, method=None):
 			"Comment",
 			_("Stock Entry {0} cancelled — MR reverted to Pending Stores Manager.").format(doc.name),
 		)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  SYSTEM NOTIFICATION HELPERS — Frappe bell-icon (Notification Log)
+# ─────────────────────────────────────────────────────────────────────────
+
+def _create_system_notification(for_user, subject, mr_name, content=None):
+	"""Create a Frappe in-app (bell icon) Notification Log entry for a user.
+
+	This is independent from email — works on any environment regardless of
+	SMTP config. Shows up in the user's bell-icon dropdown immediately.
+	"""
+	if not for_user or for_user in ("Administrator", "Guest"):
+		return
+	try:
+		frappe.get_doc({
+			"doctype": "Notification Log",
+			"subject": subject,
+			"for_user": for_user,
+			"type": "Alert",
+			"document_type": "Material Request",
+			"document_name": mr_name,
+			"from_user": frappe.session.user,
+			"email_content": content or subject,
+		}).insert(ignore_permissions=True)
+	except Exception as e:
+		frappe.log_error(
+			f"v2.9.9: system notification to {for_user} failed: {e}",
+			"v2.9.9 notification",
+		)
+
+
+def _notify_stores_managers_system(mr_name):
+	"""Send in-app notification to all active Stores Manager users."""
+	recipients = frappe.db.sql_list("""
+		SELECT DISTINCT u.name
+		FROM `tabUser` u
+		INNER JOIN `tabHas Role` hr ON hr.parent = u.name
+		WHERE hr.role = 'Stores Manager'
+		  AND u.enabled = 1
+		  AND u.name NOT IN ('Administrator', 'Guest')
+	""")
+	if not recipients:
+		return
+	doc = frappe.db.get_value("Material Request", mr_name,
+		["material_request_type", "owner", "cost_center"], as_dict=True)
+	if not doc:
+		return
+	type_label = doc.material_request_type or "Material Request"
+	subject = f"{type_label} {mr_name} — pending your approval"
+	content = (
+		f"{type_label} <b>{mr_name}</b> from <b>{doc.owner}</b> "
+		f"(CC: {doc.cost_center or '—'}) is pending Stores Manager approval."
+	)
+	for user in recipients:
+		_create_system_notification(user, subject, mr_name, content)
+
+
+def _notify_creator_system(mr_name, action, stock_entry=None, reason=None):
+	"""Send in-app notification to MR creator on approve/reject."""
+	doc = frappe.db.get_value("Material Request", mr_name,
+		["material_request_type", "owner"], as_dict=True)
+	if not doc or not doc.owner:
+		return
+	type_label = doc.material_request_type or "Material Request"
+	if action == "approved":
+		subject = f"{type_label} {mr_name} APPROVED"
+		content = (
+			f"Your {type_label} <b>{mr_name}</b> has been approved by Stores Manager."
+		)
+		if stock_entry:
+			content += f" Draft Stock Entry <b>{stock_entry}</b> created — please review."
+	elif action == "rejected":
+		subject = f"{type_label} {mr_name} REJECTED"
+		content = (
+			f"Your {type_label} <b>{mr_name}</b> was rejected by Stores Manager. "
+			f"Reason: {frappe.utils.escape_html(reason or '(no reason)')}"
+		)
+	else:
+		return
+	_create_system_notification(doc.owner, subject, mr_name, content)
 
 
 # ─────────────────────────────────────────────────────────────────────────
