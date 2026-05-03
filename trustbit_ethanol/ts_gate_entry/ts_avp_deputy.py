@@ -50,6 +50,9 @@ def approve_as_avp_deputy(mr_name, reason=None):
 		frappe.throw(_("Material Request {0} not found.").format(mr_name))
 
 	mr = frappe.get_doc("Material Request", mr_name)
+	# v2.9.9 — Block Material Transfer MRs (they use ts_mr_transfer endpoints)
+	from trustbit_ethanol.ts_gate_entry.ts_po_approval import _block_if_mr_transfer
+	_block_if_mr_transfer(mr)
 	if (mr.ts_mr_status or "") != "Pending AVP":
 		frappe.throw(
 			_("This MR is at status '{0}', not 'Pending AVP'. AVP Deputy mode only "

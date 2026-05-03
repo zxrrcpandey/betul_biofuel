@@ -179,6 +179,8 @@ doc_events = {
 	},
 	"Stock Entry": {
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_stock_issue_warning.warn_rejected_stock_in_warehouse",
+		# v2.9.9 — revert linked Material Transfer MR back to Pending Stores Manager when SE is cancelled
+		"on_cancel": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.revert_on_stock_entry_cancel",
 	},
 	"User": {
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_user_management.on_user_update",

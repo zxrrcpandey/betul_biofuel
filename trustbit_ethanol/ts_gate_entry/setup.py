@@ -816,6 +816,14 @@ def create_custom_fields():
 			"label": "Remark",
 			"insert_after": "ts_remark_section",
 		},
+		# v2.9.9 — Material Transfer-only remark (visible only when type=Transfer)
+		{
+			"fieldname": "ts_transfer_remark",
+			"fieldtype": "Small Text",
+			"label": "Transfer Remark",
+			"insert_after": "ts_remark",
+			"depends_on": "eval:doc.material_request_type==\"Material Transfer\"",
+		},
 	])
 
 	custom_fields["Purchase Order"].extend([
@@ -948,6 +956,11 @@ def create_custom_fields():
 	_fix_workspace_content()
 	# v2.9.8.37 — hide redundant NATIVE project field on PO (we use ts_project, downstream reads ts_project)
 	_hide_native_project_on_po()
+	# v2.9.9 — Material Transfer Independent Flow: kill switch first (creates fields needed by other seeds), then role + perms + auto-assignment
+	_seed_material_transfer_kill_switch()
+	_seed_stores_manager_role()
+	_seed_stores_manager_perms()
+	_seed_stores_manager_assignments()
 	# Legacy v1.0 — TS Approval Limit is no longer used by v2.0 rule-based system
 	# _seed_default_approval_limits()
 
@@ -2250,4 +2263,127 @@ def seed_brands():
 			continue
 		frappe.get_doc({"doctype": "Brand", "brand": brand_name}).insert(ignore_permissions=True)
 
+	frappe.db.commit()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  v2.9.9 — Material Transfer Independent Flow (Stores Manager role + kill switch)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _seed_stores_manager_role():
+	"""v2.9.9 — Create the Stores Manager role for Material Transfer flow."""
+	if frappe.db.exists("Role", "Stores Manager"):
+		return
+	frappe.get_doc({
+		"doctype": "Role",
+		"role_name": "Stores Manager",
+		"desk_access": 1,
+		"disabled": 0,
+	}).insert(ignore_permissions=True)
+	frappe.db.commit()
+
+
+def _seed_stores_manager_perms():
+	"""v2.9.9 — Permission rows for Stores Manager: MR + Stock Entry + Item + Warehouse."""
+	perms_config = {
+		"Material Request": {"read": 1, "write": 1, "create": 0, "submit": 0,
+		                     "cancel": 0, "delete": 0, "report": 1, "print": 1, "email": 1},
+		"Stock Entry": {"read": 1, "write": 1, "create": 1, "submit": 1,
+		                "cancel": 1, "delete": 0, "report": 1, "print": 1, "email": 1},
+		"Item": {"read": 1, "report": 1},
+		"Warehouse": {"read": 1, "report": 1},
+	}
+	for doctype, perms in perms_config.items():
+		existing = frappe.db.exists("DocPerm",
+			{"parent": doctype, "role": "Stores Manager", "permlevel": 0})
+		if existing:
+			continue
+		fields = {"doctype": "DocPerm", "parent": doctype, "parenttype": "DocType",
+		          "parentfield": "permissions", "role": "Stores Manager", "permlevel": 0}
+		fields.update(perms)
+		try:
+			frappe.get_doc(fields).insert(ignore_permissions=True)
+		except Exception as e:
+			frappe.log_error(f"Stores Manager perms on {doctype} failed: {e}",
+			                 "v2.9.9 setup")
+	frappe.db.commit()
+
+
+def _seed_stores_manager_assignments():
+	"""v2.9.9 — One-shot: assign Stores Manager role to all current Stock Manager users.
+
+	Idempotent via TS Settings flag `ts_v299_stores_managers_seeded`. Skips on re-runs.
+	Admins (Administrator/Guest) excluded; Stock Manager users get Stores Manager
+	assigned automatically so the existing IT Head + key personnel can approve transfers
+	immediately on deploy.
+	"""
+	if frappe.db.get_single_value("TS Settings", "ts_v299_stores_managers_seeded"):
+		return
+
+	stock_managers = frappe.db.sql_list("""
+		SELECT DISTINCT parent FROM `tabHas Role`
+		WHERE role = 'Stock Manager' AND parent NOT IN ('Administrator', 'Guest')
+	""")
+	already_assigned = set(frappe.db.sql_list(
+		"SELECT parent FROM `tabHas Role` WHERE role = 'Stores Manager'"))
+
+	added = 0
+	for user in stock_managers:
+		if user in already_assigned:
+			continue
+		try:
+			frappe.get_doc({
+				"doctype": "Has Role",
+				"parent": user,
+				"parenttype": "User",
+				"parentfield": "roles",
+				"role": "Stores Manager",
+			}).insert(ignore_permissions=True)
+			added += 1
+		except Exception as e:
+			frappe.log_error(f"Stores Manager assignment to {user} failed: {e}",
+			                 "v2.9.9 setup")
+
+	# Mark seeded so we don't re-fire on every migrate (preserves admin's manual removals)
+	frappe.db.set_single_value("TS Settings", "ts_v299_stores_managers_seeded", 1)
+	frappe.db.commit()
+	if added:
+		frappe.log_error(f"v2.9.9: Stores Manager role assigned to {added} Stock Manager users",
+		                 "v2.9.9 setup")
+
+
+def _seed_material_transfer_kill_switch():
+	"""v2.9.9 — Add kill-switch + idempotency Custom Fields to TS Settings.
+
+	`ts_material_transfer_flow_enabled` (Check, default 1, permlevel=1) — the
+	feature flag. When 0: Transfer-type MRs route through the legacy Purchase
+	chain (rollback path). All v2.9.9 type-guards check this flag.
+
+	`ts_v299_stores_managers_seeded` (Check, default 0, hidden) — used by
+	`_seed_stores_manager_assignments` to fire only once.
+	"""
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+	create_custom_fields({
+		"TS Settings": [
+			{
+				"fieldname": "ts_material_transfer_flow_enabled",
+				"label": "Material Transfer Flow Enabled",
+				"fieldtype": "Check",
+				"default": "1",
+				"permlevel": 1,
+				"insert_after": "ts_avp_deputy_enabled",
+				"description": "v2.9.9 kill switch — when 0, Material Transfer MRs use the legacy Purchase approval chain (rollback path).",
+			},
+			{
+				"fieldname": "ts_v299_stores_managers_seeded",
+				"label": "Stores Managers Seeded (v2.9.9)",
+				"fieldtype": "Check",
+				"default": "0",
+				"hidden": 1,
+				"read_only": 1,
+				"insert_after": "ts_material_transfer_flow_enabled",
+				"description": "Internal flag — v2.9.9 setup writes this to 1 after auto-assigning Stores Manager role. Prevents re-firing on subsequent migrates.",
+			},
+		]
+	})
 	frappe.db.commit()

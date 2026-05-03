@@ -22,6 +22,36 @@ def _validate_doctype(doctype):
 		frappe.throw(_("Invalid document type for approval: {0}").format(doctype))
 
 
+def _block_if_mr_transfer(doc):
+	"""v2.9.9 — Reject Purchase-chain endpoints for Material Transfer MRs.
+
+	Called at top of every internal MR action handler (_submit_mr_for_approval,
+	_approve_mr, _revise_mr, _reject_mr, hold_mr, resume_mr, resubmit_document
+	when type=MR, approve_as_avp_deputy). Transfer flow uses ts_mr_transfer
+	endpoints exclusively.
+
+	Gated by kill-switch — when ts_material_transfer_flow_enabled=0, this
+	block lifts and Transfer MRs route through legacy Purchase chain.
+	"""
+	if not isinstance(doc, str) and not hasattr(doc, "material_request_type"):
+		return  # not an MR doc
+	if isinstance(doc, str):
+		mtype = frappe.db.get_value("Material Request", doc, "material_request_type")
+	else:
+		mtype = doc.material_request_type
+	if mtype != "Material Transfer":
+		return
+	# Kill switch — if disabled, allow legacy Purchase chain to handle Transfer
+	if not cint(frappe.db.get_single_value("TS Settings", "ts_material_transfer_flow_enabled")):
+		return
+	frappe.throw(
+		_("This action is not available for Material Transfer MRs. "
+		  "Use the Stores Manager workflow buttons (Submit for Stores Approval / "
+		  "Approve & Create Stock Entry / Reject) instead."),
+		exc=frappe.ValidationError,
+	)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  PUBLIC API — Whitelisted methods called from JS
 # ═══════════════════════════════════════════════════════════════════════
@@ -252,6 +282,7 @@ def resubmit_document(doctype, docname, mode="restart"):
 	doc = frappe.get_doc(doctype, docname, for_update=True)
 
 	if doctype == "Material Request":
+		_block_if_mr_transfer(doc)  # v2.9.9
 		return _resubmit_mr(doc)
 
 	if doc.ts_approval_status != "Revised":
@@ -300,6 +331,7 @@ def hold_mr(docname, reason):
 		frappe.throw(_("Hold reason is mandatory"))
 
 	doc = frappe.get_doc("Material Request", docname, for_update=True)
+	_block_if_mr_transfer(doc)  # v2.9.9
 	status = doc.ts_mr_status or ""
 
 	if not status.startswith("Pending"):
@@ -355,6 +387,7 @@ def resume_mr(docname, comment=""):
 	"""Resume a held MR. Returns it to Pending at the same step."""
 	comment = (comment or "")[:2000]
 	doc = frappe.get_doc("Material Request", docname, for_update=True)
+	_block_if_mr_transfer(doc)  # v2.9.9
 	status = doc.ts_mr_status or ""
 
 	if not status.startswith("On Hold"):
@@ -574,6 +607,7 @@ def _approve_po(doc, comment=""):
 
 def _submit_mr_for_approval(doc):
 	"""Submit MR for approval — routes by Cost Center."""
+	_block_if_mr_transfer(doc)  # v2.9.9 — Transfer uses ts_mr_transfer endpoints
 	if doc.docstatus != 0:
 		frappe.throw(_("Only Draft Material Requests can be submitted for approval"))
 
@@ -632,6 +666,7 @@ def _submit_mr_for_approval(doc):
 
 def _approve_mr(doc, comment=""):
 	"""Approve/Review MR based on current step."""
+	_block_if_mr_transfer(doc)  # v2.9.9
 	if not (doc.ts_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.ts_mr_status))
 
@@ -728,6 +763,7 @@ def _approve_mr(doc, comment=""):
 
 def _revise_mr(doc, reason, comment=""):
 	"""Revise MR — send back to creator."""
+	_block_if_mr_transfer(doc)  # v2.9.9
 	if not (doc.ts_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.ts_mr_status))
 
@@ -755,6 +791,7 @@ def _revise_mr(doc, reason, comment=""):
 
 def _reject_mr(doc, reason, comment=""):
 	"""Reject MR."""
+	_block_if_mr_transfer(doc)  # v2.9.9
 	if not (doc.ts_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.ts_mr_status))
 
@@ -1515,6 +1552,14 @@ def _get_po_approval_context(doc, settings):
 
 def _get_mr_approval_context(doc, settings):
 	"""Build approval context for MR form JS."""
+	# v2.9.9 — Material Transfer branch: return Transfer-specific context
+	# (different actions, no AVP/CEO/MD chain). Kill-switch gated.
+	if doc.material_request_type == "Material Transfer" and cint(
+		frappe.db.get_single_value("TS Settings", "ts_material_transfer_flow_enabled")
+	):
+		from trustbit_ethanol.ts_gate_entry.ts_mr_transfer import get_transfer_context
+		return get_transfer_context(doc)
+
 	status = doc.ts_mr_status or ""
 	is_pending = status.startswith("Pending")
 	is_on_hold = status.startswith("On Hold")
@@ -2042,6 +2087,19 @@ def mr_before_save(doc, method):
 	# ── Gate-field tamper guard (Security #14) ──
 	# CEO + MD do NOT bypass this — control-plane fields stay protected.
 	_block_gate_field_tampering(doc, _MR_GATE_FIELDS)
+
+	# ── v2.9.9: Material Transfer type-branch ──
+	# Skip ALL Purchase chain logic (cost_center auto-fill, exec override,
+	# items-lock-by-status, ts_mr_log writes) for Material Transfer type.
+	# Tamper guard above STILL applies. Kill switch in TS Settings flips
+	# this back to legacy behavior if needed (rollback path).
+	if doc.material_request_type == "Material Transfer":
+		from trustbit_ethanol.ts_gate_entry.ts_mr_transfer import (
+			_is_flow_enabled, handle_before_save,
+		)
+		if _is_flow_enabled():
+			handle_before_save(doc)
+			return  # SKIP all Purchase logic below
 
 	# ── v2.9.0.6 (Bug 11.F): defensive CC fill ──
 	# Frappe auto-fills item rows' cost_center from Item.default_cost_center

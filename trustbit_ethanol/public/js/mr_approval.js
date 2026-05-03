@@ -36,6 +36,14 @@ frappe.ui.form.on("Material Request", {
 		// Override item filter: allow non-stock items for Service Request
 		_setup_item_query(frm);
 		if (frm.is_new()) return;
+		// v2.9.9 — Material Transfer branch (uses Stores Manager workflow,
+		// NOT the Purchase chain). Skip _load_mr_context, budget banner,
+		// AVP banner, Service Request PO button — none of those apply.
+		if (frm.doc.material_request_type === "Material Transfer") {
+			_ts_add_mr_print_button(frm);
+			_load_transfer_context(frm);
+			return;
+		}
 		// Custom print button (direct PDF, bypasses Frappe print preview)
 		_ts_add_mr_print_button(frm);
 		// Load approval context first (adds buttons), then budget banner
@@ -1039,4 +1047,115 @@ function _maybe_add_post_approval_revision_button(frm) {
 			}
 		});
 	}, null).addClass("bbf-mr-rev-req-btn").css({"background-color": "#f59e0b", "color": "white", "border-color": "#d97706"});
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+//  v2.9.9 — Material Transfer Independent Flow
+// ═══════════════════════════════════════════════════════════════════════
+
+function _load_transfer_context(frm) {
+	frappe.call({
+		method: "trustbit_ethanol.ts_gate_entry.ts_po_approval.get_approval_context",
+		args: {doctype: "Material Request", docname: frm.doc.name},
+		callback(r) {
+			if (!r || !r.message) return;
+			const ctx = r.message;
+			if (ctx.flow !== "transfer") return;  // safety net
+
+			// Status indicator (color-coded pill)
+			const STATUS_COLOR = {
+				"Not Submitted": "gray",
+				"Pending Stores Manager": "orange",
+				"Approved": "green",
+				"Rejected": "red",
+			};
+			const color = STATUS_COLOR[ctx.ts_mr_status] || "gray";
+			frm.page.set_indicator(__(ctx.ts_mr_status), color);
+
+			// Render action buttons from server-computed list
+			(ctx.actions || []).forEach((action) => {
+				const handler = () => _trigger_transfer_action(frm, action);
+				const btn = frm.add_custom_button(
+					(action.icon ? action.icon + " " : "") + action.label,
+					handler,
+					__("Stores Workflow")
+				);
+				if (action.primary) {
+					btn.addClass("btn-primary");
+				}
+				if (action.color === "red") {
+					btn.css({"background-color": "#dc2626", "color": "white",
+					         "border-color": "#b91c1c"});
+				} else if (action.color === "green") {
+					btn.css({"background-color": "#16a34a", "color": "white",
+					         "border-color": "#15803d"});
+				}
+			});
+
+			// Open Stock Entry button (if SE created)
+			if (ctx.stock_entry) {
+				frm.add_custom_button(__("📦 Open Stock Entry"), () => {
+					frappe.set_route("Form", "Stock Entry", ctx.stock_entry);
+				}, __("Stores Workflow")).addClass("btn-info");
+			}
+		},
+		error(err) {
+			console.error("Transfer context load failed:", err);
+		},
+	});
+}
+
+function _trigger_transfer_action(frm, action) {
+	if (action.prompt_reason) {
+		// Reject — prompt for reason ≥10 chars
+		frappe.prompt({
+			fieldname: "reason",
+			fieldtype: "Small Text",
+			label: __("Rejection Reason"),
+			reqd: 1,
+			description: __("Minimum 10 characters."),
+		}, (values) => {
+			const reason = (values.reason || "").trim();
+			if (reason.length < 10) {
+				frappe.msgprint(__("Reason must be at least 10 characters."));
+				return;
+			}
+			_call_transfer_endpoint(frm, action.key, {reason: reason});
+		}, __("Reject Material Transfer"), __("Reject"));
+		return;
+	}
+
+	const confirm_msg = action.confirm_msg || __("Continue with this action?");
+	frappe.confirm(confirm_msg, () => {
+		_call_transfer_endpoint(frm, action.key, {});
+	});
+}
+
+function _call_transfer_endpoint(frm, action_key, extra_args) {
+	const method_map = {
+		"submit_for_stores_approval": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.submit_for_stores_approval",
+		"approve_transfer": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.approve_transfer",
+		"reject_transfer": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.reject_transfer",
+	};
+	const method = method_map[action_key];
+	if (!method) {
+		frappe.msgprint(__("Unknown action: {0}", [action_key]));
+		return;
+	}
+	const args = Object.assign({mr_name: frm.doc.name}, extra_args);
+	frappe.call({
+		method: method,
+		args: args,
+		freeze: true,
+		freeze_message: __("Processing..."),
+		callback(r) {
+			if (r && r.message) {
+				if (r.message.message) {
+					frappe.show_alert({message: r.message.message, indicator: "green"}, 7);
+				}
+				frm.reload_doc();
+			}
+		},
+	});
 }
