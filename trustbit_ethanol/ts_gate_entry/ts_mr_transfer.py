@@ -86,13 +86,17 @@ def handle_before_save(doc):
 	if doc.is_new() and not doc.ts_mr_status:
 		doc.ts_mr_status = "Not Submitted"
 
-	# Items-during-approval lock — same intent as Purchase but with Transfer states
+	# Items-during-approval lock — protect against item changes when MR is
+	# ALREADY in Pending/Approved state. Compare against the DB-stored old
+	# status (NOT the in-memory new status) so that the legitimate transition
+	# save from Not Submitted → Pending Stores Manager doesn't trip on itself.
 	if not doc.is_new() and doc.has_value_changed("items"):
-		if doc.ts_mr_status in ("Pending Stores Manager", "Approved"):
+		old_status = frappe.db.get_value("Material Request", doc.name, "ts_mr_status")
+		if old_status in ("Pending Stores Manager", "Approved"):
 			frappe.throw(
 				_("Cannot modify items while MR is in status '{0}'. "
 				  "Cancel the linked Stock Entry first OR ask the Stores "
-				  "Manager to reject this request.").format(doc.ts_mr_status)
+				  "Manager to reject this request.").format(old_status)
 			)
 
 
