@@ -1056,6 +1056,38 @@ function _maybe_add_post_approval_revision_button(frm) {
 //  v2.9.9 — Material Transfer Independent Flow
 // ═══════════════════════════════════════════════════════════════════════
 
+function _hide_native_mr_buttons_for_stores_flow(frm) {
+	// Remove ERPNext's native MR buttons that don't fit the Stores Manager flow.
+	// Native "Create > Issue Material / Material Transfer / Purchase Order / etc."
+	// would bypass our approval. Native "Stop / Resume / Reopen" don't apply.
+	const removals = [
+		[__("Issue Material"), __("Create")],
+		[__("Material Transfer"), __("Create")],
+		[__("Material Request"), __("Create")],
+		[__("Purchase Order"), __("Create")],
+		[__("Request for Quotation"), __("Create")],
+		[__("Supplier Quotation"), __("Create")],
+		[__("Stock Entry"), __("Create")],
+		[__("Material Receipt"), __("Create")],
+		[__("Stop"), null],
+		[__("Resume"), null],
+		[__("Reopen"), null],
+		[__("Re-open"), null],
+	];
+	const remove_all = () => {
+		removals.forEach(([label, group]) => {
+			try { frm.remove_custom_button(label, group); } catch (e) { /* ignore */ }
+		});
+	};
+	remove_all();
+	// Frappe sometimes re-injects buttons after async loads — hammer the removal
+	let checks = 0;
+	const interval = setInterval(() => {
+		remove_all();
+		if (++checks > 10) clearInterval(interval);
+	}, 250);
+}
+
 function _load_transfer_context(frm) {
 	frappe.call({
 		method: "trustbit_ethanol.ts_gate_entry.ts_po_approval.get_approval_context",
@@ -1069,6 +1101,10 @@ function _load_transfer_context(frm) {
 			// only the Stores Workflow buttons drive the docstatus transition.
 			// The Submit-for-Stores-Approval handler calls doc.submit() server-side.
 			_hide_standard_submit(frm, {status: ctx.ts_mr_status});
+
+			// v2.9.9.5 — hide ERPNext's native MR buttons (Create > Issue Material,
+			// Create > Material Transfer, Stop, Resume, etc.) that bypass our flow
+			_hide_native_mr_buttons_for_stores_flow(frm);
 
 			// Status indicator (color-coded pill)
 			const STATUS_COLOR = {
