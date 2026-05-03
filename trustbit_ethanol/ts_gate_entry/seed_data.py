@@ -184,7 +184,7 @@ PROPERTY_SETTERS = [
 	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "in_list_view", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "in_standard_filter", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "label", "property_type": "Data", "value": "Approval Status", "doctype_or_field": "DocField"},
-	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "options", "property_type": "Text", "value": "Not Submitted\nPending Dept. User\nPending Dept. Head\nPending AVP\nPending CEO\nPending GM\nApproved\nRevised\nRejected\nOn Hold", "doctype_or_field": "DocField"},
+	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "options", "property_type": "Text", "value": "Not Submitted\nPending Dept. User\nPending Dept. Head\nPending AVP\nPending CEO\nPending GM\nApproved\nRevised\nRejected\nOn Hold\nPending Stores Manager", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "buying_price_list", "property": "hidden", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "material_request_type", "property": "options", "property_type": "Text", "value": "Purchase\nMaterial Transfer\nMaterial Issue\nManufacture\nCustomer Provided\nService Request", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "schedule_date", "property": "in_list_view", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
