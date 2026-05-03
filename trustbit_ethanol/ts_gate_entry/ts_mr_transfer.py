@@ -237,10 +237,14 @@ def submit_for_stores_approval(mr_name):
 
 @frappe.whitelist(methods=["POST"])
 def approve_transfer(mr_name):
-	"""Stores Manager approves a Transfer MR. Auto-creates a DRAFT Stock Entry.
+	"""Stores Manager approves a Transfer/Issue MR. Auto-creates a DRAFT Stock Entry.
 
-	State: Pending Stores Manager → Approved.
-	Stock Entry is NOT auto-submitted — Stores Manager reviews + submits manually.
+	Accepts TWO entry states:
+	  - Pending Stores Manager (normal flow: created by user → submitted → approved)
+	  - Not Submitted (direct flow: Stores Manager edited an amended draft and
+	    approves directly without an intermediate submit step). v2.9.9.11.
+	In both paths the MR ends up at status=Approved + docstatus=1, and a draft
+	Stock Entry is auto-created. Stores Manager reviews + submits the SE manually.
 	"""
 	if not _is_flow_enabled():
 		frappe.throw(_("Material Transfer flow is currently disabled (kill switch)."))
@@ -249,9 +253,9 @@ def approve_transfer(mr_name):
 	if not _is_stores_flow_type(doc.material_request_type):
 		frappe.throw(_("This endpoint is only available for Material Transfer / Material Issue MRs."))
 
-	if doc.ts_mr_status != "Pending Stores Manager":
+	if doc.ts_mr_status not in ("Pending Stores Manager", "Not Submitted"):
 		frappe.throw(
-			_("Cannot approve: MR is in status '{0}'. Only 'Pending Stores Manager' can be approved.").format(
+			_("Cannot approve: MR is in status '{0}'. Only 'Pending Stores Manager' or 'Not Submitted' can be approved.").format(
 				doc.ts_mr_status
 			)
 		)
@@ -265,6 +269,17 @@ def approve_transfer(mr_name):
 			_("Only Stores Manager can approve Material Transfers."),
 			exc=frappe.PermissionError,
 		)
+
+	# v2.9.9.11 — Direct approval path: validate + submit the doc first
+	# (covers the case where Stores Manager edits an amended draft and
+	# approves directly without going through Submit for Stores Approval)
+	if doc.ts_mr_status == "Not Submitted":
+		_validate_transfer_for_submit(doc)
+		if doc.docstatus == 0:
+			doc.flags.ignore_permissions = True
+			doc.save()
+			doc.submit()
+			doc.reload()
 
 	# Create the Stock Entry (DRAFT)
 	# Purpose follows MR type: "Material Transfer" → SE purpose=Material Transfer (FROM+TO)
@@ -773,14 +788,29 @@ def _compute_transfer_actions(status, is_creator, is_stores_manager, is_admin, d
 	"""Compute the list of action buttons available to the current user based on state + role."""
 	actions = []
 
-	if status == "Not Submitted" and (is_creator or is_admin):
-		actions.append({
-			"key": "submit_for_stores_approval",
-			"label": _("Submit for Stores Approval"),
-			"primary": True,
-			"icon": "📤",
-			"confirm_msg": _("Submit this request to the Stores Manager for approval?"),
-		})
+	if status == "Not Submitted":
+		# v2.9.9.11 — Stores Manager on a draft (e.g. their own amended doc)
+		# can approve directly, skipping the Submit-then-Pending intermediate step.
+		if is_stores_manager or is_admin:
+			actions.append({
+				"key": "approve_transfer",
+				"label": _("Approve & Create Stock Entry"),
+				"primary": True,
+				"color": "green",
+				"icon": "✅",
+				"confirm_msg": _(
+					"Approve this request directly? It will be submitted and a draft "
+					"Stock Entry will be created."
+				),
+			})
+		elif is_creator:
+			actions.append({
+				"key": "submit_for_stores_approval",
+				"label": _("Submit for Stores Approval"),
+				"primary": True,
+				"icon": "📤",
+				"confirm_msg": _("Submit this request to the Stores Manager for approval?"),
+			})
 
 	elif status == "Pending Stores Manager" and (is_stores_manager or is_admin):
 		actions.append({
