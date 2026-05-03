@@ -36,10 +36,12 @@ frappe.ui.form.on("Material Request", {
 		// Override item filter: allow non-stock items for Service Request
 		_setup_item_query(frm);
 		if (frm.is_new()) return;
-		// v2.9.9 — Material Transfer branch (uses Stores Manager workflow,
-		// NOT the Purchase chain). Skip _load_mr_context, budget banner,
-		// AVP banner, Service Request PO button — none of those apply.
-		if (frm.doc.material_request_type === "Material Transfer") {
+		// v2.9.9 — Stores flow branch (Material Transfer + Material Issue):
+		// uses Stores Manager workflow, NOT the Purchase chain. Skip
+		// _load_mr_context, budget banner, AVP banner, Service Request
+		// PO button — none of those apply.
+		if (frm.doc.material_request_type === "Material Transfer"
+				|| frm.doc.material_request_type === "Material Issue") {
 			_ts_add_mr_print_button(frm);
 			_load_transfer_context(frm);
 			return;

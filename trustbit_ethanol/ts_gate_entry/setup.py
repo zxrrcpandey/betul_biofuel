@@ -816,13 +816,13 @@ def create_custom_fields():
 			"label": "Remark",
 			"insert_after": "ts_remark_section",
 		},
-		# v2.9.9 — Material Transfer-only remark (visible only when type=Transfer)
+		# v2.9.9 — Stores flow remark (visible for Material Transfer + Material Issue)
 		{
 			"fieldname": "ts_transfer_remark",
 			"fieldtype": "Small Text",
-			"label": "Transfer Remark",
+			"label": "Transfer / Issue Remark",
 			"insert_after": "ts_remark",
-			"depends_on": "eval:doc.material_request_type==\"Material Transfer\"",
+			"depends_on": "eval:in_list([\"Material Transfer\",\"Material Issue\"], doc.material_request_type)",
 		},
 	])
 

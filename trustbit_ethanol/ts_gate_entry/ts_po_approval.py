@@ -23,15 +23,15 @@ def _validate_doctype(doctype):
 
 
 def _block_if_mr_transfer(doc):
-	"""v2.9.9 — Reject Purchase-chain endpoints for Material Transfer MRs.
+	"""v2.9.9 — Reject Purchase-chain endpoints for Material Transfer / Material Issue MRs.
 
 	Called at top of every internal MR action handler (_submit_mr_for_approval,
 	_approve_mr, _revise_mr, _reject_mr, hold_mr, resume_mr, resubmit_document
-	when type=MR, approve_as_avp_deputy). Transfer flow uses ts_mr_transfer
-	endpoints exclusively.
+	when type=MR, approve_as_avp_deputy). Transfer + Issue flow uses
+	ts_mr_transfer endpoints exclusively.
 
 	Gated by kill-switch — when ts_material_transfer_flow_enabled=0, this
-	block lifts and Transfer MRs route through legacy Purchase chain.
+	block lifts and these MRs route through legacy Purchase chain.
 	"""
 	if not isinstance(doc, str) and not hasattr(doc, "material_request_type"):
 		return  # not an MR doc
@@ -39,15 +39,16 @@ def _block_if_mr_transfer(doc):
 		mtype = frappe.db.get_value("Material Request", doc, "material_request_type")
 	else:
 		mtype = doc.material_request_type
-	if mtype != "Material Transfer":
+	# Stores flow types: Material Transfer + Material Issue
+	if mtype not in ("Material Transfer", "Material Issue"):
 		return
-	# Kill switch — if disabled, allow legacy Purchase chain to handle Transfer
+	# Kill switch — if disabled, allow legacy Purchase chain to handle them
 	if not cint(frappe.db.get_single_value("TS Settings", "ts_material_transfer_flow_enabled")):
 		return
 	frappe.throw(
-		_("This action is not available for Material Transfer MRs. "
+		_("This action is not available for {0} MRs. "
 		  "Use the Stores Manager workflow buttons (Submit for Stores Approval / "
-		  "Approve & Create Stock Entry / Reject) instead."),
+		  "Approve & Create Stock Entry / Reject) instead.").format(mtype),
 		exc=frappe.ValidationError,
 	)
 
@@ -1552,9 +1553,10 @@ def _get_po_approval_context(doc, settings):
 
 def _get_mr_approval_context(doc, settings):
 	"""Build approval context for MR form JS."""
-	# v2.9.9 — Material Transfer branch: return Transfer-specific context
-	# (different actions, no AVP/CEO/MD chain). Kill-switch gated.
-	if doc.material_request_type == "Material Transfer" and cint(
+	# v2.9.9 — Stores flow branch (Material Transfer + Material Issue):
+	# return Transfer/Issue context (different actions, no AVP/CEO/MD chain).
+	# Kill-switch gated.
+	if doc.material_request_type in ("Material Transfer", "Material Issue") and cint(
 		frappe.db.get_single_value("TS Settings", "ts_material_transfer_flow_enabled")
 	):
 		from trustbit_ethanol.ts_gate_entry.ts_mr_transfer import get_transfer_context
@@ -2088,12 +2090,12 @@ def mr_before_save(doc, method):
 	# CEO + MD do NOT bypass this — control-plane fields stay protected.
 	_block_gate_field_tampering(doc, _MR_GATE_FIELDS)
 
-	# ── v2.9.9: Material Transfer type-branch ──
+	# ── v2.9.9: Stores flow type-branch (Material Transfer + Material Issue) ──
 	# Skip ALL Purchase chain logic (cost_center auto-fill, exec override,
-	# items-lock-by-status, ts_mr_log writes) for Material Transfer type.
+	# items-lock-by-status, ts_mr_log writes) for these types.
 	# Tamper guard above STILL applies. Kill switch in TS Settings flips
 	# this back to legacy behavior if needed (rollback path).
-	if doc.material_request_type == "Material Transfer":
+	if doc.material_request_type in ("Material Transfer", "Material Issue"):
 		from trustbit_ethanol.ts_gate_entry.ts_mr_transfer import (
 			_is_flow_enabled, handle_before_save,
 		)
