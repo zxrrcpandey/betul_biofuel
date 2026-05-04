@@ -413,41 +413,33 @@ function _ts_render_connections(wrapper, sections) {
 }
 
 function _ts_load_connections(frm) {
-	// v2.9.10.3 — Render BEFORE the Stats dashboard section by injecting a custom
-	// section into the form-dashboard area BEFORE Frappe's indicators paint.
-	const $dashboard = frm.dashboard.wrapper;
-	if (!$dashboard || !$dashboard.length) return;
+	// v2.9.10.4 — Render into the ts_connections_html field (positioned as
+	// the FIRST field in the doctype JSON, immediately below the auto-Stats
+	// dashboard area). Frappe's auto Stats section appears ABOVE this in a
+	// separate layout region — that's a Frappe core constraint.
+	const wrapper = frm.fields_dict.ts_connections_html
+		? frm.fields_dict.ts_connections_html.$wrapper : null;
+	if (!wrapper) return;
 
-	// Remove any prior connections panel from a previous refresh
-	$dashboard.find(".ts-conn-panel").remove();
-
-	// Create + prepend our wrapper so it lands at the TOP of the dashboard area,
-	// above Frappe's auto "Stats" / indicator section.
-	const $panel = $('<div class="ts-conn-panel" style="margin: 8px 0 12px 0;"></div>');
-	const $title = $('<div style="font-size:13px;font-weight:600;color:var(--heading-color);padding:6px 0;">Related Documents</div>');
-	const $body = $('<div class="ts-conn-body"></div>');
-	$panel.append($title).append($body);
-	$dashboard.prepend($panel);
-
-	_ts_render_connections_skeleton($body);
+	_ts_render_connections_skeleton(wrapper);
 
 	frappe.call({
 		method: "trustbit_ethanol.ts_gate_entry.doctype.ts_deduction_sheet.ts_deduction_sheet.get_connections",
 		args: { ds_name: frm.doc.name },
 		callback: function (r) {
 			if (!r || !r.message) {
-				$body.html(`<div style="color:var(--red-500);">⚠️ Could not load connections.
+				wrapper.html(`<div style="color:var(--red-500);">⚠️ Could not load connections.
 					<a href="javascript:void(0)" onclick="cur_frm.refresh()">Retry</a></div>`);
 				return;
 			}
 			if (r.message.error === "no_permission") {
-				$body.html(`<div style="color:var(--text-muted);">No permission to view related documents.</div>`);
+				wrapper.html(`<div style="color:var(--text-muted);">No permission to view related documents.</div>`);
 				return;
 			}
-			_ts_render_connections($body, r.message.sections || []);
+			_ts_render_connections(wrapper, r.message.sections || []);
 		},
 		error: function () {
-			$body.html(`<div style="color:var(--red-500);">⚠️ Could not load connections.
+			wrapper.html(`<div style="color:var(--red-500);">⚠️ Could not load connections.
 				<a href="javascript:void(0)" onclick="cur_frm.refresh()">Retry</a></div>`);
 		},
 	});
