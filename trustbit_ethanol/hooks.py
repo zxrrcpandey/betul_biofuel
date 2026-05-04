@@ -24,6 +24,7 @@ app_include_js = [
 	"/assets/trustbit_ethanol/js/ts_budget_proposal_list.js",
 	"/assets/trustbit_ethanol/js/ts_post_dated.js",
 	"/assets/trustbit_ethanol/js/item_list.js",
+	"/assets/trustbit_ethanol/js/ts_connections.js",
 	"/assets/trustbit_ethanol/js/ts_version_badge.js",
 ]
 
@@ -232,6 +233,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_pi_ds_fields.seed_pi_ds_fields",
 	# v2.9.0 Day 6 — QC Yearly Dashboard workspace reload (Lesson 173)
 	"trustbit_ethanol.ts_gate_entry.setup_qc_dashboard.reload_quality_lab_workspace",
+	# v2.9.11 — shared Connections panel Custom Fields (PO/MR/PR/PI)
+	"trustbit_ethanol.ts_gate_entry.setup_connections_panel.seed_connections_panel",
 ]
 
 # Scheduled Tasks

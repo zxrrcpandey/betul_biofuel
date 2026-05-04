@@ -18,10 +18,8 @@ frappe.ui.form.on("TS Deduction Sheet", {
 			frm.set_intro(`DS Number: ${ds}${qi_part}`, "blue");
 		}
 
-		// v2.9.10 — Render Related Documents (Connections) panel
-		if (!frm.is_new()) {
-			_ts_load_connections(frm);
-		}
+		// v2.9.11 — Connections panel render handled by shared
+		// /assets/trustbit_ethanol/js/ts_connections.js (auto-installs).
 
 		// v2.9.8 — derived header fields are always RO on form
 		[
@@ -320,127 +318,5 @@ function calculate_weight_values(frm) {
 	frm.set_value("mrn_amount", (invoice_qty - weight_ded) * item_rate);
 }
 
-
-// ════════════════════════════════════════════════════════════════════════
-//  v2.9.10 — Related Documents (Connections) panel
-// ════════════════════════════════════════════════════════════════════════
-
-const _TS_STATUS_COLOR = {
-	"Draft": "gray", "Not Submitted": "gray", "Submitted": "green",
-	"Cancelled": "red", "Approved": "green", "Rejected": "red",
-	"On Hold": "orange",
-};
-
-function _ts_status_class(status) {
-	if (!status) return "ts-pill-gray";
-	if (status.startsWith("Pending")) return "ts-pill-orange";
-	if (_TS_STATUS_COLOR[status]) return "ts-pill-" + _TS_STATUS_COLOR[status];
-	if (status.indexOf("Approved") !== -1) return "ts-pill-green";
-	if (status.indexOf("Reject") !== -1) return "ts-pill-red";
-	if (status.indexOf("Cancel") !== -1) return "ts-pill-red";
-	return "ts-pill-blue";
-}
-
-function _ts_render_connections_skeleton(wrapper) {
-	const sk = `
-	<div class="ts-conn-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
-		${[1,2,3,4].map(() => `
-		<div class="ts-conn-card" style="border:1px solid var(--border-color);border-radius:6px;padding:10px;background:var(--bg-color);">
-			<div style="height:14px;width:50%;background:var(--gray-100);margin-bottom:8px;border-radius:3px;"></div>
-			<div style="height:10px;width:80%;background:var(--gray-50);margin-bottom:6px;border-radius:3px;"></div>
-			<div style="height:10px;width:65%;background:var(--gray-50);border-radius:3px;"></div>
-		</div>
-		`).join("")}
-	</div>`;
-	wrapper.html(sk);
-}
-
-function _ts_render_connections(wrapper, sections) {
-	if (!sections || sections.length === 0) {
-		wrapper.html(`<div style="color:var(--text-muted);font-style:italic;padding:8px;">No related documents.</div>`);
-		return;
-	}
-	const css = `
-	<style>
-	.ts-conn-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; padding:6px 0; }
-	.ts-conn-card { border:1px solid var(--border-color); border-radius:6px; padding:12px; background:var(--bg-color); min-height:80px; }
-	.ts-conn-card-header { font-weight:bold; font-size:13px; color:var(--heading-color); margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--border-color); }
-	.ts-conn-card-icon { font-size:16px; margin-right:6px; }
-	.ts-conn-row { display:block; padding:5px 0; line-height:1.4; }
-	.ts-conn-row + .ts-conn-row { border-top:1px dashed var(--border-color); margin-top:4px; }
-	.ts-conn-row a { color:var(--blue-500); text-decoration:none; font-weight:500; word-break:break-all; }
-	.ts-conn-row a:hover { text-decoration:underline; }
-	.ts-conn-doctype { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:1px; }
-	.ts-conn-cancelled a { text-decoration:line-through; color:var(--text-muted); }
-	.ts-conn-pill { display:inline-block; font-size:10px; padding:2px 8px; border-radius:10px; font-weight:600; margin-left:6px; vertical-align:middle; }
-	.ts-pill-gray { background:var(--gray-100); color:var(--gray-700); }
-	.ts-pill-green { background:var(--green-100); color:var(--green-700); }
-	.ts-pill-red { background:var(--red-100); color:var(--red-700); }
-	.ts-pill-orange { background:var(--orange-100); color:var(--orange-700); }
-	.ts-pill-blue { background:var(--blue-100); color:var(--blue-700); }
-	.ts-conn-empty-section { color:var(--text-muted); font-style:italic; font-size:11px; }
-	.ts-conn-more { font-size:11px; color:var(--blue-500); margin-top:6px; cursor:pointer; }
-	</style>`;
-
-	const cards_html = sections.map(section => {
-		const items = section.items || [];
-		const rows = items.length === 0
-			? `<div class="ts-conn-empty-section">— No documents —</div>`
-			: items.map(it => {
-				const cancelled_cls = it.docstatus === 2 ? "ts-conn-cancelled" : "";
-				const dt_label = frappe.utils.escape_html(it.doctype || "");
-				const name_esc = frappe.utils.escape_html(it.name || "");
-				const status_esc = frappe.utils.escape_html(it.status || "");
-				const url_esc = frappe.utils.escape_html(it.url || "#");
-				const pill_cls = _ts_status_class(it.status);
-				return `
-				<div class="ts-conn-row ${cancelled_cls}">
-					<div class="ts-conn-doctype">${dt_label}</div>
-					<a href="${url_esc}">${name_esc}</a>
-					${status_esc ? `<span class="ts-conn-pill ${pill_cls}">${status_esc}</span>` : ""}
-				</div>`;
-			}).join("");
-		const icon = section.icon ? `<span class="ts-conn-card-icon">${section.icon}</span>` : "";
-		const label = frappe.utils.escape_html(section.label || "");
-		return `
-		<div class="ts-conn-card">
-			<div class="ts-conn-card-header">${icon}${label}</div>
-			${rows}
-		</div>`;
-	}).join("");
-
-	wrapper.html(css + `<div class="ts-conn-grid">${cards_html}</div>`);
-}
-
-function _ts_load_connections(frm) {
-	// v2.9.10.4 — Render into the ts_connections_html field (positioned as
-	// the FIRST field in the doctype JSON, immediately below the auto-Stats
-	// dashboard area). Frappe's auto Stats section appears ABOVE this in a
-	// separate layout region — that's a Frappe core constraint.
-	const wrapper = frm.fields_dict.ts_connections_html
-		? frm.fields_dict.ts_connections_html.$wrapper : null;
-	if (!wrapper) return;
-
-	_ts_render_connections_skeleton(wrapper);
-
-	frappe.call({
-		method: "trustbit_ethanol.ts_gate_entry.doctype.ts_deduction_sheet.ts_deduction_sheet.get_connections",
-		args: { ds_name: frm.doc.name },
-		callback: function (r) {
-			if (!r || !r.message) {
-				wrapper.html(`<div style="color:var(--red-500);">⚠️ Could not load connections.
-					<a href="javascript:void(0)" onclick="cur_frm.refresh()">Retry</a></div>`);
-				return;
-			}
-			if (r.message.error === "no_permission") {
-				wrapper.html(`<div style="color:var(--text-muted);">No permission to view related documents.</div>`);
-				return;
-			}
-			_ts_render_connections(wrapper, r.message.sections || []);
-		},
-		error: function () {
-			wrapper.html(`<div style="color:var(--red-500);">⚠️ Could not load connections.
-				<a href="javascript:void(0)" onclick="cur_frm.refresh()">Retry</a></div>`);
-		},
-	});
-}
+// v2.9.11 — Connections panel render moved to shared
+// /assets/trustbit_ethanol/js/ts_connections.js (auto-installs refresh hook).

@@ -988,25 +988,18 @@ class TSDeductionSheet(Document):
 
 @frappe.whitelist()
 def get_connections(ds_name):
-	"""Return related-docs structure for the DS Connections panel.
+	"""v2.9.10 — DEPRECATED, kept as thin shim for backward compat.
 
-	Read-only endpoint. Two-layer permission gating:
-	  1. Caller must have READ on the DS itself (throws if denied)
-	  2. Per-row READ check on each related doc — silently OMITS docs the
-	     user can't see (Lesson 168: operator roles often lack read on PI/SE).
-	  3. Each per-doctype query is wrapped in try/except so a single broken
-	     query doesn't kill the whole panel.
+	v2.9.11 — moved to shared module ts_connections.get_connections.
+	This shim delegates so any caller still using the old endpoint keeps working.
+	"""
+	from trustbit_ethanol.ts_gate_entry import ts_connections
+	return ts_connections.get_connections("TS Deduction Sheet", ds_name)
 
-	Returns:
-	  {
-	    "sections": [
-	      {"label": "Source Chain", "icon": "🚛", "items": [
-	        {"doctype": "TS Token", "name": "...", "label": "...", "status": "...",
-	         "docstatus": 1, "url": "/app/ts-token/..."}
-	      ]},
-	      ...
-	    ]
-	  }
+
+def _get_connections_legacy_unused(ds_name):
+	"""Original v2.9.10 implementation — kept here as reference. NOT called.
+	Delete in v2.9.12 once shared module is proven on prod for 30 days.
 	"""
 	# 1. Read permission on DS itself
 	if not frappe.has_permission("TS Deduction Sheet", "read",

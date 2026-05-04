@@ -423,6 +423,16 @@
    "options": "TS Quality Inspection",
    "print_hide": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "ts_connections_section",
+   "fieldtype": "Section Break",
+   "label": "🔗 Related"
+  },
+  {
+   "fieldname": "ts_connections_html",
+   "fieldtype": "HTML",
+   "label": ""
   }
  ],
  "is_submittable": 1,
