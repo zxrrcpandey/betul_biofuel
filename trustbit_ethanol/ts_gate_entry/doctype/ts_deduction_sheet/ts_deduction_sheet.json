@@ -132,6 +132,21 @@
    "read_only": 1
   },
   {
+   "fieldname": "ts_connections_section",
+   "fieldtype": "Section Break",
+   "label": "Related Documents",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "ts_connections_html",
+   "fieldtype": "HTML",
+   "label": "Related Documents",
+   "read_only": 1,
+   "print_hide": 1,
+   "no_copy": 1,
+   "description": "v2.9.10 \u2014 Source chain, procurement, receipt+quality, settlement docs related to this Deduction Sheet."
+  },
+  {
    "fieldname": "system_section",
    "fieldtype": "Section Break",
    "label": "Layer 1 \u2014 System Deduction (from QI) (Legacy \u2014 hidden in v2.9.8)",
@@ -520,21 +535,6 @@
    "read_only": 1,
    "bold": 1,
    "description": "Net Qty (Quintal) \u00d7 Rate per Quintal. Reference for Quality Deduction calculation."
-  },
-  {
-   "fieldname": "ts_connections_section",
-   "fieldtype": "Section Break",
-   "label": "Related Documents",
-   "collapsible": 0
-  },
-  {
-   "fieldname": "ts_connections_html",
-   "fieldtype": "HTML",
-   "label": "Related Documents",
-   "read_only": 1,
-   "print_hide": 1,
-   "no_copy": 1,
-   "description": "v2.9.10 \u2014 Source chain, procurement, receipt+quality, settlement docs related to this Deduction Sheet."
   }
  ],
  "links": [],
