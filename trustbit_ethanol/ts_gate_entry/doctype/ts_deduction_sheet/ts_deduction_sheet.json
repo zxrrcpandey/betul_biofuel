@@ -473,21 +473,6 @@
    "in_standard_filter": 0
   },
   {
-   "fieldname": "ts_connections_section",
-   "fieldtype": "Section Break",
-   "label": "Related Documents",
-   "collapsible": 0
-  },
-  {
-   "fieldname": "ts_connections_html",
-   "fieldtype": "HTML",
-   "label": "Related Documents",
-   "read_only": 1,
-   "print_hide": 1,
-   "no_copy": 1,
-   "description": "v2.9.10 — Source chain, procurement, receipt+quality, settlement docs related to this Deduction Sheet."
-  },
-  {
    "fieldname": "detail_extras_section",
    "fieldtype": "Section Break",
    "label": "Quantity & Rate"
