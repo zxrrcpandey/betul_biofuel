@@ -980,3 +980,179 @@ class TSDeductionSheet(Document):
 				"calculated_amount": amt,
 				"actual_amount": amt,
 			})
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  v2.9.10 — CONNECTIONS PANEL ENDPOINT
+# ═══════════════════════════════════════════════════════════════════════
+
+@frappe.whitelist()
+def get_connections(ds_name):
+	"""Return related-docs structure for the DS Connections panel.
+
+	Read-only endpoint. Two-layer permission gating:
+	  1. Caller must have READ on the DS itself (throws if denied)
+	  2. Per-row READ check on each related doc — silently OMITS docs the
+	     user can't see (Lesson 168: operator roles often lack read on PI/SE).
+	  3. Each per-doctype query is wrapped in try/except so a single broken
+	     query doesn't kill the whole panel.
+
+	Returns:
+	  {
+	    "sections": [
+	      {"label": "Source Chain", "icon": "🚛", "items": [
+	        {"doctype": "TS Token", "name": "...", "label": "...", "status": "...",
+	         "docstatus": 1, "url": "/app/ts-token/..."}
+	      ]},
+	      ...
+	    ]
+	  }
+	"""
+	# 1. Read permission on DS itself
+	if not frappe.has_permission("TS Deduction Sheet", "read",
+		doc=ds_name, throw=False):
+		return {"sections": [], "error": "no_permission"}
+
+	ds = frappe.db.get_value("TS Deduction Sheet", ds_name,
+		["token_number", "gate_entry", "purchase_order", "quality_inspection",
+		 "grn_reference", "deduction_suggestion", "amended_from"], as_dict=True)
+	if not ds:
+		return {"sections": [], "error": "not_found"}
+
+	def _safe(fn):
+		"""Run a section-builder; return [] on any error (logged)."""
+		try:
+			return fn() or []
+		except Exception as e:
+			try:
+				frappe.log_error(
+					title="v2.9.10 get_connections",
+					message=f"DS {ds_name}: {fn.__name__} failed: {e}",
+				)
+			except Exception:
+				pass
+			return []
+
+	def _doc(doctype, name, status_field=None, label_field=None):
+		"""Build a single connection row dict if user has read perm; else None."""
+		if not name:
+			return None
+		try:
+			if not frappe.has_permission(doctype, "read", doc=name, throw=False):
+				return None  # silently omit (Lesson 168)
+			fields = ["docstatus"]
+			if status_field:
+				fields.append(status_field)
+			if label_field:
+				fields.append(label_field)
+			row = frappe.db.get_value(doctype, name, fields, as_dict=True)
+			if not row:
+				return None
+			docstatus_label = {0: "Draft", 1: "Submitted", 2: "Cancelled"}[int(row.docstatus or 0)]
+			status = row.get(status_field) if status_field else docstatus_label
+			# Override docstatus_label for cancelled
+			if int(row.docstatus or 0) == 2:
+				status = "Cancelled"
+			return {
+				"doctype": doctype,
+				"name": name,
+				"label": (row.get(label_field) if label_field else "") or "",
+				"status": status or docstatus_label,
+				"docstatus": int(row.docstatus or 0),
+				"url": "/app/" + doctype.lower().replace(" ", "-") + "/" + name,
+			}
+		except Exception:
+			return None
+
+	# Section 1 — Source Chain
+	def source_chain():
+		items = []
+		t = _doc("TS Token", ds.token_number, status_field="status")
+		if t: items.append(t)
+		g = _doc("TS Gate Entry", ds.gate_entry, status_field=None)
+		if g: items.append(g)
+		return items
+
+	# Section 2 — Procurement
+	def procurement():
+		items = []
+		# Material Request(s) via PO.items[].material_request
+		if ds.purchase_order:
+			mr_names = frappe.db.sql_list("""
+				SELECT DISTINCT material_request
+				FROM `tabPurchase Order Item`
+				WHERE parent = %s AND material_request IS NOT NULL AND material_request != ''
+			""", (ds.purchase_order,))
+			for mr_name in (mr_names or [])[:10]:
+				m = _doc("Material Request", mr_name, status_field="status")
+				if m: items.append(m)
+		# Purchase Order
+		p = _doc("Purchase Order", ds.purchase_order, status_field="status")
+		if p: items.append(p)
+		return items
+
+	# Section 3 — Receipt + Quality
+	def receipt_quality():
+		items = []
+		pr = _doc("Purchase Receipt", ds.grn_reference, status_field="status")
+		if pr: items.append(pr)
+		qi = _doc("TS Quality Inspection", ds.quality_inspection, status_field=None)
+		if qi: items.append(qi)
+		ds_sugg = _doc("TS Deduction Suggestion", ds.deduction_suggestion, status_field="status")
+		if ds_sugg: items.append(ds_sugg)
+		return items
+
+	# Section 4 — Settlement
+	def settlement():
+		items = []
+		# Purchase Invoice(s) via PI Item.purchase_receipt = DS.grn_reference
+		if ds.grn_reference:
+			pi_names = frappe.db.sql_list("""
+				SELECT DISTINCT parent
+				FROM `tabPurchase Invoice Item`
+				WHERE purchase_receipt = %s
+			""", (ds.grn_reference,))
+			for pi_name in (pi_names or [])[:10]:
+				p = _doc("Purchase Invoice", pi_name, status_field="status")
+				if p: items.append(p)
+		# Stock Entry(s) via SE Detail.material_request OR SE Detail child rows referencing the PR
+		se_set = set()
+		if ds.grn_reference:
+			# SE that reverses or relates to this PR — ERPNext SE Detail has
+			# `material_request` (SE from MR) but no direct PR link by default;
+			# use SE.purchase_receipt header field if present (Frappe v15 has it
+			# on SE for return-from-purchase). Fallback: skip.
+			try:
+				se_via_pr = frappe.db.sql_list("""
+					SELECT name FROM `tabStock Entry`
+					WHERE purchase_receipt_no = %s AND docstatus < 2
+				""", (ds.grn_reference,)) or []
+				se_set.update(se_via_pr)
+			except Exception:
+				pass  # column may not exist on this site — silently skip
+		# Also: SE built from any of the linked Material Requests via PO chain
+		if ds.purchase_order:
+			mr_names = frappe.db.sql_list("""
+				SELECT DISTINCT material_request
+				FROM `tabPurchase Order Item`
+				WHERE parent = %s AND material_request IS NOT NULL AND material_request != ''
+			""", (ds.purchase_order,)) or []
+			for mr_name in mr_names:
+				se_via_mr = frappe.db.sql_list("""
+					SELECT DISTINCT parent FROM `tabStock Entry Detail`
+					WHERE material_request = %s
+				""", (mr_name,)) or []
+				se_set.update(se_via_mr)
+		for se_name in sorted(se_set, reverse=True)[:10]:
+			s = _doc("Stock Entry", se_name, status_field=None)
+			if s: items.append(s)
+		return items
+
+	sections = [
+		{"label": "Source Chain", "icon": "🚛", "items": _safe(source_chain)},
+		{"label": "Procurement", "icon": "📋", "items": _safe(procurement)},
+		{"label": "Receipt + Quality", "icon": "📦", "items": _safe(receipt_quality)},
+		{"label": "Settlement", "icon": "💰", "items": _safe(settlement)},
+	]
+
+	return {"sections": sections}
