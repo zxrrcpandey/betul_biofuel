@@ -211,6 +211,18 @@ ALL_ACTIONS = (
 )
 
 
+def _caller_can_see_override():
+    """v2.9.12.2 — only show System Manager Override row to users who actually
+    hold SM/Admin roles. Other ALLOWED_ROLES (CEO/MD/AVP/etc.) see the chain
+    without the Override row since they can't use that rescue path anyway.
+    """
+    try:
+        caller_roles = set(frappe.get_roles(frappe.session.user))
+        return bool(caller_roles & set(IMPLICIT_GRANT_ROLES))
+    except Exception:
+        return False
+
+
 def _users_in_chain_for_doc(doc):
     """Build the user list relevant to this doc's capability matrix.
     Returns a list of dicts: {user, kind, roles_summary}
@@ -246,20 +258,21 @@ def _users_in_chain_for_doc(doc):
                 "roles": list(frappe.get_roles(uname)),
             })
 
-    # System Manager override
-    sm_users = frappe.db.sql(
-        """SELECT DISTINCT hr.parent FROM `tabHas Role` hr
-           JOIN `tabUser` u ON u.name = hr.parent
-           WHERE hr.role = 'System Manager' AND u.enabled = 1
-             AND u.name NOT IN ('Administrator', 'Guest')
-           ORDER BY hr.parent LIMIT 1""",
-    )
-    if sm_users and not any(u["user"] == sm_users[0][0] for u in out):
-        out.append({
-            "user": sm_users[0][0],
-            "kind": "Override · System Manager",
-            "roles": list(frappe.get_roles(sm_users[0][0])),
-        })
+    # System Manager override — v2.9.12.2: gated to caller-has-SM-role
+    if _caller_can_see_override():
+        sm_users = frappe.db.sql(
+            """SELECT DISTINCT hr.parent FROM `tabHas Role` hr
+               JOIN `tabUser` u ON u.name = hr.parent
+               WHERE hr.role = 'System Manager' AND u.enabled = 1
+                 AND u.name NOT IN ('Administrator', 'Guest')
+               ORDER BY hr.parent LIMIT 1""",
+        )
+        if sm_users and not any(u["user"] == sm_users[0][0] for u in out):
+            out.append({
+                "user": sm_users[0][0],
+                "kind": "Override · System Manager",
+                "roles": list(frappe.get_roles(sm_users[0][0])),
+            })
 
     return out
 
@@ -433,18 +446,19 @@ def build_flow_capability_simulator(flow_type, flow_name):
             "action_type": s.action_type,
         })
 
-    # Synthetic override row
-    out_steps.append({
-        "step_number": "Override",
-        "role": "System Manager",
-        "user_count": _role_user_count("System Manager"),
-        "label": "Override · rescue path",
-        "can_revise": True,
-        "can_reject": True,
-        "perm_summary": _role_perm_summary("System Manager", target_doctype),
-        "health": "ok",
-        "notes": "Full override — can rescue stuck docs",
-    })
+    # Synthetic override row — v2.9.12.2: gated to caller-has-SM-role
+    if _caller_can_see_override():
+        out_steps.append({
+            "step_number": "Override",
+            "role": "System Manager",
+            "user_count": _role_user_count("System Manager"),
+            "label": "Override · rescue path",
+            "can_revise": True,
+            "can_reject": True,
+            "perm_summary": _role_perm_summary("System Manager", target_doctype),
+            "health": "ok",
+            "notes": "Full override — can rescue stuck docs",
+        })
 
     # Flow-level verdict
     err_steps = [s for s in out_steps if s.get("health") == "err"]
