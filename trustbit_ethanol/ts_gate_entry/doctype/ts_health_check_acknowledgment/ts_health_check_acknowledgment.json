@@ -1,0 +1,114 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:issue_id",
+ "creation": "2026-05-07 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "issue_id",
+  "category",
+  "acknowledged_by",
+  "acknowledged_on",
+  "suppressed_until",
+  "reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "issue_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Issue ID",
+   "length": 200,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Category",
+   "length": 80
+  },
+  {
+   "default": "user",
+   "fieldname": "acknowledged_by",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Acknowledged By",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "default": "now",
+   "fieldname": "acknowledged_on",
+   "fieldtype": "Datetime",
+   "label": "Acknowledged On",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "suppressed_until",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Suppressed Until",
+   "reqd": 1
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason",
+   "reqd": 1
+  }
+ ],
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 0,
+ "links": [],
+ "modified": "2026-05-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Health Check Acknowledgment",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IT Head",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "CEO"
+  },
+  {
+   "read": 1,
+   "role": "MD"
+  },
+  {
+   "read": 1,
+   "role": "AVP"
+  }
+ ],
+ "sort_field": "acknowledged_on",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

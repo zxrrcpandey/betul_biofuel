@@ -491,3 +491,88 @@ def _trace_mr(doc):
 			"days_pending": frappe.db.sql("SELECT DATEDIFF(NOW(), modified) FROM `tabMaterial Request` WHERE name = %s", (doc.name,))[0][0] or 0,
 		},
 	}
+
+
+# ════════════════════════════════════════════════════════════════════════
+# v2.9.12 Sprint 2 — Health Check endpoints
+# ════════════════════════════════════════════════════════════════════════
+
+
+@frappe.whitelist()
+def get_health_check_report():
+	"""Return aggregated Health Check report (all 7 validators).
+
+	Read-only. Role-gated to ALLOWED_ROLES. Uses redis cache (60s TTL) at the
+	validator layer; this endpoint is a thin wrapper.
+	"""
+	_check_access()
+	from trustbit_ethanol.ts_gate_entry import health_check_validators
+	return health_check_validators.run_all_validators()
+
+
+@frappe.whitelist(methods=["POST"])
+def acknowledge_issue(issue_id, suppressed_until, reason, category=None):
+	"""Acknowledge a Health Check finding for a bounded period (TTL ≤ 90 days).
+
+	POST-only per Lesson 175. Role-gated: System Manager + IT Head only
+	(more restrictive than ALLOWED_ROLES — mutation requires admin).
+	The TS Health Check Acknowledgment doctype's `validate()` enforces:
+	- suppressed_until > today
+	- suppressed_until ≤ today + 90 days
+	- reason ≥ 10 chars
+	- issue_id non-empty
+	- issue_id unique (autoname)
+	"""
+	_check_access()
+	user_roles = set(frappe.get_roles(frappe.session.user))
+	if not ({"System Manager", "Administrator", "IT Head"} & user_roles):
+		frappe.throw(
+			_("Acknowledging Health Check issues requires System Manager or IT Head role."),
+			frappe.PermissionError,
+		)
+
+	# Reject if already acknowledged + still active (avoid duplicate rows)
+	existing = frappe.db.get_value(
+		"TS Health Check Acknowledgment",
+		{"issue_id": issue_id, "suppressed_until": [">=", frappe.utils.today()]},
+		"name",
+	)
+	if existing:
+		return {"ok": True, "already_acknowledged": True, "name": existing}
+
+	doc = frappe.get_doc({
+		"doctype": "TS Health Check Acknowledgment",
+		"issue_id": issue_id,
+		"category": category or "",
+		"acknowledged_by": frappe.session.user,
+		"acknowledged_on": frappe.utils.now(),
+		"suppressed_until": suppressed_until,
+		"reason": reason,
+	})
+	try:
+		doc.insert(ignore_permissions=False)  # respect doctype permissions
+	except frappe.DuplicateEntryError:
+		# Race with concurrent ack — DB unique constraint caught it.
+		# Converge with the pre-check branch above for stable client UX.
+		return {"ok": True, "already_acknowledged": True, "name": issue_id}
+
+	# Best-effort audit log per Lesson 238 (notification side-effects must
+	# not block the success path).
+	try:
+		frappe.log_error(
+			title="HC issue acknowledged",
+			message=(
+				f"user={frappe.session.user} issue_id={issue_id} "
+				f"until={suppressed_until} reason_len={len(reason)}"
+			),
+		)
+	except Exception:
+		pass
+
+	# Invalidate validator cache so the suppression is reflected immediately
+	try:
+		frappe.cache().delete_keys("health_check_v1")
+	except Exception:
+		pass
+
+	return {"ok": True, "already_acknowledged": False, "name": doc.name}
