@@ -21,6 +21,13 @@ import frappe
 CACHE_NS = "health_check_sim_v1"
 CACHE_TTL_SEC = 60
 
+# v2.9.12.1 — System Manager + Administrator have implicit role-grants in
+# Frappe (full access bypasses DocPerm row checks). Treat them as "all
+# permissions present" so the per-flow simulator's Override card doesn't
+# show false-positive missing-perm warnings.
+IMPLICIT_GRANT_ROLES = ("System Manager", "Administrator")
+ALL_PERMS = ("read", "write", "submit", "cancel", "amend")
+
 
 def _cache_get(key):
     try:
@@ -54,6 +61,10 @@ def _has_perm(user, doctype, perm):
     Returns (bool allowed, reason).
     """
     user_roles = set(frappe.get_roles(user))
+    # v2.9.12.1 — System Manager + Administrator get implicit grants
+    sm_match = next((r for r in IMPLICIT_GRANT_ROLES if r in user_roles), None)
+    if sm_match:
+        return True, f"User has '{sm_match}' role (implicit grant — bypasses DocPerm)"
     custom = frappe.db.sql(
         f"""SELECT role, `{perm}` AS p
             FROM `tabCustom DocPerm`
@@ -481,6 +492,10 @@ def _role_user_count(role):
 
 def _role_perm_summary(role, doctype):
     """Return {present: [], missing: [], has_row: bool} for a role on a doctype."""
+    # v2.9.12.1 — System Manager + Administrator have implicit role-grants;
+    # no DocPerm rows required. Show them as fully-permitted in the simulator.
+    if role in IMPLICIT_GRANT_ROLES:
+        return {"present": list(ALL_PERMS), "missing": [], "has_row": True, "implicit": True}
     custom = frappe.db.sql(
         """SELECT `read`, `write`, `submit`, `cancel`, `amend`
            FROM `tabCustom DocPerm`
