@@ -23,3 +23,5 @@ trustbit_ethanol.patches.v2_9.migrate_bag_type_to_master
 trustbit_ethanol.patches.v2_9.po_deduction_backward_compat
 # v2.9.5 was reverted in v2.9.6 — see pre_model_sync `clean_qi_v295_inline_fields`.
 # v2.9.5 patch dir intentionally NOT shipped (was demo-only); ref removed to prevent ModuleNotFoundError on prod.
+# v2.9.12 Sprint 1 — backfill amended MRs with stale ts_mr_status (12 broken docs on demo, 0 on prod)
+trustbit_ethanol.patches.v2_9_12.backfill_amended_mr_status

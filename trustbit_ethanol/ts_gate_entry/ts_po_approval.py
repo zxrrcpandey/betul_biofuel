@@ -1777,6 +1777,40 @@ def po_on_cancel(doc, method):
 		}, update_modified=False)
 
 
+def mr_on_amend(doc, method=None):
+	"""v2.9.12 — Reset approval-tracking fields when MR is amended.
+
+	Mirrors po_on_amend below. Without this hook, amended MR drafts retain
+	the parent's ts_mr_status (e.g. "Approved", "Pending CEO") which makes
+	`can_submit_for_approval` predicate fail (status not in eligible list)
+	and the Submit-for-Approval button stays hidden — user can't progress.
+
+	Resets ts_mr_status to "Not Submitted" + clears tracking fields. Writes
+	go through `doc.set()` (in-memory before save), so the reset is part of
+	the new amended doc's pre-save state and does not trigger
+	_block_gate_field_tampering at validate-time.
+	"""
+	if doc.doctype != "Material Request":
+		return
+	if not doc.amended_from:
+		return
+
+	doc.ts_mr_status = "Not Submitted"
+	for fname in (
+		"ts_mr_route",
+		"ts_mr_current_step",
+		"ts_mr_total_steps",
+		"ts_mr_submitted_by",
+		"ts_amount_at_submission",
+		"ts_last_action",
+		"hold_reason",
+		"held_by",
+		"held_at_step",
+	):
+		if hasattr(doc, fname):
+			doc.set(fname, None)
+
+
 def po_on_amend(doc, method):
 	"""Reset approval fields when PO is amended."""
 	if not doc.amended_from:

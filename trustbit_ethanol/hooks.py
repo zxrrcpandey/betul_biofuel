@@ -156,7 +156,11 @@ doc_events = {
 	},
 	"Material Request": {
 		"autoname": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_autoname",
-		"before_insert": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_before_insert",
+		"before_insert": [
+			"trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_before_insert",
+			# v2.9.12 Sprint 1 — reset ts_mr_status + tracking fields on amend (parallel to po_on_amend)
+			"trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_amend",
+		],
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_update",
 		# v2.9.9.9 — clean up orphan draft Stock Entries when a Stores-flow MR is cancelled

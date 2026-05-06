@@ -49,9 +49,20 @@ print("\n[1/10] MR Creation + Status")
 def test_mr_create():
     """MR can be created and has correct default status"""
     frappe.set_user("Administrator")
-    company = frappe.db.get_value("Company", {"is_group": 0}, "name")
+    # Pick warehouse first, derive company from it — guarantees consistency
+    # (avoids fixture _Test companies sorting first; avoids group-company mismatch)
+    wh_row = frappe.db.sql(
+        "SELECT name, company FROM `tabWarehouse` WHERE is_group=0 AND name LIKE %s LIMIT 1",
+        ("%BBPL%",), as_dict=True,
+    )
+    if not wh_row:
+        wh_row = frappe.db.sql(
+            "SELECT name, company FROM `tabWarehouse` WHERE is_group=0 AND name NOT LIKE %s LIMIT 1",
+            ("\\_Test%",), as_dict=True,
+        )
+    wh = wh_row[0].name
+    company = wh_row[0].company
     cc = frappe.db.get_value("Cost Center", {"is_group": 0, "company": company}, "name")
-    wh = frappe.db.get_value("Warehouse", {"is_group": 0, "company": company}, "name")
     item = frappe.db.get_value("Item", {"disabled": 0}, "name")
     mr = frappe.get_doc({
         "doctype": "Material Request",
@@ -59,7 +70,7 @@ def test_mr_create():
         "company": company,
         "schedule_date": "2026-12-31",
         "cost_center": cc,
-        "items": [{"item_code": item, "qty": 1, "schedule_date": "2026-12-31", "warehouse": wh}]
+        "items": [{"item_code": item, "qty": 1, "schedule_date": "2026-12-31", "warehouse": wh, "ts_delivery_location": "Test", "ts_item_remark": "Regression test"}]
     })
     mr.insert(ignore_permissions=True)
     cleanup.append(("Material Request", mr.name))
@@ -100,9 +111,19 @@ test("MR approval context — can_submit_for_approval", test_mr_approval_context
 def test_po_approval_context():
     """PO approval context works for Not Submitted"""
     frappe.set_user("Administrator")
-    company = frappe.db.get_value("Company", {"is_group": 0}, "name")
+    # Pick warehouse first, derive company from it — guarantees consistency
+    wh_row = frappe.db.sql(
+        "SELECT name, company FROM `tabWarehouse` WHERE is_group=0 AND name LIKE %s LIMIT 1",
+        ("%BBPL%",), as_dict=True,
+    )
+    if not wh_row:
+        wh_row = frappe.db.sql(
+            "SELECT name, company FROM `tabWarehouse` WHERE is_group=0 AND name NOT LIKE %s LIMIT 1",
+            ("\\_Test%",), as_dict=True,
+        )
+    wh = wh_row[0].name
+    company = wh_row[0].company
     cc = frappe.db.get_value("Cost Center", {"is_group": 0, "company": company}, "name")
-    wh = frappe.db.get_value("Warehouse", {"is_group": 0, "company": company}, "name")
     item = frappe.db.get_value("Item", {"disabled": 0}, "name")
     supplier = frappe.db.get_value("Supplier", {}, "name")
     if not supplier:
