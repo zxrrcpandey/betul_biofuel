@@ -1205,6 +1205,49 @@ function _hc_format_flow_simulator(s) {
 		`;
 	}).join("");
 
+	// v2.9.12.4 — Route-level Revise Flow Summary
+	const rs = s.revise_summary || null;
+	let revise_html = "";
+	if (rs) {
+		const rows = (rs.rows || []).map(r => {
+			const revise_pill = r.can_revise
+				? '<span class="hc-action-pill" style="background:#dcfce7;color:#166534;">can_revise=1</span>'
+				: '<span class="hc-action-pill" style="background:#fee2e2;color:#dc2626;">can_revise=0</span>';
+			const reject_pill = r.can_reject
+				? '<span class="hc-action-pill" style="background:#dcfce7;color:#166534;">can_reject=1</span>'
+				: '<span class="hc-action-pill" style="background:#fef3c7;color:#92400e;">can_reject=0</span>';
+			return `<tr>
+				<td><strong>${_hc_esc(r.step_order)}</strong></td>
+				<td><span class="hc-role-pill">${_hc_esc(r.role)}</span></td>
+				<td>${_hc_esc(r.action_type)}</td>
+				<td>${revise_pill}</td>
+				<td>${reject_pill}</td>
+				<td>${r.user_count}</td>
+				<td>${_hc_esc(r.verdict)}</td>
+			</tr>`;
+		}).join("");
+
+		revise_html = `
+			<div class="hc-revise-detail">
+				<h4>🔄 Revise Flow Summary — route-level</h4>
+				<div class="hc-revise-summary">${_hc_esc(rs.summary || "")}</div>
+				<table class="hc-mini-table">
+					<thead><tr>
+						<th>Step</th><th>Role</th><th>Action Type</th>
+						<th>Revise</th><th>Reject</th><th>Users</th><th>Verdict</th>
+					</tr></thead>
+					<tbody>${rows}</tbody>
+				</table>
+				<div class="hc-revise-block-title" style="margin-top:10px;">🔔 When Request Revision is pressed:</div>
+				<div style="font-size:11px; color:#475569; padding:6px 10px; background:#fff; border-radius:4px;">
+					Status moves to <code>Revised</code> · doc stays <code>docstatus=1</code> · creator gets bell + email notification ·
+					creator must <strong>Cancel → Amend → Submit for Approval</strong> to recreate. The
+					<code>mr_on_amend</code> hook (v2.9.12) auto-resets <code>ts_mr_status='Not Submitted'</code> on the new draft.
+				</div>
+			</div>
+		`;
+	}
+
 	return `
 		<div class="hc-flow-result">
 			<div class="hc-flow-meta-bar">
@@ -1212,6 +1255,7 @@ function _hc_format_flow_simulator(s) {
 			</div>
 			<div class="hc-flow-band">${flow_band}</div>
 			<div class="hc-flow-verdict">🎯 ${_hc_esc(s.verdict)}</div>
+			${revise_html}
 		</div>
 	`;
 }

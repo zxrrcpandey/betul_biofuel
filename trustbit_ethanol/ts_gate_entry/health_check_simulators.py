@@ -594,19 +594,9 @@ def build_flow_capability_simulator(flow_type, flow_name):
             "action_type": s.action_type,
         })
 
-    # Synthetic override row — v2.9.12.2: gated to caller-has-SM-role
-    if _caller_can_see_override():
-        out_steps.append({
-            "step_number": "Override",
-            "role": "System Manager",
-            "user_count": _role_user_count("System Manager"),
-            "label": "Override · rescue path",
-            "can_revise": True,
-            "can_reject": True,
-            "perm_summary": _role_perm_summary("System Manager", target_doctype),
-            "health": "ok",
-            "notes": "Full override — can rescue stuck docs",
-        })
+    # v2.9.12.4 — Override card REMOVED from per-flow output entirely. Visual
+    # noise per user feedback. SM rescue path is mentioned in Verdict text when
+    # applicable (computed below).
 
     # Flow-level verdict
     err_steps = [s for s in out_steps if s.get("health") == "err"]
@@ -625,6 +615,9 @@ def build_flow_capability_simulator(flow_type, flow_name):
     if not err_steps and not warn_steps:
         verdict_lines.append("✓ Flow healthy — every step has working approvers + recovery path.")
 
+    # v2.9.12.4 — route-level Revise Flow Summary
+    revise_summary = _build_revise_summary_for_flow(target_doctype, steps_raw)
+
     result = {
         "flow": {
             "type": flow_type,
@@ -632,11 +625,65 @@ def build_flow_capability_simulator(flow_type, flow_name):
             "step_count": len(steps_raw),
         },
         "steps": out_steps,
+        "revise_summary": revise_summary,
         "verdict": " · ".join(verdict_lines),
         "schema_version": 1,
     }
     _cache_set(cache_key, result)
     return result
+
+
+def _build_revise_summary_for_flow(target_doctype, steps_raw):
+    """v2.9.12.4 — per-route revise capability summary.
+
+    For each step shows: role, can_revise flag, can_reject flag, eligible
+    user count. Plus a top-level 'who can revise this route' summary.
+    """
+    rows = []
+    revise_capable_roles = []
+    for s in steps_raw:
+        if not s.role:
+            continue
+        n = _role_user_count(s.role)
+        rows.append({
+            "step_order": s.step_order,
+            "role": s.role,
+            "action_type": s.action_type or "Review",
+            "can_revise": bool(s.can_revise),
+            "can_reject": bool(s.can_reject),
+            "user_count": n,
+            "verdict": _step_revise_verdict(s, n),
+        })
+        if s.can_revise and n > 0:
+            revise_capable_roles.append(s.role)
+
+    if revise_capable_roles:
+        summary = (
+            f"On this route, the following role(s) can press 'Request Revision' "
+            f"after their step: {', '.join(revise_capable_roles)}. "
+            f"When pressed, status moves to 'Revised', creator gets notified, "
+            f"creator must Cancel + Amend + Resubmit."
+        )
+    else:
+        summary = (
+            "❌ No step on this route has can_revise=1. Users can't kick back "
+            "for revision via the standard chain — only System Manager (override) "
+            "can move stuck docs."
+        )
+
+    return {"summary": summary, "rows": rows}
+
+
+def _step_revise_verdict(step, user_count):
+    if not step.role:
+        return "—"
+    if step.can_revise and user_count > 0:
+        return f"✓ {user_count} user(s) with '{step.role}' role can revise + notify creator"
+    if step.can_revise and user_count == 0:
+        return f"⚠ Step has can_revise=1 but 0 users with '{step.role}' role"
+    if not step.can_revise:
+        return f"✗ Step has can_revise=0 — Revise button hidden for '{step.role}' role"
+    return "—"
 
 
 def _role_user_count(role):
