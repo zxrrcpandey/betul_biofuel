@@ -235,6 +235,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_qc_dashboard.reload_quality_lab_workspace",
 	# v2.9.11 — shared Connections panel Custom Fields (PO/MR/PR/PI)
 	"trustbit_ethanol.ts_gate_entry.setup_connections_panel.seed_connections_panel",
+	# v2.9.11.2 — BBPL Letter Head default (creates on demo, no-op on prod)
+	"trustbit_ethanol.ts_gate_entry.setup_default_letter_head.seed_default_letter_head",
 ]
 
 # Scheduled Tasks
