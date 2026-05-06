@@ -295,6 +295,8 @@ def _build_revise_flow_detail(doc):
         "next_actions": [],
         "applicable": False,
         "summary": "",
+        # v2.9.12.5 — show resubmitters in every state (incl Revised limbo)
+        "resubmitters": _resubmit_capable_roles(doc.doctype),
     }
 
     if doc.docstatus != 1:
@@ -633,6 +635,41 @@ def build_flow_capability_simulator(flow_type, flow_name):
     return result
 
 
+def _resubmit_capable_roles(target_doctype):
+    """v2.9.12.5 — list roles with DocPerm.submit on target_doctype + user counts.
+
+    These are the roles whose users will see the Submit-for-Approval button
+    on the amended draft (after Cancel + Amend). Per Lesson 169, Custom
+    DocPerm overrides Standard if any Custom row exists for the doctype.
+    """
+    custom = frappe.db.sql(
+        """SELECT role FROM `tabCustom DocPerm`
+           WHERE parent = %s AND permlevel = 0 AND `submit` = 1""",
+        (target_doctype,), as_list=True,
+    )
+    if custom:
+        rows = custom
+    else:
+        rows = frappe.db.sql(
+            """SELECT role FROM `tabDocPerm`
+               WHERE parent = %s AND permlevel = 0 AND `submit` = 1""",
+            (target_doctype,), as_list=True,
+        )
+    out = []
+    seen = set()
+    for (role,) in rows:
+        if not role or role in seen:
+            continue
+        seen.add(role)
+        n = _role_user_count(role)
+        out.append({"role": role, "user_count": n,
+                    "verdict": (f"✓ {n} active user(s) can re-submit" if n > 0
+                                else "⚠ Role has 0 active users — re-submit impossible from this role")})
+    # sort by user_count desc so most-impactful roles first
+    out.sort(key=lambda r: -r["user_count"])
+    return out
+
+
 def _build_revise_summary_for_flow(target_doctype, steps_raw):
     """v2.9.12.4 — per-route revise capability summary.
 
@@ -671,7 +708,10 @@ def _build_revise_summary_for_flow(target_doctype, steps_raw):
             "can move stuck docs."
         )
 
-    return {"summary": summary, "rows": rows}
+    # v2.9.12.5 — also include who can re-submit the amended draft
+    resubmitters = _resubmit_capable_roles(target_doctype)
+
+    return {"summary": summary, "rows": rows, "resubmitters": resubmitters}
 
 
 def _step_revise_verdict(step, user_count):

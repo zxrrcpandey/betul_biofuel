@@ -1116,6 +1116,14 @@ function _hc_format_doc_matrix(m) {
 				<td>${_hc_esc(a.description)}</td>
 			</tr>
 		`).join("");
+		// v2.9.12.5 — Re-Submit capability rows
+		const resub_rows = (revise.resubmitters || []).map(r => `
+			<tr>
+				<td><span class="hc-role-pill">${_hc_esc(r.role)}</span></td>
+				<td>${r.user_count}</td>
+				<td>${_hc_esc(r.verdict)}</td>
+			</tr>
+		`).join("");
 
 		revise_html = `
 			<div class="hc-revise-detail">
@@ -1150,6 +1158,19 @@ function _hc_format_doc_matrix(m) {
 							<tbody>${next_rows}</tbody>
 						</table>
 					` : '<div class="hc-revise-empty">— No further actions —</div>'}
+				</div>
+
+				<div class="hc-revise-block">
+					<div class="hc-revise-block-title">🚀 Who can Re-Submit the amended draft for approval</div>
+					${revise.resubmitters && revise.resubmitters.length ? `
+						<table class="hc-mini-table">
+							<thead><tr><th>Role</th><th>Active Users</th><th>Verdict</th></tr></thead>
+							<tbody>${resub_rows}</tbody>
+						</table>
+						<div style="font-size:11px; color:#475569; padding:6px 10px; margin-top:6px; background:#fff; border-radius:4px;">
+							Note: the user who clicks <strong>Amend</strong> becomes the new owner of the amended draft. Any user with <code>submit</code> permission on this doctype + the right CC can press Submit-for-Approval on the new draft.
+						</div>
+					` : '<div class="hc-revise-empty">— No roles have submit permission on this doctype (configuration error) —</div>'}
 				</div>
 			</div>
 		`;
@@ -1227,6 +1248,15 @@ function _hc_format_flow_simulator(s) {
 			</tr>`;
 		}).join("");
 
+		// v2.9.12.5 — re-submit capable roles
+		const resub_rows = (rs.resubmitters || []).map(r => `
+			<tr>
+				<td><span class="hc-role-pill">${_hc_esc(r.role)}</span></td>
+				<td>${r.user_count}</td>
+				<td>${_hc_esc(r.verdict)}</td>
+			</tr>
+		`).join("");
+
 		revise_html = `
 			<div class="hc-revise-detail">
 				<h4>🔄 Revise Flow Summary — route-level</h4>
@@ -1244,6 +1274,17 @@ function _hc_format_flow_simulator(s) {
 					creator must <strong>Cancel → Amend → Submit for Approval</strong> to recreate. The
 					<code>mr_on_amend</code> hook (v2.9.12) auto-resets <code>ts_mr_status='Not Submitted'</code> on the new draft.
 				</div>
+
+				<div class="hc-revise-block-title" style="margin-top:12px;">🚀 Who can Re-Submit the amended draft for approval</div>
+				${rs.resubmitters && rs.resubmitters.length ? `
+					<table class="hc-mini-table">
+						<thead><tr><th>Role</th><th>Active Users</th><th>Verdict</th></tr></thead>
+						<tbody>${resub_rows}</tbody>
+					</table>
+					<div style="font-size:11px; color:#475569; padding:6px 10px; margin-top:6px; background:#fff; border-radius:4px;">
+						The user who clicks <strong>Amend</strong> becomes the new owner of the amended draft. Any user with the listed roles will see the Submit-for-Approval button on that draft (assuming CC permissions match).
+					</div>
+				` : '<div class="hc-revise-empty">— No roles have submit permission on this doctype (configuration error) —</div>'}
 			</div>
 		`;
 	}
