@@ -576,3 +576,64 @@ def acknowledge_issue(issue_id, suppressed_until, reason, category=None):
 		pass
 
 	return {"ok": True, "already_acknowledged": False, "name": doc.name}
+
+
+@frappe.whitelist()
+def get_doc_capability(doctype, name):
+	"""Return per-doc capability matrix (Sprint 3)."""
+	_check_access()
+	from trustbit_ethanol.ts_gate_entry import health_check_simulators
+	return health_check_simulators.build_doc_capability_matrix(doctype, name)
+
+
+@frappe.whitelist()
+def get_flow_capability(flow_type, flow_name):
+	"""Return per-flow capability simulator data (Sprint 3).
+
+	flow_type: "MR Route" | "PO Rule"
+	"""
+	_check_access()
+	from trustbit_ethanol.ts_gate_entry import health_check_simulators
+	return health_check_simulators.build_flow_capability_simulator(flow_type, flow_name)
+
+
+@frappe.whitelist()
+def get_health_check_targets():
+	"""Return picker data for the simulators — list of stuck docs + active flows."""
+	_check_access()
+	stuck_docs = []
+	for dt, status_field in (("Material Request", "ts_mr_status"),
+	                          ("Purchase Order", "ts_approval_status")):
+		rows = frappe.db.sql(
+			f"""SELECT name, {status_field} AS status, docstatus,
+			           DATEDIFF(NOW(), modified) AS days_stuck
+			    FROM `tab{dt}`
+			    WHERE
+			      (docstatus = 0 AND {status_field} IN
+			        ('Approved','Rejected','Pending Dept. User','Pending Dept. Head',
+			         'Pending AVP','Pending CEO','Pending GM','Pending Stores Manager',
+			         'Revised','On Hold'))
+			      OR (docstatus = 1 AND {status_field} = 'Revised')
+			      OR (docstatus = 1 AND {status_field} LIKE 'Pending %%' AND DATEDIFF(NOW(), modified) >= 7)
+			      OR (docstatus = 2)
+			    ORDER BY days_stuck DESC LIMIT 50""",
+			as_dict=True,
+		)
+		for r in rows:
+			r["doctype"] = dt
+			stuck_docs.append(r)
+
+	mr_routes = [r.name for r in frappe.db.sql(
+		"SELECT name FROM `tabTS MR Approval Route` WHERE is_active = 1 ORDER BY name",
+		as_dict=True,
+	)]
+	po_rules = [r.name for r in frappe.db.sql(
+		"SELECT name FROM `tabTS PO Approval Rule` WHERE is_active = 1 ORDER BY name",
+		as_dict=True,
+	)]
+
+	return {
+		"stuck_docs": stuck_docs,
+		"mr_routes": mr_routes,
+		"po_rules": po_rules,
+	}

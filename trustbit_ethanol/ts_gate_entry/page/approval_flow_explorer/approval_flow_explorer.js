@@ -49,6 +49,8 @@ async function _afe_init() {
 			return;
 		}
 		_afe_render_shell();
+		// v2.9.12 — load Health Check section (independent of user-flow data)
+		_afe_load_health_check();
 		_afe_state.currentEmail = _afe_state.users[0].email;
 		await _afe_load_user(_afe_state.currentEmail);
 		await _afe_load_flows();
@@ -67,6 +69,28 @@ function _afe_reload() {
 function _afe_render_shell() {
 	const userOpts = _afe_state.users.map(u => `<option value="${frappe.utils.escape_html(u.email)}">${frappe.utils.escape_html(u.display)}</option>`).join("");
 	$("#afe-container").html(`
+		<!-- v2.9.12 — Health Check section (renders first, independent of user-flow) -->
+		<div class="afe-card hc-card" id="hc-section">
+			<div class="afe-card-header hc-header">
+				<div class="afe-card-title">🛡️ Approval Flow Health Check
+					<span class="hc-badge" id="hc-total-badge">…</span>
+				</div>
+				<div class="hc-header-meta">
+					<span class="hc-version-pill">v2.9.12</span>
+					<span id="hc-last-run" class="hc-last-run">Loading…</span>
+					<button class="btn btn-default btn-xs" id="hc-refresh-btn">🔄 Refresh</button>
+				</div>
+			</div>
+			<div class="hc-subtabs">
+				<button class="hc-subtab active" data-subtab="docs" id="hc-subtab-docs">📄 Documents <span class="hc-count" id="hc-cnt-docs">…</span></button>
+				<button class="hc-subtab" data-subtab="config" id="hc-subtab-config">🔧 Approval Flow <span class="hc-count" id="hc-cnt-config">…</span></button>
+				<button class="hc-subtab" data-subtab="sim" id="hc-subtab-sim">🎯 Capability Simulators</button>
+			</div>
+			<div id="hc-body">
+				<div style="padding:30px;text-align:center;color:var(--text-muted);">Loading Health Check…</div>
+			</div>
+		</div>
+
 		<div class="afe-selector">
 			<label>Select User:</label>
 			<select id="afe-user-select">${userOpts}</select>
@@ -742,6 +766,395 @@ const AFE_ACTIONS = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
+   v2.9.12 — HEALTH CHECK SECTION
+   ═══════════════════════════════════════════════════════════════════ */
+
+let _hc_state = {
+	report: null,
+	targets: null,
+	current_subtab: "docs",
+	loading_skeleton_timer: null,
+};
+
+const _hc_esc = (s) => frappe.utils.escape_html(String(s == null ? "" : s));
+
+async function _afe_load_health_check() {
+	// 300ms skeleton threshold per ui-designer
+	_hc_state.loading_skeleton_timer = setTimeout(() => {
+		$("#hc-body").html(`
+			<div class="hc-skeleton">
+				<div class="hc-skeleton-row"></div>
+				<div class="hc-skeleton-row"></div>
+				<div class="hc-skeleton-row"></div>
+			</div>
+		`);
+	}, 300);
+
+	try {
+		const r = await frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.approval_flow_explorer_api.get_health_check_report",
+		});
+		clearTimeout(_hc_state.loading_skeleton_timer);
+		_hc_state.report = r.message || {};
+		_hc_render_health_check();
+	} catch (e) {
+		clearTimeout(_hc_state.loading_skeleton_timer);
+		$("#hc-body").html(`<div class="hc-error">Health Check load failed: ${_hc_esc(e.message || String(e))}</div>`);
+	}
+}
+
+function _hc_render_health_check() {
+	const rep = _hc_state.report || {};
+	if (rep.feature_disabled) {
+		$("#hc-total-badge").text("OFF").removeClass("hc-badge-red hc-badge-amber").addClass("hc-badge-grey");
+		$("#hc-last-run").text(`(disabled — kill-switch OFF)`);
+		$("#hc-cnt-docs").text("—");
+		$("#hc-cnt-config").text("—");
+		$("#hc-body").html(`
+			<div class="hc-disabled">
+				<strong>Health Check is currently disabled.</strong><br>
+				IT Head or System Manager can enable via TS Settings →
+				<code>ts_health_check_enabled</code>.
+			</div>
+		`);
+		return;
+	}
+
+	const issues = rep.issues || [];
+	const stats = rep.stats || { by_severity: {}, by_category: {}, total: 0 };
+	const total = stats.total || 0;
+	const high = (stats.by_severity || {}).high || 0;
+	const medium = (stats.by_severity || {}).medium || 0;
+
+	// Update badge + counts
+	$("#hc-total-badge").text(String(total));
+	$("#hc-total-badge").removeClass("hc-badge-grey hc-badge-amber hc-badge-red");
+	if (high > 0) $("#hc-total-badge").addClass("hc-badge-red");
+	else if (medium > 0) $("#hc-total-badge").addClass("hc-badge-amber");
+	else $("#hc-total-badge").addClass("hc-badge-grey");
+
+	const docCats = ["state_corruption", "revise", "sla"];
+	const cfgCats = ["configuration"];
+	const docIssues = issues.filter(i => docCats.includes(i.category));
+	const cfgIssues = issues.filter(i => cfgCats.includes(i.category));
+	$("#hc-cnt-docs").text(String(docIssues.length));
+	$("#hc-cnt-config").text(String(cfgIssues.length));
+
+	const generated = rep.generated_at || "";
+	$("#hc-last-run").text(generated ? `Last checked: ${generated.replace("T", " ").slice(0, 16)}` : "");
+
+	// Render the active sub-tab
+	_hc_render_subtab(_hc_state.current_subtab);
+
+	// Wire click handlers (idempotent — replace each time)
+	$("#hc-section .hc-subtab").off("click.hc").on("click.hc", function() {
+		const tab = $(this).data("subtab");
+		_hc_state.current_subtab = tab;
+		$("#hc-section .hc-subtab").removeClass("active");
+		$(this).addClass("active");
+		_hc_render_subtab(tab);
+	});
+	$("#hc-refresh-btn").off("click.hc").on("click.hc", function() {
+		_afe_load_health_check();
+	});
+}
+
+function _hc_render_subtab(tab) {
+	const issues = (_hc_state.report || {}).issues || [];
+	if (tab === "sim") {
+		_hc_render_simulators_panel();
+		return;
+	}
+	const docCats = ["state_corruption", "revise", "sla"];
+	const cfgCats = ["configuration"];
+	const list = (tab === "config") ? issues.filter(i => cfgCats.includes(i.category))
+	                                : issues.filter(i => docCats.includes(i.category));
+
+	if (!list.length) {
+		$("#hc-body").html(`
+			<div class="hc-empty-card">
+				<div class="hc-empty-icon">✓</div>
+				<div><strong>All clear in this view.</strong> ${tab === "config" ? "No config issues detected." : "No document-level issues."}</div>
+			</div>
+		`);
+		return;
+	}
+
+	// Group by validator
+	const groups = {};
+	for (const i of list) {
+		(groups[i.validator] = groups[i.validator] || []).push(i);
+	}
+
+	const html = Object.keys(groups).sort().map(v => _hc_render_validator_card(v, groups[v])).join("");
+	$("#hc-body").html(html);
+
+	// Wire acknowledge buttons
+	$("#hc-body .hc-ack-btn").off("click.hc").on("click.hc", _hc_handle_ack_click);
+	$("#hc-body .hc-show-more").off("click.hc").on("click.hc", function() {
+		const $card = $(this).closest(".hc-validator-card");
+		$card.find(".hc-issue-row.hidden").removeClass("hidden");
+		$(this).remove();
+	});
+	$("#hc-body .hc-validator-header").off("click.hc").on("click.hc", function() {
+		$(this).closest(".hc-validator-card").toggleClass("collapsed");
+	});
+}
+
+function _hc_render_validator_card(validator, issues) {
+	const sev_priority = { high: 3, medium: 2, low: 1, info: 0 };
+	issues.sort((a, b) => (sev_priority[b.severity] || 0) - (sev_priority[a.severity] || 0));
+	const top_sev = issues[0].severity;
+	const cls_map = { high: "hc-card-err", medium: "hc-card-warn", low: "hc-card-info", info: "hc-card-info" };
+	const klass = cls_map[top_sev] || "hc-card-info";
+	const visible = issues.slice(0, 5);
+	const hidden = issues.slice(5);
+	const can_ack = frappe.user.has_role("System Manager") || frappe.user.has_role("IT Head");
+
+	const validator_label = {
+		"state_corruption": "🔴 State Corruption — amended drafts with stale status",
+		"revised_limbo": "🟡 Revised Limbo — submitted docs awaiting cancel+amend",
+		"cancel_no_amend": "❌ Cancelled, no amendment",
+		"stuck_sla_breach": "⏰ Stuck SLA Breach — pending too long",
+		"orphan_cost_centers": "🔴 Orphan Cost Centers — no Approval Config",
+		"suspicious_routes": "🟡 Suspicious Route Topology",
+		"revise_flow_configuration": "🔧 Revise Flow Configuration",
+	}[validator] || validator;
+
+	const visible_rows = [...visible, ...hidden.map(i => ({ ...i, _hidden: true }))].map(i => `
+		<div class="hc-issue-row ${i._hidden ? 'hidden' : ''}">
+			<div class="hc-issue-meta">
+				<span class="hc-sev-pill hc-sev-${i.severity}">${_hc_esc(i.severity)}</span>
+				<span class="hc-issue-doc">${_hc_esc(i.doc_type)}: <code>${_hc_esc(i.doc_name)}</code></span>
+			</div>
+			<div class="hc-issue-msg">${_hc_esc(i.message)}</div>
+			<div class="hc-issue-actions">
+				${i.suppressible && can_ack ? `<button class="btn btn-default btn-xs hc-ack-btn" data-issue-id="${_hc_esc(i.issue_id)}" data-category="${_hc_esc(i.category)}">Acknowledge</button>` : ''}
+			</div>
+		</div>
+	`).join("");
+
+	const more_link = hidden.length ? `<a class="hc-show-more">Show ${hidden.length} more</a>` : "";
+
+	return `
+		<div class="hc-validator-card ${klass}">
+			<div class="hc-validator-header">
+				<span class="hc-validator-title">${_hc_esc(validator_label)}</span>
+				<span class="hc-validator-count">${issues.length}</span>
+				<span class="hc-chevron">▼</span>
+			</div>
+			<div class="hc-validator-body">
+				${visible_rows}
+				${more_link}
+			</div>
+		</div>
+	`;
+}
+
+function _hc_handle_ack_click() {
+	const iid = $(this).data("issue-id");
+	const cat = $(this).data("category");
+	const today = frappe.datetime.get_today();
+	const default_until = frappe.datetime.add_days(today, 30);
+	const max_until = frappe.datetime.add_days(today, 90);
+
+	const d = new frappe.ui.Dialog({
+		title: __("Acknowledge Health Check Issue"),
+		fields: [
+			{ fieldtype: "Data", fieldname: "issue_id", label: "Issue ID", default: iid, read_only: 1 },
+			{ fieldtype: "Date", fieldname: "suppressed_until", label: "Suppress Until (max +90 days)", default: default_until, reqd: 1 },
+			{ fieldtype: "Small Text", fieldname: "reason", label: "Reason (min 10 chars)", reqd: 1, description: "Why is this issue acceptable / known / planned-fix?" },
+		],
+		primary_action_label: __("Acknowledge"),
+		primary_action: async (vals) => {
+			if (!vals.reason || vals.reason.trim().length < 10) {
+				frappe.msgprint({ title: __("Reason too short"), message: __("Reason must be at least 10 characters."), indicator: "red" });
+				return;
+			}
+			if (vals.suppressed_until > max_until) {
+				frappe.msgprint({ title: __("Period too long"), message: __("Cap is 90 days from today."), indicator: "red" });
+				return;
+			}
+			try {
+				const r = await frappe.call({
+					method: "trustbit_ethanol.ts_gate_entry.approval_flow_explorer_api.acknowledge_issue",
+					args: {
+						issue_id: iid,
+						suppressed_until: vals.suppressed_until,
+						reason: vals.reason,
+						category: cat,
+					},
+				});
+				d.hide();
+				frappe.show_alert({ message: __("Issue acknowledged"), indicator: "green" }, 3);
+				_afe_load_health_check();
+			} catch (e) {
+				frappe.msgprint({ title: __("Acknowledge failed"), message: _hc_esc(e.message || String(e)), indicator: "red" });
+			}
+		},
+	});
+	d.show();
+}
+
+async function _hc_render_simulators_panel() {
+	$("#hc-body").html(`
+		<div class="hc-sim-panel">
+			<div class="hc-sim-section">
+				<h4>📄 Per-Doc Action Capability Matrix</h4>
+				<p class="hc-sim-intro">Pick a doc — see who can Open / Cancel / Amend / Submit / Approve / Revise + WHY.</p>
+				<div class="hc-sim-controls">
+					<select id="hc-doc-picker"><option value="">— loading —</option></select>
+					<button class="btn btn-primary btn-xs" id="hc-doc-audit-btn">▶ Audit</button>
+				</div>
+				<div id="hc-doc-output" class="hc-sim-output"></div>
+			</div>
+
+			<div class="hc-sim-section">
+				<h4>🗺️ Per-Flow Capability Simulator</h4>
+				<p class="hc-sim-intro">Pick an MR Route or PO Rule — walk each step, see what each role can do.</p>
+				<div class="hc-sim-controls">
+					<select id="hc-flow-picker"><option value="">— loading —</option></select>
+					<button class="btn btn-primary btn-xs" id="hc-flow-audit-btn">▶ Simulate</button>
+				</div>
+				<div id="hc-flow-output" class="hc-sim-output"></div>
+			</div>
+		</div>
+	`);
+
+	// Load picker data
+	try {
+		const r = await frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.approval_flow_explorer_api.get_health_check_targets",
+		});
+		_hc_state.targets = r.message || { stuck_docs: [], mr_routes: [], po_rules: [] };
+	} catch (e) {
+		$("#hc-doc-picker").html('<option value="">load failed</option>');
+		return;
+	}
+
+	// Doc picker
+	const docOpts = ['<option value="">— pick doc —</option>'];
+	for (const d of _hc_state.targets.stuck_docs || []) {
+		const label = `${d.doctype} · ${d.name} · status=${d.status} · stuck ${d.days_stuck}d`;
+		docOpts.push(`<option value="${_hc_esc(d.doctype)}|${_hc_esc(d.name)}">${_hc_esc(label)}</option>`);
+	}
+	$("#hc-doc-picker").html(docOpts.join(""));
+
+	// Flow picker
+	const flowOpts = ['<option value="">— pick route or rule —</option>'];
+	flowOpts.push("<optgroup label='MR Routes'>");
+	for (const r of _hc_state.targets.mr_routes || []) flowOpts.push(`<option value="MR Route|${_hc_esc(r)}">MR Route — ${_hc_esc(r)}</option>`);
+	flowOpts.push("</optgroup><optgroup label='PO Rules'>");
+	for (const r of _hc_state.targets.po_rules || []) flowOpts.push(`<option value="PO Rule|${_hc_esc(r)}">PO Rule — ${_hc_esc(r)}</option>`);
+	flowOpts.push("</optgroup>");
+	$("#hc-flow-picker").html(flowOpts.join(""));
+
+	$("#hc-doc-audit-btn").off("click.hc").on("click.hc", _hc_run_doc_audit);
+	$("#hc-flow-audit-btn").off("click.hc").on("click.hc", _hc_run_flow_audit);
+}
+
+async function _hc_run_doc_audit() {
+	const v = $("#hc-doc-picker").val();
+	if (!v) { frappe.show_alert({ message: __("Pick a doc first"), indicator: "orange" }); return; }
+	const [doctype, name] = v.split("|");
+	$("#hc-doc-output").html('<div class="hc-loading">Building capability matrix…</div>');
+	try {
+		const r = await frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.approval_flow_explorer_api.get_doc_capability",
+			args: { doctype, name },
+		});
+		$("#hc-doc-output").html(_hc_format_doc_matrix(r.message));
+	} catch (e) {
+		$("#hc-doc-output").html(`<div class="hc-error">${_hc_esc(e.message || String(e))}</div>`);
+	}
+}
+
+function _hc_format_doc_matrix(m) {
+	if (!m) return '<div class="hc-error">No data</div>';
+	const actions = ["open", "submit_for_approval", "approve", "request_revision", "reject", "cancel", "amend"];
+	const action_labels = {
+		"open": "Open", "submit_for_approval": "Submit", "approve": "Approve",
+		"request_revision": "Revise", "reject": "Reject", "cancel": "Cancel", "amend": "Amend",
+	};
+	const cell = (a) => {
+		if (!a) return '<span class="hc-cell-na">—</span>';
+		if (a.allowed) return `<span class="hc-cell-ok" title="${_hc_esc(a.reason)}">✓</span>`;
+		const code = a.reason_code || "blocked";
+		const label = { blocked_status: "✗ status", blocked_perm: "✗ perm", blocked_config: "✗ config",
+		                requires_prior: "↗", not_applicable: "N/A" }[code] || "✗";
+		const klass = code === "not_applicable" || code === "requires_prior" ? "hc-cell-na" : "hc-cell-err";
+		return `<span class="${klass}" title="${_hc_esc(a.reason)}">${label}</span>`;
+	};
+	const head = `<tr><th>User · Kind</th>${actions.map(a => `<th>${_hc_esc(action_labels[a])}</th>`).join("")}<th>Verdict</th></tr>`;
+	const rows = (m.users || []).map(u => `
+		<tr>
+			<td><strong>${_hc_esc(u.user)}</strong><br><small>${_hc_esc(u.kind)}</small></td>
+			${actions.map(a => `<td class="hc-cell">${cell(u.actions[a])}</td>`).join("")}
+			<td>${_hc_esc(u.verdict_message || "")}</td>
+		</tr>
+	`).join("");
+
+	return `
+		<div class="hc-doc-result">
+			<div class="hc-doc-meta">
+				<strong>${_hc_esc(m.doc.doctype)}</strong>: <code>${_hc_esc(m.doc.name)}</code>
+				· docstatus=${m.doc.docstatus} · status=<strong>${_hc_esc(m.doc.status)}</strong>
+				· owner=${_hc_esc(m.doc.owner)}
+			</div>
+			<table class="hc-matrix-table"><thead>${head}</thead><tbody>${rows}</tbody></table>
+			<div class="hc-doc-verdict">🎯 ${_hc_esc(m.verdict)}</div>
+		</div>
+	`;
+}
+
+async function _hc_run_flow_audit() {
+	const v = $("#hc-flow-picker").val();
+	if (!v) { frappe.show_alert({ message: __("Pick a flow first"), indicator: "orange" }); return; }
+	const [flow_type, flow_name] = v.split("|");
+	$("#hc-flow-output").html('<div class="hc-loading">Walking flow chain…</div>');
+	try {
+		const r = await frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.approval_flow_explorer_api.get_flow_capability",
+			args: { flow_type, flow_name },
+		});
+		$("#hc-flow-output").html(_hc_format_flow_simulator(r.message));
+	} catch (e) {
+		$("#hc-flow-output").html(`<div class="hc-error">${_hc_esc(e.message || String(e))}</div>`);
+	}
+}
+
+function _hc_format_flow_simulator(s) {
+	if (!s) return '<div class="hc-error">No data</div>';
+	const steps = s.steps || [];
+	const flow_band = steps.map((st, idx) => {
+		const arrow = idx < steps.length - 1 ? '<div class="hc-flow-arrow">→</div>' : '';
+		const klass = `hc-flow-node hc-flow-${st.health || "ok"}`;
+		const perms = st.perm_summary || {};
+		const missing = (perms.missing || []).length ? `Missing: ${perms.missing.join(", ")}` : "";
+		return `
+			<div class="${klass}">
+				<div class="hc-flow-step">${_hc_esc(String(st.step_number))}</div>
+				<div class="hc-flow-role">${_hc_esc(st.role)}</div>
+				<div class="hc-flow-meta">${st.user_count} user(s)</div>
+				${missing ? `<div class="hc-flow-missing">${_hc_esc(missing)}</div>` : ""}
+				${st.notes ? `<div class="hc-flow-notes">${_hc_esc(st.notes)}</div>` : ""}
+			</div>
+			${arrow}
+		`;
+	}).join("");
+
+	return `
+		<div class="hc-flow-result">
+			<div class="hc-flow-meta-bar">
+				<strong>${_hc_esc(s.flow.type)}</strong>: <code>${_hc_esc(s.flow.name)}</code> · ${s.flow.step_count} chain steps
+			</div>
+			<div class="hc-flow-band">${flow_band}</div>
+			<div class="hc-flow-verdict">🎯 ${_hc_esc(s.verdict)}</div>
+		</div>
+	`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    STYLES — injected into document head
    ═══════════════════════════════════════════════════════════════════ */
 const AFE_CSS = `
@@ -878,4 +1291,88 @@ const AFE_CSS = `
 #afe-container .afe-action-notifs li::before { content:"🔔 "; }
 #afe-container .afe-note { padding:11px 13px; background:#eff6ff; border-left:3px solid var(--brand); border-radius:4px; font-size:12px; }
 #afe-container .afe-note-warn { background:#fef3c7; border-left-color:#f59e0b; color:#78350f; }
+
+/* === v2.9.12 — HEALTH CHECK TAB === */
+#afe-container .hc-card { border-top:4px solid var(--brand); }
+#afe-container .hc-header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+#afe-container .hc-header-meta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+#afe-container .hc-version-pill { background:#ede9fe; color:#7c3aed; font-size:11px; padding:2px 8px; border-radius:10px; font-weight:600; }
+#afe-container .hc-last-run { font-size:11px; color:var(--text-muted); }
+#afe-container .hc-badge { display:inline-block; min-width:28px; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:700; margin-left:8px; }
+#afe-container .hc-badge-red { background:#fee2e2; color:#dc2626; }
+#afe-container .hc-badge-amber { background:#fef3c7; color:#d97706; }
+#afe-container .hc-badge-grey { background:#e5e7eb; color:#6b7280; }
+#afe-container .hc-subtabs { display:flex; gap:4px; border-bottom:2px solid var(--border); margin:14px 0 16px 0; flex-wrap:wrap; }
+#afe-container .hc-subtab { padding:8px 14px; background:none; border:none; cursor:pointer; color:var(--text-muted); font-weight:500; font-size:13px; border-bottom:3px solid transparent; transition:all 0.15s; }
+#afe-container .hc-subtab:hover { color:#1f2937; }
+#afe-container .hc-subtab.active { color:var(--brand); border-bottom-color:var(--brand); }
+#afe-container .hc-subtab .hc-count { background:#fee2e2; color:#dc2626; padding:1px 7px; border-radius:10px; font-size:10px; font-weight:700; margin-left:4px; }
+#afe-container .hc-subtab.active .hc-count { background:rgba(255,255,255,0.25); color:#fff; }
+#afe-container .hc-subtab.active { background:var(--brand); color:#fff; border-bottom-color:transparent; border-radius:6px 6px 0 0; }
+#afe-container .hc-skeleton { padding:20px 0; }
+#afe-container .hc-skeleton-row { height:40px; background:linear-gradient(90deg,#f1f5f9 0%,#e2e8f0 50%,#f1f5f9 100%); background-size:200% 100%; animation:hc-shimmer 1.5s infinite; border-radius:6px; margin-bottom:8px; }
+@keyframes hc-shimmer { 0%{background-position:200% 0;} 100%{background-position:-200% 0;} }
+#afe-container .hc-empty-card { padding:24px; text-align:center; color:#16a34a; background:#dcfce7; border-radius:8px; }
+#afe-container .hc-empty-icon { font-size:32px; }
+#afe-container .hc-disabled { padding:18px; background:#fef3c7; border-left:4px solid #f59e0b; border-radius:6px; color:#78350f; font-size:13px; }
+#afe-container .hc-error { padding:14px; color:#ef4444; background:#fee2e2; border-radius:6px; }
+#afe-container .hc-loading { padding:14px; color:var(--text-muted); font-style:italic; }
+#afe-container .hc-validator-card { background:#fff; border:1px solid var(--border); border-left:4px solid #6b7280; border-radius:6px; margin-bottom:10px; overflow:hidden; }
+#afe-container .hc-card-err { border-left-color:#ef4444; }
+#afe-container .hc-card-warn { border-left-color:#f59e0b; }
+#afe-container .hc-card-info { border-left-color:#3b82f6; }
+#afe-container .hc-validator-header { display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; user-select:none; }
+#afe-container .hc-validator-header:hover { background:#f9fafb; }
+#afe-container .hc-validator-title { font-weight:600; font-size:13px; flex:1; }
+#afe-container .hc-validator-count { background:#e5e7eb; color:#374151; padding:2px 9px; border-radius:10px; font-size:11px; font-weight:600; }
+#afe-container .hc-card-err .hc-validator-count { background:#fee2e2; color:#dc2626; }
+#afe-container .hc-card-warn .hc-validator-count { background:#fef3c7; color:#d97706; }
+#afe-container .hc-chevron { color:var(--text-muted); font-size:10px; transition:transform 0.2s; }
+#afe-container .hc-validator-card.collapsed .hc-chevron { transform:rotate(-90deg); }
+#afe-container .hc-validator-card.collapsed .hc-validator-body { display:none; }
+#afe-container .hc-validator-body { padding:0 14px 12px; border-top:1px solid var(--border); }
+#afe-container .hc-issue-row { padding:10px 0; border-bottom:1px solid #f1f5f9; }
+#afe-container .hc-issue-row.hidden { display:none; }
+#afe-container .hc-issue-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px; }
+#afe-container .hc-issue-doc { font-size:12px; }
+#afe-container .hc-issue-doc code { background:#f1f5f9; padding:1px 5px; border-radius:3px; font-size:11px; }
+#afe-container .hc-issue-msg { font-size:12px; color:#475569; margin-bottom:6px; line-height:1.5; }
+#afe-container .hc-issue-actions { display:flex; gap:6px; }
+#afe-container .hc-sev-pill { padding:1px 9px; border-radius:10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
+#afe-container .hc-sev-high { background:#fee2e2; color:#dc2626; }
+#afe-container .hc-sev-medium { background:#fef3c7; color:#d97706; }
+#afe-container .hc-sev-low { background:#dbeafe; color:#2563eb; }
+#afe-container .hc-sev-info { background:#e5e7eb; color:#6b7280; }
+#afe-container .hc-show-more { display:block; padding:8px; text-align:center; color:var(--brand); cursor:pointer; font-size:12px; font-weight:500; }
+#afe-container .hc-show-more:hover { background:#f1f5f9; border-radius:4px; }
+#afe-container .hc-sim-panel { padding:8px 0; }
+#afe-container .hc-sim-section { background:#f9fafb; border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin-bottom:14px; }
+#afe-container .hc-sim-section h4 { font-size:13px; margin:0 0 6px; }
+#afe-container .hc-sim-intro { font-size:12px; color:var(--text-muted); margin-bottom:10px; }
+#afe-container .hc-sim-controls { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+#afe-container .hc-sim-controls select { min-width:300px; padding:6px 10px; border:1px solid var(--border); border-radius:5px; font-size:12px; }
+#afe-container .hc-sim-output { background:#fff; border:1px solid var(--border); border-radius:6px; padding:12px; min-height:60px; font-size:12px; }
+#afe-container .hc-doc-meta, #afe-container .hc-flow-meta-bar { padding:8px 0; border-bottom:1px solid var(--border); margin-bottom:10px; font-size:12px; }
+#afe-container .hc-matrix-table { width:100%; border-collapse:collapse; font-size:11px; }
+#afe-container .hc-matrix-table th, #afe-container .hc-matrix-table td { padding:6px 8px; border-bottom:1px solid #f1f5f9; text-align:left; }
+#afe-container .hc-matrix-table th { background:#f9fafb; font-weight:600; color:#374151; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; }
+#afe-container .hc-matrix-table .hc-cell { text-align:center; }
+#afe-container .hc-cell-ok { color:#16a34a; font-weight:700; }
+#afe-container .hc-cell-err { color:#dc2626; font-weight:700; cursor:help; }
+#afe-container .hc-cell-na { color:#6b7280; }
+#afe-container .hc-doc-verdict, #afe-container .hc-flow-verdict { margin-top:12px; padding:10px 12px; background:#ede9fe; border-left:3px solid #7c3aed; border-radius:4px; font-size:12px; line-height:1.5; }
+#afe-container .hc-flow-band { display:flex; align-items:stretch; gap:0; padding:14px 0; overflow-x:auto; }
+#afe-container .hc-flow-node { flex:1; min-width:140px; max-width:200px; background:#fff; border:2px solid #16a34a; border-radius:8px; padding:10px; text-align:center; position:relative; }
+#afe-container .hc-flow-warn { border-color:#f59e0b; background:#fef9e7; }
+#afe-container .hc-flow-err { border-color:#ef4444; background:#fef2f2; }
+#afe-container .hc-flow-step { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; }
+#afe-container .hc-flow-role { font-weight:700; font-size:13px; margin:4px 0; }
+#afe-container .hc-flow-meta { font-size:11px; color:var(--text-muted); }
+#afe-container .hc-flow-missing { font-size:10px; color:#dc2626; margin-top:4px; }
+#afe-container .hc-flow-notes { font-size:10px; color:#374151; margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); }
+#afe-container .hc-flow-arrow { align-self:center; padding:0 6px; font-size:22px; color:var(--text-muted); position:relative; }
+#afe-container .hc-flow-arrow::after { content:""; position:absolute; left:0; right:0; top:50%; height:2px; background:repeating-linear-gradient(90deg, var(--text-muted) 0, var(--text-muted) 4px, transparent 4px, transparent 8px); animation:hc-flow 1s linear infinite; opacity:0.4; z-index:-1; }
+@keyframes hc-flow { 0%{background-position:0 0;} 100%{background-position:8px 0;} }
+@media (prefers-reduced-motion: reduce) { #afe-container .hc-flow-arrow::after { animation:none; } #afe-container .hc-skeleton-row { animation:none; } }
+@media (max-width:768px) { #afe-container .hc-flow-band { flex-direction:column; } #afe-container .hc-flow-arrow { transform:rotate(90deg); padding:6px 0; } }
 `;
