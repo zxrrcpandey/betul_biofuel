@@ -277,6 +277,153 @@ def _users_in_chain_for_doc(doc):
     return out
 
 
+def _build_revise_flow_detail(doc):
+    """v2.9.12.3 — for the picked doc, return the revise-flow journey:
+    who can press Request Revision NOW, who gets notified, and what
+    happens next.
+
+    Three blocks:
+      - actors: list of {user, role, basis} who can currently revise
+      - notifications: list of {user, kind} who gets notified on revise
+      - next_actions: list of {actor, action, description} sequence
+    """
+    status_field = DOCTYPE_STATUS_FIELD.get(doc.doctype)
+    status = (doc.get(status_field) if status_field else "") or ""
+    detail = {
+        "actors": [],
+        "notifications": [],
+        "next_actions": [],
+        "applicable": False,
+        "summary": "",
+    }
+
+    if doc.docstatus != 1:
+        detail["summary"] = (
+            f"Revise flow not active — doc is "
+            f"{'draft' if doc.docstatus == 0 else 'cancelled'} (docstatus={doc.docstatus})."
+        )
+        return detail
+
+    if status == "Revised":
+        detail["summary"] = (
+            "Already in 'Revised' status — revision already requested. "
+            "Creator must Cancel + Amend + Resubmit to progress. No further "
+            "Revise action possible at this stage."
+        )
+        # Still show notification + next-actions for context
+        if doc.owner:
+            detail["notifications"].append({
+                "user": doc.owner, "kind": "Creator (notified when revision was requested)",
+            })
+        detail["next_actions"] = [
+            {"actor": "Creator (" + (doc.owner or "—") + ")", "action": "Cancel",
+             "description": "Cancel the submitted doc → docstatus moves to 2"},
+            {"actor": "Creator", "action": "Amend",
+             "description": "Frappe creates new draft <name>-1 with ts_mr_status reset to 'Not Submitted' (v2.9.12 mr_on_amend hook)"},
+            {"actor": "Creator", "action": "Submit for Approval",
+             "description": "New draft re-enters approval chain at Step 1 with fresh self-skip evaluation"},
+        ]
+        return detail
+
+    # Determine who can revise NOW based on current step + can_revise flag
+    is_approved = (status == "Approved")
+    is_pending = status.startswith("Pending ")
+
+    if not (is_approved or is_pending):
+        detail["summary"] = f"Revise flow not applicable from status '{status}'."
+        return detail
+
+    detail["applicable"] = True
+
+    if is_pending:
+        # Step-based revise — find users with the current step's role + can_revise=1
+        target_role_label = status.replace("Pending ", "").strip()
+        role_aliases = {"Dept. Head": "Department Head", "Dept. User": "Stock User", "GM": "General Manager"}
+        target_role = role_aliases.get(target_role_label, target_role_label)
+
+        # Find any TS MR/PO Approval Step with this role + can_revise=1
+        child_dt = "TS MR Approval Step" if doc.doctype == "Material Request" else "TS PO Approval Step"
+        revise_steps = frappe.db.sql(
+            f"""SELECT DISTINCT role FROM `tab{child_dt}`
+                WHERE role = %s AND can_revise = 1""",
+            (target_role,), as_list=True,
+        )
+        can_revise = bool(revise_steps)
+
+        if can_revise:
+            users = frappe.db.sql(
+                """SELECT DISTINCT hr.parent FROM `tabHas Role` hr
+                   JOIN `tabUser` u ON u.name = hr.parent
+                   WHERE hr.role = %s AND u.enabled = 1
+                     AND u.name NOT IN ('Administrator', 'Guest')
+                   ORDER BY hr.parent LIMIT 5""",
+                (target_role,),
+            )
+            for (uname,) in users:
+                detail["actors"].append({
+                    "user": uname, "role": target_role,
+                    "basis": f"Has '{target_role}' role + step has can_revise=1",
+                })
+            if not users:
+                detail["actors"].append({
+                    "user": "—", "role": target_role,
+                    "basis": f"⚠ Step has can_revise=1 but 0 users with '{target_role}' role — STUCK",
+                })
+        else:
+            detail["actors"].append({
+                "user": "—", "role": target_role,
+                "basis": f"❌ Step role '{target_role}' has can_revise=0 in route config — Revise button HIDDEN at this step. Only higher-level roles or System Manager can revise.",
+            })
+
+        detail["summary"] = (
+            f"Doc is currently at '{status}'. {'✓' if can_revise else '❌'} "
+            f"{target_role} role {'CAN' if can_revise else 'CANNOT'} request revision at this step."
+        )
+
+    elif is_approved:
+        # Post-approval revision — typically restricted to specific roles
+        # (per ts_mr_post_approval_revision.py: Purchase User / Purchase Manager / IT Head)
+        post_approval_roles = ["Purchase User", "Purchase Manager", "IT Head"]
+        for role in post_approval_roles:
+            n = _role_user_count(role)
+            if n > 0:
+                users = frappe.db.sql(
+                    """SELECT DISTINCT hr.parent FROM `tabHas Role` hr
+                       JOIN `tabUser` u ON u.name = hr.parent
+                       WHERE hr.role = %s AND u.enabled = 1
+                         AND u.name NOT IN ('Administrator', 'Guest')
+                       ORDER BY hr.parent LIMIT 2""",
+                    (role,),
+                )
+                for (uname,) in users:
+                    detail["actors"].append({
+                        "user": uname, "role": role,
+                        "basis": f"Post-approval revise allowed for '{role}' role",
+                    })
+        detail["summary"] = (
+            "Doc is Approved. Post-approval revision via 'Request Revision' button on the doc form. "
+            "Soft-revise: status → 'Revised', docstatus stays 1. Creator must Cancel + Amend to actually edit."
+        )
+
+    # Notifications — creator always
+    if doc.owner:
+        detail["notifications"].append({
+            "user": doc.owner, "kind": "Creator (always notified)",
+        })
+
+    # Next actions for the creator
+    detail["next_actions"] = [
+        {"actor": f"Creator ({doc.owner or '—'})", "action": "Cancel",
+         "description": "Cancel the submitted doc (docstatus 1 → 2)"},
+        {"actor": "Creator", "action": "Amend",
+         "description": "Frappe creates new draft <name>-1 with ts_mr_status auto-reset to 'Not Submitted' (v2.9.12 mr_on_amend hook ensures this)"},
+        {"actor": "Creator", "action": "Edit + Submit for Approval",
+         "description": "Edit the new draft as needed, then click Submit for Approval. Doc re-enters approval chain at Step 1 with fresh self-skip evaluation."},
+    ]
+
+    return detail
+
+
 def build_doc_capability_matrix(doctype, name):
     """Build the per-doc capability matrix.
 
@@ -349,6 +496,7 @@ def build_doc_capability_matrix(doctype, name):
         },
         "users": out_users,
         "verdict": " ".join(verdict_parts),
+        "revise_flow": _build_revise_flow_detail(doc),  # v2.9.12.3
         "schema_version": 1,
     }
     _cache_set(cache_key, result)

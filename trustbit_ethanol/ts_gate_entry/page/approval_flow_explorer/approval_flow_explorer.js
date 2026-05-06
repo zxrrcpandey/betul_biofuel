@@ -1094,6 +1094,67 @@ function _hc_format_doc_matrix(m) {
 		</tr>
 	`).join("");
 
+	// v2.9.12.3 — Revise Flow Detail block
+	const revise = m.revise_flow || null;
+	let revise_html = "";
+	if (revise) {
+		const actors_rows = (revise.actors || []).map(a => `
+			<tr>
+				<td><strong>${_hc_esc(a.user)}</strong></td>
+				<td><span class="hc-role-pill">${_hc_esc(a.role)}</span></td>
+				<td>${_hc_esc(a.basis)}</td>
+			</tr>
+		`).join("");
+		const notif_rows = (revise.notifications || []).map(n => `
+			<tr><td>${_hc_esc(n.user)}</td><td>${_hc_esc(n.kind)}</td></tr>
+		`).join("");
+		const next_rows = (revise.next_actions || []).map((a, i) => `
+			<tr>
+				<td><strong>${i + 1}.</strong></td>
+				<td><span class="hc-action-pill">${_hc_esc(a.action)}</span></td>
+				<td>${_hc_esc(a.actor)}</td>
+				<td>${_hc_esc(a.description)}</td>
+			</tr>
+		`).join("");
+
+		revise_html = `
+			<div class="hc-revise-detail">
+				<h4>🔄 Revise Flow Detail</h4>
+				<div class="hc-revise-summary">${_hc_esc(revise.summary || "")}</div>
+
+				<div class="hc-revise-block">
+					<div class="hc-revise-block-title">👥 Who can press <strong>Request Revision</strong> right now</div>
+					${revise.actors && revise.actors.length ? `
+						<table class="hc-mini-table">
+							<thead><tr><th>User</th><th>Role</th><th>Basis</th></tr></thead>
+							<tbody>${actors_rows}</tbody>
+						</table>
+					` : '<div class="hc-revise-empty">— No actors at this stage —</div>'}
+				</div>
+
+				<div class="hc-revise-block">
+					<div class="hc-revise-block-title">🔔 Who gets notified when revision is requested</div>
+					${revise.notifications && revise.notifications.length ? `
+						<table class="hc-mini-table">
+							<thead><tr><th>User</th><th>Kind</th></tr></thead>
+							<tbody>${notif_rows}</tbody>
+						</table>
+					` : '<div class="hc-revise-empty">— No notifications applicable —</div>'}
+				</div>
+
+				<div class="hc-revise-block">
+					<div class="hc-revise-block-title">🎯 What happens after revision is requested</div>
+					${revise.next_actions && revise.next_actions.length ? `
+						<table class="hc-mini-table">
+							<thead><tr><th>#</th><th>Action</th><th>Actor</th><th>Description</th></tr></thead>
+							<tbody>${next_rows}</tbody>
+						</table>
+					` : '<div class="hc-revise-empty">— No further actions —</div>'}
+				</div>
+			</div>
+		`;
+	}
+
 	return `
 		<div class="hc-doc-result">
 			<div class="hc-doc-meta">
@@ -1103,6 +1164,7 @@ function _hc_format_doc_matrix(m) {
 			</div>
 			<table class="hc-matrix-table"><thead>${head}</thead><tbody>${rows}</tbody></table>
 			<div class="hc-doc-verdict">🎯 ${_hc_esc(m.verdict)}</div>
+			${revise_html}
 		</div>
 	`;
 }
@@ -1375,4 +1437,19 @@ const AFE_CSS = `
 @keyframes hc-flow { 0%{background-position:0 0;} 100%{background-position:8px 0;} }
 @media (prefers-reduced-motion: reduce) { #afe-container .hc-flow-arrow::after { animation:none; } #afe-container .hc-skeleton-row { animation:none; } }
 @media (max-width:768px) { #afe-container .hc-flow-band { flex-direction:column; } #afe-container .hc-flow-arrow { transform:rotate(90deg); padding:6px 0; } }
+
+/* === v2.9.12.3 — REVISE FLOW DETAIL === */
+#afe-container .hc-revise-detail { margin-top:18px; padding:14px 16px; background:#f5f3ff; border:1px solid #c4b5fd; border-radius:8px; }
+#afe-container .hc-revise-detail h4 { margin:0 0 6px 0; font-size:13px; color:#5b21b6; }
+#afe-container .hc-revise-summary { font-size:12px; color:#374151; padding:8px 10px; background:#fff; border-left:3px solid #7c3aed; border-radius:4px; margin-bottom:12px; }
+#afe-container .hc-revise-block { margin-bottom:12px; }
+#afe-container .hc-revise-block:last-child { margin-bottom:0; }
+#afe-container .hc-revise-block-title { font-size:12px; font-weight:600; color:#374151; margin-bottom:6px; }
+#afe-container .hc-revise-empty { font-size:12px; color:var(--text-muted); padding:8px; background:#fff; border-radius:4px; font-style:italic; }
+#afe-container .hc-mini-table { width:100%; border-collapse:collapse; font-size:11px; background:#fff; border-radius:4px; overflow:hidden; }
+#afe-container .hc-mini-table th { background:#ede9fe; color:#5b21b6; font-weight:600; padding:6px 10px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.4px; }
+#afe-container .hc-mini-table td { padding:6px 10px; border-bottom:1px solid #f1f5f9; }
+#afe-container .hc-mini-table tr:last-child td { border-bottom:none; }
+#afe-container .hc-role-pill { background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:500; }
+#afe-container .hc-action-pill { background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; }
 `;
