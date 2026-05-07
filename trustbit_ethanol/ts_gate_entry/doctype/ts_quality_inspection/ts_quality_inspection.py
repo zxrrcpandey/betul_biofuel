@@ -380,7 +380,17 @@ def populate_template_rows(qi_name=None, template_name=None):
 	# Permission gate — read perm on TS QC Template + write/create on TS QI
 	if not frappe.has_permission("TS QC Template", "read"):
 		raise frappe.PermissionError("No read permission on TS QC Template")
-	if qi_name:
+	# v2.9.12.7 — temp/new names ("new-ts-quality-inspection-XXX") cannot be passed
+	# to has_permission(doc=name): Frappe internally fetches the doc and raises
+	# DoesNotExistError ("X not found"). For new unsaved docs OR nonexistent names,
+	# fall through to the create-perm path (Lesson 166 + Lesson 224).
+	is_existing = bool(
+		qi_name
+		and isinstance(qi_name, str)
+		and not qi_name.startswith("new-")
+		and frappe.db.exists("TS Quality Inspection", qi_name)
+	)
+	if is_existing:
 		if not frappe.has_permission("TS Quality Inspection", "write", doc=qi_name):
 			raise frappe.PermissionError("No write permission on this Quality Inspection")
 	else:
