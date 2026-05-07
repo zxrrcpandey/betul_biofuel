@@ -60,6 +60,16 @@ def get_connections(doctype, name):
 	if doctype not in ALLOWED_DOCTYPES:
 		return {"sections": [], "error": "unsupported_doctype"}
 
+	# v2.9.12.6 — defensive guard for unsaved/new forms (Lesson 166).
+	# Frappe assigns temp names like "new-<doctype-slug>-XXXXX" before save;
+	# any has_permission/get_doc on that name throws "not found". Early-return
+	# empty so the panel renders as "no connections yet" instead of an error.
+	if not name or not isinstance(name, str) or name.startswith("new-"):
+		return {"sections": [], "error": "unsaved_doc"}
+
+	if not frappe.db.exists(doctype, name):
+		return {"sections": [], "error": "doc_not_found"}
+
 	if not frappe.has_permission(doctype, "read", doc=name, throw=False):
 		return {"sections": [], "error": "no_permission"}
 

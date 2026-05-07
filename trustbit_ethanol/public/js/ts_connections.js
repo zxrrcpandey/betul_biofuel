@@ -170,6 +170,14 @@
 			? frm.fields_dict.ts_connections_html.$wrapper : null;
 		if (!wrapper) return;
 
+		// v2.9.12.6 — defense-in-depth guard for unsaved/new forms (Lesson 166).
+		// is_new() can race with refresh on first paint; also explicitly check
+		// the temp-name pattern that Frappe assigns to unsaved docs.
+		if (frm.is_new() || !frm.doc.name || /^new-/i.test(String(frm.doc.name))) {
+			wrapper.empty();
+			return;
+		}
+
 		_ts_render_skeleton(wrapper);
 
 		frappe.call({
