@@ -180,6 +180,7 @@ doc_events = {
 			"trustbit_ethanol.ts_gate_entry.setup_pi_po_ref.populate_ts_po_reference",
 		],
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate._block_pi_qc_override_tampering",
+		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_pi_supplier_invoice_validator.validate_supplier_invoice_match",
 	},
 	"TS Quality Inspection": {
 		"on_submit": "trustbit_ethanol.ts_gate_entry.ts_qc_auto_reject.on_qi_submitted",
