@@ -947,6 +947,7 @@ def create_custom_fields():
 	]
 
 	_create_custom_fields(custom_fields)
+	_seed_vehicle_origin_fields()
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
 	_setup_purchase_order_permissions()
@@ -2386,4 +2387,43 @@ def _seed_material_transfer_kill_switch():
 			},
 		]
 	})
+	frappe.db.commit()
+
+
+def _seed_vehicle_origin_fields():
+	"""v2.9.14 — Add `vehicle_origin` (Data) Custom Field on G1 / G2 / PR / PI.
+
+	Direct-insert via frappe.get_doc with ignore_links=True so a pre-existing
+	broken Document Link on TS Gate Entry (referencing the long-removed
+	"TS G1 Entry" doctype) does not block the seed. PR's gets fetch_from on
+	`ts_gate_entry.vehicle_origin` for declarative auto-fetch from G1.
+	"""
+	rows = [
+		("TS Gate Entry", "vehicle_number", None),
+		("TS Token", "vehicle_number", None),
+		("Purchase Receipt", "ts_gate_entry", "ts_gate_entry.vehicle_origin"),
+		("Purchase Invoice", "bill_date", None),
+	]
+	for dt, anchor, fetch_from in rows:
+		if frappe.db.exists("Custom Field", {"dt": dt, "fieldname": "vehicle_origin"}):
+			continue
+		spec = {
+			"doctype": "Custom Field",
+			"dt": dt,
+			"fieldname": "vehicle_origin",
+			"fieldtype": "Data",
+			"label": "Vehicle Origin",
+			"insert_after": anchor,
+			"length": 140,
+			"description": "Origin of vehicle (city / state / source). Manually entered at G1; auto-fetched on G2/PR/PI; editable on each.",
+		}
+		if fetch_from:
+			spec["fetch_from"] = fetch_from
+			spec["fetch_if_empty"] = 1
+		cf = frappe.get_doc(spec)
+		cf.flags.ignore_links = True
+		cf.insert(ignore_permissions=True, ignore_links=True)
+	# Schema sync — direct insert with ignore_links bypasses Frappe's auto-updatedb
+	for dt, _, _ in rows:
+		frappe.db.updatedb(dt)
 	frappe.db.commit()

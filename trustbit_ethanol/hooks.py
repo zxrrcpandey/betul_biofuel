@@ -26,6 +26,7 @@ app_include_js = [
 	"/assets/trustbit_ethanol/js/item_list.js",
 	"/assets/trustbit_ethanol/js/ts_connections.js",
 	"/assets/trustbit_ethanol/js/ts_version_badge.js",
+	"/assets/trustbit_ethanol/js/vehicle_origin_autocomplete.js",
 ]
 
 # Module-workspace mapping for correct breadcrumbs
@@ -178,9 +179,13 @@ doc_events = {
 			"trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_qc_approved",
 			"trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_ds_required",
 			"trustbit_ethanol.ts_gate_entry.setup_pi_po_ref.populate_ts_po_reference",
+			"trustbit_ethanol.ts_gate_entry.ts_vehicle_origin_propagation.propagate_to_pi",
 		],
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate._block_pi_qc_override_tampering",
 		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_pi_supplier_invoice_validator.validate_supplier_invoice_match",
+	},
+	"TS Gate Entry": {
+		"on_update": "trustbit_ethanol.ts_gate_entry.ts_vehicle_origin_propagation.propagate_to_token",
 	},
 	"TS Quality Inspection": {
 		"on_submit": "trustbit_ethanol.ts_gate_entry.ts_qc_auto_reject.on_qi_submitted",
