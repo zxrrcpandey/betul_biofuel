@@ -948,6 +948,7 @@ def create_custom_fields():
 
 	_create_custom_fields(custom_fields)
 	_seed_vehicle_origin_fields()
+	_seed_pi_update_stock_return_visibility()
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
 	_setup_purchase_order_permissions()
@@ -2426,4 +2427,22 @@ def _seed_vehicle_origin_fields():
 	# Schema sync — direct insert with ignore_links bypasses Frappe's auto-updatedb
 	for dt, _, _ in rows:
 		frappe.db.updatedb(dt)
+	frappe.db.commit()
+
+
+def _seed_pi_update_stock_return_visibility():
+	"""v2.9.14.3 — Override Purchase Invoice update_stock depends_on to show on Returns.
+
+	Native ERPNext hides update_stock when any PI item has pr_detail (linked to a
+	Purchase Receipt item) — this prevents double stock-update on PI from PR. But
+	for Purchase Returns the operator legitimately needs update_stock available
+	to handle the return stock-out. Add `doc.is_return ||` to the eval so returns
+	always show the field, regardless of pr_detail.
+	"""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+	new_value = "eval:doc.is_return || doc.items.every((item) => !item.pr_detail)"
+	make_property_setter(
+		"Purchase Invoice", "update_stock", "depends_on", new_value, "Code",
+		validate_fields_for_doctype=False,
+	)
 	frappe.db.commit()
