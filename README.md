@@ -1,8 +1,20 @@
 # Trustbit Ethanol — TS Gate Entry System
 
-**Version:** 2.6.1 | **ERPNext:** V15 | **Module:** TS Gate Entry
+**Version:** 2.9.14.3 | **ERPNext:** V15 | **Module:** TS Gate Entry
 
 Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufacturing plant. Handles the complete vehicle gate-to-exit lifecycle, multi-level PO/MR approval with CC-based routing, budget management, item creation, quality inspection, and interactive dashboards with a **blind token-based system** designed to prevent manipulation.
+
+## Recent ships (May 2026)
+
+| Version | Date | Change |
+|---|---|---|
+| **2.9.14.3** | 9 May | PI `update_stock` checkbox now visible on Purchase Returns (Property Setter override) |
+| **2.9.14.2** | 9 May | G1 → G2 vehicle_origin always-sync (dropped over-aggressive empty-check) |
+| **2.9.14.1** | 9 May | SR → PO restore MR `material_request_type` after mapping (try/finally pattern) |
+| **2.9.14** | 9 May | Vehicle Origin Custom Field on G1/G2/PR/PI + Awesomplete autocomplete + propagation hooks |
+| **2.9.13** | 8 May | Purchase Invoice `before_submit` validator: strict bill_no/bill_date match against linked PRs |
+| **2.9.12.7** | 8 May | TS Quality Inspection `populate_template_rows` perm fix for new (unsaved) docs |
+| **2.9.12.5** | 7 May | Approval Flow Health Check page (7 validators + 2 capability simulators) |
 
 ---
 
