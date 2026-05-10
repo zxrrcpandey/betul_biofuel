@@ -135,6 +135,12 @@ override_doctype_dashboards = {
 	"Purchase Order": "trustbit_ethanol.ts_gate_entry.dashboard_overrides.get_data_for_purchase_order"
 }
 
+# v2.9.14.4 — Patch ERPNext PurchaseInvoice to allow update_stock=1 on Returns
+# (validate_purchase_receipt_if_update_stock honors is_return; status_updater already supports the combo)
+override_doctype_class = {
+	"Purchase Invoice": "trustbit_ethanol.ts_gate_entry.ts_pi_override.TSPurchaseInvoice"
+}
+
 # Inject JS into standard DocTypes for approval buttons
 doctype_js = {
 	"Purchase Order": "public/js/po_approval.js",
