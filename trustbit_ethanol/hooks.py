@@ -172,6 +172,8 @@ doc_events = {
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_update",
 		# v2.9.9.9 — clean up orphan draft Stock Entries when a Stores-flow MR is cancelled
 		"on_cancel": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.cleanup_draft_se_on_mr_cancel",
+		# v2.9.14.5 — refresh items.actual_qty from live Bin on form open (in-memory only, safe on docstatus=1)
+		"onload": "trustbit_ethanol.ts_gate_entry.ts_mr_available_refresh.refresh_actual_qty_onload",
 	},
 	"Purchase Receipt": {
 		"validate": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.validate_unique_supplier_bill",
