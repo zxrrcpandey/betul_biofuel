@@ -1871,12 +1871,20 @@ def _block_gate_field_tampering(doc, gate_fields):
 	ts_amount_at_submission, ts_approval_status, etc. and bypass the entire
 	approval chain. Legitimate controller writes use db_set() which skips save
 	hooks entirely — so this guard only fires for unauthorised user mutations.
+
+	v2.9.14.6 — Stores Workflow endpoints (submit_for_stores_approval +
+	approve_transfer) need doc.save() to also docstatus-submit (0→1). They set
+	doc.flags.ts_approval_workflow_call BEFORE save so this guard allows their
+	legitimate ts_mr_status mutation through. doc.flags is per-instance, set
+	only inside whitelisted endpoints — not reachable from REST API tamper.
 	"""
 	if doc.is_new():
 		return
 	if frappe.session.user == "Administrator":
 		return
 	if "System Manager" in frappe.get_roles(frappe.session.user):
+		return
+	if doc.flags.get("ts_approval_workflow_call"):
 		return
 	for field in gate_fields:
 		if doc.has_value_changed(field):

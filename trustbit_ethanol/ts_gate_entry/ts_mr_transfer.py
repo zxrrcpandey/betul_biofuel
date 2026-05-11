@@ -207,6 +207,8 @@ def submit_for_stores_approval(mr_name):
 	# Set status + submit (docstatus 0 → 1)
 	doc.ts_mr_status = "Pending Stores Manager"
 	doc.flags.ignore_permissions = True
+	# v2.9.14.6 — signal legitimate workflow caller to bypass _block_gate_field_tampering
+	doc.flags.ts_approval_workflow_call = True
 
 	# Do NOT save+submit if already submitted (idempotency)
 	if doc.docstatus == 0:
@@ -283,6 +285,8 @@ def approve_transfer(mr_name):
 		_validate_transfer_for_submit(doc)
 		if doc.docstatus == 0:
 			doc.flags.ignore_permissions = True
+			# v2.9.14.6 — signal legitimate workflow caller (direct approve on amended draft)
+			doc.flags.ts_approval_workflow_call = True
 			doc.save()
 			doc.submit()
 			doc.reload()
