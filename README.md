@@ -1,6 +1,6 @@
 # Trustbit Ethanol — TS Gate Entry System
 
-**Version:** 2.9.14.3 | **ERPNext:** V15 | **Module:** TS Gate Entry
+**Version:** 2.9.15.2 | **ERPNext:** V15 | **Module:** TS Gate Entry
 
 Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufacturing plant. Handles the complete vehicle gate-to-exit lifecycle, multi-level PO/MR approval with CC-based routing, budget management, item creation, quality inspection, and interactive dashboards with a **blind token-based system** designed to prevent manipulation.
 
@@ -8,6 +8,11 @@ Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufactu
 
 | Version | Date | Change |
 |---|---|---|
+| **2.9.15.2** | 12 May | Cost Center read perm seeder for 7 BBF approval roles (Grain Purchase Manager, Department Head, General Manager, AVP, Grain Manager, Quality Manager, Admin Reception) — fixes "No permission for Cost Center" popup blocking PO/MR list views (standard-filter Link autocomplete required CC read) |
+| **2.9.15.1** | 12 May | TS Deduction Suggestion "Receipt Context" — 5 read-only fields (Vehicle Number, RST Number, Total Net Weight kg, Supplier Code, Supplier Name) surfaced above QI section; 4 snapshot at insert from QI+PO, net_weight live-fetches from matching Weighbridge Log |
+| **2.9.14.6** | 11 May | Stores Workflow submit/approve unblocked (tamper-guard flag fix in ts_mr_transfer) |
+| **2.9.14.5** | 11 May | Material Request "Available Qty" shows live stock via new onload hook (ts_mr_available_refresh) |
+| **2.9.14.4** | 11 May | PurchaseInvoice class override allows `update_stock=1` on Purchase Returns |
 | **2.9.14.3** | 9 May | PI `update_stock` checkbox now visible on Purchase Returns (Property Setter override) |
 | **2.9.14.2** | 9 May | G1 → G2 vehicle_origin always-sync (dropped over-aggressive empty-check) |
 | **2.9.14.1** | 9 May | SR → PO restore MR `material_request_type` after mapping (try/finally pattern) |
