@@ -949,6 +949,7 @@ def create_custom_fields():
 	_create_custom_fields(custom_fields)
 	_seed_vehicle_origin_fields()
 	_seed_pi_update_stock_return_visibility()
+	_seed_dsg_receipt_context_fields()
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
 	_setup_purchase_order_permissions()
@@ -2445,4 +2446,41 @@ def _seed_pi_update_stock_return_visibility():
 		"Purchase Invoice", "update_stock", "depends_on", new_value, "Code",
 		validate_fields_for_doctype=False,
 	)
+	frappe.db.commit()
+
+
+def _seed_dsg_receipt_context_fields():
+	"""v2.9.15.1 — Add Receipt Context section (5 RO fields) to TS Deduction Suggestion.
+
+	Snapshot at insert: vehicle_number, rst_number, supplier_code, supplier_name.
+	Live-fetched on form load: net_weight (from matching TS Weighbridge Log).
+	"""
+	specs = [
+		("dsg_receipt_context_section", "Section Break", "Receipt Context", "naming_series", None, None),
+		("vehicle_number", "Data", "Vehicle Number", "dsg_receipt_context_section", None, None),
+		("rst_number", "Data", "RST Number", "vehicle_number", None, "From Weighbridge Log"),
+		("net_weight", "Float", "Total Net Weight (kg)", "rst_number", None, "Live from matching Weighbridge Log"),
+		("dsg_receipt_context_col_break", "Column Break", None, "net_weight", None, None),
+		("supplier_code", "Link", "Supplier Code", "dsg_receipt_context_col_break", "Supplier", "From PO"),
+		("supplier_name", "Data", "Supplier Name", "supplier_code", None, None),
+	]
+	for fieldname, fieldtype, label, anchor, options, description in specs:
+		if frappe.db.exists("Custom Field", {"dt": "TS Deduction Suggestion", "fieldname": fieldname}):
+			continue
+		spec = {
+			"doctype": "Custom Field", "dt": "TS Deduction Suggestion",
+			"fieldname": fieldname, "fieldtype": fieldtype, "insert_after": anchor,
+		}
+		if label:
+			spec["label"] = label
+		if options:
+			spec["options"] = options
+		if description:
+			spec["description"] = description
+		if fieldtype not in ("Section Break", "Column Break"):
+			spec["read_only"] = 1
+			spec["no_copy"] = 1
+		if fieldtype == "Float":
+			spec["precision"] = "3"
+		frappe.get_doc(spec).insert(ignore_permissions=True)
 	frappe.db.commit()

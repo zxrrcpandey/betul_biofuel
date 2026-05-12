@@ -74,7 +74,8 @@ class TSDeductionSuggestion(Document):
 		qi = frappe.db.get_value(
 			"TS Quality Inspection",
 			self.quality_inspection,
-			["token_number", "item_category", "total_deduction_pct"],
+			["token_number", "item_category", "total_deduction_pct",
+			 "vehicle_number", "rst_number", "purchase_order"],
 			as_dict=True,
 		)
 		if not self.token_number:
@@ -86,6 +87,17 @@ class TSDeductionSuggestion(Document):
 		# Default actual_pct to system value (Grain Manager overrides if needed)
 		if self.actual_pct is None:
 			self.actual_pct = self.system_pct
+		# v2.9.15.1 — Receipt Context snapshot (stable fields)
+		self.vehicle_number = qi.vehicle_number or None
+		self.rst_number = qi.rst_number or None
+		if qi.purchase_order:
+			po = frappe.db.get_value(
+				"Purchase Order", qi.purchase_order,
+				["supplier", "supplier_name"], as_dict=True,
+			)
+			if po:
+				self.supplier_code = po.supplier or None
+				self.supplier_name = po.supplier_name or None
 
 	def _validate_reason_on_delta(self):
 		if self.actual_pct is None or self.system_pct is None:
@@ -282,6 +294,32 @@ def notify_grain_manager_for_qi(qi_doc):
 			message=f"QI {qi_doc.name} sendmail failed: {e}",
 			title="ts_deduction_suggestion notify",
 		)
+
+
+@frappe.whitelist()
+def get_live_net_weight(suggestion_name):
+	"""v2.9.15.1 — Live net_weight for Suggestion's QI token (Stock IN row).
+
+	Read-only GET (no methods=["POST"] needed). Returns 0 if no completed
+	Weighbridge Log exists yet (QI submitted before Tare is normal).
+	"""
+	if not suggestion_name or not isinstance(suggestion_name, str):
+		return 0.0
+	# Lesson 250 — temp/new doc name: has_permission(doc=...) would raise DoesNotExistError
+	if suggestion_name.startswith("new-") or not frappe.db.exists("TS Deduction Suggestion", suggestion_name):
+		return 0.0
+	if not frappe.has_permission("TS Deduction Suggestion", "read", doc=suggestion_name):
+		raise frappe.PermissionError("Not permitted to read this Suggestion")
+	token = frappe.db.get_value("TS Deduction Suggestion", suggestion_name, "token_number")
+	if not token:
+		return 0.0
+	row = frappe.db.get_value(
+		"TS Weighbridge Log",
+		{"token_number": token, "stock_direction": "Stock IN", "docstatus": ["!=", 2]},
+		"net_weight",
+		order_by="modified desc",
+	)
+	return flt(row or 0)
 
 
 def auto_create_suggestion_for_qi(qi_doc):

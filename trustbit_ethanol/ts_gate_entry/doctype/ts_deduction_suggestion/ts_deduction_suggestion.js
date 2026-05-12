@@ -10,12 +10,27 @@ frappe.ui.form.on("TS Deduction Suggestion", {
 			);
 		}
 		_ts_render_dsg_delta(frm);
+		_ts_refresh_live_net_weight(frm);
 	},
 
 	actual_pct(frm) {
 		_ts_render_dsg_delta(frm);
 	},
 });
+
+function _ts_refresh_live_net_weight(frm) {
+	if (frm.is_new() || !frm.doc.name) return;
+	frappe.call({
+		method: "trustbit_ethanol.ts_gate_entry.doctype.ts_deduction_suggestion.ts_deduction_suggestion.get_live_net_weight",
+		args: { suggestion_name: frm.doc.name },
+		callback(r) {
+			const kg = flt(r.message || 0);
+			if (flt(frm.doc.net_weight || 0) !== kg) {
+				frm.set_value("net_weight", kg);
+			}
+		},
+	});
+}
 
 function _ts_render_dsg_delta(frm) {
 	if (frm.doc.actual_pct === null || frm.doc.actual_pct === undefined) return;
