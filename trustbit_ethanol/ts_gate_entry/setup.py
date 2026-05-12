@@ -950,6 +950,7 @@ def create_custom_fields():
 	_seed_vehicle_origin_fields()
 	_seed_pi_update_stock_return_visibility()
 	_seed_dsg_receipt_context_fields()
+	_seed_cost_center_approval_perms()
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
 	_setup_purchase_order_permissions()
@@ -2484,3 +2485,53 @@ def _seed_dsg_receipt_context_fields():
 			spec["precision"] = "3"
 		frappe.get_doc(spec).insert(ignore_permissions=True)
 	frappe.db.commit()
+
+
+def _seed_cost_center_approval_perms():
+	"""v2.9.15.2 — Grant Cost Center read perm to BBF approval-tier roles.
+
+	PO + MR list views have Property Setter cost_center.in_standard_filter=1
+	(seeded by setup_cc_standard_filter.py v2.8.8.3). Frappe renders that as
+	a Link autocomplete, which requires read perm on Cost Center. Approval
+	roles created by BBF (Grain Purchase Manager, Department Head, etc.) lack
+	that perm, so the user sees a "No permission for Cost Center" popup that
+	blocks the PO/MR list view.
+
+	Reproduced on demo for grain.manager@betulbiofuel.com (roles: Grain
+	Purchase Manager + Grain Manager + Quality Manager — none had CC read).
+
+	Read-only at permlevel=0; CC scoping for approvals continues via
+	TS CC Approval Config.get_user_allowed_cost_centers (independent layer).
+
+	Idempotent — skips rows that already exist; skips roles that don't exist.
+	Pattern mirrors seed_custom_docperm() (Lesson 169 safe — uses get_doc +
+	db_insert, NOT raw INSERT which would drop Standard DocPerm).
+	"""
+	roles = [
+		"Grain Purchase Manager", "Department Head", "General Manager",
+		"AVP", "Grain Manager", "Quality Manager", "Admin Reception",
+	]
+	for role in roles:
+		if not frappe.db.exists("Role", role):
+			continue
+		if frappe.db.exists("Custom DocPerm", {
+			"parent": "Cost Center", "role": role, "permlevel": 0,
+		}):
+			continue
+		try:
+			frappe.get_doc({
+				"doctype": "Custom DocPerm",
+				"parent": "Cost Center",
+				"parenttype": "DocType",
+				"parentfield": "permissions",
+				"role": role,
+				"permlevel": 0,
+				"read": 1,
+			}).db_insert()
+		except Exception as e:
+			frappe.log_error(
+				title="seed_cost_center_approval_perms",
+				message=f"Failed for role {role}: {e}",
+			)
+	frappe.db.commit()
+	frappe.clear_cache(doctype="Cost Center")
