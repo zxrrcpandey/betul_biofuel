@@ -1,0 +1,91 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>{{ report_title }}</title>
+<style>
+@page { size: A4 landscape; margin: 12mm 10mm; }
+body { font-family: "Helvetica","Arial",sans-serif; font-size: 9pt; color: #222; margin: 0; }
+table { border-collapse: collapse; width: 100%; }
+.hdr-tbl td { vertical-align: middle; padding: 0; }
+.hdr-logo { width: 70px; }
+.hdr-logo img { width: 60px; height: auto; }
+.hdr-title { font-size: 14pt; font-weight: bold; color: #1F3A5F; }
+.hdr-sub { font-size: 9pt; color: #555; font-style: italic; }
+.hdr-meta { text-align: right; font-size: 8.5pt; color: #444; }
+.filter-band { background:#F1F4F9; border:1px solid #D5DCE7; padding:5pt 8pt; margin:6pt 0 4pt 0; font-size: 8.5pt; }
+.data-tbl th { background:#1F3A5F; color:#fff; font-size: 8pt; padding: 4pt 3pt; text-align:left; border:1px solid #1F3A5F; }
+.data-tbl td { font-size: 8pt; padding: 3pt; border:1px solid #BBB; vertical-align: top; }
+.data-tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tot-row td { background:#EDF1F7; font-weight:bold; border-top:2px solid #1F3A5F; }
+.fnote { font-size: 7.5pt; color:#777; font-style: italic; margin-top:4pt; }
+.pg-ftr { position: fixed; bottom: 4mm; left: 0; right: 0; text-align: center; font-size: 7pt; color: #888; }
+</style></head><body>
+
+<table class="hdr-tbl"><tr>
+<td class="hdr-logo">{% if logo_url %}<img src="{{ logo_url }}" alt="logo">{% endif %}</td>
+<td>
+<div class="hdr-title">{{ company_name|e }}</div>
+<div class="hdr-sub">TS Stock Ledger (FIFO) — Audit Report</div>
+</td>
+<td class="hdr-meta">
+Generated: {{ generated_at|e }}<br>
+By: {{ generated_by|e }}<br>
+Rows: {{ rows|length }}{% if truncated %} (truncated at {{ row_limit }}){% endif %}
+</td>
+</tr></table>
+
+<div class="filter-band">
+<b>Filters:</b>
+Company: {{ filters.company|e }}
+| From: {{ filters.from_date|e }} to {{ filters.to_date|e }}
+{% if filters.item_code %} | Item: {{ filters.item_code|e }}{% endif %}
+{% if filters.item_group %} | Item Group: {{ filters.item_group|e }}{% endif %}
+{% if filters.warehouse %} | Warehouse: {{ filters.warehouse|e }}{% endif %}
+{% if filters.cost_center %} | Cost Center: {{ filters.cost_center|e }}{% endif %}
+{% if filters.include_cancelled %} | Including Cancelled{% endif %}
+</div>
+
+<table class="data-tbl">
+<thead><tr>
+<th>Posted At</th><th>Voucher</th><th>Voucher No</th><th>Item</th>
+<th>Warehouse</th><th>Cost Center</th>
+<th class="num">In Qty</th><th class="num">Out Qty</th><th class="num">Balance</th>
+<th class="num">Rate (FIFO)</th><th class="num">Amount</th><th class="num">Stock Value</th>
+<th>Method</th>
+</tr></thead>
+<tbody>
+{% for r in rows %}
+<tr>
+<td>{{ (r.posting_datetime or '')|e }}</td>
+<td>{{ (r.voucher_type or '')|e }}</td>
+<td>{{ (r.voucher_no or '')|e }}</td>
+<td>{{ (r.item_code or '')|e }}</td>
+<td>{{ (r.warehouse or '')|e }}</td>
+<td>{{ (r.cost_center or '—')|e }}</td>
+<td class="num">{{ "%.3f"|format(r.in_qty or 0) }}</td>
+<td class="num">{{ "%.3f"|format(r.out_qty or 0) }}</td>
+<td class="num">{{ "%.3f"|format(r.qty_after_transaction or 0) }}</td>
+<td class="num">{{ "%.2f"|format(r.valuation_rate or 0) }}</td>
+<td class="num">{{ "%.2f"|format(r.total_amount or 0) }}</td>
+<td class="num">{{ "%.2f"|format(r.stock_value or 0) }}</td>
+<td>{{ (r.valuation_method_display or '—')|e }}</td>
+</tr>
+{% endfor %}
+<tr class="tot-row">
+<td colspan="6">TOTALS ({{ rows|length }} rows)</td>
+<td class="num">{{ "%.3f"|format(total_in or 0) }}</td>
+<td class="num">{{ "%.3f"|format(total_out or 0) }}</td>
+<td class="num">—</td>
+<td class="num">—</td>
+<td class="num">{{ "%.2f"|format(total_amount or 0) }}</td>
+<td class="num">—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+
+<div class="fnote">
+Cost Center is sourced from linked GL Entry (prefers Expense / COGS accounts). Multi-cost-center vouchers display the first matching cost center alphabetically. Valuation Rate is per each item's configured method (FIFO / Moving Average / LIFO) — already reconciled with GL.
+</div>
+
+<div class="pg-ftr">TS Stock Ledger FIFO • {{ app_version|e }} • {{ generated_at|e }}</div>
+
+</body></html>
