@@ -26,6 +26,20 @@ def get_two_pass_flag():
 
 
 @frappe.whitelist()
+def get_flow_v28_flag():
+	"""v2.9.16.6 Lesson 168: role-scoped getter for ts_flow_v28_enabled.
+	Direct frappe.db.get_single_value from JS fails for Weighbridge Operator and
+	other operator roles without TS Settings read perm. Exposes ONLY the boolean.
+	Used by ts_weighbridge_log.js to decide whether to require unloading_complete
+	before Tare entry (legacy flow) or allow Tare directly after Gross (v2.8+ flow).
+	"""
+	try:
+		return {"enabled": bool(frappe.db.get_single_value("TS Settings", "ts_flow_v28_enabled"))}
+	except Exception:
+		return {"enabled": False}
+
+
+@frappe.whitelist()
 def get_purchase_orders(po_id=None, po_date=None, **kwargs):
 	filters = {"docstatus": 1, "status": ["not in", ["Closed", "Cancelled", "Completed"]], "per_received": ["<", 100]}
 

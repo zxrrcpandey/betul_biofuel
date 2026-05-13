@@ -41,21 +41,27 @@ frappe.ui.form.on("TS Weighbridge Log", {
 
 		// v2.8 flow: Gross → Tare direct (no unloading gate).
 		// Legacy flow (flag off): require unloading_complete before Tare.
+		// v2.9.16.6: use role-scoped helper (Lesson 168) — direct get_single_value
+		// triggers "No permission for TS Settings" for Weighbridge Operator role.
 		let is_non_rm_weighing = frm.doc.material_flow === "Non-Raw Material";
-		frappe.db.get_single_value("TS Settings", "ts_flow_v28_enabled").then(v28_enabled => {
-			if (v28_enabled || is_non_rm_weighing) {
-				// Tare allowed directly after gross
-				if (!frm.doc.tare_weight && frm.doc.gross_weight) {
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.api.get_flow_v28_flag",
+			callback: function (r) {
+				const v28_enabled = (r.message || {}).enabled;
+				if (v28_enabled || is_non_rm_weighing) {
+					// Tare allowed directly after gross
+					if (!frm.doc.tare_weight && frm.doc.gross_weight) {
+						frm.set_df_property("tare_weight", "read_only", 0);
+						frm.set_df_property("tare_weight", "description", "");
+					}
+				} else if (!frm.doc.unloading_complete) {
+					frm.set_df_property("tare_weight", "read_only", 1);
+					frm.set_df_property("tare_weight", "description",
+						"Tare weight can only be entered after unloading is confirmed complete");
+				} else if (!frm.doc.tare_weight) {
 					frm.set_df_property("tare_weight", "read_only", 0);
 					frm.set_df_property("tare_weight", "description", "");
 				}
-			} else if (!frm.doc.unloading_complete) {
-				frm.set_df_property("tare_weight", "read_only", 1);
-				frm.set_df_property("tare_weight", "description",
-					"Tare weight can only be entered after unloading is confirmed complete");
-			} else if (!frm.doc.tare_weight) {
-				frm.set_df_property("tare_weight", "read_only", 0);
-				frm.set_df_property("tare_weight", "description", "");
 			}
 		});
 
