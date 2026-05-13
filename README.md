@@ -1,6 +1,6 @@
 # Trustbit Ethanol — TS Gate Entry System
 
-**Version:** 2.9.15.2 | **ERPNext:** V15 | **Module:** TS Gate Entry
+**Version:** 2.9.16.3 | **ERPNext:** V15 | **Module:** TS Gate Entry
 
 Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufacturing plant. Handles the complete vehicle gate-to-exit lifecycle, multi-level PO/MR approval with CC-based routing, budget management, item creation, quality inspection, and interactive dashboards with a **blind token-based system** designed to prevent manipulation.
 
@@ -8,6 +8,10 @@ Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufactu
 
 | Version | Date | Change |
 |---|---|---|
+| **2.9.16.3** | 13 May | TS Deduction Suggestion: `purchase_order` Link Custom Field added to Receipt Context section, snapshotted at insert from source QI. Seeder also auto-bumps DocType.modified to invalidate browser form-meta cache (Lesson 263 — caught live; without the bump, newly-added Custom Fields stay invisible until users run `localStorage.clear()`) |
+| **2.9.16.2** | 12 May | TS Stock Balance Computed audit-grade Script Report — wraps native, replaces stored val_rate with bal_val/bal_qty live, adds Drift % audit signal column. Stock User excluded (audit-grade). |
+| **2.9.16.1** | 12 May | Stock Reports sub-workspace under BBPL Ethanol (seq=10) with 4 shortcuts: TS Stock Ledger FIFO, Stock Ledger (native), Stock Balance → TS Stock Balance Computed, Stock Entry. |
+| **2.9.16** | 11 May | TS Stock Ledger FIFO custom Script Report (Cost Center via LEFT JOIN tabGL Entry + COALESCE expense-account preference per Lesson 257, Total Amount = abs(qty)×rate, branded A4-landscape PDF export with BBF logo, 5000-row hard cap). |
 | **2.9.15.2** | 12 May | Cost Center read perm seeder for 7 BBF approval roles (Grain Purchase Manager, Department Head, General Manager, AVP, Grain Manager, Quality Manager, Admin Reception) — fixes "No permission for Cost Center" popup blocking PO/MR list views (standard-filter Link autocomplete required CC read) |
 | **2.9.15.1** | 12 May | TS Deduction Suggestion "Receipt Context" — 5 read-only fields (Vehicle Number, RST Number, Total Net Weight kg, Supplier Code, Supplier Name) surfaced above QI section; 4 snapshot at insert from QI+PO, net_weight live-fetches from matching Weighbridge Log |
 | **2.9.14.6** | 11 May | Stores Workflow submit/approve unblocked (tamper-guard flag fix in ts_mr_transfer) |
