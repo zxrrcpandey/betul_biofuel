@@ -950,6 +950,7 @@ def create_custom_fields():
 	_seed_vehicle_origin_fields()
 	_seed_pi_update_stock_return_visibility()
 	_seed_dsg_receipt_context_fields()
+	_seed_quality_lab_dsg_shortcuts()
 	_seed_cost_center_approval_perms()
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
@@ -2494,6 +2495,65 @@ def _seed_dsg_receipt_context_fields():
 		frappe.utils.now(), update_modified=False,
 	)
 	frappe.db.commit()
+
+
+def _seed_quality_lab_dsg_shortcuts():
+	"""Append 'New Deduction Suggestion' + 'All Deduction Suggestions' shortcuts
+	to the Quality Lab workspace, idempotently.
+
+	reload_doc does NOT sync Workspace Shortcut child rows for an EXISTING
+	workspace (Lesson 261). So after a fresh `bench migrate` adds the JSON to
+	the codebase, the child rows still aren't in DB. This seeder appends them
+	by Python append + save, mirroring the v2.9.16.1 'Stock Reports' workspace
+	pattern but applied as an ADD to a workspace that already exists.
+
+	Bumps `Workspace.modified` afterwards so browsers invalidate their cached
+	workspace layout (echoes Lesson 263).
+	"""
+	if not frappe.db.exists("Workspace", "Quality Lab"):
+		return
+	ws = frappe.get_doc("Workspace", "Quality Lab")
+	existing = {s.label for s in (ws.shortcuts or [])}
+	added = False
+	if "New Deduction Suggestion" not in existing:
+		ws.append("shortcuts", {
+			"label": "New Deduction Suggestion",
+			"link_to": "TS Deduction Suggestion",
+			"type": "DocType",
+		})
+		added = True
+	if "All Deduction Suggestions" not in existing:
+		ws.append("shortcuts", {
+			"label": "All Deduction Suggestions",
+			"link_to": "TS Deduction Suggestion",
+			"type": "DocType",
+			"doc_view": "List",
+		})
+		added = True
+	# Also sync the `content` JSON column from the workspace JSON file so the
+	# "Quick Access" layout renders the 2 new shortcut blocks even if migrate
+	# already cached an older content (Lesson 261 — reload_doc doesn't always
+	# refresh content). Idempotent — same JSON each run.
+	import os, json as _json
+	ws_json_path = os.path.join(
+		frappe.get_app_path("trustbit_ethanol"),
+		"ts_gate_entry", "workspace", "quality_lab", "quality_lab.json",
+	)
+	try:
+		with open(ws_json_path) as _f:
+			file_content = _json.load(_f).get("content")
+		if file_content and file_content != ws.content:
+			ws.content = file_content
+			added = True
+	except Exception:
+		pass
+	if added:
+		ws.save(ignore_permissions=True)
+		frappe.db.set_value(
+			"Workspace", "Quality Lab", "modified",
+			frappe.utils.now(), update_modified=False,
+		)
+		frappe.db.commit()
 
 
 def _seed_cost_center_approval_perms():

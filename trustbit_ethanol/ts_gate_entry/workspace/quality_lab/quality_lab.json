@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Quality Lab</b></span>\", \"col\": 12}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Pending Quality-1\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Pending Deductions\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Pending Material Inspections\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Todays Quality Checks\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Todays Deductions\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Approved Quality\", \"col\": 4}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h6\\\">Quick Access</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Quality Inspection\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"All Quality Inspections\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Material Inspections\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Deduction Sheet\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"All Deduction Sheets\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"QC Yearly Dashboard\", \"col\": 4}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h6\\\">Reports & Masters</span>\", \"col\": 12}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Quality Operations\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Deductions\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Material Inspection\", \"col\": 4}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Quality Lab</b></span>\", \"col\": 12}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Pending Quality-1\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Pending Deductions\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Pending Material Inspections\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Todays Quality Checks\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Todays Deductions\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Approved Quality\", \"col\": 4}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h6\\\">Quick Access</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Quality Inspection\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"All Quality Inspections\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Material Inspections\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Deduction Sheet\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"All Deduction Sheets\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Deduction Suggestion\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"All Deduction Suggestions\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"QC Yearly Dashboard\", \"col\": 4}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h6\\\">Reports & Masters</span>\", \"col\": 12}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Quality Operations\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Deductions\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Material Inspection\", \"col\": 4}}]",
  "creation": "2026-04-01 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -131,6 +131,17 @@
    "doc_view": "List",
    "label": "All Deduction Sheets",
    "link_to": "TS Deduction Sheet",
+   "type": "DocType"
+  },
+  {
+   "label": "New Deduction Suggestion",
+   "link_to": "TS Deduction Suggestion",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "List",
+   "label": "All Deduction Suggestions",
+   "link_to": "TS Deduction Suggestion",
    "type": "DocType"
   },
   {
