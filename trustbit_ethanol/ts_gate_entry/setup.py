@@ -953,6 +953,7 @@ def create_custom_fields():
 	_seed_quality_lab_dsg_shortcuts()
 	_seed_pi_receipt_context_fields()
 	_seed_cost_center_approval_perms()
+	_seed_gate_entry_docperm()
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
 	_setup_purchase_order_permissions()
@@ -2703,3 +2704,47 @@ def _seed_cost_center_approval_perms():
 			)
 	frappe.db.commit()
 	frappe.clear_cache(doctype="Cost Center")
+
+
+def _seed_gate_entry_docperm():
+	"""v2.9.16.7 — Idempotent Custom DocPerm seeder for TS Gate Entry.
+
+	Lesson 169 master-data parity gap: prod had 10 Custom DocPerm rows on
+	TS Gate Entry (including Weighbridge Operator + 9 others), demo had
+	only 2 (IT Head + System Manager). Since Custom DocPerm exists on the
+	doctype, Standard DocPerm is fully overridden — so any role not in
+	Custom DocPerm gets ZERO permission. Pure-WB-Operator users on demo
+	got "No permission for TS Gate Entry" popup on every Weighbridge Log
+	new-form load (JS line 83 calls frappe.db.get_value on TS Gate Entry).
+
+	Idempotent: skips rows that already exist; skips roles that don't exist.
+	Forward-safe: any fresh install or migrate re-asserts the 10-row state.
+	Pattern mirrors v2.9.15.2 _seed_cost_center_approval_perms.
+	"""
+	roles_read_only = [
+		"Accounts Manager", "CEO", "G1 Security", "G2 Gate Operator",
+		"IT Head", "MD", "Quality Inspector", "Stores User",
+		"System Manager", "Weighbridge Operator",
+	]
+	for role in roles_read_only:
+		if not frappe.db.exists("Role", role):
+			continue
+		if frappe.db.exists("Custom DocPerm", {
+			"parent": "TS Gate Entry", "role": role, "permlevel": 0,
+		}):
+			continue
+		try:
+			frappe.get_doc({
+				"doctype": "Custom DocPerm",
+				"parent": "TS Gate Entry",
+				"parenttype": "DocType",
+				"parentfield": "permissions",
+				"role": role,
+				"permlevel": 0,
+				"read": 1, "write": 0, "create": 0, "delete": 0,
+				"report": 1, "export": 1, "share": 0, "print": 1, "email": 0,
+			}).db_insert()
+		except Exception:
+			pass
+	frappe.db.commit()
+	frappe.clear_cache(doctype="TS Gate Entry")
