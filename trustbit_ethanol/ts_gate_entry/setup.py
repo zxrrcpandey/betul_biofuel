@@ -2464,6 +2464,7 @@ def _seed_dsg_receipt_context_fields():
 		("dsg_receipt_context_col_break", "Column Break", None, "net_weight", None, None),
 		("supplier_code", "Link", "Supplier Code", "dsg_receipt_context_col_break", "Supplier", "From PO"),
 		("supplier_name", "Data", "Supplier Name", "supplier_code", None, None),
+		("purchase_order", "Link", "Purchase Order", "supplier_name", "Purchase Order", "From QI"),
 	]
 	for fieldname, fieldtype, label, anchor, options, description in specs:
 		if frappe.db.exists("Custom Field", {"dt": "TS Deduction Suggestion", "fieldname": fieldname}):
@@ -2484,6 +2485,14 @@ def _seed_dsg_receipt_context_fields():
 		if fieldtype == "Float":
 			spec["precision"] = "3"
 		frappe.get_doc(spec).insert(ignore_permissions=True)
+	# Bump parent DocType.modified so browsers with cached form metadata
+	# (Frappe's getdoctype returns "use_cache" if client cached_timestamp
+	# matches server) invalidate and re-fetch — otherwise newly added
+	# Custom Fields stay invisible until user clears localStorage.
+	frappe.db.set_value(
+		"DocType", "TS Deduction Suggestion", "modified",
+		frappe.utils.now(), update_modified=False,
+	)
 	frappe.db.commit()
 
 

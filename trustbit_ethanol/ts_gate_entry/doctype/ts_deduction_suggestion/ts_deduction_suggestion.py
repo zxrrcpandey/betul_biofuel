@@ -91,6 +91,7 @@ class TSDeductionSuggestion(Document):
 		self.vehicle_number = qi.vehicle_number or None
 		self.rst_number = qi.rst_number or None
 		if qi.purchase_order:
+			self.purchase_order = qi.purchase_order
 			po = frappe.db.get_value(
 				"Purchase Order", qi.purchase_order,
 				["supplier", "supplier_name"], as_dict=True,
