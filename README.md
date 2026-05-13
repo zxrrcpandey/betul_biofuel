@@ -1,6 +1,6 @@
 # Trustbit Ethanol — TS Gate Entry System
 
-**Version:** 2.9.16.3 | **ERPNext:** V15 | **Module:** TS Gate Entry
+**Version:** 2.9.16.7 | **ERPNext:** V15 | **Module:** TS Gate Entry
 
 Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufacturing plant. Handles the complete vehicle gate-to-exit lifecycle, multi-level PO/MR approval with CC-based routing, budget management, item creation, quality inspection, and interactive dashboards with a **blind token-based system** designed to prevent manipulation.
 
@@ -8,6 +8,10 @@ Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufactu
 
 | Version | Date | Change |
 |---|---|---|
+| **2.9.16.7** | 13 May | TS Gate Entry DocPerm seeder for demo/prod parity — idempotent `_seed_gate_entry_docperm()` mirrors v2.9.15.2 Cost Center pattern, re-asserts 10-role DocPerm set on every migrate (Accounts Manager, CEO, G1 Security, G2 Gate Operator, IT Head, MD, Quality Inspector, Stores User, System Manager, Weighbridge Operator). Forward-safe against Lesson 169 master-data drift between environments. |
+| **2.9.16.6** | 13 May | **HOTFIX** — Weighbridge "No permission for TS Settings" popup eliminated. `ts_weighbridge_log.js:45` was calling `get_single_value("TS Settings", "ts_flow_v28_enabled")` directly; Weighbridge Operator role lacks TS Settings read perm → modal on every new entry. Fix: new role-scoped `get_flow_v28_flag()` whitelist helper (Lesson 168 pattern, same as `get_g2_print_mode` / `get_two_pass_flag`). |
+| **2.9.16.5** | 13 May | **P0 HOTFIX** — `ts_gate_entry/api/` package introduced in v2.9.16 silently shadowed pre-existing `ts_gate_entry/api.py` (Python: package wins over module of same name). 7 whitelisted endpoints unreachable for ~3 hours (Weighbridge token search, Weighbridge weight fetch, G2 print mode, two-pass flag, PO autocomplete, PO lifecycle, SLA scheduler). Fix: move all `api.py` content into `api/__init__.py`, delete `api.py`. New Lesson 264 captured. |
+| **2.9.16.4** | 13 May | Purchase Invoice "Token / Receipt Context" section — 5 read-only fields (Token Number/Gate Pass, RST Number, Quality Inspection, Deduction Sheet, Purchase Receipt) snapshotted at insert from first linked PR via items[].purchase_receipt. DS link chain: PR.ts_token → QI (by token_number) → DS (by quality_inspection). One-time backfill on deploy populated 327 existing prod PIs. |
 | **2.9.16.3** | 13 May | TS Deduction Suggestion: `purchase_order` Link Custom Field added to Receipt Context section, snapshotted at insert from source QI. Seeder also auto-bumps DocType.modified to invalidate browser form-meta cache (Lesson 263 — caught live; without the bump, newly-added Custom Fields stay invisible until users run `localStorage.clear()`) |
 | **2.9.16.2** | 12 May | TS Stock Balance Computed audit-grade Script Report — wraps native, replaces stored val_rate with bal_val/bal_qty live, adds Drift % audit signal column. Stock User excluded (audit-grade). |
 | **2.9.16.1** | 12 May | Stock Reports sub-workspace under BBPL Ethanol (seq=10) with 4 shortcuts: TS Stock Ledger FIFO, Stock Ledger (native), Stock Balance → TS Stock Balance Computed, Stock Entry. |
