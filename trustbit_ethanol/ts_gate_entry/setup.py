@@ -951,6 +951,7 @@ def create_custom_fields():
 	_seed_pi_update_stock_return_visibility()
 	_seed_dsg_receipt_context_fields()
 	_seed_quality_lab_dsg_shortcuts()
+	_seed_pi_receipt_context_fields()
 	_seed_cost_center_approval_perms()
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
@@ -2495,6 +2496,104 @@ def _seed_dsg_receipt_context_fields():
 		frappe.utils.now(), update_modified=False,
 	)
 	frappe.db.commit()
+
+
+def _seed_pi_receipt_context_fields():
+	"""v2.9.16.4 — Add 'Token / Receipt Context' section to Purchase Invoice.
+
+	5 read-only Link/Data fields snapshotted at PI insert from the first
+	linked PR (via items[].purchase_receipt). Header-level display summary;
+	does NOT change ERPNext's per-item billing/stock semantics.
+
+	Also performs one-time backfill of existing PIs that have a linked PR
+	but blank Receipt Context fields. Uses db.set_value(update_modified=False)
+	to handle submitted/cancelled rows without bumping modified.
+	"""
+	specs = [
+		("ts_pi_receipt_context_section", "Section Break", "Token / Receipt Context", "ts_po_reference", None, None),
+		("ts_token", "Link", "Token Number / Gate Pass", "ts_pi_receipt_context_section", "TS Token", "From linked PR"),
+		("ts_rst_number", "Data", "RST Number", "ts_token", None, "From linked PR"),
+		("ts_quality_inspection", "Link", "Quality Inspection", "ts_rst_number", "TS Quality Inspection", "Looked up by token"),
+		("ts_pi_receipt_context_col_break", "Column Break", None, "ts_quality_inspection", None, None),
+		("ts_deduction_sheet", "Link", "Deduction Sheet", "ts_pi_receipt_context_col_break", "TS Deduction Sheet", "From linked PR"),
+		("ts_purchase_receipt", "Link", "Purchase Receipt", "ts_deduction_sheet", "Purchase Receipt", "First linked PR"),
+	]
+	for fieldname, fieldtype, label, anchor, options, description in specs:
+		if frappe.db.exists("Custom Field", {"dt": "Purchase Invoice", "fieldname": fieldname}):
+			continue
+		spec = {
+			"doctype": "Custom Field", "dt": "Purchase Invoice",
+			"fieldname": fieldname, "fieldtype": fieldtype, "insert_after": anchor,
+		}
+		if label:
+			spec["label"] = label
+		if options:
+			spec["options"] = options
+		if description:
+			spec["description"] = description
+		if fieldtype not in ("Section Break", "Column Break"):
+			spec["read_only"] = 1
+			spec["no_copy"] = 1
+		frappe.get_doc(spec).insert(ignore_permissions=True)
+	# Bump parent DocType.modified to invalidate browser form-meta cache
+	# (Lesson 263 — without this, newly added Custom Fields stay invisible
+	# to users until localStorage.clear()).
+	frappe.db.set_value(
+		"DocType", "Purchase Invoice", "modified",
+		frappe.utils.now(), update_modified=False,
+	)
+	frappe.db.commit()
+	# One-time backfill of existing PIs (idempotent — only touches rows whose
+	# ts_token is currently NULL/empty and that have at least one item with
+	# purchase_receipt set). Submitted/cancelled docs are safe because
+	# update_modified=False avoids modified-bump (no version row created).
+	candidates = frappe.db.sql("""
+		SELECT DISTINCT pi.name AS pi_name, pri.purchase_receipt
+		FROM `tabPurchase Invoice` pi
+		JOIN `tabPurchase Invoice Item` pri ON pri.parent = pi.name
+		WHERE (pi.ts_token IS NULL OR pi.ts_token = '')
+		  AND pri.purchase_receipt IS NOT NULL
+		  AND pri.purchase_receipt != ''
+		ORDER BY pi.name, pri.idx
+	""", as_dict=True)
+	seen = set()
+	backfilled = 0
+	for row in candidates:
+		if row.pi_name in seen:
+			continue
+		seen.add(row.pi_name)
+		pr = frappe.db.get_value(
+			"Purchase Receipt", row.purchase_receipt,
+			["ts_token", "custom_rst_number"],
+			as_dict=True,
+		)
+		if not pr:
+			continue
+		# DS link chain: PR.ts_token -> QI(token_number=...) -> DS(quality_inspection=...)
+		qi = ds = None
+		if pr.ts_token:
+			qi = frappe.db.get_value(
+				"TS Quality Inspection",
+				{"token_number": pr.ts_token, "docstatus": ["!=", 2]},
+				"name",
+			)
+			if qi:
+				ds = frappe.db.get_value(
+					"TS Deduction Sheet",
+					{"quality_inspection": qi, "docstatus": ["!=", 2]},
+					"name",
+				)
+		updates = {
+			"ts_purchase_receipt": row.purchase_receipt,
+			"ts_token": pr.ts_token or None,
+			"ts_rst_number": pr.custom_rst_number or None,
+			"ts_deduction_sheet": ds or None,
+			"ts_quality_inspection": qi or None,
+		}
+		frappe.db.set_value("Purchase Invoice", row.pi_name, updates, update_modified=False)
+		backfilled += 1
+	if backfilled:
+		frappe.db.commit()
 
 
 def _seed_quality_lab_dsg_shortcuts():
