@@ -1,397 +1,354 @@
-<div class="bbf-item-creator-page">
+<div class="bbf-item-creator-page" data-version="2.9.17.5">
 
-	<!-- Live Preview Bar -->
-	<div class="bbf-preview-bar">
+	<!-- Sticky Preview Bar -->
+	<div class="bbf-preview-bar" id="bbf-preview-bar">
 		<div class="bbf-preview-inner">
-			<div class="bbf-preview-label">Generated Item Code</div>
-			<div class="bbf-preview-code" id="bbf-live-code">
-				<span class="bbf-code-placeholder">Select Company & Category to begin</span>
+			<div class="bbf-preview-meta">
+				<div class="bbf-preview-label">Generated Item Code</div>
+				<div class="bbf-preview-sub" id="bbf-preview-sub">&nbsp;</div>
 			</div>
+			<div class="bbf-preview-code" id="bbf-live-code" aria-live="polite" aria-atomic="true">
+				<span class="bbf-code-placeholder">Select Company &amp; Category to begin</span>
+			</div>
+			<div class="bbf-preview-version" title="Build version">v2.9.17.5</div>
 		</div>
 	</div>
 
 	<!-- Main Card -->
 	<div class="bbf-card">
 
-		<!-- Creation Type Toggle -->
-		<div class="bbf-creation-type-bar">
-			<div class="bbf-creation-type-label">What are you creating?</div>
-			<div class="bbf-creation-type-toggle">
-				<button class="bbf-creation-btn active" data-type="Regular Item">
-					<span class="bbf-creation-icon">📦</span>
-					<span class="bbf-creation-text">Regular Item</span>
-					<span class="bbf-creation-desc">Stock / Consumable</span>
-				</button>
-				<button class="bbf-creation-btn" data-type="Fixed Asset">
-					<span class="bbf-creation-icon">🏢</span>
-					<span class="bbf-creation-text">Fixed Asset</span>
-					<span class="bbf-creation-desc">Equipment / Vehicle / Furniture</span>
-				</button>
-			</div>
+		<!-- Validation banner (auto-shown on Create-time errors) -->
+		<div class="bbf-error-banner" id="bbf-error-banner" role="alert" aria-live="assertive" style="display:none;">
+			<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="8" stroke="currentColor" stroke-width="1.5"/><path d="M9 5v5m0 2v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+			<span id="bbf-error-banner-text">Please fix the highlighted errors below.</span>
 		</div>
 
-		<!-- Steps Indicator -->
-		<div class="bbf-steps">
-			<div class="bbf-step active" data-step="1">
-				<div class="bbf-step-circle">1</div>
-				<div class="bbf-step-label">Company & Category</div>
-			</div>
-			<div class="bbf-step-line"></div>
-			<div class="bbf-step" data-step="2">
-				<div class="bbf-step-circle">2</div>
-				<div class="bbf-step-label">Item Details</div>
-			</div>
-			<div class="bbf-step-line"></div>
-			<div class="bbf-step" data-step="3">
-				<div class="bbf-step-circle">3</div>
-				<div class="bbf-step-label">Variant</div>
-			</div>
-			<div class="bbf-step-line"></div>
-			<div class="bbf-step" data-step="4">
-				<div class="bbf-step-circle">4</div>
-				<div class="bbf-step-label">Stock & Valuation</div>
-			</div>
-			<div class="bbf-step-line"></div>
-			<div class="bbf-step" data-step="5">
-				<div class="bbf-step-circle">5</div>
-				<div class="bbf-step-label">Review & Create</div>
-			</div>
-		</div>
+		<!-- ═══ SECTION 1: Company & Category + Creation Type ═══ -->
+		<details class="bbf-section" id="bbf-sec-basics" data-section="basics" open>
+			<summary class="bbf-section-head">
+				<span class="bbf-section-chevron" aria-hidden="true">
+					<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 3l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				</span>
+				<span class="bbf-section-title">Company &amp; Category</span>
+				<span class="bbf-section-meta" id="bbf-meta-basics">Select to begin</span>
+				<span class="bbf-section-status" id="bbf-status-basics" aria-hidden="true"></span>
+			</summary>
+			<div class="bbf-section-body">
 
-		<!-- Step 1: Company & Category -->
-		<div class="bbf-step-content active" data-step="1">
-			<h3 class="bbf-section-title">Select Company & Category</h3>
-			<p class="bbf-section-desc">Choose the company and item group to build the base item code.</p>
-
-			<div class="bbf-form-row">
-				<div class="bbf-form-group">
-					<label class="bbf-label">Company <span class="bbf-req">*</span></label>
-					<div class="bbf-field" id="bbf-company-field"></div>
-				</div>
-				<div class="bbf-form-group bbf-form-sm bbf-company-code-type">
-					<label class="bbf-label">Code Type</label>
-					<div class="bbf-toggle-wrap">
-						<button class="bbf-toggle-btn" data-target="company" data-value="Character">ABC</button>
-						<button class="bbf-toggle-btn active" data-target="company" data-value="Numerical">123</button>
+				<!-- Creation Type Toggle -->
+				<div class="bbf-form-row">
+					<div class="bbf-form-group bbf-full">
+						<label class="bbf-label">Creation Type</label>
+						<div class="bbf-creation-type-toggle" role="radiogroup" aria-label="Creation Type">
+							<button type="button" class="bbf-creation-btn active" data-type="Regular Item" role="radio" aria-checked="true">
+								<span class="bbf-creation-text">Regular Item</span>
+								<span class="bbf-creation-desc">Stock / Consumable</span>
+							</button>
+							<button type="button" class="bbf-creation-btn" data-type="Fixed Asset" role="radio" aria-checked="false">
+								<span class="bbf-creation-text">Fixed Asset</span>
+								<span class="bbf-creation-desc">Equipment / Vehicle / Furniture</span>
+							</button>
+						</div>
 					</div>
 				</div>
-				<div class="bbf-form-group bbf-form-code">
-					<label class="bbf-label">Code</label>
-					<div class="bbf-code-badge" id="bbf-company-code">---</div>
-				</div>
-			</div>
 
-			<!-- Regular Item: Item Group selector -->
-			<div class="bbf-form-row bbf-regular-only">
-				<div class="bbf-form-group">
-					<label class="bbf-label">Item Group / Category <span class="bbf-req">*</span></label>
-					<div class="bbf-field" id="bbf-category-field"></div>
-				</div>
-				<div class="bbf-form-group bbf-form-sm">
-					<label class="bbf-label">Code Type</label>
-					<div class="bbf-toggle-wrap">
-						<button class="bbf-toggle-btn" data-target="category" data-value="Character">ABC</button>
-						<button class="bbf-toggle-btn active" data-target="category" data-value="Numerical">123</button>
-					</div>
-				</div>
-				<div class="bbf-form-group bbf-form-code">
-					<label class="bbf-label">Code</label>
-					<div class="bbf-code-badge" id="bbf-category-code">---</div>
-				</div>
-			</div>
-
-			<!-- Fixed Asset: Fiscal Year selector -->
-			<div class="bbf-form-row bbf-asset-only" style="display:none;">
-				<div class="bbf-form-group">
-					<label class="bbf-label">Fiscal Year <span class="bbf-req">*</span></label>
-					<div class="bbf-field" id="bbf-fiscal-year-field"></div>
-					<span class="bbf-hint">Defaults to current FY. Override for backdated items.</span>
-				</div>
-				<div class="bbf-form-group bbf-form-code">
-					<label class="bbf-label">FY Short</label>
-					<div class="bbf-code-badge" id="bbf-fy-short">---</div>
-				</div>
-			</div>
-
-			<!-- Fixed Asset: Asset Category selector (required for ERPNext Asset creation) -->
-			<div class="bbf-form-row bbf-asset-only" style="display:none;">
-				<div class="bbf-form-group bbf-full">
-					<label class="bbf-label">Asset Category <span class="bbf-req">*</span></label>
-					<div class="bbf-field" id="bbf-asset-category-field"></div>
-					<span class="bbf-hint">Used by ERPNext to auto-create the Asset record when the PO is received. Not part of the item code.</span>
-				</div>
-			</div>
-
-			<div class="bbf-form-row">
-				<div class="bbf-form-group bbf-form-code">
-					<label class="bbf-label">Serial Number</label>
-					<div class="bbf-code-badge bbf-serial" id="bbf-serial-code">---</div>
-					<span class="bbf-hint">Auto-assigned on save</span>
-				</div>
-			</div>
-		</div>
-
-		<!-- Step 2: Item Details -->
-		<div class="bbf-step-content" data-step="2">
-			<h3 class="bbf-section-title">Item Details</h3>
-			<p class="bbf-section-desc">Provide item identity, GST classification, and tax details.</p>
-
-			<div class="bbf-form-row">
-				<div class="bbf-form-group">
-					<label class="bbf-label">Item Name</label>
-					<div class="bbf-field" id="bbf-item-name-field"></div>
-					<span class="bbf-hint">Optional. If empty, item code will be used as name.</span>
-				</div>
-				<div class="bbf-form-group">
-					<label class="bbf-label">Stock UOM <span class="bbf-req">*</span></label>
-					<div class="bbf-field" id="bbf-uom-field"></div>
-				</div>
-			</div>
-
-			<div class="bbf-form-row">
-				<div class="bbf-form-group">
-					<label class="bbf-label">HSN/SAC Code <span class="bbf-req">*</span></label>
-					<div class="bbf-field" id="bbf-hsn-field"></div>
-					<span class="bbf-hint">GST HSN/SAC code (minimum 6 digits).</span>
-				</div>
-				<div class="bbf-form-group">
-					<label class="bbf-label">Item Tax Template</label>
-					<div class="bbf-field" id="bbf-tax-template-field"></div>
-					<span class="bbf-hint">e.g. GST-18%</span>
-				</div>
-			</div>
-
-			<div class="bbf-form-row">
-				<div class="bbf-form-group bbf-full">
-					<label class="bbf-label">Description</label>
-					<div class="bbf-field" id="bbf-description-field"></div>
-					<span class="bbf-hint">Optional item description.</span>
-				</div>
-			</div>
-		</div>
-
-		<!-- Step 3: Variant -->
-		<div class="bbf-step-content" data-step="3">
-			<h3 class="bbf-section-title">Variant Configuration</h3>
-			<p class="bbf-section-desc">Enable variants to create multiple items (e.g. by brand) under one template code.</p>
-
-			<div class="bbf-variant-toggle">
-				<label class="bbf-switch">
-					<input type="checkbox" id="bbf-has-variant">
-					<span class="bbf-slider"></span>
-				</label>
-				<span class="bbf-switch-label">Enable Variant</span>
-			</div>
-
-			<div class="bbf-variant-options" style="display:none;">
-				<!-- Variant Source Tabs -->
-				<div class="bbf-source-tabs">
-					<button class="bbf-source-tab active" data-source="Brand">
-						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v2l-2 6H4L2 5V3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="5.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/><circle cx="10.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/></svg>
-						Brand
-					</button>
-					<button class="bbf-source-tab" data-source="Custom Variant">
-						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-						Custom Variant
-					</button>
-				</div>
-
-				<!-- Variant Rows Container -->
-				<div class="bbf-variant-grid" id="bbf-variant-grid">
-					<!-- Variant rows will be added dynamically by JS -->
-				</div>
-
-				<!-- Add Variant Button -->
-				<button class="btn bbf-btn-add-variant" id="bbf-add-variant">
-					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-					Add Variant
-				</button>
-			</div>
-		</div>
-
-		<!-- Step 4: Stock & Valuation -->
-		<div class="bbf-step-content" data-step="4">
-			<h3 class="bbf-section-title">Stock & Valuation</h3>
-			<p class="bbf-section-desc" id="bbf-step4-desc">Configure stock tracking, valuation rate, and opening balances.</p>
-
-			<div class="bbf-form-row">
-				<div class="bbf-form-group">
-					<label class="bbf-label">Maintain Stock</label>
-					<div class="bbf-variant-toggle" style="margin-top:4px;">
-						<label class="bbf-switch">
-							<input type="checkbox" id="bbf-maintain-stock" checked>
-							<span class="bbf-slider"></span>
-						</label>
-						<span class="bbf-switch-label">Track this item in stock / inventory</span>
-					</div>
-				</div>
-			</div>
-
-			<!-- Standalone stock fields (hidden when variant mode) -->
-			<div class="bbf-stock-fields bbf-standalone-stock">
+				<!-- Company row -->
 				<div class="bbf-form-row">
 					<div class="bbf-form-group">
-						<label class="bbf-label">Valuation Rate</label>
-						<div class="bbf-field" id="bbf-valuation-rate-field"></div>
-						<span class="bbf-hint">Rate at which item is valued in stock.</span>
+						<label class="bbf-label">Company <span class="bbf-req">*</span></label>
+						<div class="bbf-field" id="bbf-company-field"></div>
+						<div class="bbf-field-error" id="bbf-err-company"></div>
+					</div>
+					<div class="bbf-form-group bbf-form-sm bbf-company-code-type">
+						<label class="bbf-label">Code Type</label>
+						<div class="bbf-toggle-wrap" role="radiogroup" aria-label="Company Code Type">
+							<button type="button" class="bbf-toggle-btn" data-target="company" data-value="Character" role="radio" aria-checked="false">ABC</button>
+							<button type="button" class="bbf-toggle-btn active" data-target="company" data-value="Numerical" role="radio" aria-checked="true">123</button>
+						</div>
+					</div>
+					<div class="bbf-form-group bbf-form-code">
+						<label class="bbf-label">Code</label>
+						<div class="bbf-code-badge" id="bbf-company-code">---</div>
+					</div>
+				</div>
+
+				<!-- Regular Item: Item Group selector -->
+				<div class="bbf-form-row bbf-regular-only">
+					<div class="bbf-form-group">
+						<label class="bbf-label">Item Group / Category <span class="bbf-req">*</span></label>
+						<div class="bbf-field" id="bbf-category-field"></div>
+						<div class="bbf-field-error" id="bbf-err-category"></div>
+					</div>
+					<div class="bbf-form-group bbf-form-sm">
+						<label class="bbf-label">Code Type</label>
+						<div class="bbf-toggle-wrap" role="radiogroup" aria-label="Category Code Type">
+							<button type="button" class="bbf-toggle-btn" data-target="category" data-value="Character" role="radio" aria-checked="false">ABC</button>
+							<button type="button" class="bbf-toggle-btn active" data-target="category" data-value="Numerical" role="radio" aria-checked="true">123</button>
+						</div>
+					</div>
+					<div class="bbf-form-group bbf-form-code">
+						<label class="bbf-label">Code</label>
+						<div class="bbf-code-badge" id="bbf-category-code">---</div>
+					</div>
+				</div>
+
+				<!-- Fixed Asset: Fiscal Year selector -->
+				<div class="bbf-form-row bbf-asset-only" style="display:none;">
+					<div class="bbf-form-group">
+						<label class="bbf-label">Fiscal Year <span class="bbf-req">*</span></label>
+						<div class="bbf-field" id="bbf-fiscal-year-field"></div>
+						<div class="bbf-field-error" id="bbf-err-fy"></div>
+						<span class="bbf-hint">Defaults to current FY. Override for backdated items.</span>
+					</div>
+					<div class="bbf-form-group bbf-form-code">
+						<label class="bbf-label">FY Short</label>
+						<div class="bbf-code-badge" id="bbf-fy-short">---</div>
+					</div>
+				</div>
+
+				<!-- Fixed Asset: Asset Category selector -->
+				<div class="bbf-form-row bbf-asset-only" style="display:none;">
+					<div class="bbf-form-group bbf-full">
+						<label class="bbf-label">Asset Category <span class="bbf-req">*</span></label>
+						<div class="bbf-field" id="bbf-asset-category-field"></div>
+						<div class="bbf-field-error" id="bbf-err-asset-cat"></div>
+						<span class="bbf-hint">Used by ERPNext to auto-create the Asset record when the PO is received.</span>
+					</div>
+				</div>
+
+				<!-- Serial Number preview -->
+				<div class="bbf-form-row">
+					<div class="bbf-form-group bbf-form-code">
+						<label class="bbf-label">Serial Number</label>
+						<div class="bbf-code-badge bbf-serial" id="bbf-serial-code">---</div>
+						<span class="bbf-hint">Auto-assigned on save</span>
+					</div>
+				</div>
+			</div>
+		</details>
+
+		<!-- ═══ SECTION 2: Item Details ═══ -->
+		<details class="bbf-section" id="bbf-sec-details" data-section="details" open>
+			<summary class="bbf-section-head">
+				<span class="bbf-section-chevron" aria-hidden="true">
+					<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 3l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				</span>
+				<span class="bbf-section-title">Item Details</span>
+				<span class="bbf-section-meta" id="bbf-meta-details">Name, UOM, HSN, Tax</span>
+				<span class="bbf-section-status" id="bbf-status-details" aria-hidden="true"></span>
+			</summary>
+			<div class="bbf-section-body">
+				<div class="bbf-form-row">
+					<div class="bbf-form-group">
+						<label class="bbf-label">Item Name</label>
+						<div class="bbf-field" id="bbf-item-name-field"></div>
+						<span class="bbf-hint">Optional. If empty, item code will be used as name.</span>
 					</div>
 					<div class="bbf-form-group">
-						<label class="bbf-label">Standard Selling Rate</label>
-						<div class="bbf-field" id="bbf-standard-rate-field"></div>
-						<span class="bbf-hint">Default selling price.</span>
+						<label class="bbf-label">Stock UOM <span class="bbf-req">*</span></label>
+						<div class="bbf-field" id="bbf-uom-field"></div>
+						<div class="bbf-field-error" id="bbf-err-uom"></div>
 					</div>
 				</div>
 
 				<div class="bbf-form-row">
 					<div class="bbf-form-group">
-						<label class="bbf-label">Opening Stock</label>
-						<div class="bbf-field" id="bbf-opening-stock-field"></div>
-						<span class="bbf-hint">Initial stock quantity (optional).</span>
+						<label class="bbf-label">HSN/SAC Code <span class="bbf-req">*</span></label>
+						<div class="bbf-field" id="bbf-hsn-field"></div>
+						<div class="bbf-field-error" id="bbf-err-hsn"></div>
+						<span class="bbf-hint">GST HSN/SAC code (minimum 6 digits).</span>
 					</div>
 					<div class="bbf-form-group">
-						<label class="bbf-label">Opening Warehouse</label>
-						<div class="bbf-field" id="bbf-opening-warehouse-field"></div>
-						<span class="bbf-hint">Required if opening stock is set.</span>
+						<label class="bbf-label">Item Tax Template</label>
+						<div class="bbf-field" id="bbf-tax-template-field"></div>
+						<span class="bbf-hint">e.g. GST-18%</span>
 					</div>
 				</div>
 
+				<div class="bbf-form-row">
+					<div class="bbf-form-group bbf-full">
+						<label class="bbf-label">Description</label>
+						<div class="bbf-field" id="bbf-description-field"></div>
+						<span class="bbf-hint">Optional item description.</span>
+					</div>
+				</div>
+			</div>
+		</details>
+
+		<!-- ═══ SECTION 3: Variants (Regular-only, collapsed by default) ═══ -->
+		<details class="bbf-section bbf-regular-only" id="bbf-sec-variants" data-section="variants">
+			<summary class="bbf-section-head">
+				<span class="bbf-section-chevron" aria-hidden="true">
+					<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 3l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				</span>
+				<span class="bbf-section-title">Variants</span>
+				<span class="bbf-section-meta" id="bbf-meta-variants">No variants</span>
+				<span class="bbf-section-status" id="bbf-status-variants" aria-hidden="true"></span>
+			</summary>
+			<div class="bbf-section-body">
+				<div class="bbf-variant-toggle">
+					<label class="bbf-switch">
+						<input type="checkbox" id="bbf-has-variant" aria-label="Enable Variants">
+						<span class="bbf-slider"></span>
+					</label>
+					<span class="bbf-switch-label">Enable Variants — create multiple items under one template code</span>
+				</div>
+
+				<div class="bbf-variant-options" style="display:none;">
+					<div class="bbf-source-tabs" role="tablist" aria-label="Variant source">
+						<button type="button" class="bbf-source-tab active" data-source="Brand" role="tab" aria-selected="true">
+							<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 3h12v2l-2 6H4L2 5V3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="5.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/><circle cx="10.5" cy="13.5" r="1" stroke="currentColor" stroke-width="1.5"/></svg>
+							Brand
+						</button>
+						<button type="button" class="bbf-source-tab" data-source="Custom Variant" role="tab" aria-selected="false">
+							<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+							Custom Variant
+						</button>
+					</div>
+
+					<div class="bbf-variant-grid" id="bbf-variant-grid"></div>
+
+					<button type="button" class="btn bbf-btn-add-variant" id="bbf-add-variant">
+						<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+						Add Variant
+					</button>
+				</div>
+			</div>
+		</details>
+
+		<!-- ═══ SECTION 4: Stock & Valuation (Regular-only) ═══ -->
+		<details class="bbf-section bbf-regular-only" id="bbf-sec-stock" data-section="stock" open>
+			<summary class="bbf-section-head">
+				<span class="bbf-section-chevron" aria-hidden="true">
+					<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 3l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				</span>
+				<span class="bbf-section-title">Stock &amp; Valuation</span>
+				<span class="bbf-section-meta" id="bbf-meta-stock">Tracked</span>
+				<span class="bbf-section-status" id="bbf-status-stock" aria-hidden="true"></span>
+			</summary>
+			<div class="bbf-section-body">
+				<div class="bbf-form-row">
+					<div class="bbf-form-group bbf-full">
+						<label class="bbf-label">Maintain Stock</label>
+						<div class="bbf-variant-toggle" style="margin-top:4px;">
+							<label class="bbf-switch">
+								<input type="checkbox" id="bbf-maintain-stock" checked aria-label="Maintain Stock">
+								<span class="bbf-slider"></span>
+							</label>
+							<span class="bbf-switch-label">Track this item in stock / inventory</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Standalone stock rates (hidden when variant mode) -->
+				<div class="bbf-stock-fields bbf-standalone-stock">
+					<div class="bbf-form-row">
+						<div class="bbf-form-group">
+							<label class="bbf-label">Valuation Rate</label>
+							<div class="bbf-field" id="bbf-valuation-rate-field"></div>
+							<div class="bbf-field-error" id="bbf-err-valuation"></div>
+							<span class="bbf-hint">Rate at which item is valued in stock.</span>
+						</div>
+						<div class="bbf-form-group">
+							<label class="bbf-label">Standard Selling Rate</label>
+							<div class="bbf-field" id="bbf-standard-rate-field"></div>
+							<span class="bbf-hint">Default selling price.</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Variant mode notice -->
+				<div class="bbf-stock-fields bbf-variant-stock" style="display:none;">
+					<div class="bbf-info-box">
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3m0 2.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+						<span>Valuation Rate, Selling Rate, Opening Stock &amp; Description are set <b>per variant</b> in the Variants section above.</span>
+					</div>
+				</div>
+			</div>
+		</details>
+
+		<!-- ═══ SECTION 5: Opening Stock (Regular-only, collapsed by default) ═══ -->
+		<details class="bbf-section bbf-regular-only" id="bbf-sec-opening" data-section="opening">
+			<summary class="bbf-section-head">
+				<span class="bbf-section-chevron" aria-hidden="true">
+					<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 3l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				</span>
+				<span class="bbf-section-title">Opening Stock</span>
+				<span class="bbf-section-meta" id="bbf-meta-opening">None</span>
+				<span class="bbf-section-status" id="bbf-status-opening" aria-hidden="true"></span>
+			</summary>
+			<div class="bbf-section-body">
+
+				<!-- Standalone opening stock -->
+				<div class="bbf-stock-fields bbf-standalone-stock">
+					<div class="bbf-form-row">
+						<div class="bbf-form-group">
+							<label class="bbf-label">Opening Stock Quantity</label>
+							<div class="bbf-field" id="bbf-opening-stock-field"></div>
+							<div class="bbf-field-error" id="bbf-err-opening-stock"></div>
+							<span class="bbf-hint">Initial stock quantity (optional).</span>
+						</div>
+						<div class="bbf-form-group">
+							<label class="bbf-label">Opening Warehouse</label>
+							<div class="bbf-field" id="bbf-opening-warehouse-field"></div>
+							<div class="bbf-field-error" id="bbf-err-warehouse"></div>
+							<span class="bbf-hint">Required if opening stock is set.</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Variant mode: shared warehouse only -->
+				<div class="bbf-stock-fields bbf-variant-stock" style="display:none;">
+					<div class="bbf-form-row">
+						<div class="bbf-form-group">
+							<label class="bbf-label">Opening Warehouse</label>
+							<div class="bbf-field" id="bbf-opening-warehouse-variant-field"></div>
+							<div class="bbf-field-error" id="bbf-err-warehouse-v"></div>
+							<span class="bbf-hint">Warehouse for opening stock (shared across all variants).</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Posting date row -->
 				<div class="bbf-form-row" id="bbf-posting-date-row" style="display:none;">
 					<div class="bbf-form-group">
 						<label class="bbf-label">Posting Date</label>
 						<div class="bbf-field" id="bbf-posting-date-field"></div>
-						<span class="bbf-hint">Date for opening stock entry. Leave blank for today. Use for backdated imports (e.g., opening as of 1st April).</span>
+						<span class="bbf-hint">Date for opening stock entry. Leave blank for today. Use for backdated imports.</span>
 					</div>
 					<div class="bbf-form-group">
-						<div class="bbf-posting-date-info" id="bbf-posting-date-info" style="display:none; margin-top:24px; padding:10px 14px; background:#fff3e0; border:1px solid #ffe0b2; border-radius:6px; font-size:12px; color:#e65100;">
-							<strong>Post-Dated Import:</strong> Opening stock &amp; ledger entries will be posted on the selected date, not today.
+						<div class="bbf-info-box bbf-info-warn" id="bbf-posting-date-info" style="display:none;">
+							<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3m0 2.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+							<span><b>Backdated:</b> Opening stock &amp; ledger entries will post on the selected date. Affects FY closing balances.</span>
 						</div>
 					</div>
 				</div>
 			</div>
+		</details>
 
-			<!-- Variant mode: only opening warehouse (per-variant fields are on Step 2) -->
-			<div class="bbf-stock-fields bbf-variant-stock" style="display:none;">
-				<div class="bbf-info-box">
-					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3m0 2.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-					<span>Valuation Rate, Opening Stock, Standard Selling Rate, and Description are set <b>per variant</b> in Step 3.</span>
-				</div>
-				<div class="bbf-form-row" style="margin-top:16px;">
-					<div class="bbf-form-group">
-						<label class="bbf-label">Opening Warehouse</label>
-						<div class="bbf-field" id="bbf-opening-warehouse-variant-field"></div>
-						<span class="bbf-hint">Warehouse for opening stock (shared across all variants).</span>
-					</div>
-				</div>
-			</div>
-		</div>
-
-		<!-- Step 5: Review & Create -->
-		<div class="bbf-step-content" data-step="5">
-			<h3 class="bbf-section-title">Review & Create</h3>
-			<p class="bbf-section-desc">Verify all details before creating the item in ERPNext.</p>
-
-			<div class="bbf-review-card">
-				<div class="bbf-review-header">
-					<div class="bbf-review-code" id="bbf-review-code">---</div>
-					<div class="bbf-review-type" id="bbf-review-type">Standalone Item</div>
-				</div>
-
-				<div class="bbf-review-grid">
-					<div class="bbf-review-item">
-						<span class="bbf-review-label">Company</span>
-						<span class="bbf-review-value" id="bbf-review-company">-</span>
-					</div>
-					<div class="bbf-review-item">
-						<span class="bbf-review-label">Item Group</span>
-						<span class="bbf-review-value" id="bbf-review-category">-</span>
-					</div>
-					<div class="bbf-review-item">
-						<span class="bbf-review-label">Serial</span>
-						<span class="bbf-review-value" id="bbf-review-serial">-</span>
-					</div>
-					<div class="bbf-review-item">
-						<span class="bbf-review-label">Item Name</span>
-						<span class="bbf-review-value" id="bbf-review-name">-</span>
-					</div>
-					<div class="bbf-review-item">
-						<span class="bbf-review-label">Stock UOM</span>
-						<span class="bbf-review-value" id="bbf-review-uom">-</span>
-					</div>
-					<div class="bbf-review-item">
-						<span class="bbf-review-label">HSN/SAC</span>
-						<span class="bbf-review-value" id="bbf-review-hsn">-</span>
-					</div>
-					<div class="bbf-review-item">
-						<span class="bbf-review-label">Tax Template</span>
-						<span class="bbf-review-value" id="bbf-review-tax">-</span>
-					</div>
-					<div class="bbf-review-item">
-						<span class="bbf-review-label">Maintain Stock</span>
-						<span class="bbf-review-value" id="bbf-review-maintain-stock">-</span>
-					</div>
-					<!-- Standalone-only fields -->
-					<div class="bbf-review-item bbf-review-standalone-row">
-						<span class="bbf-review-label">Valuation Rate</span>
-						<span class="bbf-review-value" id="bbf-review-valuation">-</span>
-					</div>
-					<div class="bbf-review-item bbf-review-standalone-row">
-						<span class="bbf-review-label">Selling Rate</span>
-						<span class="bbf-review-value" id="bbf-review-selling-rate">-</span>
-					</div>
-					<div class="bbf-review-item bbf-review-opening-row" style="display:none;">
-						<span class="bbf-review-label">Opening Stock</span>
-						<span class="bbf-review-value" id="bbf-review-opening">-</span>
-					</div>
-				</div>
-
-				<!-- Multi-variant review table -->
-				<div class="bbf-review-variants" id="bbf-review-variants" style="display:none;">
-					<div class="bbf-review-variants-title">Variants to Create</div>
-					<table class="bbf-review-variants-table">
-						<thead>
-							<tr>
-								<th>Code</th>
-								<th>Brand / Variant</th>
-								<th>Valuation</th>
-								<th>Selling Rate</th>
-								<th>Opening Qty</th>
-							</tr>
-						</thead>
-						<tbody id="bbf-review-variants-body"></tbody>
-					</table>
-				</div>
-
-				<div class="bbf-review-note" id="bbf-review-note" style="display:none;">
-					<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3m0 2.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-					<span id="bbf-review-note-text">This will create a <b>Template Item</b> + <b>Variant Items</b> in ERPNext.</span>
-				</div>
-			</div>
-		</div>
-
-		<!-- Navigation Buttons -->
-		<div class="bbf-nav-buttons">
-			<button class="btn bbf-btn-back" id="bbf-btn-back" style="display:none;">
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-				Back
+		<!-- Action Bar -->
+		<div class="bbf-action-bar">
+			<button type="button" class="btn btn-default bbf-btn-reset" id="bbf-btn-reset">
+				<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.5-3.5L3 6m0-3v3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				Reset Form
 			</button>
-			<div class="bbf-nav-spacer"></div>
-			<button class="btn btn-primary bbf-btn-next" id="bbf-btn-next">
-				Next
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-			</button>
-			<button class="btn btn-primary bbf-btn-create" id="bbf-btn-create" style="display:none;">
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 4L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-				Create Item
+			<div class="bbf-action-spacer"></div>
+			<a class="bbf-bulk-link" href="/app/item-bulk-import" title="Bulk Import">
+				Need to create many items? Bulk Import →
+			</a>
+			<button type="button" class="btn btn-primary bbf-btn-create" id="bbf-btn-create">
+				<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8l3.5 4L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				<span class="bbf-btn-label">Create Item</span>
 			</button>
 		</div>
 
 	</div>
 
-	<!-- Success State (hidden initially) -->
+	<!-- Success State -->
 	<div class="bbf-success" id="bbf-success" style="display:none;">
 		<div class="bbf-success-card">
-			<div class="bbf-success-icon">
-				<svg width="64" height="64" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="#38a169" stroke-width="3"/><path d="M20 33l8 8 16-18" stroke="#38a169" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+			<div class="bbf-success-icon" aria-hidden="true">
+				<svg width="64" height="64" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="3"/><path d="M20 33l8 8 16-18" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
 			</div>
 			<h2 class="bbf-success-title" id="bbf-success-title">Item Created Successfully!</h2>
 			<div class="bbf-success-code" id="bbf-success-code">BBPL-01-001</div>
@@ -400,8 +357,8 @@
 			</div>
 			<div class="bbf-success-variant-list" id="bbf-success-variant-list" style="display:none;"></div>
 			<div class="bbf-success-actions">
-				<button class="btn btn-primary" id="bbf-view-item">View Item</button>
-				<button class="btn btn-default" id="bbf-create-another">Create Another</button>
+				<button type="button" class="btn btn-primary" id="bbf-view-item">View Item</button>
+				<button type="button" class="btn btn-default" id="bbf-create-another">Create Another</button>
 			</div>
 		</div>
 	</div>

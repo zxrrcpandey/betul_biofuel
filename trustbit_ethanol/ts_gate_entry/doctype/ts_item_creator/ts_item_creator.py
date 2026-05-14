@@ -756,3 +756,21 @@ def get_current_fiscal_year():
 		"fiscal_year": fy.name,
 		"fiscal_year_short": derive_fy_short(fy.name),
 	}
+
+
+@frappe.whitelist()
+def get_variant_code(name):
+	"""Lesson 168 helper — return TS Variant.variant_code for the given name.
+
+	Stores User / Accounts roles may lack read perm on TS Variant master.
+	Wrapping the lookup in a whitelisted endpoint that fail-closes lets the
+	flat-form page fetch the code without the JS triggering a permission modal.
+	Returns {"variant_code": str}; empty string when name not found or no code set.
+	"""
+	if not name:
+		return {"variant_code": ""}
+	try:
+		code = frappe.db.get_value("TS Variant", name, "variant_code") or ""
+		return {"variant_code": code}
+	except Exception:
+		return {"variant_code": ""}

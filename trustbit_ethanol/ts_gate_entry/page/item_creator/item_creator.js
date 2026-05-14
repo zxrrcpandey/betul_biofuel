@@ -1,16 +1,15 @@
+// BBF Item Creator — flat-form page controller (v2.9.17.5)
+// Sections: basics → details → variants (collapsible) → stock → opening (collapsible)
+// No wizard / no step state machine. Single state object + section open/closed map.
+
 frappe.pages["item-creator"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
 		parent: wrapper,
 		title: "Item Creator",
 		single_column: true,
 	});
-
-	page.set_title_sub("Build structured item codes for ERPNext");
-
-	// Load the HTML template
+	page.set_title_sub("Build structured item codes for ERPNext · v2.9.17.5");
 	$(frappe.render_template("item_creator")).appendTo(page.body);
-
-	// Initialize the controller
 	new TSItemCreator(page);
 };
 
@@ -18,14 +17,10 @@ class TSItemCreator {
 	constructor(page) {
 		this.page = page;
 		this.$page = $(page.body);
-		this.current_step = 1;
-		this.total_steps = 5;
 
-		// State
 		this.state = {
 			creation_type: "Regular Item",
 			asset_category: "",
-			asset_category_code: "",
 			fiscal_year: "",
 			fiscal_year_short: "",
 			company: "",
@@ -37,7 +32,6 @@ class TSItemCreator {
 			serial_number: "",
 			has_variant: false,
 			variant_source: "Brand",
-			// Standalone fields
 			item_name: "",
 			stock_uom: "Kg",
 			gst_hsn_code: "",
@@ -51,16 +45,18 @@ class TSItemCreator {
 			description: "",
 		};
 
-		// Variant rows: [{brand, brand_code, variant, variant_code, valuation_rate, standard_rate, opening_stock, description}]
 		this.variant_rows = [];
 		this._variant_row_counter = 0;
+		this._prompt_open = false;
+		this._category_code_fetching = false;
 
 		this._setup_fields();
 		this._bind_events();
+		this._refresh_meta_summaries();
 		this._load_recent();
 	}
 
-	// ── Helper: Monkey-patch Link controls ──
+	// ── Helper: debounce Link control changes ──
 	_on_link_value(control, callback) {
 		let _timer = null;
 		let _last_val = null;
@@ -78,75 +74,68 @@ class TSItemCreator {
 			orig(value);
 			debounced(control.get_value());
 		};
-		control.$input.on("change", () => {
-			debounced(control.get_value());
-		});
+		control.$input.on("change", () => debounced(control.get_value()));
 	}
 
-	// ── Setup Frappe Fields ──
+	// ── Setup Frappe field controls ──
 	_setup_fields() {
 		const me = this;
 
-		// Company
 		this.company_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Link", options: "Company", placeholder: "Select Company..." },
 			parent: this.$page.find("#bbf-company-field"),
 			render_input: true,
 		});
 		this._on_link_value(this.company_field, (val) => {
-			me.state.company = val;
+			me.state.company = val || "";
+			me._clear_error("company");
 			me._fetch_company_code();
 		});
 
-		// Item Group
 		this.category_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Link", options: "Item Group", placeholder: "Select Item Group..." },
 			parent: this.$page.find("#bbf-category-field"),
 			render_input: true,
 		});
 		this._on_link_value(this.category_field, (val) => {
-			me.state.item_group = val;
+			me.state.item_group = val || "";
+			me._clear_error("category");
 			me._fetch_category_code();
 		});
 
-		// Asset Category (still required — ERPNext uses it to auto-create Asset records on PO receipt)
 		this.asset_category_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Link", options: "Asset Category", placeholder: "Select Asset Category..." },
 			parent: this.$page.find("#bbf-asset-category-field"),
 			render_input: true,
 		});
 		this._on_link_value(this.asset_category_field, (val) => {
-			me.state.asset_category = val;
-			// No longer drives the code — just validates the field
+			me.state.asset_category = val || "";
+			me._clear_error("asset-cat");
+			me._refresh_meta_summaries();
 			me._update_preview();
 		});
 
-		// Fiscal Year (drives the Fixed Asset code)
 		this.fiscal_year_field = frappe.ui.form.make_control({
-			df: {
-				fieldtype: "Link",
-				options: "Fiscal Year",
-				placeholder: "Select Fiscal Year...",
-			},
+			df: { fieldtype: "Link", options: "Fiscal Year", placeholder: "Select Fiscal Year..." },
 			parent: this.$page.find("#bbf-fiscal-year-field"),
 			render_input: true,
 		});
 		this._on_link_value(this.fiscal_year_field, (val) => {
 			me.state.fiscal_year = val || "";
+			me._clear_error("fy");
 			me._derive_fy_short();
 		});
 
-		// Item Name
 		this.item_name_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Data", placeholder: "e.g. Broken Rice Grade A" },
 			parent: this.$page.find("#bbf-item-name-field"),
 			render_input: true,
 		});
 		this.item_name_field.$input.on("input change", () => {
-			me.state.item_name = me.item_name_field.get_value();
+			me.state.item_name = me.item_name_field.get_value() || "";
+			me._refresh_meta_summaries();
 		});
 
-		// Stock UOM
 		this.uom_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Link", options: "UOM", placeholder: "Select UOM..." },
 			parent: this.$page.find("#bbf-uom-field"),
@@ -155,19 +144,21 @@ class TSItemCreator {
 		this.uom_field.set_value("Kg");
 		this._on_link_value(this.uom_field, (val) => {
 			me.state.stock_uom = val || "Kg";
+			me._clear_error("uom");
+			me._refresh_meta_summaries();
 		});
 
-		// HSN/SAC Code
 		this.hsn_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Link", options: "GST HSN Code", placeholder: "Search HSN/SAC code..." },
 			parent: this.$page.find("#bbf-hsn-field"),
 			render_input: true,
 		});
 		this._on_link_value(this.hsn_field, (val) => {
-			me.state.gst_hsn_code = val;
+			me.state.gst_hsn_code = val || "";
+			me._clear_error("hsn");
+			me._refresh_meta_summaries();
 		});
 
-		// Item Tax Template
 		this.tax_template_field = frappe.ui.form.make_control({
 			df: {
 				fieldtype: "Link",
@@ -179,10 +170,10 @@ class TSItemCreator {
 			render_input: true,
 		});
 		this._on_link_value(this.tax_template_field, (val) => {
-			me.state.item_tax_template = val;
+			me.state.item_tax_template = val || "";
+			me._refresh_meta_summaries();
 		});
 
-		// Valuation Rate (standalone)
 		this.valuation_rate_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Currency", placeholder: "0.00" },
 			parent: this.$page.find("#bbf-valuation-rate-field"),
@@ -190,9 +181,10 @@ class TSItemCreator {
 		});
 		this.valuation_rate_field.$input.on("change", () => {
 			me.state.valuation_rate = flt(me.valuation_rate_field.get_value());
+			me._clear_error("valuation");
+			me._refresh_meta_summaries();
 		});
 
-		// Standard Selling Rate (standalone)
 		this.standard_rate_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Currency", placeholder: "0.00" },
 			parent: this.$page.find("#bbf-standard-rate-field"),
@@ -200,9 +192,9 @@ class TSItemCreator {
 		});
 		this.standard_rate_field.$input.on("change", () => {
 			me.state.standard_rate = flt(me.standard_rate_field.get_value());
+			me._refresh_meta_summaries();
 		});
 
-		// Opening Stock (standalone)
 		this.opening_stock_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Float", placeholder: "0" },
 			parent: this.$page.find("#bbf-opening-stock-field"),
@@ -210,10 +202,11 @@ class TSItemCreator {
 		});
 		this.opening_stock_field.$input.on("change", () => {
 			me.state.opening_stock = flt(me.opening_stock_field.get_value());
+			me._clear_error("opening-stock");
 			me._toggle_posting_date_row();
+			me._refresh_meta_summaries();
 		});
 
-		// Opening Warehouse (standalone)
 		this.opening_warehouse_field = frappe.ui.form.make_control({
 			df: {
 				fieldtype: "Link",
@@ -225,10 +218,10 @@ class TSItemCreator {
 			render_input: true,
 		});
 		this._on_link_value(this.opening_warehouse_field, (val) => {
-			me.state.opening_warehouse = val;
+			me.state.opening_warehouse = val || "";
+			me._clear_error("warehouse");
 		});
 
-		// Opening Warehouse (variant mode — shared)
 		this.opening_warehouse_variant_field = frappe.ui.form.make_control({
 			df: {
 				fieldtype: "Link",
@@ -240,10 +233,10 @@ class TSItemCreator {
 			render_input: true,
 		});
 		this._on_link_value(this.opening_warehouse_variant_field, (val) => {
-			me.state.opening_warehouse = val;
+			me.state.opening_warehouse = val || "";
+			me._clear_error("warehouse-v");
 		});
 
-		// Posting Date (for backdated opening stock)
 		this.posting_date_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Date", placeholder: "Leave blank for today" },
 			parent: this.$page.find("#bbf-posting-date-field"),
@@ -254,40 +247,35 @@ class TSItemCreator {
 			me._toggle_posting_date_info();
 		});
 
-		// Description (standalone)
 		this.desc_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Small Text", placeholder: "Optional description..." },
 			parent: this.$page.find("#bbf-description-field"),
 			render_input: true,
 		});
 		this.desc_field.$input.on("input change", () => {
-			me.state.description = me.desc_field.get_value();
+			me.state.description = me.desc_field.get_value() || "";
 		});
 	}
 
-	// ── Bind Events ──
+	// ── Bind events ──
 	_bind_events() {
 		const me = this;
 
-		// Creation Type toggle (Regular Item / Fixed Asset)
 		this.$page.find(".bbf-creation-btn").on("click", function () {
 			const $btn = $(this);
 			const type = $btn.data("type");
-			$btn.siblings().removeClass("active");
-			$btn.addClass("active");
+			$btn.siblings().removeClass("active").attr("aria-checked", "false");
+			$btn.addClass("active").attr("aria-checked", "true");
 			me.state.creation_type = type;
 			me._toggle_creation_mode();
 		});
 
-		// Toggle buttons (Character / Numerical)
 		this.$page.find(".bbf-toggle-btn").on("click", function () {
 			const $btn = $(this);
 			const target = $btn.data("target");
 			const value = $btn.data("value");
-
-			$btn.siblings().removeClass("active");
-			$btn.addClass("active");
-
+			$btn.siblings().removeClass("active").attr("aria-checked", "false");
+			$btn.addClass("active").attr("aria-checked", "true");
 			if (target === "company") {
 				me.state.company_code_type = value;
 				me._fetch_company_code();
@@ -297,127 +285,134 @@ class TSItemCreator {
 			}
 		});
 
-		// Has Variant toggle
 		this.$page.find("#bbf-has-variant").on("change", function () {
 			me.state.has_variant = $(this).is(":checked");
 			me.$page.find(".bbf-variant-options").toggle(me.state.has_variant);
 			me._toggle_stock_mode();
+			me._refresh_meta_summaries();
 			me._update_preview();
-
-			// Add a default empty row if none exist
 			if (me.state.has_variant && me.variant_rows.length === 0) {
 				me._add_variant_row();
 			}
 		});
 
-		// Variant source tabs
 		this.$page.find(".bbf-source-tab").on("click", function () {
 			const source = $(this).data("source");
 			me.state.variant_source = source;
-
-			me.$page.find(".bbf-source-tab").removeClass("active");
-			$(this).addClass("active");
-
-			// Clear existing variant rows and add a fresh one
+			me.$page.find(".bbf-source-tab").removeClass("active").attr("aria-selected", "false");
+			$(this).addClass("active").attr("aria-selected", "true");
 			me.variant_rows = [];
 			me.$page.find("#bbf-variant-grid").empty();
 			me._add_variant_row();
+			me._refresh_meta_summaries();
 		});
 
-		// Maintain Stock toggle
 		this.$page.find("#bbf-maintain-stock").on("change", function () {
 			me.state.maintain_stock = $(this).is(":checked") ? 1 : 0;
 			me._toggle_stock_mode();
+			me._refresh_meta_summaries();
 		});
 
-		// Add Variant button
 		this.$page.find("#bbf-add-variant").on("click", () => me._add_variant_row());
 
-		// Navigation
-		this.$page.find("#bbf-btn-next").on("click", () => me._next_step());
-		this.$page.find("#bbf-btn-back").on("click", () => me._prev_step());
 		this.$page.find("#bbf-btn-create").on("click", () => me._create_item());
+		this.$page.find("#bbf-btn-reset").on("click", () => me._reset());
 
-		// Step click
-		this.$page.find(".bbf-step").on("click", function () {
-			const step = parseInt($(this).data("step"));
-			if (step < me.current_step || me._validate_step(me.current_step)) {
-				me._go_to_step(step);
-			}
-		});
-
-		// Success actions
 		this.$page.find("#bbf-view-item").on("click", () => {
 			if (me._last_template_item) {
 				frappe.set_route("Form", "Item", me._last_template_item);
-			} else {
+			} else if (me._last_created_item) {
 				frappe.set_route("Form", "Item", me._last_created_item);
 			}
 		});
 		this.$page.find("#bbf-create-another").on("click", () => me._reset());
 	}
 
-	// ── Toggle stock fields based on variant mode ──
-	_toggle_stock_mode() {
-		const is_variant = this.state.has_variant;
-		const has_stock = this.state.maintain_stock;
-
-		if (!is_variant && has_stock) {
-			this.$page.find(".bbf-standalone-stock").show();
-			this.$page.find(".bbf-variant-stock").hide();
-		} else if (is_variant && has_stock) {
-			this.$page.find(".bbf-standalone-stock").hide();
-			this.$page.find(".bbf-variant-stock").show();
-		} else {
-			this.$page.find(".bbf-standalone-stock").hide();
-			this.$page.find(".bbf-variant-stock").hide();
+	// ── Section state helpers ──
+	_open_section(key) {
+		const $sec = this.$page.find(`[data-section="${key}"]`);
+		if ($sec.length && !$sec.prop("open")) {
+			$sec.prop("open", true);
 		}
 	}
 
+	_scroll_to_error($field) {
+		if (!$field || !$field.length) return;
+		try {
+			$field[0].scrollIntoView({ behavior: "smooth", block: "center" });
+		} catch (e) {
+			// older browsers
+			$("html, body").animate({ scrollTop: $field.offset().top - 80 }, 300);
+		}
+		setTimeout(() => {
+			const $input = $field.find("input, select, textarea").first();
+			if ($input.length) $input.focus();
+		}, 350);
+	}
+
+	_set_error(field_key, message) {
+		const $err = this.$page.find(`#bbf-err-${field_key}`);
+		$err.text(message || "").toggleClass("show", !!message);
+		const $grp = $err.closest(".bbf-form-group");
+		$grp.toggleClass("bbf-has-error", !!message);
+	}
+
+	_clear_error(field_key) {
+		this._set_error(field_key, "");
+	}
+
+	_clear_all_errors() {
+		this.$page.find(".bbf-field-error").text("").removeClass("show");
+		this.$page.find(".bbf-form-group").removeClass("bbf-has-error");
+		this.$page.find("#bbf-error-banner").hide();
+	}
+
+	_show_banner(message) {
+		this.$page.find("#bbf-error-banner-text").text(message);
+		this.$page.find("#bbf-error-banner").show();
+	}
+
+	// ── Toggle stock mode (variant vs standalone) ──
+	_toggle_stock_mode() {
+		const is_variant = this.state.has_variant;
+		const has_stock = !!this.state.maintain_stock;
+		this.$page.find(".bbf-standalone-stock").toggle(!is_variant && has_stock);
+		this.$page.find(".bbf-variant-stock").toggle(is_variant && has_stock);
+		if (!has_stock) {
+			this.$page.find(".bbf-stock-fields").hide();
+		}
+	}
+
+	// ── Toggle Regular vs Fixed Asset mode ──
 	_toggle_creation_mode() {
 		const is_asset = this.state.creation_type === "Fixed Asset";
 
-		// Show/hide Item Group vs Asset Category rows in Step 1
 		this.$page.find(".bbf-regular-only").toggle(!is_asset);
 		this.$page.find(".bbf-asset-only").toggle(is_asset);
-
-		// Hide Company Code Type toggle for Fixed Asset (always uses Character code)
 		this.$page.find(".bbf-company-code-type").toggle(!is_asset);
 
-		// Hide/show Variant step (Step 3) based on creation type
-		this.$page.find(".bbf-step[data-step='3']").toggle(!is_asset);
-		this.$page.find(".bbf-step-line").eq(1).toggle(!is_asset);
-
-		// Hide/show Stock & Valuation step (Step 4)
-		this.$page.find(".bbf-step[data-step='4']").toggle(!is_asset);
-		this.$page.find(".bbf-step-line").eq(2).toggle(!is_asset);
-
 		if (is_asset) {
-			// For assets, total steps becomes 3 (1: Company+Asset Cat, 2: Item Details, 3: Review)
-			// We re-number visible steps but keep the data-step values
-			this.total_steps = 5;  // keep but skip 3 and 4 in navigation
-			// Reset variant state
 			this.state.has_variant = false;
 			this.state.maintain_stock = 0;
-			// Force Character code type for assets — asset code always uses char code (BBPL)
 			this.state.company_code_type = "Character";
-			// Sync toggle button visual state
-			this.$page.find(".bbf-toggle-btn[data-target='company']").removeClass("active");
-			this.$page.find(".bbf-toggle-btn[data-target='company'][data-value='Character']").addClass("active");
-			// Re-fetch company code with new type
+			this.$page.find("#bbf-has-variant").prop("checked", false);
+			this.$page.find(".bbf-variant-options").hide();
+			this.$page.find(".bbf-toggle-btn[data-target='company']")
+				.removeClass("active").attr("aria-checked", "false");
+			this.$page.find(".bbf-toggle-btn[data-target='company'][data-value='Character']")
+				.addClass("active").attr("aria-checked", "true");
 			if (this.state.company) {
-				this._fetch_company_code(this.state.company);
+				this._fetch_company_code();
 			}
-			// Auto-default Fiscal Year to current FY if not already set
 			if (!this.state.fiscal_year) {
 				this._fetch_current_fiscal_year();
 			}
 		} else {
-			this.total_steps = 5;
 			this.state.maintain_stock = 1;
+			this.$page.find("#bbf-maintain-stock").prop("checked", true);
 		}
 
-		// Clear preview and badges
+		this._refresh_meta_summaries();
 		this._update_preview();
 	}
 
@@ -435,6 +430,7 @@ class TSItemCreator {
 					}
 					me._update_badge("#bbf-fy-short", me.state.fiscal_year_short);
 					me._fetch_serial_preview();
+					me._refresh_meta_summaries();
 				}
 			},
 		});
@@ -444,55 +440,44 @@ class TSItemCreator {
 		if (!this.state.fiscal_year) {
 			this.state.fiscal_year_short = "";
 			this._update_badge("#bbf-fy-short", "");
+			this._refresh_meta_summaries();
 			this._update_preview();
 			return;
 		}
-		// Parse 'YYYY-YYYY' -> 'YY-YY'
 		const m = String(this.state.fiscal_year).match(/^(\d{4})-(\d{4})$/);
 		if (m) {
 			this.state.fiscal_year_short = m[1].slice(2) + "-" + m[2].slice(2);
-		} else {
-			// Fall back to server-side derivation
-			const me = this;
-			frappe.call({
-				method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.get_next_asset_serial_preview",
-				args: { company: me.state.company || "", fiscal_year: me.state.fiscal_year },
-				callback: () => {
-					// Server derives internally; we still need FY short on client.
-					// As a safer fallback, try Fiscal Year doc via frappe.db
-					frappe.db.get_value("Fiscal Year", me.state.fiscal_year, ["year_start_date", "year_end_date"], (r) => {
-						if (r && r.year_start_date && r.year_end_date) {
-							const s = String(r.year_start_date).slice(2, 4);
-							const e = String(r.year_end_date).slice(2, 4);
-							me.state.fiscal_year_short = s + "-" + e;
-						} else {
-							me.state.fiscal_year_short = me.state.fiscal_year;
-						}
-						me._update_badge("#bbf-fy-short", me.state.fiscal_year_short);
-						me._fetch_serial_preview();
-					});
-				},
-			});
+			this._update_badge("#bbf-fy-short", this.state.fiscal_year_short);
+			this._fetch_serial_preview();
+			this._refresh_meta_summaries();
 			return;
 		}
-		this._update_badge("#bbf-fy-short", this.state.fiscal_year_short);
-		this._fetch_serial_preview();
+		// Fallback: read Fiscal Year doc
+		const me = this;
+		frappe.db.get_value("Fiscal Year", this.state.fiscal_year,
+			["year_start_date", "year_end_date"], (r) => {
+				if (r && r.year_start_date && r.year_end_date) {
+					me.state.fiscal_year_short =
+						String(r.year_start_date).slice(2, 4) + "-" +
+						String(r.year_end_date).slice(2, 4);
+				} else {
+					me.state.fiscal_year_short = me.state.fiscal_year;
+				}
+				me._update_badge("#bbf-fy-short", me.state.fiscal_year_short);
+				me._fetch_serial_preview();
+				me._refresh_meta_summaries();
+			});
 	}
 
-	// ── Variant Row Management ──
+	// ── Variant row management ──
 	_add_variant_row() {
 		const me = this;
 		const idx = this._variant_row_counter++;
 		const row = {
-			id: idx,
-			brand: "",
-			brand_code: "",
-			variant: "",
-			variant_code: "",
-			valuation_rate: 0,
-			standard_rate: 0,
-			opening_stock: 0,
-			description: "",
+			id: idx, brand: "", brand_code: "",
+			variant: "", variant_code: "",
+			valuation_rate: 0, standard_rate: 0,
+			opening_stock: 0, description: "",
 		};
 		this.variant_rows.push(row);
 
@@ -503,14 +488,14 @@ class TSItemCreator {
 				<div class="bbf-variant-row-header">
 					<span class="bbf-variant-row-num">${this.variant_rows.length}</span>
 					<span class="bbf-variant-row-code-badge" id="bbf-vrow-code-${idx}">---</span>
-					<button class="bbf-variant-row-remove" data-row-id="${idx}" title="Remove variant">
-						<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+					<button type="button" class="bbf-variant-row-remove" data-row-id="${idx}" aria-label="Remove variant" title="Remove variant">
+						<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
 					</button>
 				</div>
 				<div class="bbf-variant-row-body">
 					<div class="bbf-vrow-fields-grid">
 						<div class="bbf-vrow-field">
-							<label class="bbf-label-sm">${link_label} <span style="color:#e53e3e">*</span></label>
+							<label class="bbf-label-sm">${link_label} <span class="bbf-req">*</span></label>
 							<div id="bbf-vrow-link-${idx}"></div>
 						</div>
 						<div class="bbf-vrow-field">
@@ -536,7 +521,7 @@ class TSItemCreator {
 
 		this.$page.find("#bbf-variant-grid").append($row);
 
-		// Link field (Brand or Custom Variant)
+		// Link control (Brand or TS Variant)
 		if (is_brand) {
 			const brand_ctrl = frappe.ui.form.make_control({
 				df: { fieldtype: "Link", options: "Brand", placeholder: "Select Brand..." },
@@ -544,27 +529,30 @@ class TSItemCreator {
 				render_input: true,
 			});
 			this._on_link_value(brand_ctrl, (val) => {
-				row.brand = val;
+				row.brand = val || "";
 				row.variant = "";
 				row.variant_code = "";
 				if (val) {
 					frappe.db.get_value("Brand", val, "brand_code", (r) => {
-						row.brand_code = r ? r.brand_code || "" : "";
+						row.brand_code = r ? (r.brand_code || "") : "";
 						$row.find(`#bbf-vrow-code-${idx}`).text(row.brand_code || "---");
 						if (!row.brand_code) {
 							me._prompt_set_code("Brand", val, "brand_code", (code) => {
 								row.brand_code = code;
 								$row.find(`#bbf-vrow-code-${idx}`).text(code);
 								me._update_preview();
+								me._refresh_meta_summaries();
 							});
 						} else {
 							me._update_preview();
+							me._refresh_meta_summaries();
 						}
 					});
 				} else {
 					row.brand_code = "";
 					$row.find(`#bbf-vrow-code-${idx}`).text("---");
 					me._update_preview();
+					me._refresh_meta_summaries();
 				}
 			});
 			row._brand_ctrl = brand_ctrl;
@@ -580,25 +568,31 @@ class TSItemCreator {
 				render_input: true,
 			});
 			this._on_link_value(variant_ctrl, (val) => {
-				row.variant = val;
+				row.variant = val || "";
 				row.brand = "";
 				row.brand_code = "";
 				if (val) {
-					frappe.db.get_value("TS Variant", val, "variant_code", (r) => {
-						row.variant_code = r ? r.variant_code || "" : "";
-						$row.find(`#bbf-vrow-code-${idx}`).text(row.variant_code || "---");
-						me._update_preview();
+					// Lesson 168 — use whitelisted helper, not bare frappe.db.get_value
+					frappe.call({
+						method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.get_variant_code",
+						args: { name: val },
+						callback: (r) => {
+							row.variant_code = (r && r.message && r.message.variant_code) || "";
+							$row.find(`#bbf-vrow-code-${idx}`).text(row.variant_code || "---");
+							me._update_preview();
+							me._refresh_meta_summaries();
+						},
 					});
 				} else {
 					row.variant_code = "";
 					$row.find(`#bbf-vrow-code-${idx}`).text("---");
 					me._update_preview();
+					me._refresh_meta_summaries();
 				}
 			});
 			row._variant_ctrl = variant_ctrl;
 		}
 
-		// Valuation Rate
 		const val_ctrl = frappe.ui.form.make_control({
 			df: { fieldtype: "Currency", placeholder: "0.00" },
 			parent: $row.find(`#bbf-vrow-valuation-${idx}`),
@@ -606,9 +600,9 @@ class TSItemCreator {
 		});
 		val_ctrl.$input.on("change", () => {
 			row.valuation_rate = flt(val_ctrl.get_value());
+			me._refresh_meta_summaries();
 		});
 
-		// Standard Selling Rate
 		const sell_ctrl = frappe.ui.form.make_control({
 			df: { fieldtype: "Currency", placeholder: "0.00" },
 			parent: $row.find(`#bbf-vrow-selling-${idx}`),
@@ -618,7 +612,6 @@ class TSItemCreator {
 			row.standard_rate = flt(sell_ctrl.get_value());
 		});
 
-		// Opening Stock
 		const stock_ctrl = frappe.ui.form.make_control({
 			df: { fieldtype: "Float", placeholder: "0" },
 			parent: $row.find(`#bbf-vrow-stock-${idx}`),
@@ -626,28 +619,30 @@ class TSItemCreator {
 		});
 		stock_ctrl.$input.on("change", () => {
 			row.opening_stock = flt(stock_ctrl.get_value());
+			me._toggle_posting_date_row();
+			me._refresh_meta_summaries();
 		});
 
-		// Description
 		const desc_ctrl = frappe.ui.form.make_control({
 			df: { fieldtype: "Small Text", placeholder: "Optional description..." },
 			parent: $row.find(`#bbf-vrow-desc-${idx}`),
 			render_input: true,
 		});
 		desc_ctrl.$input.on("input change", () => {
-			row.description = desc_ctrl.get_value();
+			row.description = desc_ctrl.get_value() || "";
 		});
 
-		// Remove button
 		$row.find(".bbf-variant-row-remove").on("click", function () {
 			const rid = parseInt($(this).data("row-id"));
 			me.variant_rows = me.variant_rows.filter((r) => r.id !== rid);
 			$row.remove();
 			me._renumber_variant_rows();
 			me._update_preview();
+			me._refresh_meta_summaries();
 		});
 
 		this._update_preview();
+		this._refresh_meta_summaries();
 	}
 
 	_renumber_variant_rows() {
@@ -656,27 +651,29 @@ class TSItemCreator {
 		});
 	}
 
-	// ── Fetch Codes ──
+	// ── Fetch master-data codes ──
 	_fetch_company_code() {
 		if (!this.state.company) {
 			this.state.company_code = "";
 			this._update_badge("#bbf-company-code", "");
+			this._refresh_meta_summaries();
 			this._update_preview();
 			return;
 		}
-
 		const field = this.state.company_code_type === "Numerical" ? "company_num_code" : "company_code";
 		frappe.db.get_value("Company", this.state.company, field, (r) => {
-			this.state.company_code = r ? r[field] || "" : "";
+			this.state.company_code = r ? (r[field] || "") : "";
 			this._update_badge("#bbf-company-code", this.state.company_code);
 			if (!this.state.company_code) {
 				this._prompt_set_code("Company", this.state.company, field, (code) => {
 					this.state.company_code = code;
 					this._update_badge("#bbf-company-code", code);
 					this._fetch_serial_preview();
+					this._refresh_meta_summaries();
 				});
 			} else {
 				this._fetch_serial_preview();
+				this._refresh_meta_summaries();
 			}
 		});
 	}
@@ -685,73 +682,46 @@ class TSItemCreator {
 		if (!this.state.item_group) {
 			this.state.category_code = "";
 			this._update_badge("#bbf-category-code", "");
+			this._refresh_meta_summaries();
 			this._update_preview();
 			return;
 		}
-
-		// Prevent duplicate prompt (debounce fires twice from Link control)
 		if (this._category_code_fetching) return;
 		this._category_code_fetching = true;
-
 		const field = this.state.category_code_type === "Numerical" ? "category_num_code" : "category_code";
 		frappe.db.get_value("Item Group", this.state.item_group, field, (r) => {
 			this._category_code_fetching = false;
-			this.state.category_code = r ? r[field] || "" : "";
+			this.state.category_code = r ? (r[field] || "") : "";
 			this._update_badge("#bbf-category-code", this.state.category_code);
 			if (!this.state.category_code) {
 				this._prompt_set_code("Item Group", this.state.item_group, field, (code) => {
 					this.state.category_code = code;
 					this._update_badge("#bbf-category-code", code);
 					this._fetch_serial_preview();
+					this._refresh_meta_summaries();
 				});
 			} else {
 				this._fetch_serial_preview();
+				this._refresh_meta_summaries();
 			}
 		});
 	}
 
-	_fetch_asset_category_code() {
-		if (!this.state.asset_category) {
-			this.state.asset_category_code = "";
-			this._update_badge("#bbf-asset-category-code", "");
-			this._update_preview();
-			return;
-		}
-		if (this._asset_code_fetching) return;
-		this._asset_code_fetching = true;
-		frappe.db.get_value("Asset Category", this.state.asset_category, "category_code", (r) => {
-			this._asset_code_fetching = false;
-			this.state.asset_category_code = r ? r.category_code || "" : "";
-			this._update_badge("#bbf-asset-category-code", this.state.asset_category_code);
-			if (!this.state.asset_category_code) {
-				frappe.msgprint({
-					title: "Category Code Missing",
-					message: `Asset Category <b>${this.state.asset_category}</b> has no <b>category_code</b> set. Please add it via the Asset Category form.`,
-					indicator: "orange",
-				});
-			} else {
-				this._fetch_serial_preview();
-			}
-		});
-	}
-
-	// ── Prompt to set missing code directly ──
+	// ── Prompt to set missing master-data code ──
 	_prompt_set_code(doctype, name, fieldname, callback) {
-		// Prevent duplicate dialog
 		if (this._prompt_open) return;
 		this._prompt_open = true;
-
 		const is_num = fieldname.includes("num");
 		const label = is_num ? "Numerical Code (e.g. 01)" : "Character Code (e.g. BBPL)";
-
 		const me = this;
+		const esc = frappe.utils.escape_html;
 		const d = new frappe.ui.Dialog({
 			title: `Set ${doctype} Code`,
 			fields: [
 				{
 					fieldtype: "HTML",
-					options: `<div style="margin-bottom:12px;padding:12px 16px;background:#ebf8ff;border-radius:8px;border:1px solid #bee3f8;color:#2b6cb0;font-size:13px;">
-						<b>${name}</b> does not have a <b>${fieldname.replace(/_/g, " ")}</b> set.
+					options: `<div class="bbf-prompt-info">
+						<b>${esc(name)}</b> does not have a <b>${esc(fieldname.replace(/_/g, " "))}</b> set.
 						Enter one below to continue.
 					</div>`,
 				},
@@ -760,14 +730,12 @@ class TSItemCreator {
 					fieldtype: "Data",
 					label: label,
 					reqd: 1,
-					description: is_num
-						? "2-3 digit number (e.g. 01, 02)"
-						: "2-3 letter uppercase code (e.g. BBPL, RM, GRN)",
+					description: is_num ? "1-5 digits (e.g. 01)" : "1-5 alphanumeric (e.g. BBPL, RM)",
 				},
 			],
 			primary_action_label: "Save Code",
 			primary_action(values) {
-				let code = values.code_value.trim().toUpperCase();
+				let code = (values.code_value || "").trim().toUpperCase();
 				if (!is_num && !/^[A-Z0-9]{1,5}$/.test(code)) {
 					frappe.msgprint("Code must be 1-5 alphanumeric characters.");
 					return;
@@ -776,17 +744,13 @@ class TSItemCreator {
 					frappe.msgprint("Numerical code must be 1-5 digits.");
 					return;
 				}
-
 				frappe.call({
 					method: "frappe.client.set_value",
 					args: { doctype: doctype, name: name, fieldname: fieldname, value: code },
 					callback(r) {
 						if (r.message) {
 							d.hide();
-							frappe.show_alert({
-								message: `${doctype} code set to <b>${code}</b>`,
-								indicator: "green",
-							});
+							frappe.show_alert({ message: `${doctype} code set to <b>${esc(code)}</b>`, indicator: "green" });
 							callback(code);
 						}
 					},
@@ -799,7 +763,6 @@ class TSItemCreator {
 	}
 
 	_fetch_serial_preview() {
-		// Fixed Asset path — counter per (Company, Fiscal Year)
 		if (this.state.creation_type === "Fixed Asset") {
 			if (!this.state.company || !this.state.fiscal_year) {
 				this._update_preview();
@@ -813,17 +776,16 @@ class TSItemCreator {
 						this.state.serial_number = r.message;
 						this._update_badge("#bbf-serial-code", this.state.serial_number);
 						this._update_preview();
+						this._refresh_meta_summaries();
 					}
 				},
 			});
 			return;
 		}
-
 		if (!this.state.company || !this.state.item_group) {
 			this._update_preview();
 			return;
 		}
-
 		frappe.call({
 			method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.get_next_serial_preview",
 			args: { company: this.state.company, item_group: this.state.item_group },
@@ -832,12 +794,13 @@ class TSItemCreator {
 					this.state.serial_number = r.message;
 					this._update_badge("#bbf-serial-code", this.state.serial_number);
 					this._update_preview();
+					this._refresh_meta_summaries();
 				}
 			},
 		});
 	}
 
-	// ── Update Preview ──
+	// ── Live preview ──
 	_update_badge(selector, value) {
 		const $badge = this.$page.find(selector);
 		$badge.text(value || "---");
@@ -849,26 +812,25 @@ class TSItemCreator {
 
 	_update_preview() {
 		const esc = frappe.utils.escape_html;
+		const $code = this.$page.find("#bbf-live-code");
+		const $sub = this.$page.find("#bbf-preview-sub");
 
-		// Fixed Asset preview: FA-{CompanyCode}-{FY short}-{Serial}
 		if (this.state.creation_type === "Fixed Asset") {
 			const cc = this.state.company_code;
 			const fy = this.state.fiscal_year_short;
 			const ser = this.state.serial_number;
 			if (!cc || !fy) {
-				this.$page.find("#bbf-live-code").html(
-					'<span class="bbf-code-placeholder">Select Company & Fiscal Year to begin</span>'
-				);
+				$code.html('<span class="bbf-code-placeholder">Select Company &amp; Fiscal Year to begin</span>');
+				$sub.text("");
 				return;
 			}
-			const colored = `<span style="color:#fbd38d">FA</span>`
-				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#90cdf4">${esc(cc)}</span>`
-				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#9ae6b4">${esc(fy)}</span>`
-				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fff">${esc(ser || "_____")}</span>`;
-			this.$page.find("#bbf-live-code").html(colored);
+			$code.html(
+				`<span class="bbf-c1">FA</span><span class="bbf-csep">-</span>` +
+				`<span class="bbf-c2">${esc(cc)}</span><span class="bbf-csep">-</span>` +
+				`<span class="bbf-c3">${esc(fy)}</span><span class="bbf-csep">-</span>` +
+				`<span class="bbf-c4">${esc(ser || "_____")}</span>`
+			);
+			$sub.text("Fixed Asset · FY " + fy);
 			return;
 		}
 
@@ -877,189 +839,235 @@ class TSItemCreator {
 		const ser = this.state.serial_number;
 
 		if (!cc || !cat) {
-			this.$page.find("#bbf-live-code").html(
-				'<span class="bbf-code-placeholder">Select Company & Category to begin</span>'
-			);
+			$code.html('<span class="bbf-code-placeholder">Select Company &amp; Category to begin</span>');
+			$sub.text("");
 			return;
 		}
 
-		const base = `${cc}-${cat}-${ser || "___"}`;
-
 		if (this.state.has_variant && this.variant_rows.length > 0) {
-			// Show template code + variant count
 			const count = this.variant_rows.length;
 			const first_code = this.variant_rows[0].brand_code || this.variant_rows[0].variant_code || "___";
-			const colored = `<span style="color:#90cdf4">${esc(cc)}</span>`
-				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fbd38d">${esc(cat)}</span>`
-				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fff">${esc(ser || "___")}</span>`
-				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#9ae6b4">${esc(first_code)}</span>`
-				+ (count > 1 ? `<span style="color:rgba(255,255,255,0.5);font-size:16px;margin-left:8px;">+${count - 1} more</span>` : "");
-
-			this.$page.find("#bbf-live-code").html(colored);
+			$code.html(
+				`<span class="bbf-c2">${esc(cc)}</span><span class="bbf-csep">-</span>` +
+				`<span class="bbf-c1">${esc(cat)}</span><span class="bbf-csep">-</span>` +
+				`<span class="bbf-c4">${esc(ser || "___")}</span><span class="bbf-csep">-</span>` +
+				`<span class="bbf-c3">${esc(first_code)}</span>` +
+				(count > 1 ? `<span class="bbf-cmore">+${count - 1} more</span>` : "")
+			);
+			$sub.text(`Template + ${count} variant${count > 1 ? "s" : ""}`);
 		} else {
-			const colored = `<span style="color:#90cdf4">${esc(cc)}</span>`
-				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fbd38d">${esc(cat)}</span>`
-				+ `<span style="color:rgba(255,255,255,0.4)">-</span>`
-				+ `<span style="color:#fff">${esc(ser || "___")}</span>`;
-
-			this.$page.find("#bbf-live-code").html(colored);
+			$code.html(
+				`<span class="bbf-c2">${esc(cc)}</span><span class="bbf-csep">-</span>` +
+				`<span class="bbf-c1">${esc(cat)}</span><span class="bbf-csep">-</span>` +
+				`<span class="bbf-c4">${esc(ser || "___")}</span>`
+			);
+			$sub.text("Standalone item");
 		}
 	}
 
-	// ── Step Navigation ──
-	_go_to_step(step) {
-		this.current_step = step;
+	// ── Section meta summaries (shown in collapsed summary line) ──
+	_refresh_meta_summaries() {
+		const s = this.state;
+		const $b = this.$page.find("#bbf-meta-basics");
+		const $d = this.$page.find("#bbf-meta-details");
+		const $v = this.$page.find("#bbf-meta-variants");
+		const $st = this.$page.find("#bbf-meta-stock");
+		const $o = this.$page.find("#bbf-meta-opening");
 
-		// Update step indicators
-		this.$page.find(".bbf-step").each(function () {
-			const s = parseInt($(this).data("step"));
-			$(this).toggleClass("active", s === step);
-			$(this).toggleClass("done", s < step);
-		});
+		// Basics
+		if (s.creation_type === "Fixed Asset") {
+			const fy = s.fiscal_year_short || "?";
+			const cc = s.company_code || "?";
+			const ac = s.asset_category || "?";
+			$b.text(s.company ? `${cc} · ${ac} · FY ${fy}` : "Select to begin");
+		} else {
+			const cc = s.company_code || "?";
+			const cat = s.category_code || "?";
+			const ser = s.serial_number || "#";
+			$b.text(s.company && s.item_group ? `${cc} · ${cat} · #${ser}` : "Select to begin");
+		}
+		this._set_section_status("basics", this._validate_basics(true));
 
-		// Update step lines
-		this.$page.find(".bbf-step-line").each(function (i) {
-			$(this).toggleClass("done", i < step - 1);
-		});
+		// Details
+		const name = s.item_name || "(unnamed)";
+		const uom = s.stock_uom || "?";
+		const hsn = s.gst_hsn_code || "?";
+		$d.text(`${name} · ${uom} · HSN ${hsn}`);
+		this._set_section_status("details", this._validate_details(true));
 
-		// Show/hide content
-		this.$page.find(".bbf-step-content").removeClass("active");
-		this.$page.find(`.bbf-step-content[data-step="${step}"]`).addClass("active");
-
-		// Show/hide buttons
-		this.$page.find("#bbf-btn-back").toggle(step > 1);
-		this.$page.find("#bbf-btn-next").toggle(step < this.total_steps);
-		this.$page.find("#bbf-btn-create").toggle(step === this.total_steps);
-
-		// Step 4: toggle stock/variant mode (use setTimeout to ensure DOM is visible first)
-		if (step === 4) {
-			setTimeout(() => this._toggle_stock_mode(), 0);
+		// Variants
+		if (s.has_variant && this.variant_rows.length) {
+			const valid_rows = this.variant_rows.filter((r) => r.brand_code || r.variant_code).length;
+			$v.text(`${this.variant_rows.length} variant${this.variant_rows.length > 1 ? "s" : ""} (${s.variant_source})`);
+			this._set_section_status("variants", valid_rows === this.variant_rows.length);
+		} else {
+			$v.text("No variants");
+			this._set_section_status("variants", true);
 		}
 
-		// Populate review if on step 5
-		if (step === 5) {
-			this._populate_review();
+		// Stock
+		if (!s.maintain_stock) {
+			$st.text("Not tracked");
+		} else if (s.has_variant) {
+			$st.text("Tracked (per variant)");
+		} else {
+			const v = flt(s.valuation_rate);
+			$st.text(v > 0 ? `Tracked · Val ₹${v}` : "Tracked");
 		}
+		this._set_section_status("stock", true);
+
+		// Opening
+		if (s.has_variant) {
+			const tot = this.variant_rows.reduce((sum, r) => sum + flt(r.opening_stock), 0);
+			$o.text(tot > 0 ? `${tot} ${s.stock_uom || "units"} across variants` : "None");
+		} else {
+			const q = flt(s.opening_stock);
+			$o.text(q > 0 ? `${q} ${s.stock_uom || "units"} @ ${s.opening_warehouse || "?"}` : "None");
+		}
+		this._set_section_status("opening", true);
 	}
 
-	_next_step() {
-		if (this._validate_step(this.current_step)) {
-			let next = this.current_step + 1;
-			// For Fixed Asset, skip steps 3 (Variant) and 4 (Stock)
-			if (this.state.creation_type === "Fixed Asset") {
-				if (next === 3) next = 5;
-			}
-			this._go_to_step(next);
-		}
+	_set_section_status(key, ok) {
+		const $s = this.$page.find(`#bbf-status-${key}`);
+		$s.toggleClass("bbf-status-ok", !!ok);
 	}
 
-	_prev_step() {
-		if (this.current_step > 1) {
-			let prev = this.current_step - 1;
-			// For Fixed Asset, skip back over steps 3 and 4
-			if (this.state.creation_type === "Fixed Asset") {
-				if (prev === 4) prev = 2;
-			}
-			this._go_to_step(prev);
+	// ── Validation (returns true if no errors when silent=true; sets inline errors when silent=false) ──
+	_validate_basics(silent) {
+		const s = this.state;
+		let ok = true;
+		if (!s.company) {
+			if (!silent) this._set_error("company", "Required");
+			ok = false;
+		} else if (!s.company_code) {
+			if (!silent) this._set_error("company", "Company code not set");
+			ok = false;
 		}
+		if (s.creation_type === "Fixed Asset") {
+			if (!s.fiscal_year) { if (!silent) this._set_error("fy", "Required"); ok = false; }
+			else if (!s.fiscal_year_short) { if (!silent) this._set_error("fy", "Could not derive FY short form"); ok = false; }
+			if (!s.asset_category) { if (!silent) this._set_error("asset-cat", "Required"); ok = false; }
+		} else {
+			if (!s.item_group) {
+				if (!silent) this._set_error("category", "Required");
+				ok = false;
+			} else if (!s.category_code) {
+				if (!silent) this._set_error("category", "Category code not set");
+				ok = false;
+			}
+		}
+		return ok;
 	}
 
-	_validate_step(step) {
-		if (step === 1) {
-			if (!this.state.company) {
-				frappe.show_alert({ message: "Please select a Company", indicator: "orange" });
-				return false;
-			}
-			if (!this.state.company_code) {
-				frappe.show_alert({ message: "Company code not found. Set it on the Company master.", indicator: "red" });
-				return false;
-			}
-			// Fixed Asset path: validate fiscal_year + asset_category
-			if (this.state.creation_type === "Fixed Asset") {
-				if (!this.state.fiscal_year) {
-					frappe.show_alert({ message: "Please select a Fiscal Year", indicator: "orange" });
-					return false;
-				}
-				if (!this.state.fiscal_year_short) {
-					frappe.show_alert({ message: "Could not derive FY short form. Check Fiscal Year master.", indicator: "red" });
-					return false;
-				}
-				if (!this.state.asset_category) {
-					frappe.show_alert({ message: "Please select an Asset Category", indicator: "orange" });
-					return false;
-				}
-			} else {
-				if (!this.state.item_group) {
-					frappe.show_alert({ message: "Please select an Item Group", indicator: "orange" });
-					return false;
-				}
-				if (!this.state.category_code) {
-					frappe.show_alert({ message: "Category code not found. Set it on the Item Group master.", indicator: "red" });
-					return false;
-				}
-			}
-		}
+	_validate_details(silent) {
+		const s = this.state;
+		let ok = true;
+		if (!s.stock_uom) { if (!silent) this._set_error("uom", "Required"); ok = false; }
+		if (!s.gst_hsn_code) { if (!silent) this._set_error("hsn", "Required for GST"); ok = false; }
+		return ok;
+	}
 
-		if (step === 2) {
-			if (!this.state.stock_uom) {
-				frappe.show_alert({ message: "Please select Stock UOM", indicator: "orange" });
-				return false;
-			}
-			if (!this.state.gst_hsn_code) {
-				frappe.show_alert({ message: "Please select HSN/SAC Code (required for GST)", indicator: "orange" });
+	_validate_variants(silent) {
+		const s = this.state;
+		if (!s.has_variant) return true;
+		if (this.variant_rows.length === 0) {
+			if (!silent) this._show_banner("Add at least one variant or disable Variants.");
+			return false;
+		}
+		for (let i = 0; i < this.variant_rows.length; i++) {
+			const row = this.variant_rows[i];
+			const v_code = row.brand_code || row.variant_code;
+			if (!v_code) {
+				if (!silent) this._show_banner(`Variant #${i + 1}: select a ${s.variant_source === "Brand" ? "Brand" : "Custom Variant"} with a valid code.`);
 				return false;
 			}
 		}
-
-		if (step === 3 && this.state.has_variant) {
-			if (this.variant_rows.length === 0) {
-				frappe.show_alert({ message: "Please add at least one variant", indicator: "orange" });
-				return false;
-			}
-			for (let i = 0; i < this.variant_rows.length; i++) {
-				const row = this.variant_rows[i];
-				const v_code = row.brand_code || row.variant_code;
-				if (!v_code) {
-					frappe.show_alert({
-						message: `Variant #${i + 1}: Please select a ${this.state.variant_source === "Brand" ? "Brand" : "Custom Variant"} with a valid code`,
-						indicator: "orange"
-					});
-					return false;
-				}
-			}
-		}
-
-		if (step === 4) {
-			if (!this.state.has_variant) {
-				// Standalone: check opening warehouse if opening stock set
-				if (this.state.maintain_stock && flt(this.state.opening_stock) > 0 && !this.state.opening_warehouse) {
-					frappe.show_alert({ message: "Please select Opening Warehouse for the opening stock", indicator: "orange" });
-					return false;
-				}
-			} else {
-				// Variant: check opening warehouse if any variant has opening stock
-				const has_opening = this.variant_rows.some((r) => flt(r.opening_stock) > 0);
-				if (this.state.maintain_stock && has_opening && !this.state.opening_warehouse) {
-					frappe.show_alert({ message: "Please select Opening Warehouse (some variants have opening stock)", indicator: "orange" });
-					return false;
-				}
-			}
-		}
-
 		return true;
 	}
 
-	// ── Posting Date Helpers ──
+	_validate_stock(silent) {
+		const s = this.state;
+		let ok = true;
+		// Reject negative valuation rate (audit B-2)
+		if (!s.has_variant && flt(s.valuation_rate) < 0) {
+			if (!silent) this._set_error("valuation", "Cannot be negative");
+			ok = false;
+		}
+		if (!s.has_variant && flt(s.opening_stock) < 0) {
+			if (!silent) this._set_error("opening-stock", "Cannot be negative");
+			ok = false;
+		}
+		return ok;
+	}
+
+	_validate_opening(silent) {
+		const s = this.state;
+		let ok = true;
+		if (!s.maintain_stock) return true;
+		if (!s.has_variant) {
+			if (flt(s.opening_stock) > 0 && !s.opening_warehouse) {
+				if (!silent) this._set_error("warehouse", "Required when opening stock is set");
+				ok = false;
+			}
+			if (flt(s.opening_stock) > 0 && flt(s.valuation_rate) <= 0) {
+				if (!silent) this._set_error("valuation", "Required when opening stock is set");
+				ok = false;
+			}
+		} else {
+			const has_opening = this.variant_rows.some((r) => flt(r.opening_stock) > 0);
+			if (has_opening && !s.opening_warehouse) {
+				if (!silent) this._set_error("warehouse-v", "Required when any variant has opening stock");
+				ok = false;
+			}
+		}
+		return ok;
+	}
+
+	// ── Validate all sections; expand offending section + scroll to first error ──
+	_validate_all() {
+		this._clear_all_errors();
+
+		const checks = [
+			{ key: "basics",   fn: () => this._validate_basics(false) },
+			{ key: "details",  fn: () => this._validate_details(false) },
+			{ key: "variants", fn: () => this._validate_variants(false) },
+			{ key: "stock",    fn: () => this._validate_stock(false) },
+			{ key: "opening",  fn: () => this._validate_opening(false) },
+		];
+
+		let first_fail = null;
+		for (const c of checks) {
+			if (!c.fn()) {
+				if (!first_fail) first_fail = c.key;
+			}
+		}
+
+		if (first_fail) {
+			this._open_section(first_fail);
+			const $first_err = this.$page.find(".bbf-has-error").first();
+			if ($first_err.length) {
+				this._scroll_to_error($first_err);
+			} else {
+				const $sec = this.$page.find(`[data-section="${first_fail}"]`);
+				this._scroll_to_error($sec);
+			}
+			if (!this.$page.find("#bbf-error-banner").is(":visible")) {
+				this._show_banner("Please fix the highlighted errors below.");
+			}
+			return false;
+		}
+		return true;
+	}
+
+	// ── Posting date helpers ──
 	_toggle_posting_date_row() {
-		const has_stock = flt(this.state.opening_stock) > 0 || (this.state.has_variant && this.variant_rows.some(r => flt(r.opening_stock) > 0));
-		this.$page.find("#bbf-posting-date-row").toggle(has_stock && this.state.maintain_stock);
+		const has_stock = flt(this.state.opening_stock) > 0 ||
+			(this.state.has_variant && this.variant_rows.some((r) => flt(r.opening_stock) > 0));
+		const show = has_stock && !!this.state.maintain_stock;
+		this.$page.find("#bbf-posting-date-row").toggle(show);
 		if (!has_stock) {
 			this.state.posting_date = "";
-			this.posting_date_field.set_value("");
+			if (this.posting_date_field) this.posting_date_field.set_value("");
 			this.$page.find("#bbf-posting-date-info").hide();
 		}
 	}
@@ -1068,125 +1076,19 @@ class TSItemCreator {
 		const val = this.state.posting_date;
 		if (val) {
 			const today = frappe.datetime.get_today();
-			if (val !== today) {
-				this.$page.find("#bbf-posting-date-info").show();
-			} else {
-				this.$page.find("#bbf-posting-date-info").hide();
-			}
+			this.$page.find("#bbf-posting-date-info").toggle(val !== today);
 		} else {
 			this.$page.find("#bbf-posting-date-info").hide();
 		}
 	}
 
-	// ── Review ──
-	_populate_review() {
-		const s = this.state;
-		const is_asset = s.creation_type === "Fixed Asset";
-
-		// Build base code — assets use FA-{company}-{fy_short}-{serial}
-		const base_code = is_asset
-			? ["FA", s.company_code, s.fiscal_year_short, s.serial_number || "_____"].join("-")
-			: [s.company_code, s.category_code, s.serial_number || "___"].join("-");
-
-		this.$page.find("#bbf-review-company").text(s.company + " (" + s.company_code + ")");
-
-		// Item Group / Asset Category display
-		if (is_asset) {
-			this.$page.find("#bbf-review-category").text(
-				"Fixed Assets → " + s.asset_category + "  |  FY " + (s.fiscal_year_short || "?")
-			);
-		} else {
-			this.$page.find("#bbf-review-category").text(s.item_group + " (" + s.category_code + ")");
-		}
-
-		this.$page.find("#bbf-review-serial").text(s.serial_number || "Auto-assigned");
-		this.$page.find("#bbf-review-name").text(s.item_name || base_code);
-		this.$page.find("#bbf-review-uom").text(s.stock_uom);
-		this.$page.find("#bbf-review-hsn").text(s.gst_hsn_code || "-");
-		this.$page.find("#bbf-review-tax").text(s.item_tax_template || "-");
-		this.$page.find("#bbf-review-maintain-stock").text(s.maintain_stock ? "Yes" : "No");
-
-		// Fixed Asset: override badge, hide stock-related rows
-		if (is_asset) {
-			this.$page.find("#bbf-review-code").text(base_code);
-			this.$page.find("#bbf-review-type").text("Fixed Asset");
-			this.$page.find(".bbf-review-standalone-row").hide();
-			this.$page.find(".bbf-review-opening-row").hide();
-			this.$page.find("#bbf-review-variants").hide();
-			this.$page.find("#bbf-review-note").show();
-			this.$page.find("#bbf-review-note-text").html(
-				"This will create a <b>Fixed Asset Item</b> in ERPNext. " +
-				"When a PO with this item is received, ERPNext will auto-create an Asset record."
-			);
-			return;
-		}
-
-		if (s.has_variant && this.variant_rows.length > 0) {
-			// Multi-variant review
-			this.$page.find("#bbf-review-code").text(base_code + " (Template)");
-			this.$page.find("#bbf-review-type").text(`Template + ${this.variant_rows.length} Variant(s)`);
-
-			// Hide standalone fields
-			this.$page.find(".bbf-review-standalone-row").hide();
-			this.$page.find(".bbf-review-opening-row").hide();
-
-			// Build variants table
-			const $tbody = this.$page.find("#bbf-review-variants-body").empty();
-			const esc_html = frappe.utils.escape_html;
-			this.variant_rows.forEach((row) => {
-				const v_code = row.brand_code || row.variant_code;
-				const v_name = row.brand || row.variant || "-";
-				const full_code = base_code + "-" + v_code;
-				$tbody.append(`
-					<tr>
-						<td><code>${esc_html(full_code)}</code></td>
-						<td>${esc_html(v_name)}</td>
-						<td>${row.valuation_rate ? format_currency(row.valuation_rate) : "-"}</td>
-						<td>${row.standard_rate ? format_currency(row.standard_rate) : "-"}</td>
-						<td>${flt(row.opening_stock) || "-"}</td>
-					</tr>
-				`);
-			});
-
-			this.$page.find("#bbf-review-variants").show();
-			this.$page.find("#bbf-review-note").show();
-			let note_text = `This will create <b>1 Template</b> + <b>${this.variant_rows.length} Variant(s)</b> in ERPNext.`;
-			if (s.posting_date && s.posting_date !== frappe.datetime.get_today()) {
-				note_text += `<br><span style="color:#e65100;">Opening stock will be posted on <b>${s.posting_date}</b></span>`;
-			}
-			this.$page.find("#bbf-review-note-text").html(note_text);
-		} else {
-			// Standalone review
-			this.$page.find("#bbf-review-code").text(base_code);
-			this.$page.find("#bbf-review-type").text("Standalone Item");
-
-			this.$page.find(".bbf-review-standalone-row").show();
-			this.$page.find("#bbf-review-valuation").text(s.valuation_rate ? format_currency(s.valuation_rate) : "-");
-			this.$page.find("#bbf-review-selling-rate").text(s.standard_rate ? format_currency(s.standard_rate) : "-");
-
-			if (s.maintain_stock && flt(s.opening_stock) > 0) {
-				let opening_text = s.opening_stock + " @ " + (s.opening_warehouse || "-");
-				if (s.posting_date && s.posting_date !== frappe.datetime.get_today()) {
-					opening_text += " (Posted: " + s.posting_date + ")";
-				}
-				this.$page.find("#bbf-review-opening").text(opening_text);
-				this.$page.find(".bbf-review-opening-row").show();
-			} else {
-				this.$page.find(".bbf-review-opening-row").hide();
-			}
-
-			this.$page.find("#bbf-review-variants").hide();
-			this.$page.find("#bbf-review-note").hide();
-		}
-	}
-
-	// ── Create Item ──
+	// ── Create item ──
 	_create_item() {
 		const me = this;
 		const s = me.state;
 		const $btn = this.$page.find("#bbf-btn-create");
 
-		// Re-read current field values (prefer live values over stale state)
+		// Re-read live field values
 		s.company = me.company_field.get_value() || s.company;
 		s.stock_uom = me.uom_field.get_value() || "Nos";
 		s.item_name = me.item_name_field.get_value() || s.item_name;
@@ -1197,10 +1099,6 @@ class TSItemCreator {
 		if (s.creation_type === "Fixed Asset") {
 			s.asset_category = me.asset_category_field.get_value() || s.asset_category;
 			s.fiscal_year = me.fiscal_year_field.get_value() || s.fiscal_year;
-			if (!s.company || !s.asset_category || !s.fiscal_year) {
-				frappe.show_alert({ message: "Company, Fiscal Year and Asset Category are all required.", indicator: "red" });
-				return;
-			}
 		} else {
 			s.item_group = me.category_field.get_value() || s.item_group;
 			if (!s.has_variant) {
@@ -1212,15 +1110,13 @@ class TSItemCreator {
 				s.opening_warehouse = me.opening_warehouse_variant_field.get_value() || s.opening_warehouse;
 			}
 			s.posting_date = me.posting_date_field.get_value() || "";
-			if (!s.company || !s.item_group) {
-				frappe.show_alert({ message: "Company or Item Group is missing.", indicator: "red" });
-				return;
-			}
 		}
 
-		$btn.prop("disabled", true).text("Creating...");
+		if (!this._validate_all()) return;
 
-		// Build the doc payload
+		$btn.prop("disabled", true);
+		this.$page.find("#bbf-btn-create .bbf-btn-label").text("Creating...");
+
 		const doc = {
 			doctype: "TS Item Creator",
 			creation_type: s.creation_type,
@@ -1247,7 +1143,6 @@ class TSItemCreator {
 		};
 
 		if (s.has_variant && me.variant_rows.length > 0) {
-			// Multi-variant mode: pass variant rows as child table
 			doc.variants = me.variant_rows.map((row) => ({
 				brand: row.brand || "",
 				brand_code: row.brand_code || "",
@@ -1259,7 +1154,6 @@ class TSItemCreator {
 				description: row.description || "",
 			}));
 		} else {
-			// Standalone mode
 			doc.valuation_rate = s.valuation_rate;
 			doc.standard_rate = s.standard_rate;
 			doc.opening_stock = s.opening_stock;
@@ -1272,11 +1166,7 @@ class TSItemCreator {
 				if (r.message) {
 					frappe.call({
 						method: "run_doc_method",
-						args: {
-							dt: "TS Item Creator",
-							dn: r.message.name,
-							method: "create_item",
-						},
+						args: { dt: "TS Item Creator", dn: r.message.name, method: "create_item" },
 						callback(res) {
 							me._reset_btn($btn);
 							if (res.message) {
@@ -1285,39 +1175,35 @@ class TSItemCreator {
 								me._show_success(res.message);
 							}
 						},
-						error() {
-							me._reset_btn($btn);
-						},
+						error() { me._reset_btn($btn); },
 					});
 				}
 			},
-			error() {
-				me._reset_btn($btn);
-			},
+			error() { me._reset_btn($btn); },
 		});
 	}
 
 	_reset_btn($btn) {
-		$btn.prop("disabled", false).html(
-			'<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 4L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Create Item'
-		);
+		$btn.prop("disabled", false);
+		this.$page.find("#bbf-btn-create .bbf-btn-label").text("Create Item");
 	}
 
-	// ── Success ──
+	// ── Success state ──
 	_show_success(result) {
 		this.$page.find(".bbf-card, .bbf-preview-bar").hide();
 		this.$page.find("#bbf-success").show();
+		const esc = frappe.utils.escape_html;
 
 		if (result.variant_items && result.variant_items.length > 0) {
-			// Multi-variant success
 			this.$page.find("#bbf-success-title").text("Items Created Successfully!");
 			this.$page.find("#bbf-success-code").text(result.template_code + " (Template)");
-
 			const $list = this.$page.find("#bbf-success-variant-list").empty().show();
 			result.variant_items.forEach((code) => {
-				$list.append(`<div class="bbf-success-variant-item">
-					<a href="/app/item/${encodeURIComponent(code)}">${code}</a>
-				</div>`);
+				$list.append(
+					`<div class="bbf-success-variant-item">` +
+					`<a href="/app/item/${encodeURIComponent(code)}">${esc(code)}</a>` +
+					`</div>`
+				);
 			});
 		} else {
 			this.$page.find("#bbf-success-title").text("Item Created Successfully!");
@@ -1329,7 +1215,7 @@ class TSItemCreator {
 			this.$page.find("#bbf-success-template").show();
 			this.$page.find("#bbf-success-template-link")
 				.text(result.template_code)
-				.attr("href", `/app/item/${result.template_code}`);
+				.attr("href", `/app/item/${encodeURIComponent(result.template_code)}`);
 		} else {
 			this.$page.find("#bbf-success-template").hide();
 		}
@@ -1340,23 +1226,24 @@ class TSItemCreator {
 	// ── Reset ──
 	_reset() {
 		this.state = {
-			company: "", company_code_type: "Character", company_code: "",
-			item_group: "", category_code_type: "Character", category_code: "",
+			creation_type: "Regular Item",
+			asset_category: "", fiscal_year: "", fiscal_year_short: "",
+			company: "", company_code_type: "Numerical", company_code: "",
+			item_group: "", category_code_type: "Numerical", category_code: "",
 			serial_number: "",
 			has_variant: false, variant_source: "Brand",
 			item_name: "", stock_uom: "Kg", gst_hsn_code: "", item_tax_template: "",
 			maintain_stock: 1, valuation_rate: 0, standard_rate: 0,
 			opening_stock: 0, opening_warehouse: "",
-			posting_date: "",
-			description: "",
+			posting_date: "", description: "",
 		};
-
 		this.variant_rows = [];
 		this._variant_row_counter = 0;
 
-		// Reset fields
 		this.company_field.set_value("");
 		this.category_field.set_value("");
+		this.asset_category_field.set_value("");
+		this.fiscal_year_field.set_value("");
 		this.item_name_field.set_value("");
 		this.uom_field.set_value("Kg");
 		this.hsn_field.set_value("");
@@ -1368,32 +1255,53 @@ class TSItemCreator {
 		this.opening_warehouse_variant_field.set_value("");
 		this.posting_date_field.set_value("");
 		this.desc_field.set_value("");
-		this.$page.find("#bbf-posting-date-row").hide();
-		this.$page.find("#bbf-posting-date-info").hide();
 
-		// Reset UI
 		this.$page.find("#bbf-has-variant").prop("checked", false);
 		this.$page.find("#bbf-maintain-stock").prop("checked", true);
 		this.$page.find(".bbf-variant-options").hide();
 		this.$page.find(".bbf-standalone-stock").show();
 		this.$page.find(".bbf-variant-stock").hide();
 		this.$page.find("#bbf-variant-grid").empty();
-		this.$page.find(".bbf-toggle-btn[data-value='Character']").addClass("active")
-			.siblings().removeClass("active");
-		this.$page.find(".bbf-source-tab[data-source='Brand']").addClass("active")
-			.siblings().removeClass("active");
-		this.$page.find(".bbf-code-badge").text("---");
-		this.$page.find("#bbf-live-code").html('<span class="bbf-code-placeholder">Select Company & Category to begin</span>');
+		this.$page.find("#bbf-posting-date-row").hide();
+		this.$page.find("#bbf-posting-date-info").hide();
 
-		// Show form, hide success
+		// Reset Creation Type toggle to Regular
+		this.$page.find(".bbf-creation-btn").removeClass("active").attr("aria-checked", "false");
+		this.$page.find(`.bbf-creation-btn[data-type="Regular Item"]`).addClass("active").attr("aria-checked", "true");
+		this.$page.find(".bbf-regular-only").show();
+		this.$page.find(".bbf-asset-only").hide();
+		this.$page.find(".bbf-company-code-type").show();
+
+		// Reset code-type toggles to Numerical
+		this.$page.find(".bbf-toggle-btn").removeClass("active").attr("aria-checked", "false");
+		this.$page.find(".bbf-toggle-btn[data-value='Numerical']").addClass("active").attr("aria-checked", "true");
+
+		// Reset variant source tabs
+		this.$page.find(".bbf-source-tab").removeClass("active").attr("aria-selected", "false");
+		this.$page.find(".bbf-source-tab[data-source='Brand']").addClass("active").attr("aria-selected", "true");
+
+		// Reset code badges + live code
+		this.$page.find(".bbf-code-badge").text("---");
+		this.$page.find("#bbf-live-code").html('<span class="bbf-code-placeholder">Select Company &amp; Category to begin</span>');
+		this.$page.find("#bbf-preview-sub").text("");
+
+		// Reset section open states
+		this.$page.find("#bbf-sec-basics").prop("open", true);
+		this.$page.find("#bbf-sec-details").prop("open", true);
+		this.$page.find("#bbf-sec-variants").prop("open", false);
+		this.$page.find("#bbf-sec-stock").prop("open", true);
+		this.$page.find("#bbf-sec-opening").prop("open", false);
+
+		this._clear_all_errors();
+		this._refresh_meta_summaries();
+
 		this.$page.find(".bbf-card, .bbf-preview-bar").show();
 		this.$page.find("#bbf-success").hide();
-
-		this._go_to_step(1);
 	}
 
-	// ── Load Recent Items ──
+	// ── Recent items ──
 	_load_recent() {
+		const me = this;
 		frappe.call({
 			method: "frappe.client.get_list",
 			args: {
@@ -1403,26 +1311,24 @@ class TSItemCreator {
 				limit_page_length: 6,
 			},
 			callback: (r) => {
-				const $list = this.$page.find("#bbf-recent-list").empty();
+				const $list = me.$page.find("#bbf-recent-list").empty();
 				if (!r.message || !r.message.length) {
-					this.$page.find("#bbf-recent").hide();
+					me.$page.find("#bbf-recent").hide();
 					return;
 				}
-
-				this.$page.find("#bbf-recent").show();
+				me.$page.find("#bbf-recent").show();
+				const esc = frappe.utils.escape_html;
 				r.message.forEach((item) => {
 					const status_class = item.status === "Created" ? "status-created" : "status-draft";
-					const _esc = frappe.utils.escape_html;
-					const $el = $(`
-						<div class="bbf-recent-item">
-							<div>
-								<div class="bbf-recent-item-code">${_esc(item.generated_item_code || item.name)}</div>
-								<div class="bbf-recent-item-name">${_esc(item.item_name || "")}</div>
+					const $el = $(
+						`<div class="bbf-recent-item">
+							<div class="bbf-recent-item-info">
+								<div class="bbf-recent-item-code">${esc(item.generated_item_code || item.name)}</div>
+								<div class="bbf-recent-item-name">${esc(item.item_name || "")}</div>
 							</div>
-							<span class="bbf-recent-item-status ${status_class}">${_esc(item.status)}</span>
-						</div>
-					`);
-
+							<span class="bbf-recent-item-status ${status_class}">${esc(item.status || "")}</span>
+						</div>`
+					);
 					$el.on("click", () => {
 						if (item.item_created && item.item_created.trim()) {
 							const first_item = item.item_created.split(",")[0].trim();
@@ -1431,7 +1337,6 @@ class TSItemCreator {
 							frappe.set_route("Form", "TS Item Creator", item.name);
 						}
 					});
-
 					$list.append($el);
 				});
 			},
