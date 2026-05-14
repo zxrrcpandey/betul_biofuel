@@ -774,3 +774,108 @@ def get_variant_code(name):
 		return {"variant_code": code}
 	except Exception:
 		return {"variant_code": ""}
+
+
+@frappe.whitelist()
+def search_existing_items(query, limit=10):
+	"""v2.9.17.7 — Duplicate-detection typeahead for Item Name field.
+
+	Two-stage fuzzy match:
+	  Stage 1 — token-LIKE: split query on whitespace; AND each token via
+	            `item_name LIKE %token%`. Catches wrong-sequence input
+	            (e.g. "rice broken" finds "Broken Rice").
+	  Stage 2 — Levenshtein fallback: if Stage 1 returns < 5 rows, run
+	            `difflib.get_close_matches` over the full item_name index
+	            (cutoff 0.6) to catch typos (e.g. "brokn rce" finds
+	            "Broken Rice"). In-memory; ~80ms on 3258 items.
+
+	Returns top `limit` matches as a list of dicts, sorted by usage_count
+	(PO Item rows) DESC so most-used items rank first.
+
+	Fail-closed: any exception returns []. Empty/short query (<3 chars)
+	short-circuits to [] to avoid a 3258-row scan per keystroke.
+	"""
+	try:
+		import difflib
+
+		q = (query or "").strip().lower()
+		if len(q) < 3:
+			return []
+
+		try:
+			lim = max(1, min(int(limit or 10), 25))
+		except (TypeError, ValueError):
+			lim = 10
+
+		# Permission gate (silent fail-closed — page role JSON is the upstream gate)
+		if not frappe.has_permission("Item", "read", throw=False):
+			return []
+
+		# Stage 1 — token-LIKE
+		tokens = [t for t in q.split() if t]
+		seen = set()
+		tokens = [t for t in tokens if not (t in seen or seen.add(t))]
+
+		stage1 = []
+		if tokens:
+			like_clauses = " AND ".join(["LOWER(item_name) LIKE %s"] * len(tokens))
+			args = ["%" + t + "%" for t in tokens]
+			rows = frappe.db.sql(
+				"""
+				SELECT name AS item_code, item_name, item_group, brand, stock_uom, disabled
+				FROM `tabItem`
+				WHERE disabled = 0 AND ({where})
+				LIMIT %s
+				""".format(where=like_clauses),
+				args + [lim * 2],
+				as_dict=True,
+			)
+			stage1 = list(rows)
+
+		# Stage 2 — Levenshtein fallback (only if Stage 1 is weak)
+		stage2 = []
+		if len(stage1) < 5:
+			all_names = frappe.db.sql(
+				"SELECT name AS item_code, item_name FROM `tabItem` WHERE disabled = 0 AND item_name IS NOT NULL",
+				as_dict=True,
+			)
+			name_to_code = {r.item_name.lower(): r.item_code for r in all_names if r.item_name}
+			close = difflib.get_close_matches(q, list(name_to_code.keys()), n=lim, cutoff=0.6)
+			fallback_codes = [name_to_code[n] for n in close]
+			if fallback_codes:
+				placeholders = ",".join(["%s"] * len(fallback_codes))
+				stage2 = frappe.db.sql(
+					"SELECT name AS item_code, item_name, item_group, brand, stock_uom, disabled "
+					"FROM `tabItem` WHERE name IN ({p})".format(p=placeholders),
+					fallback_codes,
+					as_dict=True,
+				)
+
+		# Merge + dedupe by item_code
+		merged = {}
+		for r in stage1 + stage2:
+			if r.item_code not in merged:
+				merged[r.item_code] = r
+		results = list(merged.values())
+
+		if not results:
+			return []
+
+		# usage_count subquery — count Purchase Order Item rows per item_code
+		codes = [r.item_code for r in results]
+		placeholders = ",".join(["%s"] * len(codes))
+		usage_rows = frappe.db.sql(
+			"SELECT item_code, COUNT(*) AS cnt FROM `tabPurchase Order Item` "
+			"WHERE item_code IN ({p}) GROUP BY item_code".format(p=placeholders),
+			codes,
+			as_dict=True,
+		)
+		usage_map = {r.item_code: int(r.cnt) for r in usage_rows}
+
+		for r in results:
+			r["usage_count"] = usage_map.get(r.item_code, 0)
+
+		results.sort(key=lambda r: (-r["usage_count"], r["item_name"] or ""))
+		return results[:lim]
+	except Exception:
+		return []

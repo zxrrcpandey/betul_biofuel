@@ -1,4 +1,4 @@
-<div class="bbf-item-creator-page" data-version="2.9.17.6">
+<div class="bbf-item-creator-page" data-version="2.9.17.8">
 
 	<!-- Sticky Preview Bar -->
 	<div class="bbf-preview-bar" id="bbf-preview-bar">
@@ -10,7 +10,7 @@
 			<div class="bbf-preview-code" id="bbf-live-code" aria-live="polite" aria-atomic="true">
 				<span class="bbf-code-placeholder">Select Company &amp; Category to begin</span>
 			</div>
-			<div class="bbf-preview-version" title="Build version">v2.9.17.6</div>
+			<div class="bbf-preview-version" title="Build version">v2.9.17.8</div>
 		</div>
 	</div>
 
@@ -139,10 +139,11 @@
 			</summary>
 			<div class="bbf-section-body">
 				<div class="bbf-form-row">
-					<div class="bbf-form-group">
+					<div class="bbf-form-group bbf-item-name-group">
 						<label class="bbf-label">Item Name</label>
 						<div class="bbf-field" id="bbf-item-name-field"></div>
-						<span class="bbf-hint">Optional. If empty, item code will be used as name.</span>
+						<div class="bbf-suggestions" id="bbf-item-name-suggestions" role="listbox" aria-label="Existing similar items" style="display:none;"></div>
+						<span class="bbf-hint">Optional. If empty, item code will be used as name. Type 3+ characters to check for existing items.</span>
 					</div>
 					<div class="bbf-form-group">
 						<label class="bbf-label">Stock UOM <span class="bbf-req">*</span></label>

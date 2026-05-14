@@ -1,4 +1,4 @@
-// BBF Item Creator — flat-form page controller (v2.9.17.6)
+// BBF Item Creator — flat-form page controller (v2.9.17.8)
 // Sections: basics → details → variants (collapsible) → stock → opening (collapsible)
 // No wizard / no step state machine. Single state object + section open/closed map.
 
@@ -8,7 +8,7 @@ frappe.pages["item-creator"].on_page_load = function (wrapper) {
 		title: "Item Creator",
 		single_column: true,
 	});
-	page.set_title_sub("Build structured item codes for ERPNext · v2.9.17.6");
+	page.set_title_sub("Build structured item codes for ERPNext · v2.9.17.8");
 	$(frappe.render_template("item_creator")).appendTo(page.body);
 	new TSItemCreator(page);
 };
@@ -135,6 +135,7 @@ class TSItemCreator {
 			me.state.item_name = me.item_name_field.get_value() || "";
 			me._refresh_meta_summaries();
 		});
+		this._setup_item_name_typeahead();
 
 		this.uom_field = frappe.ui.form.make_control({
 			df: { fieldtype: "Link", options: "UOM", placeholder: "Select UOM..." },
@@ -326,6 +327,180 @@ class TSItemCreator {
 			}
 		});
 		this.$page.find("#bbf-create-another").on("click", () => me._reset());
+	}
+
+	// ── Item Name typeahead (v2.9.17.7 duplicate-detection) ──
+	_setup_item_name_typeahead() {
+		const me = this;
+		const $input = this.item_name_field.$input;
+		const $dropdown = this.$page.find("#bbf-item-name-suggestions");
+		this._suggest_timer = null;
+		this._suggest_results = [];
+		this._suggest_highlight = -1;
+		this._suggest_busy = false;
+
+		$input.on("input.bbfsuggest", () => {
+			const q = ($input.val() || "").trim();
+			clearTimeout(me._suggest_timer);
+			if (q.length < 3) {
+				me._hide_suggestions();
+				return;
+			}
+			me._suggest_timer = setTimeout(() => me._fetch_suggestions(q), 300);
+		});
+
+		$input.on("keydown.bbfsuggest", (e) => {
+			if (!$dropdown.is(":visible") || !me._suggest_results.length) return;
+			if (e.key === "ArrowDown") {
+				e.preventDefault();
+				me._move_highlight(1);
+			} else if (e.key === "ArrowUp") {
+				e.preventDefault();
+				me._move_highlight(-1);
+			} else if (e.key === "Enter" && me._suggest_highlight >= 0) {
+				e.preventDefault();
+				me._open_existing_item_modal(me._suggest_results[me._suggest_highlight]);
+			} else if (e.key === "Escape") {
+				me._hide_suggestions();
+			}
+		});
+
+		$(document).on("click.bbfsuggest", (e) => {
+			if (!$dropdown.is(":visible")) return;
+			if ($(e.target).closest("#bbf-item-name-suggestions, #bbf-item-name-field").length === 0) {
+				me._hide_suggestions();
+			}
+		});
+	}
+
+	_fetch_suggestions(q) {
+		const me = this;
+		if (this._suggest_busy) return;
+		this._suggest_busy = true;
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.search_existing_items",
+			args: { query: q, limit: 10 },
+			callback: (r) => {
+				me._suggest_busy = false;
+				const rows = (r && r.message) || [];
+				me._render_suggestions(rows);
+			},
+			error: () => {
+				me._suggest_busy = false;
+				me._hide_suggestions();
+			},
+		});
+	}
+
+	_render_suggestions(rows) {
+		const $dropdown = this.$page.find("#bbf-item-name-suggestions");
+		const esc = frappe.utils.escape_html;
+		this._suggest_results = rows;
+		this._suggest_highlight = -1;
+		if (!rows.length) {
+			$dropdown.hide().empty();
+			return;
+		}
+		const header = `<div class="bbf-suggest-header">${rows.length} similar item${rows.length > 1 ? "s" : ""} already exist${rows.length === 1 ? "s" : ""} — click to review:</div>`;
+		const items = rows.map((r, i) => {
+			const usage = r.usage_count > 0
+				? `<span class="bbf-suggest-usage">Used in ${r.usage_count} PO${r.usage_count > 1 ? "s" : ""}</span>`
+				: `<span class="bbf-suggest-usage bbf-suggest-usage-zero">Not used yet</span>`;
+			const brand = r.brand ? ` · Brand: ${esc(r.brand)}` : "";
+			const group = r.item_group ? esc(r.item_group) : "—";
+			return `
+				<div class="bbf-suggest-row" data-idx="${i}" role="option" tabindex="-1">
+					<div class="bbf-suggest-row-main">
+						<div class="bbf-suggest-row-code">${esc(r.item_code)}</div>
+						<div class="bbf-suggest-row-name">${esc(r.item_name || "")}</div>
+						<div class="bbf-suggest-row-meta">${group}${brand}</div>
+					</div>
+					${usage}
+				</div>
+			`;
+		}).join("");
+		const footer = `<div class="bbf-suggest-footer">Press Esc or click outside to dismiss · keep typing if your item is different</div>`;
+		$dropdown.html(header + items + footer).show();
+
+		const me = this;
+		$dropdown.find(".bbf-suggest-row").on("click", function () {
+			const idx = parseInt($(this).attr("data-idx"));
+			me._open_existing_item_modal(me._suggest_results[idx]);
+		});
+		$dropdown.find(".bbf-suggest-row").on("mouseenter", function () {
+			me._suggest_highlight = parseInt($(this).attr("data-idx"));
+			me._apply_highlight();
+		});
+	}
+
+	_move_highlight(delta) {
+		if (!this._suggest_results.length) return;
+		this._suggest_highlight = (this._suggest_highlight + delta + this._suggest_results.length) % this._suggest_results.length;
+		this._apply_highlight();
+	}
+
+	_apply_highlight() {
+		const $dropdown = this.$page.find("#bbf-item-name-suggestions");
+		$dropdown.find(".bbf-suggest-row").removeClass("bbf-suggest-active");
+		if (this._suggest_highlight >= 0) {
+			const $row = $dropdown.find(`.bbf-suggest-row[data-idx="${this._suggest_highlight}"]`);
+			$row.addClass("bbf-suggest-active");
+			const dEl = $dropdown.get(0);
+			const rEl = $row.get(0);
+			if (dEl && rEl) {
+				const rTop = rEl.offsetTop;
+				const rBot = rTop + rEl.offsetHeight;
+				if (rTop < dEl.scrollTop) dEl.scrollTop = rTop;
+				else if (rBot > dEl.scrollTop + dEl.clientHeight) dEl.scrollTop = rBot - dEl.clientHeight;
+			}
+		}
+	}
+
+	_hide_suggestions() {
+		this.$page.find("#bbf-item-name-suggestions").hide().empty();
+		this._suggest_results = [];
+		this._suggest_highlight = -1;
+	}
+
+	_open_existing_item_modal(row) {
+		const esc = frappe.utils.escape_html;
+		const me = this;
+		this._hide_suggestions();
+		const usage_line = row.usage_count > 0
+			? `<b>${row.usage_count}</b> Purchase Order${row.usage_count > 1 ? "s" : ""}`
+			: `<span style="color:var(--text-muted,#64748b)">Not used in any Purchase Order yet</span>`;
+		const d = new frappe.ui.Dialog({
+			title: "Similar Item Already Exists",
+			fields: [
+				{
+					fieldtype: "HTML",
+					options: `
+						<div class="bbf-existing-item-card">
+							<div class="bbf-existing-item-code">${esc(row.item_code)}</div>
+							<div class="bbf-existing-item-name">${esc(row.item_name || "")}</div>
+							<table class="bbf-existing-item-meta">
+								<tr><td>Item Group</td><td>${esc(row.item_group || "—")}</td></tr>
+								<tr><td>Brand</td><td>${esc(row.brand || "—")}</td></tr>
+								<tr><td>Stock UOM</td><td>${esc(row.stock_uom || "—")}</td></tr>
+								<tr><td>Usage</td><td>${usage_line}</td></tr>
+							</table>
+							<div class="bbf-existing-item-hint">If this is the item you meant to use, open it. Otherwise close this dialog and refine your name.</div>
+						</div>
+					`,
+				},
+			],
+			primary_action_label: "Open This Item",
+			primary_action() {
+				d.hide();
+				frappe.set_route("Form", "Item", row.item_code);
+			},
+			secondary_action_label: "Continue — my item is different",
+			secondary_action() {
+				d.hide();
+				me.item_name_field.$input.focus();
+			},
+		});
+		d.show();
 	}
 
 	// ── Section state helpers ──
