@@ -1,4 +1,4 @@
-// BBF Item Creator — flat-form page controller (v2.9.17.5)
+// BBF Item Creator — flat-form page controller (v2.9.17.6)
 // Sections: basics → details → variants (collapsible) → stock → opening (collapsible)
 // No wizard / no step state machine. Single state object + section open/closed map.
 
@@ -8,7 +8,7 @@ frappe.pages["item-creator"].on_page_load = function (wrapper) {
 		title: "Item Creator",
 		single_column: true,
 	});
-	page.set_title_sub("Build structured item codes for ERPNext · v2.9.17.5");
+	page.set_title_sub("Build structured item codes for ERPNext · v2.9.17.6");
 	$(frappe.render_template("item_creator")).appendTo(page.body);
 	new TSItemCreator(page);
 };
@@ -33,7 +33,7 @@ class TSItemCreator {
 			has_variant: false,
 			variant_source: "Brand",
 			item_name: "",
-			stock_uom: "Kg",
+			stock_uom: "Nos",
 			gst_hsn_code: "",
 			item_tax_template: "",
 			maintain_stock: 1,
@@ -141,9 +141,9 @@ class TSItemCreator {
 			parent: this.$page.find("#bbf-uom-field"),
 			render_input: true,
 		});
-		this.uom_field.set_value("Kg");
+		this.uom_field.set_value("Nos");
 		this._on_link_value(this.uom_field, (val) => {
-			me.state.stock_uom = val || "Kg";
+			me.state.stock_uom = val || "Nos";
 			me._clear_error("uom");
 			me._refresh_meta_summaries();
 		});
@@ -1232,7 +1232,7 @@ class TSItemCreator {
 			item_group: "", category_code_type: "Numerical", category_code: "",
 			serial_number: "",
 			has_variant: false, variant_source: "Brand",
-			item_name: "", stock_uom: "Kg", gst_hsn_code: "", item_tax_template: "",
+			item_name: "", stock_uom: "Nos", gst_hsn_code: "", item_tax_template: "",
 			maintain_stock: 1, valuation_rate: 0, standard_rate: 0,
 			opening_stock: 0, opening_warehouse: "",
 			posting_date: "", description: "",
@@ -1245,7 +1245,7 @@ class TSItemCreator {
 		this.asset_category_field.set_value("");
 		this.fiscal_year_field.set_value("");
 		this.item_name_field.set_value("");
-		this.uom_field.set_value("Kg");
+		this.uom_field.set_value("Nos");
 		this.hsn_field.set_value("");
 		this.tax_template_field.set_value("");
 		this.valuation_rate_field.set_value("");
