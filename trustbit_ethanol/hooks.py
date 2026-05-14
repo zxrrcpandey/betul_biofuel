@@ -169,6 +169,8 @@ doc_events = {
 			"trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_amend",
 		],
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
+		# v2.9.17.9 — server-side guard blocking direct submit bypass (Stock User loophole)
+		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_submit_block_direct",
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_update",
 		# v2.9.9.9 — clean up orphan draft Stock Entries when a Stores-flow MR is cancelled
 		"on_cancel": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.cleanup_draft_se_on_mr_cancel",

@@ -2126,6 +2126,43 @@ def _copy_project_from_mr(doc):
 				return
 
 
+def mr_before_submit_block_direct(doc, method=None):
+	"""v2.9.17.9 — Server-side guard against bypassing the MR approval chain.
+
+	Why: Stock User role has submit=1 on Material Request. Without this guard
+	any user (or REST/API call) can submit a draft MR directly via native
+	Submit / Ctrl+Shift+Enter / frappe.client.submit — bypassing the
+	"Submit for Approval" workflow entirely. Three prod MRs (PR-CF-PRD-26-00008,
+	00008-1, 00011) were submitted this way: docstatus=1 with ts_mr_status=
+	'Not Submitted' and ts_mr_route=NULL, stranded outside any approval flow.
+
+	State-based guard (Frappe before_submit fires AFTER docstatus is set to 1
+	in-memory but BEFORE the DB write — so this hook acts on every submit attempt):
+	- Material Transfer + Material Issue: bypass (they have their own Stores
+	  Workflow at ts_mr_transfer.handle_before_save and explicit submit endpoints).
+	- ts_mr_route set AND ts_mr_status == 'Approved': legitimate _approve_mr
+	  Final Approve path — sets route + flips status to 'Approved' via db_set
+	  BEFORE doc.submit(), so this guard sees the legit state and passes.
+	- Else: throw with guidance pointing the user at the 'Submit for Approval' button.
+	"""
+	if not doc:
+		return
+	if (doc.material_request_type or "") in ("Material Transfer", "Material Issue"):
+		return  # Stores Workflow has its own submit chain
+	route = (doc.get("ts_mr_route") or doc.get("ts_mr_approval_route") or "").strip()
+	status = (doc.get("ts_mr_status") or "").strip()
+	if route and status == "Approved":
+		return  # legit _approve_mr Final Approve path
+	frappe.throw(
+		_(
+			"Direct submission of Material Requests is not allowed. "
+			"Please use the <b>Submit for Approval</b> button so this MR "
+			"enters the proper approval chain. (Status: {0}, Route: {1})"
+		).format(status or "—", route or "—"),
+		title=_("Use Submit for Approval"),
+	)
+
+
 def mr_before_save(doc, method):
 	"""Prevent changes while MR is in approval chain."""
 	# ── Gate-field tamper guard (Security #14) ──
