@@ -930,6 +930,14 @@ def create_custom_fields():
 			"label": "G2 Operator Name",
 			"insert_after": "ts_g1_driver_mobile",
 		},
+		# v2.9.17.7 — Material Type granular classification (sits next to material_flow)
+		{
+			"fieldname": "ts_material_type",
+			"fieldtype": "Select",
+			"label": "Material Type",
+			"options": "\nStore Material\nScrap\nBardana\nFly Ash\nDWGS\nMaize\nRice\nCoal\nDDGS\nEthanol\nLiquid Co2\nIron\nDORB\nFusel oil\nDry Ice",
+			"insert_after": "material_flow",
+		},
 	]
 
 	# User custom field for force password change
