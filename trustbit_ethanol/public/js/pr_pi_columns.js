@@ -31,8 +31,22 @@ frappe.ui.form.on("Purchase Receipt", {
 	refresh(frm) {
 		_force_grid_columns(frm, "Purchase Receipt Item");
 		_show_grn_source_indicator(frm);
+		_add_bbpl_print_button(frm);
 	}
 });
+
+function _add_bbpl_print_button(frm) {
+	if (frm.is_new() || frm.doc.docstatus !== 1) return;
+	frm.add_custom_button(__("🖨 Print PDF"), () => {
+		const fmt = "BBPL Purchase Receipt";
+		const url = `/api/method/frappe.utils.print_format.download_pdf`
+			+ `?doctype=${encodeURIComponent(frm.doc.doctype)}`
+			+ `&name=${encodeURIComponent(frm.doc.name)}`
+			+ `&format=${encodeURIComponent(fmt)}`
+			+ `&no_letterhead=0`;
+		window.open(url, "_blank");
+	});
+}
 
 function _show_grn_source_indicator(frm) {
 	$(".ts-grn-source-banner").remove();

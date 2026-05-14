@@ -1,6 +1,6 @@
 # Trustbit Ethanol — TS Gate Entry System
 
-**Version:** 2.9.16.7 | **ERPNext:** V15 | **Module:** TS Gate Entry
+**Version:** 2.9.17.4 | **ERPNext:** V15 | **Module:** TS Gate Entry
 
 Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufacturing plant. Handles the complete vehicle gate-to-exit lifecycle, multi-level PO/MR approval with CC-based routing, budget management, item creation, quality inspection, and interactive dashboards with a **blind token-based system** designed to prevent manipulation.
 
@@ -8,6 +8,7 @@ Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufactu
 
 | Version | Date | Change |
 |---|---|---|
+| **2.9.17.4** | 14 May | **BBPL Purchase Receipt print format + Print PDF button** — new branded PDF print format mirroring locked PO/MR pattern (table-based layout per Lesson 232, Jinja namespace-correct loop scope, letterhead-overlay fix). Toolbar "🖨 Print PDF" button on submitted PRs (`pr_pi_columns.js` adds `_add_bbpl_print_button` calling `frappe.utils.print_format.download_pdf`). Supplier Address resolved via Address doctype lookup; "Location From PO" sourced from `ts_delivery_location`; per-item GST cell uses Item Tax Template name parsing with `doc.taxes[0].rate` fallback. Includes parse_json bug-fix from review iteration. |
 | **2.9.16.7** | 13 May | TS Gate Entry DocPerm seeder for demo/prod parity — idempotent `_seed_gate_entry_docperm()` mirrors v2.9.15.2 Cost Center pattern, re-asserts 10-role DocPerm set on every migrate (Accounts Manager, CEO, G1 Security, G2 Gate Operator, IT Head, MD, Quality Inspector, Stores User, System Manager, Weighbridge Operator). Forward-safe against Lesson 169 master-data drift between environments. |
 | **2.9.16.6** | 13 May | **HOTFIX** — Weighbridge "No permission for TS Settings" popup eliminated. `ts_weighbridge_log.js:45` was calling `get_single_value("TS Settings", "ts_flow_v28_enabled")` directly; Weighbridge Operator role lacks TS Settings read perm → modal on every new entry. Fix: new role-scoped `get_flow_v28_flag()` whitelist helper (Lesson 168 pattern, same as `get_g2_print_mode` / `get_two_pass_flag`). |
 | **2.9.16.5** | 13 May | **P0 HOTFIX** — `ts_gate_entry/api/` package introduced in v2.9.16 silently shadowed pre-existing `ts_gate_entry/api.py` (Python: package wins over module of same name). 7 whitelisted endpoints unreachable for ~3 hours (Weighbridge token search, Weighbridge weight fetch, G2 print mode, two-pass flag, PO autocomplete, PO lifecycle, SLA scheduler). Fix: move all `api.py` content into `api/__init__.py`, delete `api.py`. New Lesson 264 captured. |
