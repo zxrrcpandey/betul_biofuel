@@ -172,6 +172,10 @@ doc_events = {
 			# v2.9.12 Sprint 1 — reset ts_mr_status + tracking fields on amend (parallel to po_on_amend)
 			"trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_amend",
 		],
+		# v2.10.0.4 — clear hidden from_warehouse on non-Transfer MR types so
+		# ERPNext's validate_from_warehouse() doesn't block save when row's
+		# invisible from_warehouse collides with warehouse (amend carry-over).
+		"before_validate": "trustbit_ethanol.ts_gate_entry.ts_mr_warehouse_guard.mr_clear_invisible_from_warehouse",
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
 		# v2.9.17.9 — server-side guard blocking direct submit bypass (Stock User loophole)
 		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_submit_block_direct",
