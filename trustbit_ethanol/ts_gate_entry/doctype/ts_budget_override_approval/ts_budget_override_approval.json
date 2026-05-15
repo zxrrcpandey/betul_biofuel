@@ -1,0 +1,534 @@
+{
+ "actions": [],
+ "autoname": "format:BO-{YYYY}-{#####}",
+ "creation": "2026-05-13 13:30:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_reference",
+  "reference_doctype",
+  "reference_name",
+  "column_break_ref",
+  "source_amount",
+  "title",
+  "section_cc",
+  "cost_center",
+  "company",
+  "fiscal_year",
+  "column_break_cc",
+  "breach_type",
+  "period_month",
+  "section_annual",
+  "annual_budget_amount",
+  "annual_committed_amount",
+  "annual_spent_amount",
+  "column_break_annual",
+  "annual_available",
+  "annual_breach_delta",
+  "annual_utilization_pct",
+  "section_monthly",
+  "monthly_budget_amount",
+  "monthly_committed_amount",
+  "monthly_spent_amount",
+  "column_break_monthly",
+  "monthly_available",
+  "monthly_breach_delta",
+  "monthly_utilization_pct",
+  "section_breach_lines",
+  "breach_lines",
+  "section_submitter",
+  "submitted_by",
+  "submitted_at",
+  "column_break_sub",
+  "submission_reason",
+  "section_status",
+  "status",
+  "column_break_status",
+  "kill_switch_at_create",
+  "section_decision",
+  "decision",
+  "acted_by",
+  "acted_at",
+  "column_break_decision",
+  "ceo_comment",
+  "section_audit",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_reference",
+   "fieldtype": "Section Break",
+   "label": "Reference Document"
+  },
+  {
+   "bold": 1,
+   "description": "Source document type that triggered this override request.",
+   "fieldname": "reference_doctype",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Reference DocType",
+   "options": "Material Request\nPurchase Order",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "Reference Name",
+   "options": "reference_doctype",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_ref",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "description": "Source doc grand_total (PO) or line-amount sum (MR).",
+   "fieldname": "source_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Source Doc Amount",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Title",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_cc",
+   "fieldtype": "Section Break",
+   "label": "Cost Center & Period"
+  },
+  {
+   "bold": 1,
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fetch_from": "cost_center.company",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "fiscal_year",
+   "fieldtype": "Link",
+   "label": "Fiscal Year",
+   "options": "Fiscal Year",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_cc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "fieldname": "breach_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Breach Type",
+   "options": "Annual\nMonthly\nBoth",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "description": "E.g. 'May 2026' — the month against which monthly breach was computed.",
+   "fieldname": "period_month",
+   "fieldtype": "Data",
+   "label": "Breach Month",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_annual",
+   "fieldtype": "Section Break",
+   "label": "Annual Budget Snapshot"
+  },
+  {
+   "fieldname": "annual_budget_amount",
+   "fieldtype": "Currency",
+   "label": "Annual Budget",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "annual_committed_amount",
+   "fieldtype": "Currency",
+   "label": "Annual Committed (POs)",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "annual_spent_amount",
+   "fieldtype": "Currency",
+   "label": "Annual Spent (Invoices)",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_annual",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "= budget − committed − spent",
+   "fieldname": "annual_available",
+   "fieldtype": "Currency",
+   "label": "Annual Available",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "description": "= source_amount − annual_available; 0 if not Annual breach.",
+   "fieldname": "annual_breach_delta",
+   "fieldtype": "Currency",
+   "label": "Annual Breach Δ",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "annual_utilization_pct",
+   "fieldtype": "Percent",
+   "label": "Annual Utilization %",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_monthly",
+   "fieldtype": "Section Break",
+   "label": "Monthly Accumulated Snapshot"
+  },
+  {
+   "description": "annual / 12 in v1; Monthly Distribution support deferred.",
+   "fieldname": "monthly_budget_amount",
+   "fieldtype": "Currency",
+   "label": "Monthly Budget",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "monthly_committed_amount",
+   "fieldtype": "Currency",
+   "label": "Monthly Committed",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "monthly_spent_amount",
+   "fieldtype": "Currency",
+   "label": "Monthly Spent",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_monthly",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "monthly_available",
+   "fieldtype": "Currency",
+   "label": "Monthly Available",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "monthly_breach_delta",
+   "fieldtype": "Currency",
+   "label": "Monthly Breach Δ",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "monthly_utilization_pct",
+   "fieldtype": "Percent",
+   "label": "Monthly Utilization %",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_breach_lines",
+   "fieldtype": "Section Break",
+   "label": "Multi-CC Breakdown"
+  },
+  {
+   "description": "One row per distinct CC. For single-CC docs, a single line mirrors parent snapshot.",
+   "fieldname": "breach_lines",
+   "fieldtype": "Table",
+   "label": "Breach Lines",
+   "options": "TS Budget Override Breach Line",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_submitter",
+   "fieldtype": "Section Break",
+   "label": "Submitter"
+  },
+  {
+   "fieldname": "submitted_by",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Submitted By",
+   "options": "User",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "submitted_at",
+   "fieldtype": "Datetime",
+   "label": "Submitted At",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_sub",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Optional justification from submitter (collected via JS dialog on submit).",
+   "fieldname": "submission_reason",
+   "fieldtype": "Text",
+   "label": "Submitter Justification"
+  },
+  {
+   "fieldname": "section_status",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "bold": 1,
+   "default": "Pending CEO",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Pending CEO\nApproved\nRejected\nCancelled",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "Audit: was kill-switch ON when this override was created?",
+   "fieldname": "kill_switch_at_create",
+   "fieldtype": "Check",
+   "label": "Kill-switch was ON at create",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_decision",
+   "fieldtype": "Section Break",
+   "label": "CEO Decision"
+  },
+  {
+   "fieldname": "decision",
+   "fieldtype": "Select",
+   "label": "Decision",
+   "options": "\nApproved\nRejected",
+   "read_only": 1
+  },
+  {
+   "fieldname": "acted_by",
+   "fieldtype": "Link",
+   "label": "Acted By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "acted_at",
+   "fieldtype": "Datetime",
+   "label": "Acted At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_decision",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Required on Reject (≥5 chars). Optional on Approve.",
+   "fieldname": "ceo_comment",
+   "fieldtype": "Text",
+   "label": "CEO Comment",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_audit",
+   "fieldtype": "Section Break",
+   "label": "Audit Trail"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "TS Budget Override Approval",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-05-13 13:30:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Budget Override Approval",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "permlevel": 0,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 0,
+   "cancel": 0,
+   "create": 0,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "permlevel": 0,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IT Head",
+   "share": 0,
+   "submit": 0,
+   "write": 0
+  },
+  {
+   "amend": 0,
+   "cancel": 0,
+   "create": 0,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "permlevel": 0,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "CEO",
+   "share": 0,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 0,
+   "cancel": 0,
+   "create": 0,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "permlevel": 0,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "MD",
+   "share": 0,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "permlevel": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Purchase Manager"
+  },
+  {
+   "permlevel": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Grain Purchase Manager"
+  },
+  {
+   "permlevel": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Department Head"
+  },
+  {
+   "permlevel": 0,
+   "read": 1,
+   "report": 1,
+   "role": "AVP"
+  },
+  {
+   "permlevel": 0,
+   "read": 1,
+   "report": 1,
+   "role": "General Manager"
+  },
+  {
+   "permlevel": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User"
+  },
+  {
+   "permlevel": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "System Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "IT Head"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "CEO"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "MD"
+  }
+ ],
+ "search_fields": "reference_doctype,reference_name,cost_center,submitted_by",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "title_field": "title",
+ "track_changes": 1
+}

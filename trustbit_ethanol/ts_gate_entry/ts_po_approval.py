@@ -448,10 +448,55 @@ def _submit_po_for_approval(doc):
 	"""Submit a PO for approval using category-based routing."""
 	_validate_po_submittable(doc)
 
-	# Budget check — blocks if budget exceeded (CEO can override during approval)
+	# v2.10.0 — Budget breach detection.
+	# Kill switch ON (default): breach diverts PO to 'Pending Budget Override' and
+	#   auto-creates a TS Budget Override Approval doc. NO throw.
+	# Kill switch OFF: legacy hard-throw behavior preserved via validate_budget_on_po_submit.
 	settings = frappe.get_single("TS Settings")
-	if settings.enable_budget_check:
-		validate_budget_on_po_submit(doc)
+	if cint(settings.enable_budget_check) and not frappe.flags.get("in_budget_override_approval"):
+		from trustbit_ethanol.ts_gate_entry.ts_budget import (
+			_is_override_flow_enabled as _bo_enabled,
+			detect_budget_breach_for_po,
+		)
+
+		if _bo_enabled():
+			breach = detect_budget_breach_for_po(doc)
+			if breach.get("has_breach"):
+				from trustbit_ethanol.ts_gate_entry.ts_budget_override import (
+					create_budget_override_for_doc,
+				)
+
+				override = create_budget_override_for_doc("Purchase Order", doc.name)
+				frappe.flags.in_budget_override_approval = True
+				try:
+					doc.db_set({
+						"ts_approval_status": "Pending Budget Override",
+						"ts_budget_override_ref": override["name"],
+						"ts_budget_breach_flag": 1,
+						"ts_amount_at_submission": flt(doc.grand_total),
+						"ts_submitted_by": frappe.session.user,
+						"ts_last_action": f"Held pending budget approval on {now_datetime().strftime('%d %b %Y %H:%M')}",
+					}, update_modified=True)
+				finally:
+					frappe.flags.in_budget_override_approval = False
+				_log_approval_action(
+					doc,
+					"Held for Budget Override",
+					"Draft",
+					"Pending Budget Override",
+					comment=f"Linked override: {override['name']} ({breach.get('breach_type')})",
+					po_amount=flt(doc.grand_total),
+					step_order=0,
+					purchase_category=doc.get("ts_purchase_category") or "",
+				)
+				return {
+					"status": "ok",
+					"next_state": "Pending Budget Override",
+					"override": override["name"],
+				}
+		else:
+			# Kill switch OFF — legacy hard-throw.
+			validate_budget_on_po_submit(doc)
 
 	status = doc.ts_approval_status
 	if status and status not in ("", "Draft", "Not Submitted"):
@@ -500,6 +545,19 @@ def _approve_po(doc, comment=""):
 	_validate_po_is_pending(doc)
 	_validate_not_self_approving(doc)
 	_validate_amount_unchanged(doc)
+
+	# v2.10.0 — Block normal-route approval while a budget override is still pending.
+	# (The override approval endpoint itself sets frappe.flags.in_budget_override_approval
+	# to bypass this check during the resume transition.)
+	if doc.get("ts_approval_status") == "Pending Budget Override" and not frappe.flags.get(
+		"in_budget_override_approval"
+	):
+		ref = doc.get("ts_budget_override_ref")
+		frappe.throw(
+			_("This PO is awaiting CEO budget-override approval ({0}). Approve the override first.").format(
+				ref or "(unlinked)"
+			)
+		)
 
 	if not doc.ts_approval_rule:
 		frappe.throw(_("This PO has no approval rule set. Please resubmit."))
@@ -623,6 +681,43 @@ def _submit_mr_for_approval(doc):
 	if not cost_center:
 		frappe.throw(_("Cost Center is required for MR approval routing. Please set it on the MR or its items."))
 
+	# v2.10.0 — Budget breach detection (mirrors PO branch).
+	# Inserted BEFORE route selection so a breach diverts straight to override approval.
+	settings = frappe.get_single("TS Settings")
+	if cint(settings.enable_budget_check) and not frappe.flags.get("in_budget_override_approval"):
+		from trustbit_ethanol.ts_gate_entry.ts_budget import (
+			_is_override_flow_enabled as _bo_enabled,
+			detect_budget_breach_for_mr,
+		)
+
+		if _bo_enabled():
+			breach = detect_budget_breach_for_mr(doc)
+			if breach.get("has_breach"):
+				from trustbit_ethanol.ts_gate_entry.ts_budget_override import (
+					create_budget_override_for_doc,
+				)
+
+				override = create_budget_override_for_doc("Material Request", doc.name)
+				frappe.flags.in_budget_override_approval = True
+				try:
+					doc.db_set({
+						"ts_mr_status": "Pending Budget Override",
+						"ts_budget_override_ref": override["name"],
+						"ts_budget_breach_flag": 1,
+						"ts_mr_submitted_by": frappe.session.user,
+					}, update_modified=True)
+				finally:
+					frappe.flags.in_budget_override_approval = False
+				_log_mr_action(
+					doc,
+					"Held for Budget Override",
+					"Draft",
+					"Pending Budget Override",
+					step_order=0,
+					purchase_category=breach.get("breach_type") or "",
+				)
+				return "Pending Budget Override"
+
 	route_name = _find_mr_route(cost_center)
 	if not route_name:
 		frappe.throw(_("No MR approval route configured for Cost Center: {0}").format(cost_center))
@@ -668,6 +763,18 @@ def _submit_mr_for_approval(doc):
 def _approve_mr(doc, comment=""):
 	"""Approve/Review MR based on current step."""
 	_block_if_mr_transfer(doc)  # v2.9.9
+
+	# v2.10.0 — Block normal-route approval while a budget override is still pending.
+	if doc.get("ts_mr_status") == "Pending Budget Override" and not frappe.flags.get(
+		"in_budget_override_approval"
+	):
+		ref = doc.get("ts_budget_override_ref")
+		frappe.throw(
+			_("This MR is awaiting CEO budget-override approval ({0}). Approve the override first.").format(
+				ref or "(unlinked)"
+			)
+		)
+
 	if not (doc.ts_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.ts_mr_status))
 
@@ -1886,6 +1993,10 @@ def _block_gate_field_tampering(doc, gate_fields):
 		return
 	if doc.flags.get("ts_approval_workflow_call"):
 		return
+	# v2.10.0 — Allow legitimate status mutations from the budget-override approval flow.
+	# This flag is set ONLY by ts_budget_override.py helpers (server-side, not REST-reachable).
+	if frappe.flags.get("in_budget_override_approval"):
+		return
 	for field in gate_fields:
 		if doc.has_value_changed(field):
 			frappe.throw(
@@ -2136,23 +2247,26 @@ def mr_before_submit_block_direct(doc, method=None):
 	00008-1, 00011) were submitted this way: docstatus=1 with ts_mr_status=
 	'Not Submitted' and ts_mr_route=NULL, stranded outside any approval flow.
 
-	State-based guard (Frappe before_submit fires AFTER docstatus is set to 1
-	in-memory but BEFORE the DB write — so this hook acts on every submit attempt):
+	State-based guard:
 	- Material Transfer + Material Issue: bypass (they have their own Stores
 	  Workflow at ts_mr_transfer.handle_before_save and explicit submit endpoints).
-	- ts_mr_route set AND ts_mr_status == 'Approved': legitimate _approve_mr
-	  Final Approve path — sets route + flips status to 'Approved' via db_set
+	- ts_mr_route set AND ts_mr_status='Approved': legitimate _approve_mr Final
+	  Approve path — sets the route + flips status to 'Approved' via db_set
 	  BEFORE doc.submit(), so this guard sees the legit state and passes.
-	- Else: throw with guidance pointing the user at the 'Submit for Approval' button.
+	- Else: throw with bilingual guidance pointing the user at the
+	  'Submit for Approval' button.
 	"""
 	if not doc:
 		return
+	# Frappe `before_submit` fires AFTER docstatus is set to 1 in-memory but BEFORE the DB write.
+	# So at this point doc.docstatus == 1 (not 0). We allow this hook to act on every submit
+	# attempt; the state-based gate below decides legit vs. bypass.
 	if (doc.material_request_type or "") in ("Material Transfer", "Material Issue"):
 		return  # Stores Workflow has its own submit chain
 	route = (doc.get("ts_mr_route") or doc.get("ts_mr_approval_route") or "").strip()
 	status = (doc.get("ts_mr_status") or "").strip()
 	if route and status == "Approved":
-		return  # legit _approve_mr Final Approve path
+		return  # _approve_mr Final Approve path — set state first then submit
 	frappe.throw(
 		_(
 			"Direct submission of Material Requests is not allowed. "
@@ -2351,3 +2465,114 @@ def _auto_escalate(po_data):
 	_send_approval_notification(doc, "pending_approval",
 		_get_role_users(next_step.role),
 		extra={"next_role": next_label, "escalated": True})
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  v2.10.0 — Budget override resume helper
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _assign_route_and_first_step(doc):
+	"""Route selection + step-1 status assignment WITHOUT breach detection.
+
+	Called by ts_budget_override._resume_normal_route after CEO approves the override.
+	Caller MUST set frappe.flags.in_budget_override_approval = True so the gate-field
+	tamper guard allows the status mutation and the breach detector inside
+	_submit_*_for_approval is bypassed (defensive — we don't call _submit_* here).
+	"""
+	originator = (
+		(doc.get("ts_mr_submitted_by") if doc.doctype == "Material Request" else doc.get("ts_submitted_by"))
+		or doc.owner
+	)
+
+	if doc.doctype == "Purchase Order":
+		category = _resolve_po_category(doc)
+		rule_name = _find_po_approval_rule(category, flt(doc.grand_total))
+		rule = frappe.get_doc("TS PO Approval Rule", rule_name)
+		steps = sorted(rule.approval_steps, key=lambda s: s.step_order)
+		target = _get_target_step_with_skip(steps, originator)
+		next_state = f"Pending {target.role_label or target.role}"
+		self_skip_impossible = (
+			target == steps[0]
+			and target.role in frappe.get_roles(originator)
+			and len(steps) == 1
+		)
+		doc.db_set({
+			"ts_approval_status": next_state,
+			"ts_purchase_category": category,
+			"ts_approval_rule": rule_name,
+			"ts_current_step": target.step_order,
+			"ts_total_steps": len(steps),
+			"ts_can_send_to_md": 0,
+			"ts_self_skip_impossible": 1 if self_skip_impossible else 0,
+			"ts_amount_at_submission": flt(doc.grand_total),
+			"ts_last_action": f"Resumed after budget override on {now_datetime().strftime('%d %b %Y %H:%M')}",
+		}, update_modified=True)
+		_log_approval_action(
+			doc,
+			"Resumed",  # FAIL1 fix: "Resumed after Budget Override" not in TS Approval Log action Select; comment carries the context
+			"Pending Budget Override",
+			next_state,
+			po_amount=flt(doc.grand_total),
+			step_order=target.step_order,
+			purchase_category=category,
+		)
+		_send_approval_notification(
+			doc,
+			"pending_approval",
+			_get_role_users(target.role),
+			extra={"next_role": target.role_label or target.role, "resumed_from_budget_override": True},
+		)
+		return next_state
+
+	if doc.doctype == "Material Request":
+		cost_center = _get_mr_cost_center(doc)
+		route_name = _find_mr_route(cost_center)
+		if not route_name:
+			frappe.throw(
+				_("No MR approval route configured for Cost Center: {0}").format(cost_center)
+			)
+		route_doc = frappe.get_doc("TS MR Approval Route", route_name)
+		steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
+		target = _get_target_step_for_mr(steps, originator, cost_center)
+		next_state = f"Pending {target.role_label or target.role}"
+		self_skip_impossible = (
+			target == steps[0]
+			and target.role in frappe.get_roles(originator)
+			and len(steps) == 1
+		)
+		doc.db_set({
+			"ts_mr_status": next_state,
+			"ts_mr_route": route_name,
+			"ts_mr_approval_route": route_name,
+			"ts_mr_current_step": target.step_order,
+			"ts_mr_total_steps": len(steps),
+			"ts_mr_self_skip_impossible": 1 if self_skip_impossible else 0,
+		}, update_modified=True)
+		_log_mr_action(
+			doc,
+			"Resumed",  # FAIL1 fix: "Resumed after Budget Override" not in TS Approval Log action Select; comment carries the context
+			"Pending Budget Override",
+			next_state,
+			step_order=target.step_order,
+			purchase_category=route_name,
+		)
+		cc_config = get_cc_config(cost_center)
+		recipients = []
+		if cc_config:
+			recipients = get_cc_users_for_step(cc_config, target.step_order)
+		if not recipients:
+			recipients = _get_role_users(target.role)
+		_send_approval_notification(
+			doc,
+			"mr_pending",
+			recipients,
+			extra={"next_role": target.role_label or target.role, "resumed_from_budget_override": True},
+		)
+		return next_state
+
+	frappe.throw(
+		_("Cannot resume route for {0} — only Material Request and Purchase Order are supported.").format(
+			doc.doctype
+		)
+	)

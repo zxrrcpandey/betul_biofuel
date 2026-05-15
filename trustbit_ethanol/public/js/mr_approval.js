@@ -62,6 +62,9 @@ frappe.ui.form.on("Material Request", {
 		if (frm.doc.cost_center) {
 			setTimeout(() => _check_cc_budget(frm), 500);
 		}
+		// v2.10.0 — linked Budget Override banner (only when status === 'Pending Budget Override'
+		// OR ts_budget_override_ref is populated on a terminal/resumed doc).
+		_render_budget_override_banner(frm);
 		// Service Request: PO creation via custom v2.8.11.4 helper that
 		// flips type before calling the standard mapper. ERPNext native
 		// make_purchase_order rejects Service Request type; helper
@@ -239,6 +242,75 @@ function _hide_frappe_submit_ui(frm) {
 // ═══════════════════════════════════════════════════════════
 //  TS BANNER — our own container that Frappe can't wipe
 // ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+//  v2.10.0 — Linked Budget Override banner (MR side)
+// ═══════════════════════════════════════════════════════════
+
+function _render_budget_override_banner(frm) {
+	if (frm.is_new()) return;
+	if (!frm.doc.name) return;
+	// Skip on Transfer/Issue branches — they have their own flow.
+	if (frm.doc.material_request_type === "Material Transfer"
+			|| frm.doc.material_request_type === "Material Issue") {
+		return;
+	}
+	const showWhilePending = (frm.doc.ts_mr_status === "Pending Budget Override");
+	const showAfterAction = !!frm.doc.ts_budget_override_ref;
+	if (!showWhilePending && !showAfterAction) {
+		// Belt-and-braces: clear any stale banner if state was reset.
+		$(frm.page.wrapper).find('.ts-banner[data-key="budget-override"]').remove();
+		return;
+	}
+	frappe.call({
+		method: "trustbit_ethanol.ts_gate_entry.ts_budget_override.get_budget_override_for_doc",
+		args: { reference_doctype: "Material Request", reference_name: frm.doc.name },
+		callback(r) {
+			if (!r || !r.message) {
+				$(frm.page.wrapper).find('.ts-banner[data-key="budget-override"]').remove();
+				return;
+			}
+			_render_budget_override_banner_html(frm, r.message);
+		},
+	});
+}
+
+function _render_budget_override_banner_html(frm, ov) {
+	const name = frappe.utils.escape_html(ov.name);
+	const status = frappe.utils.escape_html(ov.status || "");
+	let label, bgColor, borderColor, icon;
+	if (status === "Pending CEO") {
+		label = __("Awaiting CEO Budget Approval");
+		bgColor = "#fffbeb"; borderColor = "#f59e0b"; icon = "⏸";
+	} else if (status === "Approved") {
+		label = __("Budget Override Approved");
+		bgColor = "#ecfdf5"; borderColor = "#10b981"; icon = "✓";
+	} else if (status === "Rejected") {
+		label = __("Budget Override Rejected");
+		bgColor = "#fef2f2"; borderColor = "#ef4444"; icon = "✗";
+	} else if (status === "Cancelled") {
+		label = __("Budget Override Cancelled");
+		bgColor = "#f3f4f6"; borderColor = "#6b7280"; icon = "○";
+	} else {
+		return;
+	}
+	const comment = ov.ceo_comment ? frappe.utils.escape_html(ov.ceo_comment) : "";
+	const commentLine = comment ? `<div style="margin-top:4px;color:#374151;font-size:11px;">${__("Comment")}: ${comment}</div>` : "";
+	const html = `
+		<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+			<div>
+				<span style="color:${borderColor};font-weight:600;">${icon} ${frappe.utils.escape_html(label)}</span>
+				— ${__("Linked Override")}:
+				<a href="/app/ts-budget-override-approval/${name}" target="_blank" style="font-weight:500;">${name}</a>
+				${commentLine}
+			</div>
+			<button class="btn btn-xs btn-default ts-budget-override-open">${__("Open Override")}</button>
+		</div>`;
+	_show_ts_banner(frm, "budget-override", html, bgColor, borderColor);
+	$(frm.page.wrapper).find('.ts-banner[data-key="budget-override"] .ts-budget-override-open').off("click").on("click", () => {
+		frappe.set_route("Form", "TS Budget Override Approval", ov.name);
+	});
+}
 
 function _show_ts_banner(frm, key, html, bgColor, borderColor) {
 	// Remove old banner with same key
@@ -824,7 +896,7 @@ function _check_cc_budget(frm) {
 					font-size: 12px;
 				">
 					<div style="font-weight:bold;color:${color};margin-bottom:4px;">
-						${icon} Budget Status: ${status_text} (${d.month_name})
+						${icon} Budget Status: ${status_text} — FY ${frappe.utils.escape_html(d.fiscal_year || "—")} · ${frappe.utils.escape_html(d.month_name)}
 					</div>
 					<table style="border:none;width:100%;font-size:11px;">
 						<tr>

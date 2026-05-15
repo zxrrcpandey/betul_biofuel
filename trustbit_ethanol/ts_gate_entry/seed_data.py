@@ -184,7 +184,10 @@ PROPERTY_SETTERS = [
 	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "in_list_view", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "in_standard_filter", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "label", "property_type": "Data", "value": "Approval Status", "doctype_or_field": "DocField"},
-	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "options", "property_type": "Text", "value": "Not Submitted\nPending Dept. User\nPending Dept. Head\nPending AVP\nPending CEO\nPending GM\nApproved\nRevised\nRejected\nOn Hold\nPending Stores Manager", "doctype_or_field": "DocField"},
+	# v2.10.0 — added "Pending Budget Override" (positioned immediately before Approved per plan §2.4).
+	# Lesson 239: bench migrate does NOT auto-apply this — post-deploy patch
+	# patches/v2_10_0/add_pending_budget_override_status.py calls make_property_setter.
+	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "options", "property_type": "Text", "value": "Not Submitted\nPending Dept. User\nPending Dept. Head\nPending AVP\nPending CEO\nPending GM\nPending Budget Override\nApproved\nRevised\nRejected\nOn Hold\nPending Stores Manager", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "buying_price_list", "property": "hidden", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "material_request_type", "property": "options", "property_type": "Text", "value": "Purchase\nMaterial Transfer\nMaterial Issue\nManufacture\nCustomer Provided\nService Request", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "schedule_date", "property": "in_list_view", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
@@ -200,7 +203,8 @@ PROPERTY_SETTERS = [
 	{"doc_type": "Purchase Order", "field_name": "ts_approval_status", "property": "in_list_view", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order", "field_name": "ts_approval_status", "property": "in_standard_filter", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order", "field_name": "ts_approval_status", "property": "label", "property_type": "Data", "value": "Approval Status", "doctype_or_field": "DocField"},
-	{"doc_type": "Purchase Order", "field_name": "ts_approval_status", "property": "options", "property_type": "Text", "value": "Not Submitted\nPending PM\nPending Grain PM\nPending Dept. Head\nPending CEO\nPending MD\nPending GM\nApproved\nRevised\nRejected", "doctype_or_field": "DocField"},
+	# v2.10.0 — added "Pending Budget Override" (positioned immediately before Approved per plan §2.4).
+	{"doc_type": "Purchase Order", "field_name": "ts_approval_status", "property": "options", "property_type": "Text", "value": "Not Submitted\nPending PM\nPending Grain PM\nPending Dept. Head\nPending CEO\nPending MD\nPending GM\nPending Budget Override\nApproved\nRevised\nRejected", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order", "field_name": "rounded_total", "property": "hidden", "property_type": "Check", "value": "0", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order", "field_name": "in_words", "property": "hidden", "property_type": "Check", "value": "0", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order Item", "field_name": "schedule_date", "property": "in_list_view", "property_type": "Check", "value": "0", "doctype_or_field": "DocField"},

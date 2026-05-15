@@ -17,6 +17,8 @@ frappe.ui.form.on("Purchase Order", {
 		if (typeof window.ts_render_approval_banner === "function") {
 			window.ts_render_approval_banner(frm);
 		}
+		// v2.10.0 — linked Budget Override banner (only when override is linked or active).
+		_render_po_budget_override_banner(frm);
 	},
 	cost_center(frm) {
 		if (!frm.is_new()) _load_budget_indicator(frm);
@@ -493,7 +495,7 @@ function _load_budget_indicator(frm) {
 			const pct = Math.min(b.utilization_pct || 0, 100);
 			html += `<div style="flex: 1; min-width: 200px;">`;
 			html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">`;
-			html += `<span style="font-weight: 600; color: ${color};">Budget: ${frappe.utils.escape_html(b.cost_center)}</span>`;
+			html += `<span style="font-weight: 600; color: ${color};">Budget: ${frappe.utils.escape_html(b.cost_center)}${b.fiscal_year ? ` <span style="font-weight:500;opacity:0.8;">· FY ${frappe.utils.escape_html(b.fiscal_year)}</span>` : ""}</span>`;
 			html += `<span style="font-weight: 600; color: ${color};">${b.utilization_pct}% used</span>`;
 			html += `</div>`;
 			html += `<div style="height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">`;
@@ -1140,4 +1142,96 @@ function _ts_render_deduction_fallback_banner(frm) {
 		"blue",
 		true
 	);
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  v2.10.0 — Linked Budget Override banner (PO side)
+// ═══════════════════════════════════════════════════════════
+
+function _render_po_budget_override_banner(frm) {
+	if (frm.is_new()) return;
+	if (!frm.doc.name) return;
+	const showWhilePending = (frm.doc.ts_approval_status === "Pending Budget Override");
+	const showAfterAction = !!frm.doc.ts_budget_override_ref;
+	if (!showWhilePending && !showAfterAction) {
+		$(frm.page.wrapper).find('.ts-banner[data-key="budget-override"]').remove();
+		return;
+	}
+	frappe.call({
+		method: "trustbit_ethanol.ts_gate_entry.ts_budget_override.get_budget_override_for_doc",
+		args: { reference_doctype: "Purchase Order", reference_name: frm.doc.name },
+		callback(r) {
+			if (!r || !r.message) {
+				$(frm.page.wrapper).find('.ts-banner[data-key="budget-override"]').remove();
+				return;
+			}
+			_render_po_budget_override_banner_html(frm, r.message);
+		},
+	});
+}
+
+function _render_po_budget_override_banner_html(frm, ov) {
+	const name = frappe.utils.escape_html(ov.name);
+	const status = frappe.utils.escape_html(ov.status || "");
+	let label, bgColor, borderColor, icon;
+	if (status === "Pending CEO") {
+		label = __("Awaiting CEO Budget Approval");
+		bgColor = "#fffbeb"; borderColor = "#f59e0b"; icon = "⏸";
+	} else if (status === "Approved") {
+		label = __("Budget Override Approved");
+		bgColor = "#ecfdf5"; borderColor = "#10b981"; icon = "✓";
+	} else if (status === "Rejected") {
+		label = __("Budget Override Rejected");
+		bgColor = "#fef2f2"; borderColor = "#ef4444"; icon = "✗";
+	} else if (status === "Cancelled") {
+		label = __("Budget Override Cancelled");
+		bgColor = "#f3f4f6"; borderColor = "#6b7280"; icon = "○";
+	} else {
+		return;
+	}
+	const comment = ov.ceo_comment ? frappe.utils.escape_html(ov.ceo_comment) : "";
+	const commentLine = comment ? `<div style="margin-top:4px;color:#374151;font-size:11px;">${__("Comment")}: ${comment}</div>` : "";
+	const html = `
+		<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+			<div>
+				<span style="color:${borderColor};font-weight:600;">${icon} ${frappe.utils.escape_html(label)}</span>
+				— ${__("Linked Override")}:
+				<a href="/app/ts-budget-override-approval/${name}" target="_blank" style="font-weight:500;">${name}</a>
+				${commentLine}
+			</div>
+			<button class="btn btn-xs btn-default ts-po-budget-override-open">${__("Open Override")}</button>
+		</div>`;
+	// v2.10.0 ui-designer P1 fix: use shared _show_ts_banner_po helper
+	// (mirror of mr_approval.js _show_ts_banner) so PO + MR banners share contract.
+	_show_ts_banner_po(frm, "budget-override", html, bgColor, borderColor);
+	$(frm.page.wrapper).find('.ts-banner[data-key="budget-override"] .ts-po-budget-override-open').off("click").on("click", () => {
+		frappe.set_route("Form", "TS Budget Override Approval", ov.name);
+	});
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  v2.10.0 — TS Banner DOM helper (PO side)
+//  MIRROR of mr_approval.js _show_ts_banner — keep in sync.
+//  Per ui-designer P1 audit: PO previously inlined the same DOM
+//  pattern in 3 places; now centralized here. If styling changes,
+//  update BOTH this and mr_approval.js _show_ts_banner.
+// ═══════════════════════════════════════════════════════════
+
+function _show_ts_banner_po(frm, key, html, bgColor, borderColor) {
+	// Remove old banner with same key (idempotent on form refresh)
+	$(frm.page.wrapper).find(`.ts-banner[data-key="${key}"]`).remove();
+	const banner = `<div class="ts-banner" data-key="${key}" style="
+		padding: 8px 15px;
+		margin: 0 15px 8px;
+		background: ${bgColor};
+		border-left: 3px solid ${borderColor};
+		border-radius: 4px;
+		font-size: 12px;
+	">${html}</div>`;
+	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section");
+	if ($dashboard.length) {
+		$dashboard.after(banner);
+	}
 }

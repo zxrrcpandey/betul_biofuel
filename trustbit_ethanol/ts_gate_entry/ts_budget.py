@@ -24,11 +24,34 @@ def _get_fiscal_year_dates(fiscal_year):
 
 
 def _resolve_fiscal_year(company=None):
-	"""Get current active fiscal year."""
-	fy = frappe.defaults.get_global_default("fiscal_year")
-	if not fy:
-		fy = frappe.db.get_value("Fiscal Year", {"disabled": 0}, order_by="year_start_date desc")
-	return fy
+	"""Get current active fiscal year — v2.9.17.9 date-based lookup.
+
+	Old behavior preferred frappe.defaults.get_global_default('fiscal_year') which
+	stays stale until an admin manually flips it (e.g. demo still pointed at
+	'2025-2026' on 15 May 2026 when Indian FY had already rolled to '2026-2027').
+	That caused budget banners to read the wrong year's committed/spent numbers.
+
+	New behavior: find the Fiscal Year row whose [year_start_date, year_end_date]
+	window contains today. Falls back to the legacy default if no date match.
+	Auto-rolls every April without sysadmin action.
+	"""
+	today = getdate(nowdate())
+	fy = frappe.db.get_value(
+		"Fiscal Year",
+		{
+			"disabled": 0,
+			"year_start_date": ["<=", today],
+			"year_end_date": [">=", today],
+		},
+		"name",
+	)
+	if fy:
+		return fy
+	# Fallback — stale global default, then most-recent non-disabled FY.
+	return (
+		frappe.defaults.get_global_default("fiscal_year")
+		or frappe.db.get_value("Fiscal Year", {"disabled": 0}, "name", order_by="year_start_date desc")
+	)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -394,76 +417,73 @@ def check_budget_for_po(docname):
 
 
 def validate_budget_on_po_submit(doc):
-	"""Called from _submit_po_for_approval to enforce budget check.
-	Returns budget_status dict. Throws if exceeded (unless CEO override).
-	"""
-	cost_center = doc.cost_center if hasattr(doc, "cost_center") and doc.cost_center else None
-	if not cost_center:
-		for item in (doc.get("items") or []):
-			if item.cost_center:
-				cost_center = item.cost_center
-				break
+	"""Legacy entry point preserved for callers expecting throw-on-breach.
 
+	v2.10.0 routing:
+	- Kill switch ON  (default): returns breach dict; caller (_submit_po_for_approval)
+	  routes the PO into 'Pending Budget Override' status + auto-creates a
+	  TS Budget Override Approval. NO throw.
+	- Kill switch OFF (emergency): throws like the pre-v2.10.0 hard block.
+	"""
+	cost_center = _resolve_doc_cost_center(doc)
 	if not cost_center:
 		frappe.throw(_(
 			"Cost Center is mandatory on Purchase Orders for budget control. "
 			"Please set the Cost Center before submitting for approval."
 		))
 
-	# Skip budget check if CEO already overrode
-	if cint(doc.ts_budget_overridden):
-		return {"status": "overridden", "budget_exceeded": False}
+	# Legacy escape: explicit per-doc override flag wins (kept for migration parity).
+	if cint(getattr(doc, "ts_budget_overridden", 0)):
+		return {"status": "overridden", "has_breach": False, "budget_exceeded": False}
 
-	company = doc.company
-	fiscal_year = _resolve_fiscal_year(company)
+	breach = detect_budget_breach_for_po(doc)
 
-	if not fiscal_year:
-		return {"status": "no_fy", "budget_exceeded": False}
+	if not breach.get("has_breach"):
+		return {"status": "ok", "has_breach": False, "budget_exceeded": False, **breach}
 
-	fy_start, fy_end = _get_fiscal_year_dates(fiscal_year)
-	budget_info = _get_budget_info(cost_center, fiscal_year, company, fy_start, fy_end)
+	if _is_override_flow_enabled():
+		return {"status": "breach", "has_breach": True, "budget_exceeded": True, **breach}
 
-	if not budget_info["has_budget"]:
-		return {"status": "no_budget", "budget_exceeded": False}
-
-	annual_budget = budget_info["annual_budget"]
-	committed = budget_info["committed"]
-	actual_spent = budget_info["actual_spent"]
-	available = annual_budget - committed - actual_spent
-	po_amount = flt(doc.grand_total)
-
-	if po_amount > available:
-		frappe.throw(_(
-			"Insufficient budget for {0}.\n\n"
-			"Annual Budget: {1}\n"
-			"Already Committed (POs): {2}\n"
-			"Already Spent (Invoices): {3}\n"
-			"Available: {4}\n"
-			"This PO: {5}\n"
-			"Shortfall: {6}\n\n"
-			"Please revise the PO amount or request a budget increase. "
-			"CEO can override this check during approval."
-		).format(
-			cost_center,
-			frappe.format_value(annual_budget, {"fieldtype": "Currency"}),
-			frappe.format_value(committed, {"fieldtype": "Currency"}),
-			frappe.format_value(actual_spent, {"fieldtype": "Currency"}),
-			frappe.format_value(available, {"fieldtype": "Currency"}),
-			frappe.format_value(po_amount, {"fieldtype": "Currency"}),
-			frappe.format_value(po_amount - available, {"fieldtype": "Currency"}),
-		))
-
-	return {
-		"status": "ok",
-		"budget_exceeded": False,
-		"available": available,
-		"utilization_pct": round((committed + actual_spent) / annual_budget * 100, 1) if annual_budget else 0,
-	}
+	# Kill switch OFF — legacy hard-throw behavior.
+	frappe.throw(_(
+		"Insufficient budget for {0}.\n\n"
+		"Annual Budget: {1}\n"
+		"Already Committed (POs): {2}\n"
+		"Already Spent (Invoices): {3}\n"
+		"Available: {4}\n"
+		"This PO: {5}\n"
+		"Shortfall: {6}\n\n"
+		"Please revise the PO amount or request a budget increase."
+	).format(
+		breach.get("cost_center", cost_center),
+		frappe.format_value(breach.get("annual_budget_amount", 0), {"fieldtype": "Currency"}),
+		frappe.format_value(breach.get("annual_committed_amount", 0), {"fieldtype": "Currency"}),
+		frappe.format_value(breach.get("annual_spent_amount", 0), {"fieldtype": "Currency"}),
+		frappe.format_value(breach.get("annual_available", 0), {"fieldtype": "Currency"}),
+		frappe.format_value(breach.get("source_amount", 0), {"fieldtype": "Currency"}),
+		frappe.format_value(
+			max(flt(breach.get("annual_breach_delta", 0)), flt(breach.get("monthly_breach_delta", 0))),
+			{"fieldtype": "Currency"},
+		),
+	))
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def ceo_budget_override(docname, reason):
-	"""CEO overrides the budget block on a PO. Logs the override."""
+	"""CEO overrides the budget block on a PO. Logs the override.
+
+	DEPRECATED in v2.10.0 when ts_budget_override_flow_enabled is ON (default).
+	Throws when override flow is enabled — callers must use the
+	TS Budget Override Approval workflow instead. Re-enabled as an emergency
+	escape valve when the kill switch is flipped OFF (per plan Q7).
+	"""
+	if _is_override_flow_enabled():
+		frappe.throw(_(
+			"ceo_budget_override is deprecated in v2.10.0. Use the TS Budget "
+			"Override Approval workflow instead. To re-enable this legacy endpoint "
+			"as an emergency escape valve, a System Manager must flip "
+			"TS Settings → 'Budget Override Flow Enabled' to OFF."
+		))
 	if not reason:
 		frappe.throw(_("Override reason is mandatory"))
 
@@ -907,10 +927,11 @@ def get_cc_budget_status(cost_center):
 	month_end = get_last_day(today)
 	month_name = today.strftime("%B %Y")
 
-	# Find budget for this CC in current FY
-	fiscal_year = frappe.db.get_default("fiscal_year")
+	# v2.9.17.9 — use date-based _resolve_fiscal_year instead of the stale global default
+	# so the banner always reflects the CURRENT fiscal year (auto-rolls each April).
+	fiscal_year = _resolve_fiscal_year()
 	if not fiscal_year:
-		return {"has_budget": False}
+		return {"has_budget": False, "fiscal_year": None}
 
 	budget = frappe.get_all("Budget",
 		filters={
@@ -921,7 +942,7 @@ def get_cc_budget_status(cost_center):
 		limit=1)
 
 	if not budget:
-		return {"has_budget": False}
+		return {"has_budget": False, "fiscal_year": fiscal_year}
 
 	budget_doc = frappe.get_doc("Budget", budget[0].name)
 	annual_amount = sum(flt(a.budget_amount) for a in budget_doc.accounts)
@@ -944,6 +965,7 @@ def get_cc_budget_status(cost_center):
 	return {
 		"has_budget": True,
 		"cost_center": cost_center,
+		"fiscal_year": fiscal_year,
 		"month_name": month_name,
 		"budget_monthly": monthly_amount,
 		"budget_annual": annual_amount,
@@ -951,3 +973,296 @@ def get_cc_budget_status(cost_center):
 		"remaining": remaining,
 		"exceeded": used > monthly_amount,
 	}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  v2.10.0 — BUDGET OVERRIDE APPROVAL FLOW: breach detector
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _is_override_flow_enabled():
+	"""Read kill switch from TS Settings via raw SQL (Lesson 171/172 — fail-closed).
+
+	Returns True if flow is ON (default). Returns False ONLY when an explicit
+	'0' is stored. Any other exception path defaults to True so a misconfigured
+	settings row does not silently revert behavior to the legacy hard-block.
+	"""
+	try:
+		row = frappe.db.sql(
+			"SELECT value FROM tabSingles WHERE doctype=%s AND field=%s",
+			("TS Settings", "ts_budget_override_flow_enabled"),
+		)
+		if not row:
+			return True
+		return cint(row[0][0]) == 1
+	except Exception:
+		return True
+
+
+def _resolve_doc_cost_center(doc):
+	"""Return the primary CC for a PO/MR — header first, then first item with CC."""
+	primary = getattr(doc, "cost_center", None)
+	if primary:
+		return primary
+	for item in (doc.get("items") or []):
+		if getattr(item, "cost_center", None):
+			return item.cost_center
+	return None
+
+
+def _resolve_doc_cc_list(doc):
+	"""Return ordered, deduped list of CCs touched by a doc (header + items)."""
+	seen = set()
+	out = []
+	primary = getattr(doc, "cost_center", None)
+	if primary:
+		seen.add(primary)
+		out.append(primary)
+	for item in (doc.get("items") or []):
+		cc = getattr(item, "cost_center", None)
+		if cc and cc not in seen:
+			seen.add(cc)
+			out.append(cc)
+	return out
+
+
+def _resolve_doc_amount(doc, ref_doctype):
+	"""Authoritative amount for budget comparison.
+
+	PO: grand_total.
+	MR: sum(stock_qty * rate) when EVERY item has a rate. If any item lacks rate,
+	    returns None — caller treats this as 'skip breach check' (plan Q3).
+	"""
+	if ref_doctype == "Purchase Order":
+		return flt(getattr(doc, "grand_total", 0))
+	if ref_doctype == "Material Request":
+		items = doc.get("items") or []
+		if not items:
+			return 0.0
+		total = 0.0
+		for item in items:
+			rate = flt(getattr(item, "rate", 0))
+			qty = flt(getattr(item, "stock_qty", 0) or getattr(item, "qty", 0))
+			if rate <= 0:
+				return None  # Q3 default — skip
+			total += qty * rate
+		return total
+	return None
+
+
+def _share_amount_for_cc(doc, cc, ref_doctype, total_amount):
+	"""Compute this doc's share against a single CC.
+
+	Single-CC doc: full amount. Multi-CC doc: SUM of per-item allocations
+	whose `cost_center` matches `cc` (PO: item.amount; MR: stock_qty * rate).
+	"""
+	cc_list = _resolve_doc_cc_list(doc)
+	if len(cc_list) <= 1:
+		return flt(total_amount)
+	share = 0.0
+	for item in (doc.get("items") or []):
+		if getattr(item, "cost_center", None) != cc:
+			continue
+		if ref_doctype == "Purchase Order":
+			share += flt(getattr(item, "amount", 0))
+		elif ref_doctype == "Material Request":
+			share += flt(getattr(item, "stock_qty", 0) or getattr(item, "qty", 0)) * flt(
+				getattr(item, "rate", 0)
+			)
+	return share
+
+
+def _committed_for_period(cost_center, period_start, period_end, company):
+	"""Submitted POs falling in [period_start, period_end] — unbilled portion only."""
+	row = frappe.db.sql(
+		"""
+		SELECT COALESCE(SUM(grand_total * (1 - IFNULL(per_billed, 0) / 100)), 0)
+		FROM `tabPurchase Order`
+		WHERE cost_center = %s
+		  AND transaction_date BETWEEN %s AND %s
+		  AND company = %s
+		  AND docstatus = 1
+		  AND status NOT IN ('Closed', 'Cancelled')
+		""",
+		(cost_center, period_start, period_end, company),
+	)
+	return flt(row[0][0]) if row else 0
+
+
+def _spent_for_period(cost_center, period_start, period_end, company):
+	"""Actual GL spend in [period_start, period_end] for the given CC + company."""
+	row = frappe.db.sql(
+		"""
+		SELECT COALESCE(SUM(debit) - SUM(credit), 0)
+		FROM `tabGL Entry`
+		WHERE cost_center = %s
+		  AND posting_date BETWEEN %s AND %s
+		  AND company = %s
+		  AND is_cancelled = 0
+		  AND voucher_type IN ('Purchase Invoice', 'Journal Entry')
+		""",
+		(cost_center, period_start, period_end, company),
+	)
+	return flt(row[0][0]) if row else 0
+
+
+def _compute_breach_snapshot(doc, ref_doctype):
+	"""Core breach math used by detect_budget_breach_for_po / for_mr.
+
+	Returns a dict matching the snapshot fields of TS Budget Override Approval.
+	Never throws — always sets `has_breach` in {True, False}.
+	"""
+	cc_list = _resolve_doc_cc_list(doc)
+	if not cc_list:
+		return {"has_breach": False, "reason": "no_cost_center"}
+
+	company = doc.company
+	fiscal_year = _resolve_fiscal_year(company)
+	if not fiscal_year:
+		return {"has_breach": False, "reason": "no_fiscal_year"}
+
+	total_amount = _resolve_doc_amount(doc, ref_doctype)
+	if total_amount is None:
+		return {"has_breach": False, "reason": "mr_no_rate"}
+
+	fy_start, fy_end = _get_fiscal_year_dates(fiscal_year)
+
+	# Q10 default — backdated docs respect their own month (doc.transaction_date),
+	# not today. Falls back to today when transaction_date is unset.
+	txn_date = getdate(doc.get("transaction_date") or nowdate())
+	breach_month_start = get_first_day(txn_date)
+	breach_month_end = get_last_day(txn_date)
+	breach_month_name = txn_date.strftime("%B %Y")
+
+	primary_breach = None
+	breach_lines = []
+	any_breach = False
+
+	for cc in cc_list:
+		budget_info = _get_budget_info(cc, fiscal_year, company, fy_start, fy_end)
+		share = _share_amount_for_cc(doc, cc, ref_doctype, total_amount)
+
+		if not budget_info["has_budget"]:
+			breach_lines.append({
+				"cost_center": cc,
+				"share_amount": share,
+				"breach_type": "None",
+				"period_month": breach_month_name,
+				"annual_budget": 0,
+				"annual_available": 0,
+				"annual_breach": 0,
+				"monthly_budget": 0,
+				"monthly_available": 0,
+				"monthly_breach": 0,
+			})
+			continue
+
+		annual_budget = flt(budget_info["annual_budget"])
+		annual_committed = flt(budget_info["committed"])
+		annual_spent = flt(budget_info["actual_spent"])
+		annual_available = annual_budget - annual_committed - annual_spent
+
+		# v1 — equal distribution. Monthly Distribution support deferred per plan §15.
+		monthly_budget = annual_budget / 12.0 if annual_budget else 0
+		monthly_committed = _committed_for_period(cc, breach_month_start, breach_month_end, company)
+		monthly_spent = _spent_for_period(cc, breach_month_start, breach_month_end, company)
+		monthly_available = monthly_budget - monthly_committed - monthly_spent
+
+		annual_breach = max(0.0, share - annual_available)
+		monthly_breach = max(0.0, share - monthly_available)
+
+		if annual_breach > 0 and monthly_breach > 0:
+			line_type = "Both"
+		elif annual_breach > 0:
+			line_type = "Annual"
+		elif monthly_breach > 0:
+			line_type = "Monthly"
+		else:
+			line_type = "None"
+
+		if line_type != "None":
+			any_breach = True
+
+		breach_lines.append({
+			"cost_center": cc,
+			"share_amount": share,
+			"breach_type": line_type,
+			"period_month": breach_month_name,
+			"annual_budget": annual_budget,
+			"annual_available": annual_available,
+			"annual_breach": annual_breach,
+			"monthly_budget": monthly_budget,
+			"monthly_available": monthly_available,
+			"monthly_breach": monthly_breach,
+		})
+
+		combined = annual_breach + monthly_breach
+		if line_type != "None" and (primary_breach is None or combined > primary_breach["combined"]):
+			primary_breach = {
+				"cc": cc,
+				"annual_budget": annual_budget,
+				"annual_committed": annual_committed,
+				"annual_spent": annual_spent,
+				"annual_available": annual_available,
+				"annual_breach": annual_breach,
+				"monthly_budget": monthly_budget,
+				"monthly_committed": monthly_committed,
+				"monthly_spent": monthly_spent,
+				"monthly_available": monthly_available,
+				"monthly_breach": monthly_breach,
+				"type": line_type,
+				"combined": combined,
+			}
+
+	if not any_breach:
+		return {
+			"has_breach": False,
+			"reason": "within_budget",
+			"breach_lines": breach_lines,
+			"source_amount": total_amount,
+		}
+
+	p = primary_breach
+	return {
+		"has_breach": True,
+		"breach_type": p["type"],
+		"cost_center": p["cc"],
+		"company": company,
+		"fiscal_year": fiscal_year,
+		"period_month": breach_month_name,
+		"source_amount": total_amount,
+		"annual_budget_amount": p["annual_budget"],
+		"annual_committed_amount": p["annual_committed"],
+		"annual_spent_amount": p["annual_spent"],
+		"annual_available": p["annual_available"],
+		"annual_breach_delta": p["annual_breach"],
+		"annual_utilization_pct": (
+			round((p["annual_committed"] + p["annual_spent"]) / p["annual_budget"] * 100, 1)
+			if p["annual_budget"]
+			else 0
+		),
+		"monthly_budget_amount": p["monthly_budget"],
+		"monthly_committed_amount": p["monthly_committed"],
+		"monthly_spent_amount": p["monthly_spent"],
+		"monthly_available": p["monthly_available"],
+		"monthly_breach_delta": p["monthly_breach"],
+		"monthly_utilization_pct": (
+			round((p["monthly_committed"] + p["monthly_spent"]) / p["monthly_budget"] * 100, 1)
+			if p["monthly_budget"]
+			else 0
+		),
+		"breach_lines": breach_lines,
+	}
+
+
+def detect_budget_breach_for_po(doc):
+	"""Non-throwing breach detector for a Purchase Order."""
+	return _compute_breach_snapshot(doc, "Purchase Order")
+
+
+def detect_budget_breach_for_mr(doc):
+	"""Non-throwing breach detector for a Material Request.
+
+	Per plan Q3 default: MR with any item missing rate returns has_breach=False (skip).
+	"""
+	return _compute_breach_snapshot(doc, "Material Request")

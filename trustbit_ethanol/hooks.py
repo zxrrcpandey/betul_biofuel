@@ -156,7 +156,11 @@ on_session_creation = "trustbit_ethanol.ts_gate_entry.ts_user_management.check_f
 # Doc Events — PO lifecycle hooks for approval state management
 doc_events = {
 	"Purchase Order": {
-		"on_cancel": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_cancel",
+		# v2.10.0 — list-form (Lesson 247): cancel cascade now also drops any Pending budget-override doc.
+		"on_cancel": [
+			"trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_cancel",
+			"trustbit_ethanol.ts_gate_entry.ts_budget_override.cancel_linked_override_on_source_cancel",
+		],
 		"before_insert": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_amend",
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_before_save",
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_update",
@@ -173,7 +177,11 @@ doc_events = {
 		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_submit_block_direct",
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_update",
 		# v2.9.9.9 — clean up orphan draft Stock Entries when a Stores-flow MR is cancelled
-		"on_cancel": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.cleanup_draft_se_on_mr_cancel",
+		# v2.10.0 — list-form (Lesson 247): also drops any Pending budget-override doc.
+		"on_cancel": [
+			"trustbit_ethanol.ts_gate_entry.ts_mr_transfer.cleanup_draft_se_on_mr_cancel",
+			"trustbit_ethanol.ts_gate_entry.ts_budget_override.cancel_linked_override_on_source_cancel",
+		],
 		# v2.9.14.5 — refresh items.actual_qty from live Bin on form open (in-memory only, safe on docstatus=1)
 		"onload": "trustbit_ethanol.ts_gate_entry.ts_mr_available_refresh.refresh_actual_qty_onload",
 	},

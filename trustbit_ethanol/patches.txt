@@ -25,3 +25,5 @@ trustbit_ethanol.patches.v2_9.po_deduction_backward_compat
 # v2.9.5 patch dir intentionally NOT shipped (was demo-only); ref removed to prevent ModuleNotFoundError on prod.
 # v2.9.12 Sprint 1 — backfill amended MRs with stale ts_mr_status (12 broken docs on demo, 0 on prod)
 trustbit_ethanol.patches.v2_9_12.backfill_amended_mr_status
+# v2.10.0 — re-apply PROPERTY_SETTERS adding "Pending Budget Override" to ts_mr_status + ts_approval_status (Lesson 239)
+trustbit_ethanol.patches.v2_10_0.add_pending_budget_override_status

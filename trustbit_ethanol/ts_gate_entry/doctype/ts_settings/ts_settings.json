@@ -36,6 +36,7 @@
   "column_break_approval",
   "default_po_category",
   "enable_budget_check",
+  "ts_budget_override_flow_enabled",
   "default_monthly_distribution",
   "approval_sla_section",
   "approval_sla_hours",
@@ -282,6 +283,14 @@
    "label": "Enable Budget Check on PO",
    "default": "1",
    "description": "If checked, PO submission for approval will check budget availability. CEO can override."
+  },
+  {
+   "fieldname": "ts_budget_override_flow_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Budget Override Approval Flow",
+   "default": "1",
+   "permlevel": 1,
+   "description": "v2.10.0 — When checked (default), budget-breaching MR/PO submissions create a TS Budget Override Approval requiring CEO/MD approval before proceeding. When unchecked, falls back to legacy hard-block + manual ceo_budget_override emergency escape valve. Lesson 227: this default OVERWRITES the stored value on every bench migrate."
   },
   {
    "fieldname": "default_monthly_distribution",

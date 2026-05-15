@@ -961,6 +961,8 @@ def create_custom_fields():
 	_seed_quality_lab_dsg_shortcuts()
 	_seed_pi_receipt_context_fields()
 	_seed_cost_center_approval_perms()
+	# v2.10.0 — budget override approval flow Custom Fields on MR + PO and list view config
+	_seed_budget_override_fields()
 	_seed_gate_entry_docperm()
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
@@ -2756,3 +2758,122 @@ def _seed_gate_entry_docperm():
 			pass
 	frappe.db.commit()
 	frappe.clear_cache(doctype="TS Gate Entry")
+
+
+def _seed_budget_override_fields():
+	"""v2.10.0 — Install Custom Fields on Material Request + Purchase Order for the
+	budget-override approval flow, plus the list view config for the new doctype.
+
+	Custom Fields installed (idempotent via create_custom_fields):
+	- ts_budget_override_ref (Link → TS Budget Override Approval, read-only, permlevel=1)
+	- ts_budget_breach_flag (Check, hidden, read-only, permlevel=1)
+
+	Both anchor to the existing status field so they ride alongside the approval pill
+	(insert_after = ts_mr_status / ts_approval_status). Permlevel=1 is the tamper wall
+	(Lesson 162). The Lesson 263 modified-bump at the bottom invalidates any cached
+	form-meta in user browsers so the new fields render without a hard refresh.
+	"""
+	custom_fields = {
+		"Material Request": [
+			{
+				"fieldname": "ts_budget_override_ref",
+				"fieldtype": "Link",
+				"options": "TS Budget Override Approval",
+				"label": "Budget Override Ref",
+				"insert_after": "ts_mr_status",
+				"read_only": 1,
+				"permlevel": 1,
+				"depends_on": "eval:doc.ts_budget_override_ref",
+				"translatable": 0,
+				"description": "Set automatically when this MR is held pending CEO budget approval.",
+			},
+			{
+				"fieldname": "ts_budget_breach_flag",
+				"fieldtype": "Check",
+				"label": "Budget Breached",
+				"insert_after": "ts_budget_override_ref",
+				"read_only": 1,
+				"permlevel": 1,
+				"hidden": 1,
+				"default": 0,
+				"translatable": 0,
+			},
+		],
+		"Purchase Order": [
+			{
+				"fieldname": "ts_budget_override_ref",
+				"fieldtype": "Link",
+				"options": "TS Budget Override Approval",
+				"label": "Budget Override Ref",
+				"insert_after": "ts_approval_status",
+				"read_only": 1,
+				"permlevel": 1,
+				"depends_on": "eval:doc.ts_budget_override_ref",
+				"translatable": 0,
+				"description": "Set automatically when this PO is held pending CEO budget approval.",
+			},
+			{
+				"fieldname": "ts_budget_breach_flag",
+				"fieldtype": "Check",
+				"label": "Budget Breached",
+				"insert_after": "ts_budget_override_ref",
+				"read_only": 1,
+				"permlevel": 1,
+				"hidden": 1,
+				"default": 0,
+				"translatable": 0,
+			},
+		],
+	}
+	_create_custom_fields(custom_fields, ignore_validate=True)
+
+	# List view config for TS Budget Override Approval (Lesson 231 — exact-set, user spec).
+	list_view_doctype = "TS Budget Override Approval"
+	if frappe.db.exists("DocType", list_view_doctype):
+		listview_columns = [
+			{"key": "status", "width": "8"},
+			{"key": "reference_doctype", "width": "8"},
+			{"key": "reference_name", "width": "10"},
+			{"key": "cost_center", "width": "10"},
+			{"key": "breach_type", "width": "6"},
+			{"key": "source_amount", "width": "10"},
+			{"key": "submitted_by", "width": "10"},
+		]
+		import json as _json
+
+		settings_name = list_view_doctype
+		if frappe.db.exists("List View Settings", settings_name):
+			frappe.db.set_value(
+				"List View Settings",
+				settings_name,
+				{
+					"fields": _json.dumps(listview_columns),
+					"disable_count": 0,
+					"disable_sidebar_stats": 0,
+				},
+				update_modified=False,
+			)
+		else:
+			try:
+				frappe.get_doc({
+					"doctype": "List View Settings",
+					"name": settings_name,
+					"fields": _json.dumps(listview_columns),
+				}).db_insert()
+			except Exception:
+				pass
+
+	# Lesson 263 — bump tabDocType.modified so cached form meta invalidates for users.
+	for dt in ("Material Request", "Purchase Order", "TS Budget Override Approval"):
+		if frappe.db.exists("DocType", dt):
+			try:
+				frappe.db.set_value(
+					"DocType", dt, "modified", frappe.utils.now(), update_modified=False
+				)
+			except Exception:
+				pass
+	frappe.db.commit()
+	frappe.clear_cache(doctype="Material Request")
+	frappe.clear_cache(doctype="Purchase Order")
+	if frappe.db.exists("DocType", "TS Budget Override Approval"):
+		frappe.clear_cache(doctype="TS Budget Override Approval")
