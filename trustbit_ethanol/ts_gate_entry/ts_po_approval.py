@@ -479,16 +479,29 @@ def _submit_po_for_approval(doc):
 					}, update_modified=True)
 				finally:
 					frappe.flags.in_budget_override_approval = False
-				_log_approval_action(
-					doc,
-					"Held for Budget Override",
-					"Draft",
-					"Pending Budget Override",
-					comment=f"Linked override: {override['name']} ({breach.get('breach_type')})",
-					po_amount=flt(doc.grand_total),
-					step_order=0,
-					purchase_category=doc.get("ts_purchase_category") or "",
-				)
+				# v2.10.0.1 — Lesson 238 best-effort audit log.
+				# TS Approval Log action Select doesn't include "Held for Budget Override" yet
+				# (will be added via PropertySetter in a follow-up). Wrap so the docstatus
+				# transition + override creation NEVER block on the audit row.
+				try:
+					_log_approval_action(
+						doc,
+						"Held for Budget Override",
+						"Draft",
+						"Pending Budget Override",
+						comment=f"Linked override: {override['name']} ({breach.get('breach_type')})",
+						po_amount=flt(doc.grand_total),
+						step_order=0,
+						purchase_category=doc.get("ts_purchase_category") or "",
+					)
+				except Exception:
+					try:
+						frappe.log_error(
+							title="budget override log skipped (PO)",
+							message=f"doc={doc.name} override={override['name']} err={frappe.get_traceback()[:500]}",
+						)
+					except Exception:
+						pass
 				return {
 					"status": "ok",
 					"next_state": "Pending Budget Override",
@@ -708,14 +721,24 @@ def _submit_mr_for_approval(doc):
 					}, update_modified=True)
 				finally:
 					frappe.flags.in_budget_override_approval = False
-				_log_mr_action(
-					doc,
-					"Held for Budget Override",
-					"Draft",
-					"Pending Budget Override",
-					step_order=0,
-					purchase_category=breach.get("breach_type") or "",
-				)
+				# v2.10.0.1 — Lesson 238 best-effort audit log (see PO branch above).
+				try:
+					_log_mr_action(
+						doc,
+						"Held for Budget Override",
+						"Draft",
+						"Pending Budget Override",
+						step_order=0,
+						purchase_category=breach.get("breach_type") or "",
+					)
+				except Exception:
+					try:
+						frappe.log_error(
+							title="budget override log skipped (MR)",
+							message=f"doc={doc.name} override={override['name']} err={frappe.get_traceback()[:500]}",
+						)
+					except Exception:
+						pass
 				return "Pending Budget Override"
 
 	route_name = _find_mr_route(cost_center)
