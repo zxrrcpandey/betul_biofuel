@@ -452,8 +452,35 @@ def _submit_po_for_approval(doc):
 	# Kill switch ON (default): breach diverts PO to 'Pending Budget Override' and
 	#   auto-creates a TS Budget Override Approval doc. NO throw.
 	# Kill switch OFF: legacy hard-throw behavior preserved via validate_budget_on_po_submit.
+	#
+	# v2.10.0.3 — PO inherited from an approved Material Request bypasses the
+	# breach detector. The MR was the gating event in the procurement lifecycle
+	# (it either fit budget at submit, or was approved through the override flow
+	# itself). Re-checking at PO submit produced false positives on every MR→PO
+	# conversion. Trade-off: PO line rates inflated beyond MR estimate aren't
+	# re-vetted here; the actual GL spend at PI/payment posting catches real
+	# overruns. Standalone POs (no item.material_request) still hit the check.
+	# Fail-closed: forged `material_request` values that don't reference an
+	# Approved + submitted MR are ignored — every claimed MR must verify.
+	claimed_mr_names = {
+		item.get("material_request")
+		for item in (doc.get("items") or [])
+		if item.get("material_request")
+	}
+	po_has_mr_source = False
+	if claimed_mr_names:
+		verified = frappe.db.count(
+			"Material Request",
+			filters={
+				"name": ["in", list(claimed_mr_names)],
+				"docstatus": 1,
+				"ts_mr_status": "Approved",
+				"company": doc.company,  # defense-in-depth: same-company MR only
+			},
+		)
+		po_has_mr_source = (verified == len(claimed_mr_names))
 	settings = frappe.get_single("TS Settings")
-	if cint(settings.enable_budget_check) and not frappe.flags.get("in_budget_override_approval"):
+	if not po_has_mr_source and cint(settings.enable_budget_check) and not frappe.flags.get("in_budget_override_approval"):
 		from trustbit_ethanol.ts_gate_entry.ts_budget import (
 			_is_override_flow_enabled as _bo_enabled,
 			detect_budget_breach_for_po,
