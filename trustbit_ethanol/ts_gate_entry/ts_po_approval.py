@@ -2533,7 +2533,7 @@ def _assign_route_and_first_step(doc):
 		}, update_modified=True)
 		_log_approval_action(
 			doc,
-			"Resumed",  # FAIL1 fix: "Resumed after Budget Override" not in TS Approval Log action Select; comment carries the context
+			"Resumed after Budget Override",  # v2.10.0.2 — TS Approval Log.action Select now includes this value
 			"Pending Budget Override",
 			next_state,
 			po_amount=flt(doc.grand_total),
@@ -2574,7 +2574,7 @@ def _assign_route_and_first_step(doc):
 		}, update_modified=True)
 		_log_mr_action(
 			doc,
-			"Resumed",  # FAIL1 fix: "Resumed after Budget Override" not in TS Approval Log action Select; comment carries the context
+			"Resumed after Budget Override",  # v2.10.0.2 — TS Approval Log.action Select now includes this value
 			"Pending Budget Override",
 			next_state,
 			step_order=target.step_order,

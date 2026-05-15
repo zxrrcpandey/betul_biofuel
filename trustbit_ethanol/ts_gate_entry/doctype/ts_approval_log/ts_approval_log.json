@@ -27,7 +27,7 @@
    "fieldname": "action",
    "fieldtype": "Select",
    "label": "Action",
-   "options": "Submitted\nForwarded\nReviewed\nApproved\nFinal Approved\nRevised\nRejected\nResubmitted\nSent to MD\nHeld\nResumed\nEdited (Executive Override)",
+   "options": "Submitted\nForwarded\nReviewed\nApproved\nFinal Approved\nRevised\nRejected\nResubmitted\nSent to MD\nHeld\nResumed\nHeld for Budget Override\nResumed after Budget Override\nEdited (Executive Override)",
    "in_list_view": 1,
    "read_only": 1,
    "bold": 1
