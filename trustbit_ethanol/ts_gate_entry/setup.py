@@ -963,6 +963,8 @@ def create_custom_fields():
 	_seed_cost_center_approval_perms()
 	# v2.10.0 — budget override approval flow Custom Fields on MR + PO and list view config
 	_seed_budget_override_fields()
+	# v2.10.0.8 — display-only "Including GST" toggle on PO Payment Terms PDF
+	_seed_payment_amount_gst_field()
 	_seed_gate_entry_docperm()
 	_setup_purchase_receipt_permissions()
 	_create_approval_roles()
@@ -2877,3 +2879,30 @@ def _seed_budget_override_fields():
 	frappe.clear_cache(doctype="Purchase Order")
 	if frappe.db.exists("DocType", "TS Budget Override Approval"):
 		frappe.clear_cache(doctype="TS Budget Override Approval")
+
+
+def _seed_payment_amount_gst_field():
+	"""v2.10.0.8 — display-only 'Including GST' toggle on Purchase Order.
+
+	Controls how the BBPL Purchase Order print format renders each Payment
+	Schedule row's amount. Default=1 keeps current behavior (flat inclusive
+	amount). When unticked, the print format decomposes each row into
+	'net + GST tax' parts for the supplier. DB stored values unchanged.
+	"""
+	if frappe.db.exists("Custom Field", {"dt": "Purchase Order", "fieldname": "ts_payment_amount_includes_gst"}):
+		return
+	frappe.get_doc({
+		"doctype": "Custom Field",
+		"dt": "Purchase Order",
+		"fieldname": "ts_payment_amount_includes_gst",
+		"label": "Including GST",
+		"fieldtype": "Check",
+		"default": "1",
+		"insert_after": "payment_schedule",
+		"description": "If ticked (default), BBPL Purchase Order PDF shows each Payment Schedule amount as the flat inclusive value. If unticked, the PDF decomposes each row into 'net amount + GST tax'. Display-only — does not change ERPNext's stored payment_amount math.",
+		"no_copy": 0,
+		"translatable": 0,
+	}).insert(ignore_permissions=True)
+	# Lesson 263 — bump tabDocType.modified so cached form metadata invalidates client-side
+	frappe.db.set_value("DocType", "Purchase Order", "modified", frappe.utils.now(), update_modified=False)
+	frappe.db.commit()

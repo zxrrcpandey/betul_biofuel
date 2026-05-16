@@ -14,6 +14,7 @@ app_license = "mit"
 app_include_css = "/assets/trustbit_ethanol/css/ts_theme.css"
 web_include_css = "/assets/trustbit_ethanol/css/ts_login.css"
 app_include_js = [
+	"/assets/trustbit_ethanol/js/po_payment_amount_gst.js",
 	"/assets/trustbit_ethanol/js/ts_executive_override.js",
 	"/assets/trustbit_ethanol/js/ts_approval_ux.js",
 	"/assets/trustbit_ethanol/js/ts_my_approvals.js",
