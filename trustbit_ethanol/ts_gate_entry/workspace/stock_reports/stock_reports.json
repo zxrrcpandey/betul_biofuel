@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Stock Reports</b></span>\",\"col\":12}},{\"id\":\"sc1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Stock Ledger FIFO\",\"col\":4}},{\"id\":\"sc2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Ledger\",\"col\":4}},{\"id\":\"sc3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Entry\",\"col\":4}},{\"id\":\"sc4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Balance\",\"col\":4}}]",
+ "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Stock Reports</b></span>\",\"col\":12}},{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Pending Material Issues\",\"col\":4}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Material Issues This Month\",\"col\":4}},{\"id\":\"sp1\",\"type\":\"spacer\",\"data\":{\"col\":4}},{\"id\":\"sc0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Material Issue Ledger\",\"col\":4}},{\"id\":\"sc1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Stock Ledger FIFO\",\"col\":4}},{\"id\":\"sc2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Ledger\",\"col\":4}},{\"id\":\"sc3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Entry\",\"col\":4}},{\"id\":\"sc4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Balance\",\"col\":4}}]",
  "creation": "2026-05-11 14:45:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -19,6 +19,15 @@
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Material Issue Ledger",
+   "link_to": "TS Material Issue Ledger",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
   },
   {
    "hidden": 0,
@@ -69,7 +78,16 @@
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "Stock Reports",
- "number_cards": [],
+ "number_cards": [
+  {
+   "label": "Pending Material Issues",
+   "number_card_name": "Pending Material Issues"
+  },
+  {
+   "label": "Material Issues This Month",
+   "number_card_name": "Material Issues This Month"
+  }
+ ],
  "owner": "Administrator",
  "parent_page": "BBPL Ethanol",
  "public": 1,
@@ -78,6 +96,14 @@
  "roles": [],
  "sequence_id": 10.0,
  "shortcuts": [
+  {
+   "color": "Orange",
+   "format": "{} report",
+   "label": "TS Material Issue Ledger",
+   "link_to": "TS Material Issue Ledger",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
   {
    "color": "Green",
    "format": "{} report",
