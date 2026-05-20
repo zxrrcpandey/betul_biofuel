@@ -273,6 +273,9 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_default_letter_head.seed_default_letter_head",
 	# v2.9.12 Sprint 2 — Health Check kill-switch field on TS Settings
 	"trustbit_ethanol.ts_gate_entry.setup_health_check.seed_health_check",
+	# v2.11.0 — Token Cascade Delete System (Super Admin role + post-install setup)
+	"trustbit_ethanol.ts_gate_entry.setup_super_admin_role.seed_super_admin_role",
+	"trustbit_ethanol.ts_gate_entry.setup_cascade_delete.seed_cascade_delete",
 ]
 
 # Scheduled Tasks
@@ -283,6 +286,12 @@ scheduler_events = {
 		"*/5 * * * *": [
 			"trustbit_ethanol.ts_gate_entry.api.check_sla_breaches",
 			"trustbit_ethanol.ts_gate_entry.ts_post_dated.expire_post_dated_requests",
+			# v2.11.0 — cascade delete revert window expiry (observability)
+			"trustbit_ethanol.ts_gate_entry.cascade_delete_api.scheduled_expire_revert_windows",
+		],
+		"0 3 * * *": [
+			# v2.11.0 — nightly cascade orphan-trail + hash chain audit
+			"trustbit_ethanol.ts_gate_entry.cascade_delete_api.scheduled_nightly_integrity_scan",
 		],
 		"*/30 * * * *": [
 			"trustbit_ethanol.ts_gate_entry.ts_po_approval.check_approval_sla",

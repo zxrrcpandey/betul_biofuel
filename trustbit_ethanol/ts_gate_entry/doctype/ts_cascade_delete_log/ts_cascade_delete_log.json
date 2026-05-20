@@ -1,0 +1,546 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:BBPL-CDL-{YYYY}-{#####}",
+ "creation": "2026-05-20 17:30:00",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-05-20 17:30:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Cascade Delete Log",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "track_views": 0,
+ "field_order": [
+  "section_target",
+  "target_token",
+  "approval_status",
+  "rate_limit_position",
+  "col_target_right",
+  "target_chain_json",
+  "section_two_person",
+  "initiated_by",
+  "initiated_at",
+  "col_two_person_right",
+  "approved_by",
+  "approved_at",
+  "rejection_reason",
+  "section_confirms",
+  "confirm_token_name_typed",
+  "col_confirms_right",
+  "force_pr_override",
+  "force_pr_confirmation_typed",
+  "force_mi_override",
+  "force_mi_confirmation_typed",
+  "section_hash_chain",
+  "prev_row_hash",
+  "col_hash_right",
+  "this_row_hash",
+  "section_backup",
+  "backup_filename",
+  "col_backup_right",
+  "backup_sha256",
+  "section_forensic",
+  "forensic_block_json",
+  "section_webhook",
+  "webhook_delivered",
+  "webhook_response_code",
+  "col_webhook_right",
+  "webhook_attempted_at",
+  "webhook_response_body_excerpt",
+  "section_execution",
+  "executed_at",
+  "col_execution_right",
+  "execution_result_json",
+  "section_revert",
+  "revert_window_expires_at",
+  "reverted_at",
+  "col_revert_right",
+  "reverted_by",
+  "revert_result_json",
+  "section_integrity",
+  "integrity_scan_run_at",
+  "integrity_scan_clean",
+  "col_integrity_right",
+  "integrity_scan_orphans_json",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_target",
+   "fieldtype": "Section Break",
+   "label": "Cascade Target"
+  },
+  {
+   "fieldname": "target_token",
+   "fieldtype": "Link",
+   "options": "TS Token",
+   "label": "Target Token",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only_on_submit": 1,
+   "set_only_once": 1,
+   "permlevel": 0,
+   "description": "The TS Token whose chain (PI → PR → DS → QI → WB → GE → Token) will be cascade-deleted."
+  },
+  {
+   "fieldname": "approval_status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending CEO Approval\nApproved\nRejected\nCancelled\nExecuted\nReverted\nFailed",
+   "default": "Pending CEO Approval",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "permlevel": 1,
+   "reqd": 1,
+   "description": "State machine. Mutated only by API endpoints (controlled via cascade_delete_api_caller flag)."
+  },
+  {
+   "fieldname": "rate_limit_position",
+   "fieldtype": "Int",
+   "label": "Rate Limit Position (Nth in window)",
+   "read_only": 1,
+   "permlevel": 0,
+   "description": "Nth deletion in the initiator's rolling rate-limit window."
+  },
+  {
+   "fieldname": "col_target_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_chain_json",
+   "fieldtype": "Long Text",
+   "label": "Target Chain Snapshot (JSON)",
+   "read_only_on_submit": 1,
+   "permlevel": 0,
+   "description": "Hardening B — full JSON snapshot of GE/WB/QI/DS/PR/PI names + key fields captured at preview time. Used for revert."
+  },
+  {
+   "fieldname": "section_two_person",
+   "fieldtype": "Section Break",
+   "label": "Two-Person Rule (Hardening C)"
+  },
+  {
+   "fieldname": "initiated_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Initiated By",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only_on_submit": 1,
+   "set_only_once": 1,
+   "permlevel": 0,
+   "description": "Super Admin who initiated the cascade. Cannot be the same as Approved By."
+  },
+  {
+   "fieldname": "initiated_at",
+   "fieldtype": "Datetime",
+   "label": "Initiated At",
+   "reqd": 1,
+   "read_only_on_submit": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "col_two_person_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Approved By (CEO)",
+   "in_list_view": 1,
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "CEO who approved. Set by ceo_approve_cascade endpoint only; must differ from initiated_by."
+  },
+  {
+   "fieldname": "approved_at",
+   "fieldtype": "Datetime",
+   "label": "Approved At",
+   "read_only": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Rejection Reason",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "Required when CEO rejects (≥10 chars)."
+  },
+  {
+   "fieldname": "section_confirms",
+   "fieldtype": "Section Break",
+   "label": "Type-to-Confirm Gates (Q&A item 4)"
+  },
+  {
+   "fieldname": "confirm_token_name_typed",
+   "fieldtype": "Data",
+   "label": "Confirm: Token Name",
+   "reqd": 1,
+   "read_only_on_submit": 1,
+   "permlevel": 0,
+   "description": "User must type the target token name literally."
+  },
+  {
+   "fieldname": "col_confirms_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "force_pr_override",
+   "fieldtype": "Check",
+   "label": "Force-Delete PR",
+   "default": "0",
+   "read_only_on_submit": 1,
+   "permlevel": 0,
+   "description": "Allow cascade to remove a submitted Purchase Receipt with active GL/SL entries."
+  },
+  {
+   "fieldname": "force_pr_confirmation_typed",
+   "fieldtype": "Data",
+   "label": "Force PR Confirmation",
+   "read_only_on_submit": 1,
+   "permlevel": 0,
+   "description": "Must equal FORCE-DELETE-PR (case-sensitive) when force_pr_override = 1."
+  },
+  {
+   "fieldname": "force_mi_override",
+   "fieldtype": "Check",
+   "label": "Force-Delete Material Inspection",
+   "default": "0",
+   "read_only_on_submit": 1,
+   "permlevel": 0,
+   "description": "Allow cascade to remove a submitted Quality Inspection."
+  },
+  {
+   "fieldname": "force_mi_confirmation_typed",
+   "fieldtype": "Data",
+   "label": "Force MI Confirmation",
+   "read_only_on_submit": 1,
+   "permlevel": 0,
+   "description": "Must equal FORCE-DELETE-MI (case-sensitive) when force_mi_override = 1."
+  },
+  {
+   "fieldname": "section_hash_chain",
+   "fieldtype": "Section Break",
+   "label": "Hash Chain (Hardening A)",
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:doc.docstatus===1"
+  },
+  {
+   "fieldname": "prev_row_hash",
+   "fieldtype": "Data",
+   "length": 64,
+   "label": "Previous Row Hash",
+   "read_only": 1,
+   "permlevel": 0,
+   "description": "SHA-256 of the immediately-prior submitted log row's this_row_hash. Empty for genesis row."
+  },
+  {
+   "fieldname": "col_hash_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "this_row_hash",
+   "fieldtype": "Data",
+   "length": 64,
+   "label": "This Row Hash",
+   "read_only": 1,
+   "permlevel": 0,
+   "description": "SHA-256 over canonical-serialized field tuple (target_token + initiated_by + initiated_at + prev_row_hash + ...). Computed in validate()."
+  },
+  {
+   "fieldname": "section_backup",
+   "fieldtype": "Section Break",
+   "label": "Backup (Hardening B + F)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "backup_filename",
+   "fieldtype": "Data",
+   "label": "Backup Filename",
+   "read_only": 1,
+   "permlevel": 0,
+   "description": "Relative path under sites/<site>/private/files/cascade_backups/"
+  },
+  {
+   "fieldname": "col_backup_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "backup_sha256",
+   "fieldtype": "Data",
+   "length": 64,
+   "label": "Backup SHA-256",
+   "read_only": 1,
+   "permlevel": 0,
+   "description": "Crypto signature of backup file at write time. Verified before revert."
+  },
+  {
+   "fieldname": "section_forensic",
+   "fieldtype": "Section Break",
+   "label": "Forensic Block",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "forensic_block_json",
+   "fieldtype": "Long Text",
+   "label": "Forensic Block (JSON)",
+   "read_only": 1,
+   "permlevel": 0,
+   "description": "IP, OS, device, browser, GeoIP city/country, session_id, server_timezone, request_ts, screen, language, UA."
+  },
+  {
+   "fieldname": "section_webhook",
+   "fieldtype": "Section Break",
+   "label": "Webhook (Hardening D)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "webhook_delivered",
+   "fieldtype": "Check",
+   "label": "Webhook Delivered",
+   "default": "0",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "webhook_response_code",
+   "fieldtype": "Int",
+   "label": "Webhook HTTP Response Code",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "col_webhook_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "webhook_attempted_at",
+   "fieldtype": "Datetime",
+   "label": "Webhook Last Attempted At",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "webhook_response_body_excerpt",
+   "fieldtype": "Small Text",
+   "label": "Webhook Response Body (first 500 chars)",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "section_execution",
+   "fieldtype": "Section Break",
+   "label": "Execution Result"
+  },
+  {
+   "fieldname": "executed_at",
+   "fieldtype": "Datetime",
+   "label": "Executed At",
+   "read_only": 1,
+   "permlevel": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "col_execution_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "execution_result_json",
+   "fieldtype": "Long Text",
+   "label": "Execution Result (JSON)",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "Per-step success/fail/skipped JSON array. Includes Lesson 275 surgical-SQL fallback flag if hit."
+  },
+  {
+   "fieldname": "section_revert",
+   "fieldtype": "Section Break",
+   "label": "Revert (Hardening M — 5-min Grace)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "revert_window_expires_at",
+   "fieldtype": "Datetime",
+   "label": "Revert Window Expires At",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "executed_at + 5 minutes."
+  },
+  {
+   "fieldname": "reverted_at",
+   "fieldtype": "Datetime",
+   "label": "Reverted At",
+   "read_only": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "col_revert_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reverted_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Reverted By",
+   "read_only": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "revert_result_json",
+   "fieldtype": "Long Text",
+   "label": "Revert Result (JSON)",
+   "read_only": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "section_integrity",
+   "fieldtype": "Section Break",
+   "label": "Integrity Scanner (Hardening G)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "integrity_scan_run_at",
+   "fieldtype": "Datetime",
+   "label": "Integrity Scan Run At",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "integrity_scan_clean",
+   "fieldtype": "Check",
+   "label": "Integrity Scan Clean",
+   "default": "0",
+   "read_only": 1,
+   "permlevel": 0,
+   "description": "1 = zero orphan refs found across all 7 cascade tables post-delete."
+  },
+  {
+   "fieldname": "col_integrity_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "integrity_scan_orphans_json",
+   "fieldtype": "Long Text",
+   "label": "Orphans Found (JSON)",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "options": "TS Cascade Delete Log",
+   "label": "Amended From",
+   "read_only": 1,
+   "no_copy": 1,
+   "print_hide": 1,
+   "permlevel": 0
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "submit": 1,
+   "print": 1,
+   "email": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "permlevel": 0,
+   "delete": 0,
+   "cancel": 0,
+   "amend": 0
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "permlevel": 1
+  },
+  {
+   "role": "Super Admin",
+   "read": 1,
+   "create": 1,
+   "write": 1,
+   "submit": 1,
+   "print": 1,
+   "email": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "permlevel": 0,
+   "delete": 0,
+   "cancel": 0,
+   "amend": 0
+  },
+  {
+   "role": "CEO",
+   "read": 1,
+   "write": 1,
+   "permlevel": 1,
+   "description": "CEO writes to permlevel=1 fields (approval_status, approved_by, approved_at, rejection_reason, executed_at, execution_result_json, revert_*)"
+  },
+  {
+   "role": "CEO",
+   "read": 1,
+   "permlevel": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "MD",
+   "read": 1,
+   "permlevel": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "MD",
+   "read": 1,
+   "permlevel": 1
+  },
+  {
+   "role": "Auditor",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "permlevel": 0
+  },
+  {
+   "role": "Auditor",
+   "read": 1,
+   "permlevel": 1
+  },
+  {
+   "role": "IT Head",
+   "read": 1,
+   "permlevel": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1
+  }
+ ],
+ "states": []
+}

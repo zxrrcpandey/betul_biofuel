@@ -1,0 +1,74 @@
+<div id="cd-root">
+	<style>
+		#cd-root { padding: 18px 22px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+		#cd-root .cd-h { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+		#cd-root .cd-sub { font-size: 12px; color: #64748b; margin-bottom: 14px; }
+		#cd-root .cd-version-pill { display: inline-block; padding: 1px 8px; background: #e0e7ff; color: #3730a3; border-radius: 10px; font-size: 10px; margin-left: 6px; vertical-align: middle; }
+		#cd-root .cd-kill-banner { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px; }
+		#cd-root .cd-kill-on { background: #fef3c7; color: #92400e; border-left: 4px solid #f59e0b; }
+		#cd-root .cd-kill-off { background: #fee2e2; color: #991b1b; border-left: 4px solid #dc2626; }
+		#cd-root .cd-search-row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+		#cd-root .cd-search-row input { flex: 1; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; font-family: monospace; }
+		#cd-root .cd-btn { padding: 6px 14px; border-radius: 4px; border: none; font-size: 13px; cursor: pointer; }
+		#cd-root .cd-btn-primary { background: #2563eb; color: #fff; }
+		#cd-root .cd-btn-danger { background: #dc2626; color: #fff; }
+		#cd-root .cd-btn-warning { background: #f59e0b; color: #fff; }
+		#cd-root .cd-btn-secondary { background: #e2e8f0; color: #0f172a; }
+		#cd-root .cd-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+		#cd-root .cd-section { margin-top: 24px; padding: 14px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
+		#cd-root .cd-section h3 { margin: 0 0 10px 0; font-size: 14px; color: #0f172a; }
+		#cd-root .cd-chain-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+		#cd-root .cd-chain-table th, #cd-root .cd-chain-table td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }
+		#cd-root .cd-chain-table th { background: #f1f5f9; font-weight: 600; }
+		#cd-root .cd-list { width: 100%; border-collapse: collapse; font-size: 12px; }
+		#cd-root .cd-list th, #cd-root .cd-list td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }
+		#cd-root .cd-list th { background: #f1f5f9; }
+		#cd-root .cd-status-pill { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+		#cd-root .cd-status-Pending { background: #fef3c7; color: #92400e; }
+		#cd-root .cd-status-Approved { background: #dbeafe; color: #1e40af; }
+		#cd-root .cd-status-Executed { background: #d1fae5; color: #065f46; }
+		#cd-root .cd-status-Rejected, #cd-root .cd-status-Cancelled { background: #e2e8f0; color: #475569; }
+		#cd-root .cd-status-Reverted { background: #ede9fe; color: #5b21b6; }
+		#cd-root .cd-status-Failed { background: #fee2e2; color: #991b1b; }
+		#cd-root .cd-modal-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15,23,42,0.7); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+		#cd-root .cd-modal { background: #fff; border-radius: 8px; padding: 22px; max-width: 540px; width: 90%; }
+		#cd-root .cd-modal h2 { font-size: 16px; margin: 0 0 12px 0; color: #b91c1c; }
+		#cd-root .cd-modal label { display: block; font-size: 12px; margin-top: 10px; color: #475569; }
+		#cd-root .cd-modal input { width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace; box-sizing: border-box; }
+		#cd-root .cd-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+		#cd-root .cd-empty { color: #94a3b8; font-style: italic; padding: 8px 0; font-size: 12px; }
+
+		/* Dark mode overrides (ui-designer Phase 4) */
+		[data-theme="dark"] #cd-root .cd-section { background: #1e293b; border-color: #334155; }
+		[data-theme="dark"] #cd-root .cd-section h3 { color: #e2e8f0; }
+		[data-theme="dark"] #cd-root .cd-sub { color: #94a3b8; }
+		[data-theme="dark"] #cd-root .cd-chain-table th, [data-theme="dark"] #cd-root .cd-list th { background: #1e293b; color: #e2e8f0; }
+		[data-theme="dark"] #cd-root .cd-chain-table td, [data-theme="dark"] #cd-root .cd-list td { background: #0f172a; color: #e2e8f0; border-color: #334155; }
+		[data-theme="dark"] #cd-root .cd-modal { background: #1e293b; color: #e2e8f0; }
+		[data-theme="dark"] #cd-root .cd-modal label { color: #94a3b8; }
+		[data-theme="dark"] #cd-root .cd-modal input, [data-theme="dark"] #cd-root .cd-search-row input { background: #0f172a; color: #e2e8f0; border-color: #475569; }
+		[data-theme="dark"] #cd-root .cd-btn-secondary { background: #334155; color: #e2e8f0; }
+	</style>
+
+	<div class="cd-h">Token Cascade Delete System <span class="cd-version-pill" id="cd-version-pill">v2.11.0</span></div>
+	<div class="cd-sub">Hardened cascade-delete tool for Super Admin · 2-person rule · hash-chained audit · 5-min revert grace.</div>
+
+	<div id="cd-kill-banner"></div>
+
+	<div class="cd-search-row" id="cd-search-row" style="display:none;">
+		<input id="cd-token-input" type="text" placeholder="BBPL-TKN-YYYY-NNNNN" maxlength="20" />
+		<button class="cd-btn cd-btn-primary" id="cd-preview-btn">Preview Chain</button>
+	</div>
+
+	<div id="cd-preview-area"></div>
+
+	<div class="cd-section" id="cd-pending-section">
+		<h3>Pending CEO Approval</h3>
+		<div id="cd-pending-list"></div>
+	</div>
+
+	<div class="cd-section" id="cd-recent-section">
+		<h3>Recent Cascade Deletions</h3>
+		<div id="cd-recent-list"></div>
+	</div>
+</div>

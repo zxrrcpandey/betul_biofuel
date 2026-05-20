@@ -7,6 +7,66 @@ from frappe.utils import getdate, add_days, today
 class TSSettings(Document):
 	def validate(self):
 		self._validate_pre_post_dated()
+		self._validate_cascade_delete_settings()
+
+	def _validate_cascade_delete_settings(self):
+		"""v2.11.0 Token Cascade Delete kill-switch + webhook URL hygiene.
+
+		Rules:
+		- If `ts_cascade_delete_enabled = 1`, `ts_cascade_webhook_url` MUST be non-empty
+		  AND start with `https://` (no http, no relative paths, no localhost).
+		- If webhook URL is provided, `ts_cascade_webhook_secret` MUST also be set.
+		- Rate-limit count must be in [1, 100]; rate-limit window must be in [60, 604800] (1min..7d).
+		- Only System Manager may flip the kill switch ON (defense-in-depth — already
+		  enforced by permlevel=1 on the field).
+
+		Lesson 167 / 170 pattern: only validate when the user is ACTIVELY changing
+		these fields (has_value_changed) — saving Settings for an unrelated reason
+		doesn't re-block on a pre-existing inconsistency.
+		"""
+		relevant = (
+			"ts_cascade_delete_enabled",
+			"ts_cascade_webhook_url",
+			"ts_cascade_webhook_secret",
+			"ts_cascade_rate_limit_count",
+			"ts_cascade_rate_limit_seconds",
+		)
+		if not self.is_new() and not any(self.has_value_changed(f) for f in relevant):
+			return
+
+		if self.get("ts_cascade_delete_enabled"):
+			url = (self.get("ts_cascade_webhook_url") or "").strip()
+			if url:
+				if not url.lower().startswith("https://"):
+					frappe.throw(_("Cascade Delete Webhook URL must start with https://"))
+				lower = url.lower()
+				banned = ("localhost", "127.0.0.1", "0.0.0.0", "10.", "172.16.",
+				          "172.17.", "172.18.", "172.19.", "172.20.", "172.21.",
+				          "172.22.", "172.23.", "172.24.", "172.25.", "172.26.",
+				          "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+				          "192.168.", "169.254.")
+				if any(token in lower for token in banned):
+					frappe.throw(_("Cascade Delete Webhook URL must not target private / loopback addresses (SSRF prevention)."))
+				if not self.get("ts_cascade_webhook_secret"):
+					frappe.throw(_("Cascade Delete Webhook Secret is required when webhook URL is set."))
+
+		count = self.get("ts_cascade_rate_limit_count")
+		if count is not None:
+			try:
+				count_i = int(count)
+			except (TypeError, ValueError):
+				count_i = -1
+			if count_i < 1 or count_i > 100:
+				frappe.throw(_("Cascade Delete rate-limit count must be between 1 and 100."))
+
+		seconds = self.get("ts_cascade_rate_limit_seconds")
+		if seconds is not None:
+			try:
+				seconds_i = int(seconds)
+			except (TypeError, ValueError):
+				seconds_i = -1
+			if seconds_i < 60 or seconds_i > 604800:
+				frappe.throw(_("Cascade Delete rate-limit window must be between 60 seconds and 7 days (604800)."))
 
 	def _validate_pre_post_dated(self):
 		"""Guard against pre-enable window exceeding max_backdate_days policy (Lesson 167).

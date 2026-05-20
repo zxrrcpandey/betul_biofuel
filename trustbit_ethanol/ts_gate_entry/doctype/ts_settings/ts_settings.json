@@ -545,6 +545,59 @@
    "label": "Expiry Warning (Minutes)",
    "default": "30",
    "description": "IT Head gets a warning notification this many minutes before a request expires. Default: 30 minutes."
+  },
+  {
+   "fieldname": "tab_cascade_delete",
+   "fieldtype": "Tab Break",
+   "label": "Cascade Delete"
+  },
+  {
+   "fieldname": "cascade_delete_section",
+   "fieldtype": "Section Break",
+   "label": "Token Cascade Delete System (v2.11.0)",
+   "description": "Hardened cascade-delete tool for IT-grade Token removal. Kill switch DEFAULTS to OFF on every site (Lesson 227); System Manager must flip ON post-install."
+  },
+  {
+   "fieldname": "ts_cascade_delete_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Cascade Delete Tool",
+   "default": "0",
+   "permlevel": 1,
+   "description": "Master kill switch. When unchecked, ALL cascade-delete API endpoints return HTTP 403 immediately. Default OFF on every site."
+  },
+  {
+   "fieldname": "ts_cascade_webhook_url",
+   "fieldtype": "Data",
+   "label": "External Audit Webhook URL",
+   "permlevel": 1,
+   "description": "HTTPS endpoint that receives a HMAC-signed copy of every cascade delete log row (hardening D). Leave blank to skip webhook delivery."
+  },
+  {
+   "fieldname": "ts_cascade_webhook_secret",
+   "fieldtype": "Password",
+   "label": "Webhook HMAC Secret",
+   "permlevel": 1,
+   "description": "Shared secret used to sign webhook payloads (X-CascadeDelete-Signature header). Server-side only; never returned in API responses."
+  },
+  {
+   "fieldname": "column_break_cascade_delete",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ts_cascade_rate_limit_count",
+   "fieldtype": "Int",
+   "label": "Rate Limit — Deletions per Window",
+   "default": "5",
+   "permlevel": 1,
+   "description": "Maximum cascade deletions a single Super Admin may initiate within the rolling window. Q&A item 3 spec: 5."
+  },
+  {
+   "fieldname": "ts_cascade_rate_limit_seconds",
+   "fieldtype": "Int",
+   "label": "Rate Limit — Window (Seconds)",
+   "default": "172800",
+   "permlevel": 1,
+   "description": "Rolling-window length in seconds for the deletion rate limit. Q&A item 3 spec: 48 hours = 172800."
   }
  ],
  "issingle": 1,

@@ -1,0 +1,84 @@
+<!-- BBPL Cascade Delete Warning email template (v2.11.0) -->
+<!-- Lesson 232: tables-based layout for wkhtmltopdf-style mail clients -->
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="font-family: Arial, sans-serif; font-size: 13px; color: #0f172a; background: #f8fafc; padding: 18px;">
+	<tr>
+		<td>
+			<table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #fff; border: 4px solid #dc2626; border-radius: 6px;">
+				<tr>
+					<td style="background: #dc2626; color: #fff; padding: 14px 18px; font-size: 18px; font-weight: bold;">
+						⚠ BBPL CRITICAL — Token Cascade Delete: {{ event }}
+					</td>
+				</tr>
+				<tr>
+					<td style="padding: 18px;">
+						<p>This is an automated notification from the BBPL Token Cascade Delete System (v2.11.0).</p>
+						<table cellpadding="6" cellspacing="0" border="0" width="100%" style="border: 1px solid #e2e8f0; border-collapse: collapse; margin: 14px 0;">
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold; width: 30%;">Event</td>
+								<td><strong style="color: #b91c1c;">{{ event }}</strong></td>
+							</tr>
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Log Reference</td>
+								<td><code>{{ doc.name }}</code></td>
+							</tr>
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Target Token</td>
+								<td><code>{{ doc.target_token }}</code></td>
+							</tr>
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Initiated By</td>
+								<td>{{ doc.initiated_by }}</td>
+							</tr>
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Initiated At</td>
+								<td>{{ doc.initiated_at }}</td>
+							</tr>
+							{% if doc.approved_by %}
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Approved By</td>
+								<td>{{ doc.approved_by }}</td>
+							</tr>
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Approved At</td>
+								<td>{{ doc.approved_at }}</td>
+							</tr>
+							{% endif %}
+							{% if doc.executed_at %}
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Executed At</td>
+								<td>{{ doc.executed_at }}</td>
+							</tr>
+							{% endif %}
+							{% if doc.rejection_reason %}
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Rejection Reason</td>
+								<td>{{ doc.rejection_reason }}</td>
+							</tr>
+							{% endif %}
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Backup File</td>
+								<td><code>{{ doc.backup_filename or '(none)' }}</code></td>
+							</tr>
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Backup SHA-256</td>
+								<td style="font-family: monospace; font-size: 10px; word-break: break-all;">{{ doc.backup_sha256 or '(none)' }}</td>
+							</tr>
+							<tr>
+								<td style="background: #f1f5f9; font-weight: bold;">Hash Chain</td>
+								<td style="font-family: monospace; font-size: 10px; word-break: break-all;">prev: {{ doc.prev_row_hash[:32] if doc.prev_row_hash else '(genesis)' }}…<br>this: {{ doc.this_row_hash[:32] if doc.this_row_hash else '?' }}…</td>
+							</tr>
+						</table>
+						<p style="background: #fef3c7; padding: 10px 12px; border-left: 4px solid #f59e0b; font-size: 12px;">
+							<strong>Action required:</strong> Open the log row in BBPL ERP at
+							<a href="{{ frappe.utils.get_url() }}/app/ts-cascade-delete-log/{{ doc.name }}">{{ doc.name }}</a>
+							to review the full chain snapshot, forensic block, and execution result.
+						</p>
+						<p style="font-size: 11px; color: #64748b;">
+							This message is an immutable audit signal. The cascade delete tool is governed by 2-person rule (Hardening C), hash-chained audit log (Hardening A), and 5-minute revert grace window (Hardening M).
+						</p>
+					</td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+</table>
