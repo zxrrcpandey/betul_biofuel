@@ -3,7 +3,7 @@
 // Lesson 174 — version pill rendered into DOM by JS; bump on every page edit.
 // Frappe v15 does NOT auto-inject {page}.html — JS builds the DOM via page.main.html().
 
-const CD_PAGE_VERSION = "v2.11.0-2026-05-20";
+const CD_PAGE_VERSION = "v2.11.0.2-2026-05-20";
 
 const CD_CSS = `
 	#cd-root { padding: 18px 22px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -480,6 +480,12 @@ function _show_stage3_final(token_name, force_pr, force_mi, cut_point) {
 				div.remove();
 				if (r.message && r.message.success) {
 					frappe.show_alert({ message: __("Cascade queued. Log: ") + r.message.log_name, indicator: "green" });
+					// Clear the now-stale preview + token input so the operator can't
+					// re-initiate the same token; the new entry appears in Pending CEO Approval.
+					const area = document.getElementById("cd-preview-area");
+					if (area) area.innerHTML = "";
+					const tok_input = document.getElementById("cd-token-input");
+					if (tok_input) tok_input.value = "";
 					_render_pending_list();
 					_render_recent_list();
 				}
@@ -668,6 +674,11 @@ function _ceo_decision(log_name, action) {
 	}
 }
 
+// Single timer that re-renders the Recent list the instant the earliest
+// 5-min revert window expires — so the Revert button flips to "expired"
+// without a page refresh. Cleared + rescheduled on every render.
+let _cd_revert_expiry_timer = null;
+
 function _render_recent_list() {
 	frappe.db.get_list("TS Cascade Delete Log", {
 		fields: ["name", "target_token", "initiated_by", "approval_status", "executed_at", "revert_window_expires_at"],
@@ -702,6 +713,25 @@ function _render_recent_list() {
 		el.querySelectorAll("button[data-revert]").forEach(btn => {
 			btn.addEventListener("click", () => _cd_do_revert(btn.dataset.revert));
 		});
+
+		// Auto-flip Revert buttons to "expired" the moment the 5-min window
+		// passes — schedule one re-render at the earliest still-future deadline.
+		if (_cd_revert_expiry_timer) { clearTimeout(_cd_revert_expiry_timer); _cd_revert_expiry_timer = null; }
+		let earliest = null;
+		for (const r of rows) {
+			if (r.approval_status !== "Executed" || !r.revert_window_expires_at) continue;
+			let t = null;
+			try {
+				const obj = frappe.datetime.str_to_obj(r.revert_window_expires_at);
+				t = obj ? obj.getTime() : null;
+			} catch (e) { t = null; }
+			if (t && t > Date.now() && (earliest === null || t < earliest)) earliest = t;
+		}
+		if (earliest !== null) {
+			// +1s buffer so the deadline has definitely passed at re-render.
+			const delay = Math.min(Math.max(earliest - Date.now() + 1000, 1000), 2147483647);
+			_cd_revert_expiry_timer = setTimeout(_render_recent_list, delay);
+		}
 	});
 }
 

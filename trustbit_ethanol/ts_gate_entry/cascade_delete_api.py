@@ -153,6 +153,20 @@ def initiate_cascade(
 	if not frappe.db.exists("TS Token", token_name):
 		frappe.throw(_("Token {0} not found.").format(escape_html(token_name)))
 
+	# In-flight duplicate guard — one token may not have two cascades queued at
+	# once. A token whose log is still 'Pending CEO Approval' or 'Approved' must
+	# resolve (execute / fail / reject / cancel) before another can be initiated.
+	in_flight = frappe.db.get_value(
+		"TS Cascade Delete Log",
+		{"target_token": token_name,
+		 "approval_status": ["in", ["Pending CEO Approval", "Approved"]]},
+		"name",
+	)
+	if in_flight:
+		frappe.throw(_("Token {0} already has an in-flight cascade ({1}). Wait for it "
+		               "to be approved, rejected, or cancelled before starting another.").format(
+			escape_html(token_name), escape_html(in_flight)))
+
 	# Configurable rate limit (Q&A 3) — re-check inside the window via DB query.
 	# (The decorator's 5/48h is a default fallback; the configurable one is here.)
 	rl_count = int(frappe.db.get_single_value("TS Settings", "ts_cascade_rate_limit_count") or 5)
@@ -232,6 +246,9 @@ def initiate_cascade(
 			message=f"{type(e).__name__}: {e}",
 		)
 
+	# Drop best-effort side-effect noise (e.g. a missing-Email-Account msgprint)
+	# so it doesn't surface as a scary popup — the result is structured.
+	frappe.clear_messages()
 	return {"success": True, "log_name": log.name, "rate_limit_position": rate_limit_position}
 
 
@@ -279,6 +296,7 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 			"rejection_reason": reason.strip()[:500],
 		})
 		_send_decision_email(log_name, "Rejected")
+		frappe.clear_messages()  # suppress leaked best-effort email msgprint
 		return {"success": True, "approval_status": "Rejected"}
 
 	# Approve → mark Approved → run engine
@@ -353,6 +371,11 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 	except Exception as e:
 		frappe.log_error(title=f"Cascade decision email failed for {log_name}", message=f"{type(e).__name__}: {e}")
 
+	# Suppress leaked best-effort side-effect messages: the Lesson 275 GE-cancel
+	# guard throw the engine already recovered from via surgical SQL, and any
+	# missing-Email-Account msgprint. The cascade outcome is returned structured
+	# below — message_log noise must not surface as a popup (Lesson 238).
+	frappe.clear_messages()
 	return {
 		"success": result.get("success"),
 		"approval_status": new_state,
