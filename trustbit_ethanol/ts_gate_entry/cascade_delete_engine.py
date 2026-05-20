@@ -107,118 +107,166 @@ def build_chain_snapshot(token_name: str) -> dict:
 # ---------------------------------------------------------------- engine main
 
 
+# Deletion order (leaf -> root). The cut-point names the EARLIEST-created
+# document to delete; the engine runs every step at index <= cut-index and
+# SKIPS steps below (created earlier). cut_point=None / "TS Gate Entry" also
+# deletes the Token. Partial cuts keep the Token and reset its status.
+_DELETION_STEPS = [
+	("PI", "Purchase Invoice"),
+	("PR", "Purchase Receipt"),
+	("DS", "TS Deduction Sheet"),
+	("QI", "TS Quality Inspection"),
+	("WB", "TS Weighbridge Log"),
+	("GE", "TS Gate Entry"),
+]
+CUT_POINT_DOCTYPES = [d for _, d in _DELETION_STEPS]  # whitelist for API validation
+
+
+def _cut_index(cut_point: str | None) -> int:
+	"""Index in _DELETION_STEPS up to which deletion runs. None -> full (5)."""
+	if not cut_point:
+		return len(_DELETION_STEPS) - 1
+	for i, (_, dt) in enumerate(_DELETION_STEPS):
+		if dt == cut_point:
+			return i
+	# Unknown cut_point — fail safe to full cascade index.
+	return len(_DELETION_STEPS) - 1
+
+
 def execute_cascade(
 	token_name: str,
 	log_name: str,
 	force_pr: bool = False,
 	force_mi: bool = False,
+	cut_point: str | None = None,
 ) -> dict:
-	"""Run the full PI → PR → DS → QI → WB → GE → Token cascade.
+	"""Run the PI → PR → DS → QI → WB → GE → Token cascade.
 
-	Each step:
-	  - frappe.has_permission(doctype, action, throw=True) before destructive op
-	  - try/except wraps the engine call; failure aborts the cascade
-	  - per-step result appended to execution_result list
+	`cut_point` (None = full cascade incl. Token): names the earliest document
+	to delete. Steps at deletion-order index <= cut-index run; steps below are
+	SKIPPED (kept). The Token is deleted only when cut_point is None or
+	"TS Gate Entry"; for a partial cut the Token is kept and its status is
+	auto-reset to the deepest surviving document's real phase.
 
 	Returns:
-	  {
-	    "success": bool,
-	    "aborted_step": str | None,
-	    "steps": [ {step, doctype, name, action, success, error?, surgical_sql?}, ... ],
-	    "lesson_275_fallback_used": bool,
-	  }
+	  {success, aborted_step, steps[], lesson_275_fallback_used, partial(bool)}
 	"""
 	steps: list[dict] = []
 	lesson_275_used = False
+	cut_idx = _cut_index(cut_point)
+	is_partial = cut_point not in (None, "TS Gate Entry")
 	frappe.flags.cascade_delete_mode = True
 	try:
-		# Step 1 — Purchase Invoices
-		pi_rows = frappe.db.sql(
-			"SELECT name, docstatus FROM `tabPurchase Invoice` WHERE ts_token=%s",
-			(token_name,), as_dict=True,
-		)
-		for pi in pi_rows:
-			if pi.docstatus == 1 and not force_pr:
-				steps.append({"step": "PI", "name": pi.name, "action": "skip-not-forced",
-				              "success": False, "error": "Submitted PI requires force_pr"})
-				return _abort(steps, "PI", lesson_275_used)
-			res = _cancel_then_delete("Purchase Invoice", pi.name, allow_force=force_pr)
-			steps.append({"step": "PI", **res})
-			if not res["success"]:
-				return _abort(steps, "PI", lesson_275_used)
-
-		# Step 2 — Purchase Receipts
-		pr_rows = frappe.db.sql(
-			"SELECT name, docstatus FROM `tabPurchase Receipt` WHERE ts_token=%s",
-			(token_name,), as_dict=True,
-		)
-		for pr in pr_rows:
-			if pr.docstatus == 1 and not force_pr:
-				steps.append({"step": "PR", "name": pr.name, "action": "skip-not-forced",
-				              "success": False, "error": "Submitted PR requires force_pr"})
-				return _abort(steps, "PR", lesson_275_used)
-			res = _cancel_then_delete("Purchase Receipt", pr.name, allow_force=force_pr)
-			steps.append({"step": "PR", **res})
-			if not res["success"]:
-				return _abort(steps, "PR", lesson_275_used)
-
-		# Step 3 — Deduction Sheets
-		qi_names_for_ds = [q.name for q in frappe.db.sql(
-			"SELECT name FROM `tabTS Quality Inspection` WHERE token_number=%s",
-			(token_name,), as_dict=True,
-		)]
-		if qi_names_for_ds:
-			ds_rows = frappe.db.sql(
-				"SELECT name, docstatus FROM `tabTS Deduction Sheet` WHERE quality_inspection IN %s",
-				(qi_names_for_ds,), as_dict=True,
+		# Step 1 — Purchase Invoices  (deletion index 0)
+		if 0 <= cut_idx:
+			pi_rows = frappe.db.sql(
+				"SELECT name, docstatus FROM `tabPurchase Invoice` WHERE ts_token=%s",
+				(token_name,), as_dict=True,
 			)
-			for ds in ds_rows:
-				res = _cancel_then_delete("TS Deduction Sheet", ds.name, allow_force=True)
-				steps.append({"step": "DS", **res})
+			for pi in pi_rows:
+				if pi.docstatus == 1 and not force_pr:
+					steps.append({"step": "PI", "name": pi.name, "action": "skip-not-forced",
+					              "success": False, "error": "Submitted PI requires force_pr"})
+					return _abort(steps, "PI", lesson_275_used)
+				res = _cancel_then_delete("Purchase Invoice", pi.name, allow_force=force_pr)
+				steps.append({"step": "PI", **res})
 				if not res["success"]:
-					return _abort(steps, "DS", lesson_275_used)
+					return _abort(steps, "PI", lesson_275_used)
+		else:
+			steps.append({"step": "PI", "action": "skipped-below-cutpoint", "success": True})
 
-		# Step 4 — Quality Inspection (Material Inspection) — force_mi gate
-		qi_rows = frappe.db.sql(
-			"SELECT name, docstatus FROM `tabTS Quality Inspection` WHERE token_number=%s",
-			(token_name,), as_dict=True,
-		)
-		for qi in qi_rows:
-			if qi.docstatus == 1 and not force_mi:
-				steps.append({"step": "QI", "name": qi.name, "action": "skip-not-forced",
-				              "success": False, "error": "Submitted QI requires force_mi"})
-				return _abort(steps, "QI", lesson_275_used)
-			res = _cancel_then_delete("TS Quality Inspection", qi.name, allow_force=force_mi)
-			steps.append({"step": "QI", **res})
+		# Step 2 — Purchase Receipts  (deletion index 1)
+		if 1 <= cut_idx:
+			pr_rows = frappe.db.sql(
+				"SELECT name, docstatus FROM `tabPurchase Receipt` WHERE ts_token=%s",
+				(token_name,), as_dict=True,
+			)
+			for pr in pr_rows:
+				if pr.docstatus == 1 and not force_pr:
+					steps.append({"step": "PR", "name": pr.name, "action": "skip-not-forced",
+					              "success": False, "error": "Submitted PR requires force_pr"})
+					return _abort(steps, "PR", lesson_275_used)
+				res = _cancel_then_delete("Purchase Receipt", pr.name, allow_force=force_pr)
+				steps.append({"step": "PR", **res})
+				if not res["success"]:
+					return _abort(steps, "PR", lesson_275_used)
+		else:
+			steps.append({"step": "PR", "action": "skipped-below-cutpoint", "success": True})
+
+		# Step 3 — Deduction Sheets  (deletion index 2)
+		if 2 <= cut_idx:
+			qi_names_for_ds = [q.name for q in frappe.db.sql(
+				"SELECT name FROM `tabTS Quality Inspection` WHERE token_number=%s",
+				(token_name,), as_dict=True,
+			)]
+			if qi_names_for_ds:
+				ds_rows = frappe.db.sql(
+					"SELECT name, docstatus FROM `tabTS Deduction Sheet` WHERE quality_inspection IN %s",
+					(qi_names_for_ds,), as_dict=True,
+				)
+				for ds in ds_rows:
+					res = _cancel_then_delete("TS Deduction Sheet", ds.name, allow_force=True)
+					steps.append({"step": "DS", **res})
+					if not res["success"]:
+						return _abort(steps, "DS", lesson_275_used)
+		else:
+			steps.append({"step": "DS", "action": "skipped-below-cutpoint", "success": True})
+
+		# Step 4 — Quality Inspection — force_mi gate  (deletion index 3)
+		if 3 <= cut_idx:
+			qi_rows = frappe.db.sql(
+				"SELECT name, docstatus FROM `tabTS Quality Inspection` WHERE token_number=%s",
+				(token_name,), as_dict=True,
+			)
+			for qi in qi_rows:
+				if qi.docstatus == 1 and not force_mi:
+					steps.append({"step": "QI", "name": qi.name, "action": "skip-not-forced",
+					              "success": False, "error": "Submitted QI requires force_mi"})
+					return _abort(steps, "QI", lesson_275_used)
+				res = _cancel_then_delete("TS Quality Inspection", qi.name, allow_force=force_mi)
+				steps.append({"step": "QI", **res})
+				if not res["success"]:
+					return _abort(steps, "QI", lesson_275_used)
+		else:
+			steps.append({"step": "QI", "action": "skipped-below-cutpoint", "success": True})
+
+		# Step 5 — Weighbridge Log  (deletion index 4)
+		if 4 <= cut_idx:
+			wb_rows = frappe.db.sql(
+				"SELECT name, docstatus FROM `tabTS Weighbridge Log` WHERE token_number=%s",
+				(token_name,), as_dict=True,
+			)
+			for wb in wb_rows:
+				res = _cancel_then_delete("TS Weighbridge Log", wb.name, allow_force=True)
+				steps.append({"step": "WB", **res})
+				if not res["success"]:
+					return _abort(steps, "WB", lesson_275_used)
+		else:
+			steps.append({"step": "WB", "action": "skipped-below-cutpoint", "success": True})
+
+		# Step 6 — Gate Entry (Lesson 275 fallback embedded)  (deletion index 5)
+		if 5 <= cut_idx:
+			ge_rows = frappe.db.sql(
+				"SELECT name, docstatus FROM `tabTS Gate Entry` WHERE token_number=%s",
+				(token_name,), as_dict=True,
+			)
+			for ge in ge_rows:
+				res = _cancel_then_delete_ge_with_lesson_275_fallback(ge.name)
+				steps.append({"step": "GE", **res})
+				if res.get("surgical_sql"):
+					lesson_275_used = True
+				if not res["success"]:
+					return _abort(steps, "GE", lesson_275_used)
+		else:
+			steps.append({"step": "GE", "action": "skipped-below-cutpoint", "success": True})
+
+		# Step 7 — Token: DELETE for full cascade; RESET status for a partial cut.
+		if is_partial:
+			res = _reset_token_status(token_name, cut_point, log_name)
+			steps.append({"step": "TOK", **res})
 			if not res["success"]:
-				return _abort(steps, "QI", lesson_275_used)
-
-		# Step 5 — Weighbridge Log
-		wb_rows = frappe.db.sql(
-			"SELECT name, docstatus FROM `tabTS Weighbridge Log` WHERE token_number=%s",
-			(token_name,), as_dict=True,
-		)
-		for wb in wb_rows:
-			res = _cancel_then_delete("TS Weighbridge Log", wb.name, allow_force=True)
-			steps.append({"step": "WB", **res})
-			if not res["success"]:
-				return _abort(steps, "WB", lesson_275_used)
-
-		# Step 6 — Gate Entry (Lesson 275 fallback embedded)
-		ge_rows = frappe.db.sql(
-			"SELECT name, docstatus FROM `tabTS Gate Entry` WHERE token_number=%s",
-			(token_name,), as_dict=True,
-		)
-		for ge in ge_rows:
-			res = _cancel_then_delete_ge_with_lesson_275_fallback(ge.name)
-			steps.append({"step": "GE", **res})
-			if res.get("surgical_sql"):
-				lesson_275_used = True
-			if not res["success"]:
-				return _abort(steps, "GE", lesson_275_used)
-
-		# Step 7 — Token (final)
-		if frappe.db.exists("TS Token", token_name):
+				return _abort(steps, "TOK", lesson_275_used)
+		elif frappe.db.exists("TS Token", token_name):
 			res = _cancel_then_delete("TS Token", token_name, allow_force=True)
 			steps.append({"step": "TOK", **res})
 			if not res["success"]:
@@ -232,6 +280,8 @@ def execute_cascade(
 			"aborted_step": None,
 			"steps": steps,
 			"lesson_275_fallback_used": lesson_275_used,
+			"partial": is_partial,
+			"cut_point": cut_point,
 		}
 	except Exception as e:
 		frappe.log_error(
@@ -375,6 +425,88 @@ def _abort(steps: list[dict], step_name: str, lesson_275_used: bool) -> dict:
 		"steps": steps,
 		"lesson_275_fallback_used": lesson_275_used,
 	}
+
+
+def _reset_token_status(token_name: str, cut_point: str, log_name: str) -> dict:
+	"""Partial cascade — the Token is KEPT; reset its status to the real phase
+	of the deepest surviving document.
+
+	Mapping (planner-validated against the BBF codebase — only 5 token statuses
+	are ever written by lifecycle hooks; 'Quality Done'/'Graded'/'Unloading' are
+	dead, so a token with a QI but no GRN genuinely sits at the weighbridge phase):
+
+	  cut_point          deepest surviving   ->  Token.status
+	  Purchase Invoice   Purchase Receipt        GRN Created
+	  Purchase Receipt   DS / QI / WB            Tare Weighed | Gross Weighed
+	  TS Deduction Sheet QI / WB                 Tare Weighed | Gross Weighed
+	  TS Quality Inspect WB                      Tare Weighed | Gross Weighed
+	  TS Weighbridge Log Gate Entry              PO Linked
+
+	Mirrors the production-proven stores_receiving_api.pr_on_cancel_clear_token
+	reset logic. A reset failure ABORTS the cascade (status integrity is NOT
+	best-effort — a token left at a stale forward status is the Lesson 275 bug).
+	"""
+	try:
+		if not frappe.db.exists("TS Token", token_name):
+			return {"step": "TOK", "action": "reset-skipped-token-gone",
+			        "success": True, "name": token_name}
+
+		clear: dict = {}
+		if cut_point == "Purchase Invoice":
+			new_status = "GRN Created"
+		elif cut_point in ("Purchase Receipt", "TS Deduction Sheet", "TS Quality Inspection"):
+			# Deepest surviving is the Weighbridge Log (DS/QI carry no own status).
+			# tare_weight is `decimal NOT NULL DEFAULT 0.00` — a "no tare yet" WB
+			# stores 0.00, never NULL. Rank by tare MAGNITUDE so any WB that
+			# actually carries a tare weight wins the tie-break.
+			wb = frappe.db.sql(
+				"""SELECT tare_weight FROM `tabTS Weighbridge Log`
+				   WHERE token_number=%s ORDER BY tare_weight DESC LIMIT 1""",
+				(token_name,), as_dict=True,
+			)
+			has_tare = bool(wb and wb[0].get("tare_weight"))
+			new_status = "Tare Weighed" if has_tare else "Gross Weighed"
+			clear = {"purchase_receipt": "", "grn_time": None}
+			if cut_point == "TS Quality Inspection":
+				clear["quality_time"] = None
+		elif cut_point == "TS Weighbridge Log":
+			# Deepest surviving is the Gate Entry.
+			new_status = "PO Linked"
+			clear = {"purchase_receipt": "", "grn_time": None, "quality_time": None,
+			         "wb_gross_time": None, "wb_tare_time": None, "custom_rst_number": ""}
+		else:
+			# Defensive fallback — never leave a stale forward status.
+			new_status = "PO Linked"
+
+		updates = {"status": new_status}
+		# Only clear fields that actually exist on TS Token.
+		valid_cols = set(frappe.db.get_table_columns("TS Token"))
+		for k, v in clear.items():
+			if k in valid_cols:
+				updates[k] = v
+		frappe.db.set_value("TS Token", token_name, updates, update_modified=False)
+
+		# Audit comment on the token.
+		try:
+			frappe.get_doc("TS Token", token_name).add_comment(
+				"Comment",
+				text=(f"[PARTIAL CASCADE] Status reset to '{new_status}' after cut-point "
+				      f"'{cut_point}' deletion (cascade log {log_name})."),
+			)
+		except Exception:
+			pass  # comment is best-effort; the status reset is what matters
+
+		frappe.db.commit()
+		return {
+			"step": "TOK", "action": "status-reset", "name": token_name,
+			"new_status": new_status, "cleared_fields": list(clear.keys()),
+			"success": True,
+		}
+	except Exception as e:
+		return {
+			"step": "TOK", "action": "status-reset-failed", "name": token_name,
+			"success": False, "error": f"{type(e).__name__}: {e}",
+		}
 
 
 # ---------------------------------------------------------------- orphan-trail scan

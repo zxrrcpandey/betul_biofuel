@@ -30,7 +30,7 @@ import re
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
-from frappe.utils import escape_html, now_datetime, add_to_date
+from frappe.utils import escape_html, now_datetime, add_to_date, flt
 
 
 _TOKEN_NAME_RE = re.compile(r"^BBPL-TKN-[0-9]{4}-[0-9]{5}$")
@@ -41,7 +41,7 @@ _REVERT_GRACE_MINUTES = 5
 _READ_ROLES = {"Super Admin", "CEO", "MD", "System Manager", "Administrator", "Auditor", "IT Head"}
 _INITIATE_ROLES = {"Super Admin"}
 _APPROVE_ROLES = {"CEO"}
-_REVERT_ROLES = {"Super Admin"}
+_REVERT_ROLES = {"Super Admin", "CEO", "MD"}
 
 
 # ---------------------------------------------------------------- common gates
@@ -116,14 +116,27 @@ def initiate_cascade(
 	force_mi_confirmation_typed: str = "",
 	client_screen: str = "",
 	client_language: str = "",
+	cut_point: str = "Full Chain",
 ) -> dict:
 	"""Super Admin initiates a cascade. Creates Pending CEO Approval log row.
+
+	`cut_point` — "Full Chain" (delete the whole chain incl. Token) or one of
+	the 6 deletion-order doctypes (partial cascade — delete from that document
+	down to Purchase Invoice, keep everything above, reset Token status).
 
 	Returns: {"success": True, "log_name": "BBPL-CDL-..."} on success.
 	"""
 	_gate_kill_switch()
 	_gate_role(_INITIATE_ROLES, "initiate cascade delete")
 	_validate_token_name(token_name)
+
+	# Validate cut_point against the whitelist (single-threshold => no gaps possible).
+	_CUT_POINT_VALUES = {"Full Chain", "Purchase Invoice", "Purchase Receipt",
+	                     "TS Deduction Sheet", "TS Quality Inspection",
+	                     "TS Weighbridge Log", "TS Gate Entry"}
+	cut_point = (cut_point or "Full Chain").strip()
+	if cut_point not in _CUT_POINT_VALUES:
+		frappe.throw(_("Invalid cut-point: {0}").format(escape_html(cut_point)))
 
 	# Type-to-confirm gates (Q&A item 4)
 	if (confirm_token_name_typed or "").strip() != token_name:
@@ -183,6 +196,7 @@ def initiate_cascade(
 	log.target_chain_json = chain_json
 	log.forensic_block_json = forensic_json
 	log.rate_limit_position = rate_limit_position
+	log.cut_point = cut_point
 	log.flags.ignore_permissions = True
 	log.insert(ignore_permissions=True)
 	log.submit()
@@ -275,12 +289,32 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 
 	log_doc = frappe.get_doc("TS Cascade Delete Log", log_name)
 	from trustbit_ethanol.ts_gate_entry.cascade_delete_engine import execute_cascade
-	result = execute_cascade(
-		token_name=log_doc.target_token,
-		log_name=log_name,
-		force_pr=bool(log_doc.force_pr_override),
-		force_mi=bool(log_doc.force_mi_override),
-	)
+	# The engine cancels/deletes the Token + 6 downstream doctypes. It must run
+	# with the INITIATING Super Admin's permissions — that role holds the
+	# cancel/delete Custom DocPerm grants (setup_super_admin_role._SUPER_ADMIN_PERMS).
+	# The approving CEO's session does NOT have cancel perm on TS Gate Entry etc.,
+	# so running the engine as the CEO throws PermissionError mid-cascade.
+	# Authorization has already happened at this point: kill switch + role gate +
+	# 2-person rule + CEO approval. The CEO approves; the Super Admin executes.
+	_approver_user = frappe.session.user
+	_engine_user = log_doc.initiated_by
+	if not _engine_user or not frappe.db.get_value("User", _engine_user, "enabled"):
+		# Initiator disabled/missing — fall back to Administrator (always privileged).
+		_engine_user = "Administrator"
+	try:
+		frappe.set_user(_engine_user)
+		result = execute_cascade(
+			token_name=log_doc.target_token,
+			log_name=log_name,
+			force_pr=bool(log_doc.force_pr_override),
+			force_mi=bool(log_doc.force_mi_override),
+			cut_point=(None if (log_doc.get("cut_point") or "Full Chain") == "Full Chain"
+			           else log_doc.cut_point),
+		)
+	finally:
+		# ALWAYS restore the approving CEO's session before post-engine steps
+		# (state transition, integrity scan, webhook, email) — Lesson 176 pattern.
+		frappe.set_user(_approver_user)
 
 	# Persist execution result + transition state
 	now = now_datetime()
@@ -294,15 +328,18 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 		"revert_window_expires_at": revert_expires_at if result.get("success") else None,
 	})
 
-	# Post-cascade integrity scan (Hardening G)
-	try:
-		from trustbit_ethanol.ts_gate_entry.cascade_delete_integrity import run_orphan_scan_for_log
-		run_orphan_scan_for_log(log_name)
-	except Exception as e:
-		frappe.log_error(
-			title=f"Cascade post-exec integrity scan failed for {log_name}",
-			message=f"{type(e).__name__}: {e}",
-		)
+	# Post-cascade integrity scan (Hardening G) — only meaningful when the
+	# cascade SUCCEEDED. A Failed cascade rolls back (token + chain intact), so
+	# the scanner would count the still-valid GE/WB rows as "orphans" — noise.
+	if result.get("success"):
+		try:
+			from trustbit_ethanol.ts_gate_entry.cascade_delete_integrity import run_orphan_scan_for_log
+			run_orphan_scan_for_log(log_name)
+		except Exception as e:
+			frappe.log_error(
+				title=f"Cascade post-exec integrity scan failed for {log_name}",
+				message=f"{type(e).__name__}: {e}",
+			)
 
 	# Webhook + email
 	try:
@@ -321,6 +358,8 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 		"approval_status": new_state,
 		"steps": result.get("steps"),
 		"lesson_275_fallback_used": result.get("lesson_275_fallback_used"),
+		"partial": result.get("partial", False),
+		"cut_point": result.get("cut_point") or (log_doc.get("cut_point") or "Full Chain"),
 		"revert_window_expires_at": str(revert_expires_at) if result.get("success") else None,
 	}
 
@@ -427,6 +466,96 @@ def run_integrity_scan(log_name: str = "") -> dict:
 
 
 @frappe.whitelist()
+@rate_limit(key="cascade_review_detail", limit=60, seconds=60)
+def get_pending_review_detail(log_name: str) -> dict:
+	"""Rich decision-support detail for a pending cascade — lazy-loaded by the
+	expandable row in the Pending CEO Approval section.
+
+	Returns token status/vehicle/supplier + chain counts + PO/PR/PI amounts +
+	per-item ordered/received quantities. Read-only.
+	"""
+	_gate_kill_switch()
+	_gate_role(_READ_ROLES, "view cascade review detail")
+	_validate_log_name(log_name)
+
+	log = frappe.db.get_value(
+		"TS Cascade Delete Log", log_name,
+		["target_token", "approval_status", "force_pr_override", "force_mi_override", "cut_point"],
+		as_dict=True,
+	)
+	if not log:
+		frappe.throw(_("Cascade Delete Log {0} not found.").format(escape_html(log_name)))
+
+	from trustbit_ethanol.ts_gate_entry.cascade_delete_engine import build_chain_snapshot
+	chain = build_chain_snapshot(log.target_token)
+	token_record = chain.get("token_record") or {}
+
+	prs = chain.get("purchase_receipts") or []
+	pis = chain.get("purchase_invoices") or []
+
+	# Supplier — first PR, else first PI
+	supplier = None
+	if prs:
+		supplier = frappe.db.get_value("Purchase Receipt", prs[0]["name"], "supplier_name")
+	elif pis:
+		supplier = frappe.db.get_value("Purchase Invoice", pis[0]["name"], "supplier_name")
+
+	pr_total = sum(flt(r.get("grand_total")) for r in prs)
+	pi_total = sum(flt(r.get("grand_total")) for r in pis)
+
+	# Per-item ordered vs received — aggregate from PR Items, ordered qty via PO Item.
+	po_names: set[str] = set()
+	items: list[dict] = []
+	for pr in prs:
+		pr_items = frappe.db.sql(
+			"""SELECT item_code, item_name, qty, uom, purchase_order, purchase_order_item
+			   FROM `tabPurchase Receipt Item` WHERE parent=%s""",
+			(pr["name"],), as_dict=True,
+		)
+		for it in pr_items:
+			if it.purchase_order:
+				po_names.add(it.purchase_order)
+			ordered = None
+			if it.purchase_order_item:
+				ordered = frappe.db.get_value("Purchase Order Item", it.purchase_order_item, "qty")
+			items.append({
+				"item_code": it.item_code,
+				"item_name": it.item_name,
+				"ordered_qty": flt(ordered) if ordered is not None else None,
+				"received_qty": flt(it.qty),
+				"uom": it.uom,
+			})
+
+	po_total = 0.0
+	for po in po_names:
+		po_total += flt(frappe.db.get_value("Purchase Order", po, "grand_total"))
+
+	return _escape_dict_strings({
+		"token": log.target_token,
+		"cut_point": log.get("cut_point") or "Full Chain",
+		"token_status": token_record.get("status"),
+		"vehicle": token_record.get("vehicle_number"),
+		"supplier": supplier,
+		"counts": {
+			"gate_entries": len(chain.get("gate_entries") or []),
+			"weighbridge_logs": len(chain.get("weighbridge_logs") or []),
+			"quality_inspections": len(chain.get("quality_inspections") or []),
+			"deduction_sheets": len(chain.get("deduction_sheets") or []),
+			"purchase_receipts": len(prs),
+			"purchase_invoices": len(pis),
+			"gl_entries": chain.get("gl_entries_count") or 0,
+		},
+		"po_total": po_total,
+		"pr_total": pr_total,
+		"pi_total": pi_total,
+		"po_names": sorted(po_names),
+		"items": items,
+		"force_pr_override": int(log.force_pr_override or 0),
+		"force_mi_override": int(log.force_mi_override or 0),
+	})
+
+
+@frappe.whitelist()
 def verify_chain_integrity() -> dict:
 	"""Convenience alias to verify the hash chain (audit-grade, read-only)."""
 	_gate_kill_switch()
@@ -481,6 +610,35 @@ def _resolve_alert_recipients() -> list[str]:
 	return [e[0] for e in emails if e[0]]
 
 
+def _render_cascade_email(log_doc, event: str) -> str:
+	"""Render the Cascade Delete Warning email body.
+
+	IMPORTANT: `frappe.sendmail(template=...)` resolves a FILE template at
+	`<app>/templates/emails/<name>.html` — NOT the Email Template doctype.
+	Our v2.11.0 ship installs an Email Template DOCTYPE record ("Cascade Delete
+	Warning"), so we render its `response` field ourselves and pass `message=`.
+	Falls back to a minimal inline body if the Email Template is missing.
+	"""
+	context = {"doc": log_doc, "event": event, "frappe": frappe}
+	body = frappe.db.get_value("Email Template", "Cascade Delete Warning", "response")
+	if body:
+		try:
+			return frappe.render_template(body, context)
+		except Exception as e:
+			frappe.log_error(
+				title="Cascade email template render failed",
+				message=f"{type(e).__name__}: {e}",
+			)
+	# Fallback minimal body — keeps the alert flowing even if the template is gone.
+	return (
+		f"<h3 style='color:#dc2626;'>BBPL Cascade Delete &mdash; {frappe.utils.escape_html(event)}</h3>"
+		f"<p><b>Log:</b> {frappe.utils.escape_html(log_doc.name)}<br>"
+		f"<b>Token:</b> {frappe.utils.escape_html(log_doc.target_token or '')}<br>"
+		f"<b>Initiated by:</b> {frappe.utils.escape_html(log_doc.initiated_by or '')}<br>"
+		f"<b>Status:</b> {frappe.utils.escape_html(log_doc.approval_status or '')}</p>"
+	)
+
+
 def _send_pending_approval_email(log_name: str):
 	"""MD + CEO receive bold-red alert when Pending CEO Approval row inserted."""
 	recipients = _resolve_alert_recipients()
@@ -491,8 +649,7 @@ def _send_pending_approval_email(log_name: str):
 		frappe.sendmail(
 			recipients=recipients,
 			subject=f"[BBPL CRITICAL] Cascade Delete Pending: Token {log_doc.target_token} by {log_doc.initiated_by}",
-			template="Cascade Delete Warning",
-			args={"doc": log_doc, "event": "PENDING APPROVAL"},
+			message=_render_cascade_email(log_doc, "PENDING APPROVAL"),
 			now=False,
 			delayed=True,
 		)
@@ -513,8 +670,7 @@ def _send_decision_email(log_name: str, decision_label: str):
 		frappe.sendmail(
 			recipients=recipients,
 			subject=f"[BBPL CRITICAL] Cascade Delete {decision_label}: Token {log_doc.target_token}",
-			template="Cascade Delete Warning",
-			args={"doc": log_doc, "event": decision_label.upper()},
+			message=_render_cascade_email(log_doc, decision_label.upper()),
 			now=False,
 			delayed=True,
 		)

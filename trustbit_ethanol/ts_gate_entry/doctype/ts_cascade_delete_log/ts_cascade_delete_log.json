@@ -21,6 +21,7 @@
  "field_order": [
   "section_target",
   "target_token",
+  "cut_point",
   "approval_status",
   "rate_limit_position",
   "col_target_right",
@@ -90,6 +91,20 @@
    "set_only_once": 1,
    "permlevel": 0,
    "description": "The TS Token whose chain (PI → PR → DS → QI → WB → GE → Token) will be cascade-deleted."
+  },
+  {
+   "fieldname": "cut_point",
+   "fieldtype": "Select",
+   "options": "Full Chain\nPurchase Invoice\nPurchase Receipt\nTS Deduction Sheet\nTS Quality Inspection\nTS Weighbridge Log\nTS Gate Entry",
+   "default": "Full Chain",
+   "label": "Cut Point (Partial Cascade)",
+   "reqd": 1,
+   "read_only_on_submit": 1,
+   "set_only_once": 1,
+   "permlevel": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Full Chain = delete the whole chain including the Token. Otherwise = partial cascade: delete from this document down to Purchase Invoice, keep everything above, and reset the Token status."
   },
   {
    "fieldname": "approval_status",

@@ -22,14 +22,17 @@ import frappe
 SUPER_ADMIN_ROLE_NAME = "Super Admin"
 SUPER_ADMIN_USER = "erp.superadmin@betulbiofuel.com"
 
-# DocPerms granted to Super Admin at permlevel=0.
-# (permlevel=1 fields on TS Cascade Delete Log handled by the doctype JSON itself.)
+# DocPerms granted to Super Admin at permlevel=0 via Custom DocPerm.
+#
+# CRITICAL — Lesson 169: TS Cascade Delete Log is DELIBERATELY EXCLUDED here.
+# That is OUR doctype; its `permissions` array in ts_cascade_delete_log.json already
+# grants Super Admin (Standard DocPerm). Adding a Custom DocPerm for it would flip
+# the whole doctype into Custom-DocPerm-only mode and silently DROP every Standard
+# DocPerm row (CEO / MD / System Manager / Auditor / IT Head) — exactly the bug hit
+# during the 20-May soak window. The 7 cascade-TARGET doctypes below are not our
+# doctype and are already in Custom-DocPerm mode app-wide, so adding Super Admin to
+# them is purely additive and safe.
 _SUPER_ADMIN_PERMS = [
-	# The audit log doctype itself — read + create (NOT delete; logs are append-only).
-	{"parent": "TS Cascade Delete Log", "role": SUPER_ADMIN_ROLE_NAME, "permlevel": 0,
-	 "read": 1, "create": 1, "write": 1, "submit": 1, "print": 1, "email": 1, "report": 1, "export": 1,
-	 "delete": 0, "cancel": 0, "amend": 0, "share": 1},
-
 	# Cascade-targeted doctypes — read + delete (no write/cancel needed; engine uses delete_doc).
 	{"parent": "TS Token", "role": SUPER_ADMIN_ROLE_NAME, "permlevel": 0,
 	 "read": 1, "delete": 1, "cancel": 1, "report": 1, "export": 1, "print": 1, "email": 1},
