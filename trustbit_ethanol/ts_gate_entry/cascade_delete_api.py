@@ -106,7 +106,11 @@ def preview_cascade_chain(token_name: str) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-@rate_limit(key="cascade_initiate", limit=5, seconds=172800)  # 5 per 48h fallback
+# NO hardcoded @rate_limit decorator here: a fixed decorator (formerly 5/48h)
+# runs at the HTTP layer and IGNORES the admin-configurable TS Settings limit
+# (ts_cascade_rate_limit_count / _seconds), silently overriding it and blocking
+# legitimate use. The authoritative, tunable rate limit is the in-body check
+# below (see `rl_count` / `rl_seconds`). Do NOT re-add a fixed decorator. v2.11.0.4.
 def initiate_cascade(
 	token_name: str,
 	force_pr: int = 0,
@@ -167,8 +171,9 @@ def initiate_cascade(
 		               "to be approved, rejected, or cancelled before starting another.").format(
 			escape_html(token_name), escape_html(in_flight)))
 
-	# Configurable rate limit (Q&A 3) — re-check inside the window via DB query.
-	# (The decorator's 5/48h is a default fallback; the configurable one is here.)
+	# Configurable rate limit (Q&A 3) — the SOLE, authoritative rate limit for
+	# this endpoint (there is no HTTP-layer decorator — see note above the def).
+	# Per-user, window-based, counts persisted log rows so it survives restarts.
 	rl_count = int(frappe.db.get_single_value("TS Settings", "ts_cascade_rate_limit_count") or 5)
 	rl_seconds = int(frappe.db.get_single_value("TS Settings", "ts_cascade_rate_limit_seconds") or 172800)
 	from frappe.utils import add_to_date
