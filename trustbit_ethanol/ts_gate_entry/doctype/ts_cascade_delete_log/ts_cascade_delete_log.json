@@ -40,6 +40,8 @@
   "force_pr_confirmation_typed",
   "force_mi_override",
   "force_mi_confirmation_typed",
+  "force_payment_links",
+  "force_payment_confirmation_typed",
   "section_hash_chain",
   "prev_row_hash",
   "col_hash_right",
@@ -136,7 +138,7 @@
    "fieldtype": "Long Text",
    "label": "Target Chain Snapshot (JSON)",
    "read_only_on_submit": 1,
-   "permlevel": 0,
+   "permlevel": 1,
    "description": "Hardening B — full JSON snapshot of GE/WB/QI/DS/PR/PI names + key fields captured at preview time. Used for revert."
   },
   {
@@ -247,6 +249,23 @@
    "description": "Must equal FORCE-DELETE-MI (case-sensitive) when force_mi_override = 1."
   },
   {
+   "fieldname": "force_payment_links",
+   "fieldtype": "Check",
+   "label": "Force Delete With Payment Links",
+   "default": "0",
+   "read_only_on_submit": 1,
+   "permlevel": 0,
+   "description": "If checked, the cascade may delete a chain that has downstream Payment Entries / Journal Entries / Landed Cost Vouchers or a billed Purchase Receipt. Set by the API only when the FORCE-DELETE-WITH-PAYMENTS gate is passed."
+  },
+  {
+   "fieldname": "force_payment_confirmation_typed",
+   "fieldtype": "Data",
+   "label": "Force Payment-Links Confirmation Typed",
+   "read_only_on_submit": 1,
+   "permlevel": 0,
+   "description": "Must equal FORCE-DELETE-WITH-PAYMENTS (typed by the Super Admin) when force_payment_links = 1."
+  },
+  {
    "fieldname": "section_hash_chain",
    "fieldtype": "Section Break",
    "label": "Hash Chain (Hardening A)",
@@ -259,7 +278,7 @@
    "length": 64,
    "label": "Previous Row Hash",
    "read_only": 1,
-   "permlevel": 0,
+   "permlevel": 1,
    "description": "SHA-256 of the immediately-prior submitted log row's this_row_hash. Empty for genesis row."
   },
   {
@@ -272,7 +291,7 @@
    "length": 64,
    "label": "This Row Hash",
    "read_only": 1,
-   "permlevel": 0,
+   "permlevel": 1,
    "description": "SHA-256 over canonical-serialized field tuple (target_token + initiated_by + initiated_at + prev_row_hash + ...). Computed in validate()."
   },
   {
@@ -286,7 +305,7 @@
    "fieldtype": "Data",
    "label": "Backup Filename",
    "read_only": 1,
-   "permlevel": 0,
+   "permlevel": 1,
    "description": "Relative path under sites/<site>/private/files/cascade_backups/"
   },
   {
@@ -299,7 +318,7 @@
    "length": 64,
    "label": "Backup SHA-256",
    "read_only": 1,
-   "permlevel": 0,
+   "permlevel": 1,
    "description": "Crypto signature of backup file at write time. Verified before revert."
   },
   {
@@ -313,7 +332,7 @@
    "fieldtype": "Long Text",
    "label": "Forensic Block (JSON)",
    "read_only": 1,
-   "permlevel": 0,
+   "permlevel": 1,
    "description": "IP, OS, device, browser, GeoIP city/country, session_id, server_timezone, request_ts, screen, language, UA."
   },
   {
@@ -502,6 +521,11 @@
    "delete": 0,
    "cancel": 0,
    "amend": 0
+  },
+  {
+   "role": "Super Admin",
+   "read": 1,
+   "permlevel": 1
   },
   {
    "role": "CEO",

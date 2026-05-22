@@ -15,9 +15,14 @@ called only from cascade_delete_api in-process).
 
 import hashlib
 import hmac
+import ipaddress
 import json
+import socket
 from datetime import datetime
+from urllib.parse import urlparse
+
 import frappe
+from frappe import _
 
 
 def _get_webhook_config() -> tuple[str, str]:
@@ -55,6 +60,53 @@ def _sign(payload_body: str, secret: str) -> str:
 	).hexdigest()
 
 
+def validate_webhook_url_safe(url: str) -> None:
+	"""SSRF guard — raise frappe.ValidationError if `url` is unsafe to POST to.
+
+	Enforces: scheme MUST be https; the hostname MUST resolve ONLY to public
+	IP addresses. Rejects if ANY resolved A/AAAA record is private, loopback,
+	link-local, reserved, multicast, or unspecified — this catches decimal/hex/
+	octal loopback forms (0x7f000001, 2130706433, 017700000001), IPv6 loopback
+	(::1, ::ffff:127.0.0.1), the cloud metadata IP (169.254.169.254), and RFC1918
+	ranges, because classification is done on the RESOLVED ip object, not on the
+	URL string.
+
+	Shared guard: called BOTH at TS Settings save time (hard validation) AND
+	before EVERY webhook POST attempt (the per-attempt re-resolution blunts
+	DNS-rebinding between the save-time check and dispatch). v2.11.1 (audit B5).
+	"""
+	if not url or not isinstance(url, str):
+		frappe.throw(_("Webhook URL is empty."))
+	parsed = urlparse(url.strip())
+	if parsed.scheme != "https":
+		frappe.throw(_("Webhook URL must use https:// — got {0}.").format(parsed.scheme or "(none)"))
+	host = parsed.hostname
+	if not host:
+		frappe.throw(_("Webhook URL has no host."))
+	try:
+		port = parsed.port or 443
+	except ValueError:
+		frappe.throw(_("Webhook URL has an invalid port."))
+	try:
+		infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+	except socket.gaierror as e:
+		frappe.throw(_("Webhook URL host {0} does not resolve ({1}).").format(host, e))
+	resolved = {ai[4][0] for ai in infos}
+	if not resolved:
+		frappe.throw(_("Webhook URL host {0} resolved to no addresses.").format(host))
+	for ip_str in resolved:
+		try:
+			ip = ipaddress.ip_address(ip_str)
+		except ValueError:
+			frappe.throw(_("Webhook URL host resolved to an invalid address: {0}.").format(ip_str))
+		if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+				or ip.is_multicast or ip.is_unspecified):
+			frappe.throw(_(
+				"Webhook URL host {0} resolves to a non-public address ({1}) — blocked "
+				"to prevent SSRF. The webhook must point to a public HTTPS endpoint."
+			).format(host, ip_str))
+
+
 def dispatch_webhook(log_doc) -> dict:
 	"""POST to configured webhook URL with HMAC signature header.
 
@@ -62,6 +114,11 @@ def dispatch_webhook(log_doc) -> dict:
 	the log row (webhook_delivered + webhook_response_code + webhook_attempted_at
 	+ webhook_response_body_excerpt). NEVER throws — caller wraps in try/except
 	defense-in-depth per Lesson 238.
+
+	SSRF-guarded (v2.11.1 audit B5): `validate_webhook_url_safe` is re-run before
+	EVERY attempt; `allow_redirects=False` so a 3xx to an internal address cannot
+	defeat the guard. A guard failure is treated as a (non-throwing) delivery
+	failure — it never breaks the cascade success path.
 
 	Returns: {"delivered": bool, "code": int, "attempts": int, "error"?: str}
 	"""
@@ -93,7 +150,13 @@ def dispatch_webhook(log_doc) -> dict:
 	import time
 	for attempt in range(1, 4):
 		try:
-			resp = requests.post(url, data=body, headers=headers, timeout=10)
+			# Re-run the SSRF guard before EVERY attempt (re-resolves DNS — blunts
+			# rebinding between the settings-save check and now). v2.11.1 audit B5.
+			validate_webhook_url_safe(url)
+			# allow_redirects=False — a 3xx to an internal address must not defeat
+			# the guard; a redirect is treated as a non-2xx failure below.
+			resp = requests.post(url, data=body, headers=headers, timeout=10,
+			                     allow_redirects=False)
 			last_code = resp.status_code
 			last_excerpt = (resp.text or "")[:500]
 			if 200 <= resp.status_code < 300:

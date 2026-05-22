@@ -30,6 +30,7 @@ class TSSettings(Document):
 			"ts_cascade_webhook_secret",
 			"ts_cascade_rate_limit_count",
 			"ts_cascade_rate_limit_seconds",
+			"ts_cascade_revert_window_minutes",
 		)
 		if not self.is_new() and not any(self.has_value_changed(f) for f in relevant):
 			return
@@ -37,16 +38,13 @@ class TSSettings(Document):
 		if self.get("ts_cascade_delete_enabled"):
 			url = (self.get("ts_cascade_webhook_url") or "").strip()
 			if url:
-				if not url.lower().startswith("https://"):
-					frappe.throw(_("Cascade Delete Webhook URL must start with https://"))
-				lower = url.lower()
-				banned = ("localhost", "127.0.0.1", "0.0.0.0", "10.", "172.16.",
-				          "172.17.", "172.18.", "172.19.", "172.20.", "172.21.",
-				          "172.22.", "172.23.", "172.24.", "172.25.", "172.26.",
-				          "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
-				          "192.168.", "169.254.")
-				if any(token in lower for token in banned):
-					frappe.throw(_("Cascade Delete Webhook URL must not target private / loopback addresses (SSRF prevention)."))
+				# Shared SSRF guard (v2.11.1 audit B5) — replaces the old leaky
+				# substring blocklist with real DNS-resolution-based IP classification
+				# (catches decimal/hex/octal/IPv6 loopback forms the blocklist missed).
+				from trustbit_ethanol.ts_gate_entry.cascade_delete_webhook import (
+					validate_webhook_url_safe,
+				)
+				validate_webhook_url_safe(url)
 				if not self.get("ts_cascade_webhook_secret"):
 					frappe.throw(_("Cascade Delete Webhook Secret is required when webhook URL is set."))
 
@@ -67,6 +65,18 @@ class TSSettings(Document):
 				seconds_i = -1
 			if seconds_i < 60 or seconds_i > 604800:
 				frappe.throw(_("Cascade Delete rate-limit window must be between 60 seconds and 7 days (604800)."))
+
+		# M2 (v2.11.1) — configurable revert grace window. Default 5 min; an admin
+		# may widen it up to 60 min so a financial cascade has a longer recovery
+		# window (a financial error rarely surfaces within 5 minutes).
+		revert_minutes = self.get("ts_cascade_revert_window_minutes")
+		if revert_minutes not in (None, "", 0):
+			try:
+				rm_i = int(revert_minutes)
+			except (TypeError, ValueError):
+				rm_i = -1
+			if rm_i < 5 or rm_i > 60:
+				frappe.throw(_("Cascade Delete revert window must be between 5 and 60 minutes."))
 
 	def _validate_pre_post_dated(self):
 		"""Guard against pre-enable window exceeding max_backdate_days policy (Lesson 167).

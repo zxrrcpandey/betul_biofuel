@@ -2,14 +2,24 @@
 PI → PR → DS → QI → WB → GE → Token deletion chain.
 
 Refactored from the production-proven `_batch_token_delete_optA.py` script
-(19 May 2026 Round 44, 5/5 deterministic). Idempotent + transaction-safe;
-embeds the Lesson 275 surgical-SQL fallback inside the GE-cancel step.
+(19 May 2026 Round 44, 5/5 deterministic). Each deletion step is idempotent.
+
+ATOMICITY (v2.11.1 audit M1 — corrected): this engine is NOT a single
+transaction. It commits after each successful step, so a mid-cascade failure
+leaves the already-committed steps deleted (a partially-deleted chain) and
+`_abort()` returns `partial_failure=True` listing the completed steps.
+Recovery from a partial failure is via the pre-cascade backup (Hardening B/M
+revert), NOT a DB rollback. The B4 financial-link gate runs BEFORE any commit.
 
 NO direct caller; only invoked by `cascade_delete_api.py` after CEO approval.
 Sets `frappe.flags.cascade_delete_mode = True` for the engine's lifetime
-(Lesson 176 try/finally) so the GE on_cancel guard at
-`ts_gate_entry.py:_block_cancel_if_token_post_weighing` skips its
-`Token.status == 'Tare Weighed'` snapshot check (Lesson 275).
+(Lesson 176 try/finally). NOTE (v2.11.1 audit B2): `ts_gate_entry.py`'s GE
+`on_cancel` guard does NOT actually honour this flag — its POST_WEIGHING /
+POST_GRN branches throw unconditionally. The surgical-SQL DELETE inside
+`_cancel_then_delete_ge_with_lesson_275_fallback` is therefore the formally-
+accepted PRIMARY GE-deletion path for post-weighbridge tokens, not a rare
+fallback (Lesson 275). The flag is kept set for any future guard that does
+honour it; making the guard honour it is backlogged (locked file).
 
 Returns a structured execution_result dict that the API persists into
 the log row's `execution_result_json` field.
@@ -43,6 +53,14 @@ def build_chain_snapshot(token_name: str) -> dict:
 		"gl_entries_count": 0,
 		"versions_count": 0,
 		"comments_count": 0,
+		# B4 (v2.11.1) — financial linkage. Deleting a PI/PR that has a
+		# downstream Payment Entry / Journal Entry / Landed Cost Voucher (or a
+		# PR already billed) leaves dangling GL references.
+		"payment_entries": [],
+		"journal_entries": [],
+		"landed_cost_vouchers": [],
+		"billed_prs": [],
+		"has_financial_links": False,
 	}
 
 	if not frappe.db.exists("TS Token", token_name):
@@ -99,6 +117,42 @@ def build_chain_snapshot(token_name: str) -> dict:
 			"SELECT COUNT(*) FROM `tabGL Entry` WHERE voucher_no IN %s",
 			(pi_names,))[0][0]
 
+	# B4 (v2.11.1) — detect downstream financial documents that would be left
+	# with dangling GL references if the in-chain PI/PR were deleted.
+	chain["billed_prs"] = [r["name"] for r in chain["purchase_receipts"]
+	                       if (r.get("per_billed") or 0) > 0]
+	fin_ref_names = ([r["name"] for r in chain["purchase_invoices"]]
+	                 + [r["name"] for r in chain["purchase_receipts"]])
+	if fin_ref_names:
+		chain["payment_entries"] = frappe.db.sql(
+			"""SELECT DISTINCT pe.name, pe.docstatus, pe.paid_amount
+			   FROM `tabPayment Entry Reference` per
+			   JOIN `tabPayment Entry` pe ON pe.name = per.parent
+			   WHERE per.reference_doctype IN ('Purchase Invoice', 'Purchase Receipt')
+			     AND per.reference_name IN %s""",
+			(fin_ref_names,), as_dict=True,
+		)
+		chain["journal_entries"] = frappe.db.sql(
+			"""SELECT DISTINCT je.name, je.docstatus
+			   FROM `tabJournal Entry Account` jea
+			   JOIN `tabJournal Entry` je ON je.name = jea.parent
+			   WHERE jea.reference_type IN ('Purchase Invoice', 'Purchase Receipt')
+			     AND jea.reference_name IN %s""",
+			(fin_ref_names,), as_dict=True,
+		)
+	if chain["purchase_receipts"]:
+		pr_names_lcv = [r["name"] for r in chain["purchase_receipts"]]
+		chain["landed_cost_vouchers"] = frappe.db.sql(
+			"""SELECT DISTINCT lcpr.parent AS name
+			   FROM `tabLanded Cost Purchase Receipt` lcpr
+			   WHERE lcpr.receipt_document_type = 'Purchase Receipt'
+			     AND lcpr.receipt_document IN %s""",
+			(pr_names_lcv,), as_dict=True,
+		)
+	chain["has_financial_links"] = bool(
+		chain["payment_entries"] or chain["journal_entries"]
+		or chain["landed_cost_vouchers"] or chain["billed_prs"])
+
 	chain["versions_count"] = frappe.db.count("Version", {"ref_doctype": "TS Token", "docname": token_name})
 	chain["comments_count"] = frappe.db.count("Comment", {"reference_doctype": "TS Token", "reference_name": token_name})
 	return chain
@@ -126,11 +180,12 @@ def _cut_index(cut_point: str | None) -> int:
 	"""Index in _DELETION_STEPS up to which deletion runs. None -> full (5)."""
 	if not cut_point:
 		return len(_DELETION_STEPS) - 1
-	for i, (_, dt) in enumerate(_DELETION_STEPS):
+	for i, (_code, dt) in enumerate(_DELETION_STEPS):
 		if dt == cut_point:
 			return i
-	# Unknown cut_point — fail safe to full cascade index.
-	return len(_DELETION_STEPS) - 1
+	# M4 (v2.11.1) — unknown cut_point: a destructive engine must NEVER silently
+	# widen scope to a full cascade. Fail closed — refuse outright.
+	frappe.throw(_("Invalid cascade cut-point: {0}").format(str(cut_point)))
 
 
 def execute_cascade(
@@ -139,6 +194,7 @@ def execute_cascade(
 	force_pr: bool = False,
 	force_mi: bool = False,
 	cut_point: str | None = None,
+	force_payment_links: bool = False,
 ) -> dict:
 	"""Run the PI → PR → DS → QI → WB → GE → Token cascade.
 
@@ -157,6 +213,27 @@ def execute_cascade(
 	is_partial = cut_point not in (None, "TS Gate Entry")
 	frappe.flags.cascade_delete_mode = True
 	try:
+		# B4 (v2.11.1) — financial-linkage gate. Checked BEFORE any deletion so
+		# nothing is committed if it blocks. Deleting a PI/PR with a downstream
+		# Payment Entry / Journal Entry / Landed Cost Voucher (or a billed PR)
+		# would orphan GL entries — refuse unless the Super Admin explicitly set
+		# force_payment_links (its own type-to-confirm gate at initiate time).
+		_fin = build_chain_snapshot(token_name)
+		if _fin.get("has_financial_links") and not force_payment_links:
+			steps.append({
+				"step": "FIN", "action": "blocked-financial-links", "success": False,
+				"error": (
+					"Cascade blocked — chain has downstream financial documents: "
+					f"Payment Entries={[r['name'] for r in _fin.get('payment_entries', [])]} "
+					f"Journal Entries={[r['name'] for r in _fin.get('journal_entries', [])]} "
+					f"Landed Cost Vouchers={[r['name'] for r in _fin.get('landed_cost_vouchers', [])]} "
+					f"billed Purchase Receipts={_fin.get('billed_prs', [])}. "
+					"Deleting them would leave dangling GL references. Re-initiate with "
+					"the Force-Payment-Links override if this is intended."
+				),
+			})
+			return _abort(steps, "FIN", lesson_275_used)
+
 		# Step 1 — Purchase Invoices  (deletion index 0)
 		if 0 <= cut_idx:
 			pi_rows = frappe.db.sql(
@@ -337,12 +414,17 @@ def _cancel_then_delete(doctype: str, name: str, allow_force: bool = False) -> d
 
 
 def _cancel_then_delete_ge_with_lesson_275_fallback(ge_name: str) -> dict:
-	"""GE-specific path: try cancel → on Lesson-275 ValidationError → surgical SQL DELETE.
+	"""GE-specific path: try cancel → on the Lesson-275 ValidationError → surgical SQL DELETE.
 
-	The cascade engine sets `frappe.flags.cascade_delete_mode = True` for its whole
-	lifetime. The GE on_cancel guard SHOULD honour that flag (Lesson 176) and skip
-	the Token.status snapshot check. If the guard is updated in a future codebase
-	ship to query live data, this fallback becomes vacuous.
+	IMPORTANT (v2.11.1 audit B2) — the surgical-SQL DELETE is the FORMALLY-ACCEPTED
+	PRIMARY GE-deletion path for any post-weighbridge token, NOT a rare fallback.
+	`ts_gate_entry.py`'s `on_cancel` guard does NOT honour `frappe.flags.cascade_delete_mode`
+	— its POST_WEIGHING / POST_GRN branches throw unconditionally — so `ge_doc.cancel()`
+	below predictably raises for any token that has a Weighbridge Log or Purchase
+	Receipt, and this function then deletes the GE directly via SQL. (Making the
+	guard honour the flag is backlogged — it touches the locked ts_gate_entry.py.)
+	The trigger below matches the guard's EXACT message (not a loose substring) so an
+	unrelated ValidationError can never be misclassified into a force-delete.
 	"""
 	if not frappe.db.exists("TS Gate Entry", ge_name):
 		return {"doctype": "TS Gate Entry", "name": ge_name, "action": "already-gone", "success": True}
@@ -359,22 +441,42 @@ def _cancel_then_delete_ge_with_lesson_275_fallback(ge_name: str) -> dict:
 			ge_doc.cancel()
 			frappe.db.commit()
 		except Exception as e:
-			# Known Lesson 275 false-positive — Token.status snapshot trips the guard
-			# even when WB Log is already gone. Fall back to surgical SQL (Lesson 262 B).
+			# B3 (v2.11.1) — match the GE on_cancel guard's EXACT message, not a
+			# loose substring. The old `"Quality" in msg` test mis-classified ANY
+			# unrelated ValidationError mentioning "Quality" into a force-delete.
 			msg = str(e)
-			if "Tare Weighed" in msg or "Weighbridge Log exists" in msg or "Quality" in msg:
+			is_lesson_275 = (
+				isinstance(e, frappe.exceptions.ValidationError)
+				and "Cannot cancel Gate Entry" in msg
+				and ("A Weighbridge Log exists" in msg
+				     or "A Purchase Receipt has been created" in msg)
+			)
+			if is_lesson_275:
 				surgical = True
 				try:
-					frappe.db.sql(
-						"DELETE FROM `tabComment` "
-						"WHERE reference_doctype='TS Gate Entry' AND reference_name=%s",
-						(ge_name,),
-					)
-					frappe.db.sql(
-						"DELETE FROM `tabVersion` "
-						"WHERE ref_doctype='TS Gate Entry' AND docname=%s",
-						(ge_name,),
-					)
+					# B3 — the surgical DELETE bypasses frappe.delete_doc, so it must
+					# remove everything delete_doc would have. Must-succeed: child-table
+					# rows + the GE row. Best-effort: comments/versions/shares/todos.
+					for _tf in frappe.get_meta("TS Gate Entry").get_table_fields():
+						frappe.db.sql(
+							f"DELETE FROM `tab{_tf.options}` "
+							"WHERE parent=%s AND parenttype='TS Gate Entry'",
+							(ge_name,),
+						)
+					for _tbl, _dt_col, _nm_col in (
+						("tabComment", "reference_doctype", "reference_name"),
+						("tabVersion", "ref_doctype", "docname"),
+						("tabDocShare", "share_doctype", "share_name"),
+						("tabToDo", "reference_type", "reference_name"),
+					):
+						try:
+							frappe.db.sql(
+								f"DELETE FROM `{_tbl}` "
+								f"WHERE `{_dt_col}`='TS Gate Entry' AND `{_nm_col}`=%s",
+								(ge_name,),
+							)
+						except Exception:
+							pass  # auxiliary cleanup is best-effort — never abort the cascade
 					frappe.db.sql(
 						"DELETE FROM `tabTS Gate Entry` WHERE name=%s",
 						(ge_name,),
@@ -417,13 +519,25 @@ def _cancel_then_delete_ge_with_lesson_275_fallback(ge_name: str) -> dict:
 
 
 def _abort(steps: list[dict], step_name: str, lesson_275_used: bool) -> dict:
-	"""Roll back the engine on first failure (Lesson 222: idempotent + transactional)."""
+	"""Abort the cascade at `step_name`.
+
+	M1 (v2.11.1) — `frappe.db.rollback()` here only undoes the CURRENT uncommitted
+	transaction. The engine commits after each successful step, so any step that
+	already completed stays deleted. `partial_failure` flags that the chain is now
+	partially deleted; recovery is via the pre-cascade backup (revert), not a DB
+	rollback. (A pre-deletion gate failure — e.g. the B4 financial block or a
+	not-forced skip — aborts with partial_failure=False, nothing deleted.)
+	"""
 	frappe.db.rollback()
+	_mutated = {"deleted", "deleted-via-surgical-sql", "status-reset"}
+	completed = [s for s in steps if s.get("success") and s.get("action") in _mutated]
 	return {
 		"success": False,
 		"aborted_step": step_name,
 		"steps": steps,
 		"lesson_275_fallback_used": lesson_275_used,
+		"partial_failure": bool(completed),
+		"completed_steps": [s.get("step") for s in completed],
 	}
 
 

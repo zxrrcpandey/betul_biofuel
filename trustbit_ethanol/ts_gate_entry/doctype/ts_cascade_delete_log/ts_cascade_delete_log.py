@@ -125,6 +125,13 @@ class TSCascadeDeleteLog(Document):
 			if (self.force_mi_confirmation_typed or "") != "FORCE-DELETE-MI":
 				if self.is_new():
 					frappe.throw(_("Force-MI confirmation must equal: FORCE-DELETE-MI"))
+		# B4 (v2.11.1) — Force-Payment-Links override (delete a chain with downstream
+		# Payment Entries / Journal Entries / Landed Cost Vouchers) — defence-in-depth
+		# type-to-confirm check on the doc itself (the API validates it too).
+		if self.get("force_payment_links"):
+			if (self.get("force_payment_confirmation_typed") or "") != "FORCE-DELETE-WITH-PAYMENTS":
+				if self.is_new():
+					frappe.throw(_("Force-Payment-Links confirmation must equal: FORCE-DELETE-WITH-PAYMENTS"))
 
 	def _compute_hash_chain(self):
 		"""Hardening A — compute this_row_hash deterministically over _HASH_FIELDS.

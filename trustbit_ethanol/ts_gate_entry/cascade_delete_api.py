@@ -37,6 +37,7 @@ _TOKEN_NAME_RE = re.compile(r"^BBPL-TKN-[0-9]{4}-[0-9]{5}$")
 _LOG_NAME_RE = re.compile(r"^BBPL-CDL-[0-9]{4}-[0-9]{5}$")
 _FORCE_PR_LITERAL = "FORCE-DELETE-PR"
 _FORCE_MI_LITERAL = "FORCE-DELETE-MI"
+_FORCE_PAYMENT_LITERAL = "FORCE-DELETE-WITH-PAYMENTS"  # v2.11.1 audit B4
 _REVERT_GRACE_MINUTES = 5
 _READ_ROLES = {"Super Admin", "CEO", "MD", "System Manager", "Administrator", "Auditor", "IT Head"}
 _INITIATE_ROLES = {"Super Admin"}
@@ -121,6 +122,8 @@ def initiate_cascade(
 	client_screen: str = "",
 	client_language: str = "",
 	cut_point: str = "Full Chain",
+	force_payment_links: int = 0,
+	force_payment_confirmation_typed: str = "",
 ) -> dict:
 	"""Super Admin initiates a cascade. Creates Pending CEO Approval log row.
 
@@ -141,6 +144,14 @@ def initiate_cascade(
 	cut_point = (cut_point or "Full Chain").strip()
 	if cut_point not in _CUT_POINT_VALUES:
 		frappe.throw(_("Invalid cut-point: {0}").format(escape_html(cut_point)))
+	# v2.11.1 — partial cascade is temporarily DISABLED. _reset_token_status has a
+	# silent wrong-status bug on post-GRN tokens (audit B1); the rewrite + re-enable
+	# ship in v2.11.2. Until then ONLY a Full Chain cascade is permitted.
+	if cut_point != "Full Chain":
+		frappe.throw(_(
+			"Partial cascade (cut-point deletion) is temporarily disabled in v2.11.1 — "
+			"only a Full Chain cascade is available. Partial cascade returns in v2.11.2."
+		))
 
 	# Type-to-confirm gates (Q&A item 4)
 	if (confirm_token_name_typed or "").strip() != token_name:
@@ -151,6 +162,12 @@ def initiate_cascade(
 	if int(force_mi):
 		if force_mi_confirmation_typed != _FORCE_MI_LITERAL:
 			frappe.throw(_("Force-MI confirmation must equal: {0}").format(_FORCE_MI_LITERAL))
+	# B4 (v2.11.1) — Force-Payment-Links override: deleting a chain with downstream
+	# Payment Entries / Journal Entries / Landed Cost Vouchers needs its own
+	# explicit type-to-confirm gate.
+	if int(force_payment_links):
+		if force_payment_confirmation_typed != _FORCE_PAYMENT_LITERAL:
+			frappe.throw(_("Force-Payment-Links confirmation must equal: {0}").format(_FORCE_PAYMENT_LITERAL))
 
 	# Token must exist + Super Admin must have read perm
 	frappe.has_permission("TS Token", "read", doc=token_name, throw=True)
@@ -212,6 +229,9 @@ def initiate_cascade(
 	log.force_pr_confirmation_typed = force_pr_confirmation_typed if int(force_pr) else ""
 	log.force_mi_override = int(force_mi)
 	log.force_mi_confirmation_typed = force_mi_confirmation_typed if int(force_mi) else ""
+	log.force_payment_links = int(force_payment_links)
+	log.force_payment_confirmation_typed = (
+		force_payment_confirmation_typed if int(force_payment_links) else "")
 	log.target_chain_json = chain_json
 	log.forensic_block_json = forensic_json
 	log.rate_limit_position = rate_limit_position
@@ -321,9 +341,24 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 	# 2-person rule + CEO approval. The CEO approves; the Super Admin executes.
 	_approver_user = frappe.session.user
 	_engine_user = log_doc.initiated_by
+	# M3 (v2.11.1) — do NOT fall back to Administrator when the initiator is
+	# disabled/missing. Running this destructive engine as Administrator widens
+	# the blast radius beyond the audited Super Admin scope and breaks the
+	# attributability of every deletion. Abort + mark Failed instead.
 	if not _engine_user or not frappe.db.get_value("User", _engine_user, "enabled"):
-		# Initiator disabled/missing — fall back to Administrator (always privileged).
-		_engine_user = "Administrator"
+		_transition_log_state(log_name, "Failed", extra={
+			"executed_at": now_datetime(),
+			"execution_result_json": json.dumps({
+				"error": (f"Initiator account '{_engine_user}' is disabled or missing — "
+				          "cascade aborted (M3). Re-initiate from an enabled Super Admin account."),
+			}),
+		})
+		frappe.clear_messages()
+		return {
+			"success": False, "approval_status": "Failed",
+			"error": (f"Initiator account '{_engine_user}' is disabled or missing — "
+			          "cascade aborted. Re-initiate from an enabled Super Admin account."),
+		}
 	try:
 		frappe.set_user(_engine_user)
 		result = execute_cascade(
@@ -333,6 +368,7 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 			force_mi=bool(log_doc.force_mi_override),
 			cut_point=(None if (log_doc.get("cut_point") or "Full Chain") == "Full Chain"
 			           else log_doc.cut_point),
+			force_payment_links=bool(log_doc.get("force_payment_links")),
 		)
 	finally:
 		# ALWAYS restore the approving CEO's session before post-engine steps
@@ -341,7 +377,14 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 
 	# Persist execution result + transition state
 	now = now_datetime()
-	revert_expires_at = add_to_date(now, minutes=_REVERT_GRACE_MINUTES)
+	# M2 (v2.11.1) — revert window is admin-configurable (TS Settings, 5–60 min;
+	# default 5). _REVERT_GRACE_MINUTES is the fallback if the setting is unset.
+	try:
+		_rw = int(frappe.db.get_single_value("TS Settings", "ts_cascade_revert_window_minutes") or 0)
+	except (TypeError, ValueError):
+		_rw = 0
+	revert_minutes = _rw if 5 <= _rw <= 60 else _REVERT_GRACE_MINUTES
+	revert_expires_at = add_to_date(now, minutes=revert_minutes)
 	exec_json = json.dumps(result, indent=2, default=str)
 
 	new_state = "Executed" if result.get("success") else "Failed"
@@ -508,7 +551,8 @@ def get_pending_review_detail(log_name: str) -> dict:
 
 	log = frappe.db.get_value(
 		"TS Cascade Delete Log", log_name,
-		["target_token", "approval_status", "force_pr_override", "force_mi_override", "cut_point"],
+		["target_token", "approval_status", "force_pr_override", "force_mi_override",
+		 "cut_point", "force_payment_links"],
 		as_dict=True,
 	)
 	if not log:
@@ -578,8 +622,17 @@ def get_pending_review_detail(log_name: str) -> dict:
 		"pi_total": pi_total,
 		"po_names": sorted(po_names),
 		"items": items,
+		# B4 (v2.11.1) — financial blast radius the CEO must see before approving.
+		"financial_links": {
+			"has_financial_links": bool(chain.get("has_financial_links")),
+			"payment_entries": [r.get("name") for r in (chain.get("payment_entries") or [])],
+			"journal_entries": [r.get("name") for r in (chain.get("journal_entries") or [])],
+			"landed_cost_vouchers": [r.get("name") for r in (chain.get("landed_cost_vouchers") or [])],
+			"billed_prs": chain.get("billed_prs") or [],
+		},
 		"force_pr_override": int(log.force_pr_override or 0),
 		"force_mi_override": int(log.force_mi_override or 0),
+		"force_payment_links": int(log.get("force_payment_links") or 0),
 	})
 
 

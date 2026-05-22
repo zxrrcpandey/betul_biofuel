@@ -180,7 +180,7 @@
   {
    "fieldname": "ts_flow_v28_enabled",
    "fieldtype": "Check",
-   "label": "v2.8 Flow Enabled (Gross \u2192 Tare direct, no Unloading gate)",
+   "label": "v2.8 Flow Enabled (Gross → Tare direct, no Unloading gate)",
    "default": "1",
    "permlevel": 1,
    "description": "v2.8.0 flow simplification: allows Tare Weight immediately after Gross (no Unloading Entry gate). Default ON. Turn OFF only for 48h kill-switch fallback to legacy flow. Writable by IT Head / System Manager only (permlevel 1)."
@@ -191,7 +191,7 @@
    "label": "v2.8.1 QC Gate at PI (blocks Purchase Invoice until QI Approved)",
    "default": "0",
    "permlevel": 1,
-   "description": "v2.8.1 Phase B: when ON, Purchase Invoice save is blocked unless every linked Token has an Approved Quality Inspection. Default OFF at deploy \u2014 flip ON only after QI team is ready to sign invoices. CEO/SM/IT Head can override per-PI via ts_qc_override. Writable by IT Head / System Manager only (permlevel 1)."
+   "description": "v2.8.1 Phase B: when ON, Purchase Invoice save is blocked unless every linked Token has an Approved Quality Inspection. Default OFF at deploy — flip ON only after QI team is ready to sign invoices. CEO/SM/IT Head can override per-PI via ts_qc_override. Writable by IT Head / System Manager only (permlevel 1)."
   },
   {
    "fieldname": "ts_rst_enforcement_enabled",
@@ -241,7 +241,7 @@
    "fieldtype": "Check",
    "label": "Enable PO Approval",
    "default": "1",
-   "description": "Master switch \u2014 if unchecked, Purchase Orders submit directly without approval chain"
+   "description": "Master switch — if unchecked, Purchase Orders submit directly without approval chain"
   },
   {
    "fieldname": "enable_mr_approval",
@@ -598,6 +598,14 @@
    "default": "172800",
    "permlevel": 1,
    "description": "Rolling-window length in seconds for the deletion rate limit. Q&A item 3 spec: 48 hours = 172800."
+  },
+  {
+   "fieldname": "ts_cascade_revert_window_minutes",
+   "fieldtype": "Int",
+   "label": "Cascade Delete — Revert Window (Minutes)",
+   "default": "5",
+   "permlevel": 1,
+   "description": "Grace window (minutes) during which an executed cascade can be reverted from its backup. Default 5; allowed range 5–60. Widen it to give a financial cascade a longer recovery window (M2, v2.11.1)."
   }
  ],
  "issingle": 1,

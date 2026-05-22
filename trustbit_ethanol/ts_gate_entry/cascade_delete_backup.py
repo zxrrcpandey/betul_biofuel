@@ -15,8 +15,10 @@ Lesson references: 222 (idempotent), 237 (log_error kwargs), 238 (best-effort).
 import hashlib
 import json
 import os
+import re
 from datetime import datetime
 import frappe
+from frappe import _
 from frappe.utils import get_site_path
 
 
@@ -24,6 +26,35 @@ def _backup_dir() -> str:
 	target = get_site_path("private", "files", "cascade_backups")
 	os.makedirs(target, exist_ok=True)
 	return target
+
+
+# A cascade backup file is always named "<TS Cascade Delete Log name>.json",
+# i.e. "BBPL-CDL-YYYY-NNNNN.json" (digits only after the year). Anything else
+# must be rejected before it touches a filesystem path.
+_BACKUP_NAME_RE = re.compile(r"^BBPL-CDL-[0-9]{4}-[0-9]+\.json$")
+
+
+def _safe_backup_name(name: str) -> str:
+	"""Path-traversal guard (v2.11.1 audit B6).
+
+	`backup_filename` is read back from the TS Cascade Delete Log row and joined
+	into a filesystem path. Even though that field is now permlevel-1, treat the
+	value as untrusted: reject any name that is not a bare, expected cascade-
+	backup filename so a tampered value (`../../etc/passwd`, an absolute path,
+	a name with separators) can never escape the backup directory.
+	Returns the safe basename; raises frappe.ValidationError otherwise.
+	"""
+	if not name or not isinstance(name, str):
+		frappe.throw(_("Backup filename is empty."))
+	stripped = name.strip()
+	if (stripped != os.path.basename(stripped)
+			or ".." in stripped or "/" in stripped or "\\" in stripped):
+		frappe.throw(_("Unsafe backup filename (path traversal blocked): {0}").format(name))
+	if not _BACKUP_NAME_RE.match(stripped):
+		frappe.throw(_(
+			"Backup filename {0} does not match the expected BBPL-CDL-YYYY-NNNNN.json pattern."
+		).format(stripped))
+	return stripped
 
 
 def _row_dict(doctype: str, name: str) -> dict | None:
@@ -87,7 +118,7 @@ def verify_backup_sha256(log_doc) -> bool:
 	"""
 	if not log_doc.backup_filename or not log_doc.backup_sha256:
 		return False
-	full_path = os.path.join(_backup_dir(), log_doc.backup_filename)
+	full_path = os.path.join(_backup_dir(), _safe_backup_name(log_doc.backup_filename))
 	if not os.path.exists(full_path):
 		return False
 	with open(full_path, "rb") as f:
@@ -107,7 +138,7 @@ def restore_from_backup(log_doc) -> dict:
 	if not verify_backup_sha256(log_doc):
 		return {"success": False, "error": "Backup SHA-256 mismatch or file missing — restore aborted."}
 
-	full_path = os.path.join(_backup_dir(), log_doc.backup_filename)
+	full_path = os.path.join(_backup_dir(), _safe_backup_name(log_doc.backup_filename))
 	with open(full_path, "r", encoding="utf-8") as f:
 		data = json.load(f)
 

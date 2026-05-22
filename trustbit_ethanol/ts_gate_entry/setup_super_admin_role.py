@@ -104,6 +104,23 @@ def _ensure_docperms():
 		}
 		if frappe.db.exists("Custom DocPerm", filters):
 			continue
+		# M5 (v2.11.1) — Lesson 169 guard. Inserting the FIRST Custom DocPerm row
+		# for a doctype flips it from Standard- to Custom-DocPerm mode, which
+		# silently DROPS every Standard DocPerm (a permission blackout). Every
+		# doctype in _SUPER_ADMIN_PERMS is expected to ALREADY be in Custom-DocPerm
+		# mode (TS Cascade Delete Log ships its own Custom DocPerm rows). If this
+		# row would be the first, refuse + log CRITICAL rather than cause a blackout.
+		if not frappe.db.exists("Custom DocPerm", {"parent": perm["parent"]}):
+			frappe.log_error(
+				title=f"Super Admin seeder ABORTED for {perm['parent']}",
+				message=(
+					f"Refusing to insert the FIRST Custom DocPerm row on '{perm['parent']}' "
+					"— that would flip it to Custom-DocPerm mode and drop all Standard "
+					"DocPerms (Lesson 169). Run setup_custom_perms() for this doctype "
+					"first, then re-run the Super Admin seeder."
+				),
+			)
+			continue
 		doc = frappe.get_doc({
 			"doctype": "Custom DocPerm",
 			"parenttype": "DocType",

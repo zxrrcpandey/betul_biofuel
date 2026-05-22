@@ -3,7 +3,7 @@
 // Lesson 174 — version pill rendered into DOM by JS; bump on every page edit.
 // Frappe v15 does NOT auto-inject {page}.html — JS builds the DOM via page.main.html().
 
-const CD_PAGE_VERSION = "v2.11.0.2-2026-05-20";
+const CD_PAGE_VERSION = "v2.11.1-2026-05-22";
 
 const CD_CSS = `
 	#cd-root { padding: 18px 22px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -86,6 +86,17 @@ const CD_CSS = `
 	[data-theme="dark"] #cd-root .cd-modal label { color: #94a3b8; }
 	[data-theme="dark"] #cd-root .cd-modal input, [data-theme="dark"] #cd-root .cd-search-row input { background: #0f172a; color: #e2e8f0; border-color: #475569; }
 	[data-theme="dark"] #cd-root .cd-btn-secondary { background: #334155; color: #e2e8f0; }
+	#cd-root .cd-warn-note { font-size: 11px; background: #fef3c7; color: #92400e; border-left: 3px solid #f59e0b; padding: 5px 9px; margin: 0 0 8px; }
+	[data-theme="dark"] #cd-root .cd-warn-note { background: #3a2e12; color: #fcd34d; border-color: #a16207; }
+	#cd-root .cd-fin-panel { margin-top: 10px; border: 1px solid #dc2626; background: #fef2f2; border-radius: 6px; padding: 8px 12px; font-size: 12px; }
+	#cd-root .cd-fin-panel .cd-fin-title { color: #b91c1c; font-weight: 600; }
+	#cd-root .cd-fin-panel .cd-fin-body { margin-top: 4px; color: #7f1d1d; line-height: 1.7; }
+	#cd-root .cd-fin-panel .cd-fin-foot { margin-top: 5px; font-style: italic; color: #991b1b; }
+	[data-theme="dark"] #cd-root .cd-fin-panel { background: #3f1d1d; border-color: #dc2626; }
+	[data-theme="dark"] #cd-root .cd-fin-panel .cd-fin-title { color: #fca5a5; }
+	[data-theme="dark"] #cd-root .cd-fin-panel .cd-fin-body { color: #fecaca; }
+	[data-theme="dark"] #cd-root .cd-fin-panel .cd-fin-foot { color: #fca5a5; }
+	[data-theme="dark"] #cd-root .cd-detail-warn { background: #3f1d1d; color: #fecaca; border-color: #dc2626; }
 `;
 
 const CD_BODY = `
@@ -257,7 +268,8 @@ function _render_preview(chain, token_name) {
 	};
 
 	let html = `<div class="cd-section"><h3>Chain Preview for <code>${frappe.utils.escape_html(token_name)}</code></h3>`;
-	html += `<p style="font-size:12px;color:#64748b;margin:0 0 8px;">Pick a <strong>cut-point</strong> — the cascade deletes that row and every row below it (toward Purchase Invoice). Rows above are kept.</p>`;
+	html += `<p style="font-size:12px;color:#64748b;margin:0 0 8px;">This cascade deletes the <strong>full chain</strong> — every document plus the Token.</p>`;
+	html += `<p class="cd-warn-note">⚠ Partial cascade (cut-point deletion) is <strong>temporarily disabled in v2.11.1</strong> — only Full Chain is available. It returns in v2.11.2 after the status-reset rewrite.</p>`;
 	html += `<table class="cd-chain-table"><tr><th style="width:78px">Delete from</th><th>DocType</th><th>Count</th><th>Submitted</th><th>Notes</th></tr>`;
 	// Token row — no radio; deleted only on Full Chain
 	html += `<tr id="cd-cp-row-TOKEN"><td style="text-align:center;color:#cbd5e1;">—</td>`
@@ -266,16 +278,36 @@ function _render_preview(chain, token_name) {
 	for (const s of _CD_CHAIN) {
 		const rows = stage[s.code] || [];
 		const submitted = rows.filter(r => r.docstatus === 1).length;
+		// v2.11.1 — partial cascade disabled: only the GE row (Full Chain) is
+		// selectable; the other cut-points are rendered disabled.
 		const checked = s.code === "GE" ? "checked" : "";
+		const disabled = s.code === "GE" ? "" : "disabled";
 		let note = "";
 		if (s.code === "QI" && submitted) note = "<strong style='color:#dc2626'>submitted</strong>";
 		if (s.code === "PR" && submitted) note = "<strong style='color:#dc2626'>submitted</strong>";
 		html += `<tr id="cd-cp-row-${s.code}">`
-			+ `<td style="text-align:center;"><input type="radio" name="cd-cutpoint" value="${s.cut}" data-code="${s.code}" ${checked}></td>`
+			+ `<td style="text-align:center;"><input type="radio" name="cd-cutpoint" value="${s.cut}" data-code="${s.code}" ${checked} ${disabled}></td>`
 			+ `<td>${frappe.utils.escape_html(s.doctype)}</td><td>${rows.length}</td><td>${submitted}</td><td>${note}</td></tr>`;
 	}
 	html += `</table>`;
 	html += `<p style="margin-top:8px;font-size:12px;color:#64748b;">Stock Ledger Entries: ${chain.stock_ledger_entries_count} | GL Entries: ${chain.gl_entries_count}</p>`;
+	// B4 (v2.11.1) — financial blast-radius panel. If the chain has downstream
+	// Payment Entries / Journal Entries / Landed Cost Vouchers / billed PRs, the
+	// engine BLOCKS the cascade unless the Force-Payment-Links override is typed.
+	if (chain.has_financial_links) {
+		const esc = frappe.utils.escape_html;
+		const _list = (a) => (a && a.length) ? a.map(esc).join(", ") : "—";
+		html += `<div class="cd-fin-panel">`
+			+ `<span class="cd-fin-title">⚠ Financial documents linked to this chain</span>`
+			+ `<div class="cd-fin-body">`
+			+ `Payment Entries: <code>${_list(chain.payment_entries && chain.payment_entries.map(r => r.name))}</code><br>`
+			+ `Journal Entries: <code>${_list(chain.journal_entries && chain.journal_entries.map(r => r.name))}</code><br>`
+			+ `Landed Cost Vouchers: <code>${_list(chain.landed_cost_vouchers && chain.landed_cost_vouchers.map(r => r.name))}</code><br>`
+			+ `Billed Purchase Receipts: <code>${_list(chain.billed_prs)}</code>`
+			+ `</div>`
+			+ `<div class="cd-fin-foot">Deleting this chain leaves dangling GL references. The cascade will require the <code>FORCE-DELETE-WITH-PAYMENTS</code> confirmation.</div>`
+			+ `</div>`;
+	}
 	html += `<div id="cd-cutpoint-summary" class="cd-cutpoint-summary"></div>`;
 	html += `<div style="margin-top:14px;"><button class="cd-btn cd-btn-danger" id="cd-initiate-btn">Initiate Cascade Deletion →</button></div>`;
 	html += `</div>`;
@@ -338,11 +370,13 @@ function _render_preview(chain, token_name) {
 		const sel = area.querySelector("input[name='cd-cutpoint']:checked");
 		const cut = sel ? sel.value : "Full Chain";
 		const info = _stage_for_cut(cut);
-		_show_stage1_confirm(token_name, info.needs_force_pr, info.needs_force_mi, cut);
+		const needs_force_payment = !!chain.has_financial_links;
+		_show_stage1_confirm(token_name, info.needs_force_pr, info.needs_force_mi,
+		                     needs_force_payment, cut);
 	});
 }
 
-function _show_stage1_confirm(token_name, needs_force_pr, needs_force_mi, cut_point) {
+function _show_stage1_confirm(token_name, needs_force_pr, needs_force_mi, needs_force_payment, cut_point) {
 	cut_point = cut_point || "Full Chain";
 	const modal_html = `
 		<div class="cd-modal-bg">
@@ -368,16 +402,18 @@ function _show_stage1_confirm(token_name, needs_force_pr, needs_force_mi, cut_po
 	continue_btn.addEventListener("click", () => {
 		div.remove();
 		if (needs_force_pr) {
-			_show_stage2_force_pr(token_name, needs_force_mi, cut_point);
+			_show_stage2_force_pr(token_name, needs_force_mi, needs_force_payment, cut_point);
 		} else if (needs_force_mi) {
-			_show_stage2_force_mi(token_name, false, cut_point);
+			_show_stage2_force_mi(token_name, false, needs_force_payment, cut_point);
+		} else if (needs_force_payment) {
+			_show_stage2_force_payment(token_name, false, false, cut_point);
 		} else {
-			_show_stage3_final(token_name, false, false, cut_point);
+			_show_stage3_final(token_name, false, false, false, cut_point);
 		}
 	});
 }
 
-function _show_stage2_force_pr(token_name, needs_force_mi, cut_point) {
+function _show_stage2_force_pr(token_name, needs_force_mi, needs_force_payment, cut_point) {
 	cut_point = cut_point || "Full Chain";
 	const modal_html = `
 		<div class="cd-modal-bg">
@@ -401,14 +437,16 @@ function _show_stage2_force_pr(token_name, needs_force_mi, cut_point) {
 	btn.addEventListener("click", () => {
 		div.remove();
 		if (needs_force_mi) {
-			_show_stage2_force_mi(token_name, true, cut_point);
+			_show_stage2_force_mi(token_name, true, needs_force_payment, cut_point);
+		} else if (needs_force_payment) {
+			_show_stage2_force_payment(token_name, true, false, cut_point);
 		} else {
-			_show_stage3_final(token_name, true, false, cut_point);
+			_show_stage3_final(token_name, true, false, false, cut_point);
 		}
 	});
 }
 
-function _show_stage2_force_mi(token_name, force_pr, cut_point) {
+function _show_stage2_force_mi(token_name, force_pr, needs_force_payment, cut_point) {
 	cut_point = cut_point || "Full Chain";
 	const modal_html = `
 		<div class="cd-modal-bg">
@@ -431,11 +469,45 @@ function _show_stage2_force_mi(token_name, force_pr, cut_point) {
 	div.querySelector("#cd-st2-cancel").addEventListener("click", () => div.remove());
 	btn.addEventListener("click", () => {
 		div.remove();
-		_show_stage3_final(token_name, force_pr, true, cut_point);
+		if (needs_force_payment) {
+			_show_stage2_force_payment(token_name, force_pr, true, cut_point);
+		} else {
+			_show_stage3_final(token_name, force_pr, true, false, cut_point);
+		}
 	});
 }
 
-function _show_stage3_final(token_name, force_pr, force_mi, cut_point) {
+function _show_stage2_force_payment(token_name, force_pr, force_mi, cut_point) {
+	// B4 (v2.11.1) — extra type-to-confirm when the chain has downstream
+	// financial documents (Payment Entries / Journal Entries / Landed Cost
+	// Vouchers / billed PRs). Without this the engine BLOCKS the cascade.
+	cut_point = cut_point || "Full Chain";
+	const modal_html = `
+		<div class="cd-modal-bg">
+		<div class="cd-modal">
+		<h2>Stage 2 — Force Delete With Payment Links</h2>
+		<p style="font-size:12px;color:#475569;">This chain has <strong>downstream financial documents</strong> — a Payment Entry, Journal Entry, Landed Cost Voucher, or an already-billed Purchase Receipt. Deleting it leaves <strong>dangling GL references</strong>. Type <code>FORCE-DELETE-WITH-PAYMENTS</code> only if this is genuinely intended.</p>
+		<label for="cd-st2-pay">Type FORCE-DELETE-WITH-PAYMENTS:</label>
+		<input type="text" id="cd-st2-pay" autofocus />
+		<div class="cd-modal-actions">
+			<button class="cd-btn cd-btn-secondary" id="cd-st2-cancel">Cancel</button>
+			<button class="cd-btn cd-btn-danger" id="cd-st2-continue" disabled>Continue →</button>
+		</div>
+		</div></div>`;
+	const div = document.createElement("div");
+	div.innerHTML = modal_html;
+	(document.getElementById("cd-root") || document.body).appendChild(div);
+	const input = div.querySelector("#cd-st2-pay");
+	const btn = div.querySelector("#cd-st2-continue");
+	input.addEventListener("input", () => { btn.disabled = input.value !== "FORCE-DELETE-WITH-PAYMENTS"; });
+	div.querySelector("#cd-st2-cancel").addEventListener("click", () => div.remove());
+	btn.addEventListener("click", () => {
+		div.remove();
+		_show_stage3_final(token_name, force_pr, force_mi, true, cut_point);
+	});
+}
+
+function _show_stage3_final(token_name, force_pr, force_mi, force_payment, cut_point) {
 	cut_point = cut_point || "Full Chain";
 	const scope_line = cut_point === "Full Chain"
 		? `<span style="color:#dc2626;font-weight:600;">FULL CHAIN</span> — the Token and every downstream document will be deleted.`
@@ -445,7 +517,7 @@ function _show_stage3_final(token_name, force_pr, force_mi, cut_point) {
 		<div class="cd-modal">
 		<h2>Stage 3 of 3 — FINAL CONFIRMATION</h2>
 		<p style="font-size:12px;color:#475569;">You are about to <strong>queue a cascade delete</strong> for <code>${frappe.utils.escape_html(token_name)}</code>. A CEO must approve before execution. Type the token name ONE MORE TIME to submit.</p>
-		<p style="font-size:12px;background:#fef3c7;border-left:3px solid #f59e0b;padding:6px 10px;">Scope: ${scope_line}</p>
+		<p class="cd-warn-note" style="font-size:12px;">Scope: ${scope_line}</p>
 		<label for="cd-st3-final">Type token name to submit:</label>
 		<input type="text" id="cd-st3-final" maxlength="20" autofocus />
 		<div class="cd-modal-actions">
@@ -472,6 +544,8 @@ function _show_stage3_final(token_name, force_pr, force_mi, cut_point) {
 				confirm_token_name_typed: token_name,
 				force_pr_confirmation_typed: force_pr ? "FORCE-DELETE-PR" : "",
 				force_mi_confirmation_typed: force_mi ? "FORCE-DELETE-MI" : "",
+				force_payment_links: force_payment ? 1 : 0,
+				force_payment_confirmation_typed: force_payment ? "FORCE-DELETE-WITH-PAYMENTS" : "",
 				client_screen: `${screen.width}x${screen.height}`,
 				client_language: navigator.language,
 				cut_point: cut_point,
@@ -609,6 +683,19 @@ function _cd_render_review_detail(d) {
 	}
 	if (d.force_mi_override) {
 		h += `<div class="cd-detail-warn">⚠ Force-MI override ON — a submitted Quality Inspection will be force-deleted.</div>`;
+	}
+	// B4 (v2.11.1) — surface the financial blast radius for the approving CEO.
+	const fl = d.financial_links || {};
+	if (fl.has_financial_links) {
+		const _l = (a) => (a && a.length) ? a.map(esc).join(", ") : "—";
+		h += `<div class="cd-detail-warn">⚠ <b>Downstream financial documents</b> — `
+			+ `Payment Entries: ${_l(fl.payment_entries)} &middot; `
+			+ `Journal Entries: ${_l(fl.journal_entries)} &middot; `
+			+ `Landed Cost Vouchers: ${_l(fl.landed_cost_vouchers)} &middot; `
+			+ `Billed PRs: ${_l(fl.billed_prs)}. Deleting this chain leaves dangling GL references.</div>`;
+	}
+	if (d.force_payment_links) {
+		h += `<div class="cd-detail-warn">⚠ Force-Payment-Links override ON — the chain will be deleted despite linked financial documents.</div>`;
 	}
 	h += `</div>`;
 	return h;
@@ -760,7 +847,7 @@ function _cd_revert_action_cell(r, can_revert) {
 
 function _cd_do_revert(log_name) {
 	frappe.confirm(
-		__("⚠️ Restore the cascade-deleted chain for <strong>{0}</strong>? Backup SHA-256 is verified before restore.", [frappe.utils.escape_html(log_name)]),
+		__("⚠️ Restore the cascade-deleted chain for <strong>{0}</strong>? Backup SHA-256 is verified before restore.<br><br><span style='color:#b91c1c;'>Note (M2): revert restores the <b>documents</b> only — it does NOT recreate Stock Ledger or GL entries. If this chain included a Purchase Receipt or Invoice, the reverted documents will be out of sync with the ledger and need accounting review.</span>", [frappe.utils.escape_html(log_name)]),
 		() => {
 			frappe.call({
 				method: "trustbit_ethanol.ts_gate_entry.cascade_delete_api.revert_cascade",
