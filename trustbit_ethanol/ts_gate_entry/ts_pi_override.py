@@ -76,3 +76,30 @@ class TSPurchaseInvoice(PurchaseInvoice):
 				)
 		self.ts_quality_inspection = qi or None
 		self.ts_deduction_sheet = ds or None
+
+		# v2.11.x — DS→PI timing-bug fix. The DS's own `_propagate_to_pi` runs in
+		# its on_submit; if the DS is submitted BEFORE this PI is created, that
+		# call finds no PI and the actual_deduction_* values never reach the PI
+		# (saw PINV-26-00230 — DS submitted at 12:06:11, PI created at 12:06:43,
+		# fields stayed empty). Pull them now from the PI side as a one-shot at
+		# insert (the early-return on ts_token above gates this to insert only),
+		# mirroring the DS's _propagate_to_pi logic. Best-effort: never break
+		# PI validation on a DS-fetch failure.
+		if ds:
+			try:
+				ds_vals = frappe.db.get_value(
+					"TS Deduction Sheet", ds,
+					["docstatus", "actual_deduction_pct",
+					 "actual_deduction_kg", "actual_deduction_reason"],
+					as_dict=True,
+				)
+				if ds_vals and ds_vals.docstatus == 1:
+					self.ts_ds_reference = ds
+					self.ts_ds_actual_deduction_pct = ds_vals.actual_deduction_pct
+					self.ts_ds_actual_deduction_kg = ds_vals.actual_deduction_kg
+					self.ts_ds_actual_deduction_reason = ds_vals.actual_deduction_reason
+			except Exception as e:
+				frappe.log_error(
+					title=f"PI {self.name or '<new>'} DS fetch failed",
+					message=f"{type(e).__name__}: {e}",
+				)
