@@ -3,7 +3,7 @@
 // Lesson 174 — version pill rendered into DOM by JS; bump on every page edit.
 // Frappe v15 does NOT auto-inject {page}.html — JS builds the DOM via page.main.html().
 
-const CD_PAGE_VERSION = "v2.11.1-2026-05-22";
+const CD_PAGE_VERSION = "v2.11.2-2026-05-25-2";
 
 const CD_CSS = `
 	#cd-root { padding: 18px 22px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -97,6 +97,9 @@ const CD_CSS = `
 	[data-theme="dark"] #cd-root .cd-fin-panel .cd-fin-body { color: #fecaca; }
 	[data-theme="dark"] #cd-root .cd-fin-panel .cd-fin-foot { color: #fca5a5; }
 	[data-theme="dark"] #cd-root .cd-detail-warn { background: #3f1d1d; color: #fecaca; border-color: #dc2626; }
+	#cd-root code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; padding: 0 3px; background: rgba(15,23,42,0.06); border-radius: 3px; }
+	[data-theme="dark"] #cd-root code { background: rgba(255,255,255,0.08); color: inherit; }
+	#cd-root .cd-cutpoint-summary, #cd-root .cd-warn-note { overflow-wrap: anywhere; }
 `;
 
 const CD_BODY = `
@@ -268,8 +271,7 @@ function _render_preview(chain, token_name) {
 	};
 
 	let html = `<div class="cd-section"><h3>Chain Preview for <code>${frappe.utils.escape_html(token_name)}</code></h3>`;
-	html += `<p style="font-size:12px;color:#64748b;margin:0 0 8px;">This cascade deletes the <strong>full chain</strong> — every document plus the Token.</p>`;
-	html += `<p class="cd-warn-note">⚠ Partial cascade (cut-point deletion) is <strong>temporarily disabled in v2.11.1</strong> — only Full Chain is available. It returns in v2.11.2 after the status-reset rewrite.</p>`;
+	html += `<p style="font-size:12px;color:#64748b;margin:0 0 8px;">Pick the deepest document to delete. Everything from there to the Purchase Invoice (leaf) is removed; documents above the cut-point are kept and the Token status auto-resets. Full Chain deletes the Token too.</p>`;
 	html += `<table class="cd-chain-table"><tr><th style="width:78px">Delete from</th><th>DocType</th><th>Count</th><th>Submitted</th><th>Notes</th></tr>`;
 	// Token row — no radio; deleted only on Full Chain
 	html += `<tr id="cd-cp-row-TOKEN"><td style="text-align:center;color:#cbd5e1;">—</td>`
@@ -278,13 +280,17 @@ function _render_preview(chain, token_name) {
 	for (const s of _CD_CHAIN) {
 		const rows = stage[s.code] || [];
 		const submitted = rows.filter(r => r.docstatus === 1).length;
-		// v2.11.1 — partial cascade disabled: only the GE row (Full Chain) is
-		// selectable; the other cut-points are rendered disabled.
+		// v2.11.2 — partial cascade RE-ENABLED. All cut-points selectable;
+		// server `_validate_partial_cut_feasibility` is the authoritative gate.
 		const checked = s.code === "GE" ? "checked" : "";
-		const disabled = s.code === "GE" ? "" : "disabled";
+		const has_rows = rows.length > 0;
+		// Disable cut-points that point to a doctype the chain doesn't have
+		// (e.g. PI cut when there's no PI). Always keep GE selectable.
+		const disabled = (s.code === "GE" || has_rows) ? "" : "disabled";
 		let note = "";
 		if (s.code === "QI" && submitted) note = "<strong style='color:#dc2626'>submitted</strong>";
 		if (s.code === "PR" && submitted) note = "<strong style='color:#dc2626'>submitted</strong>";
+		if (!has_rows && s.code !== "GE") note = "<span style='color:#94a3b8'>n/a (no rows)</span>";
 		html += `<tr id="cd-cp-row-${s.code}">`
 			+ `<td style="text-align:center;"><input type="radio" name="cd-cutpoint" value="${s.cut}" data-code="${s.code}" ${checked} ${disabled}></td>`
 			+ `<td>${frappe.utils.escape_html(s.doctype)}</td><td>${rows.length}</td><td>${submitted}</td><td>${note}</td></tr>`;
@@ -328,11 +334,26 @@ function _render_preview(chain, token_name) {
 		};
 	};
 
+	// v2.11.2 — client-side mirror of the server `_CD_PARTIAL_MATRIX` allowlist.
+	// Used to preview the projected new_status AND to warn when the operator
+	// picks an (status, cut) pair the server will reject. Server is authoritative.
+	const _CD_PARTIAL_MATRIX_JS = {
+		"GRN Created":   {"Purchase Invoice": "GRN Created", "Purchase Receipt": "Tare Weighed",
+		                   "TS Deduction Sheet": "Tare Weighed", "TS Quality Inspection": "Tare Weighed",
+		                   "TS Weighbridge Log": "PO Linked"},
+		"Tare Weighed":  {"Purchase Receipt": "Tare Weighed", "TS Deduction Sheet": "Tare Weighed",
+		                   "TS Quality Inspection": "Tare Weighed", "TS Weighbridge Log": "PO Linked"},
+		"Gross Weighed": {"Purchase Receipt": "Gross Weighed", "TS Deduction Sheet": "Gross Weighed",
+		                   "TS Quality Inspection": "Gross Weighed", "TS Weighbridge Log": "PO Linked"},
+	};
+
 	const _update = () => {
 		const sel = area.querySelector("input[name='cd-cutpoint']:checked");
 		const cut = sel ? sel.value : "Full Chain";
 		const code = sel ? sel.dataset.code : "GE";
 		const info = _stage_for_cut(cut);
+		// v2.11.2 — Full Chain AND GE cut both delete the Token (engine wins).
+		const deletes_token = (cut === "Full Chain" || cut === "TS Gate Entry");
 		// Tint rows
 		for (const s of _CD_CHAIN) {
 			const row = document.getElementById("cd-cp-row-" + s.code);
@@ -343,24 +364,29 @@ function _render_preview(chain, token_name) {
 		const tokRow = document.getElementById("cd-cp-row-TOKEN");
 		if (tokRow) {
 			tokRow.classList.remove("cd-row-delete", "cd-row-keep");
-			tokRow.classList.add(cut === "Full Chain" ? "cd-row-delete" : "cd-row-keep");
+			tokRow.classList.add(deletes_token ? "cd-row-delete" : "cd-row-keep");
 		}
 		// Summary
 		const sumEl = document.getElementById("cd-cutpoint-summary");
 		const delCount = info.deleted.length;
 		const kept = _CD_CHAIN.filter(c => !info.deleted.includes(c.code)).map(c => c.code);
+		const cur = t.status || "";
 		let tokenLine;
-		if (cut === "Full Chain") {
+		let serverWarn = "";
+		if (deletes_token) {
 			tokenLine = "<strong style='color:#dc2626'>Token will be DELETED.</strong>";
 		} else {
-			const projected = (cut === "Purchase Invoice") ? "GRN Created"
-				: (cut === "TS Weighbridge Log") ? "PO Linked"
-				: "Tare Weighed / Gross Weighed";
-			tokenLine = `Token will be <strong>KEPT</strong>, status reset to <code>${projected}</code>.`;
+			const projected = (_CD_PARTIAL_MATRIX_JS[cur] || {})[cut];
+			if (projected) {
+				tokenLine = `Token will be <strong>KEPT</strong>, status reset <code>${frappe.utils.escape_html(cur)}</code> → <code>${frappe.utils.escape_html(projected)}</code>.`;
+			} else {
+				tokenLine = `Token will be <strong>KEPT</strong>, status reset is <strong style='color:#dc2626'>NOT in the allowlist for this combination</strong>.`;
+				serverWarn = `<div class="cd-warn-note" style="margin-top:8px;">⚠ Server will REJECT this combination: current status <code>${frappe.utils.escape_html(cur)}</code> with cut-point <code>${frappe.utils.escape_html(cut)}</code> is outside the partial-cut allowlist. Either pick Full Chain or amend the Token status first.</div>`;
+			}
 		}
 		sumEl.innerHTML = `Will delete <strong>${delCount}</strong> document type(s) [${info.deleted.join(", ")}]`
 			+ (kept.length ? ` &middot; keep [${kept.join(", ")}]` : "")
-			+ `. ${tokenLine}`;
+			+ `. ${tokenLine}` + serverWarn;
 	};
 
 	area.querySelectorAll("input[name='cd-cutpoint']").forEach(r => r.addEventListener("change", _update));

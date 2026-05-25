@@ -1,4 +1,4 @@
-"""Cascade Delete Engine (v2.11.0) — pure orchestration of the
+"""Cascade Delete Engine (v2.11.2) — pure orchestration of the
 PI → PR → DS → QI → WB → GE → Token deletion chain.
 
 Refactored from the production-proven `_batch_token_delete_optA.py` script
@@ -10,6 +10,15 @@ leaves the already-committed steps deleted (a partially-deleted chain) and
 `_abort()` returns `partial_failure=True` listing the completed steps.
 Recovery from a partial failure is via the pre-cascade backup (Hardening B/M
 revert), NOT a DB rollback. The B4 financial-link gate runs BEFORE any commit.
+
+v2.11.2 — partial cascade RE-ENABLED. The v2.11.0 `_reset_token_status` static
+map was demolished by the 22-May audit B1 (real demo data has tokens at
+statuses the planner called "dead"). Replaced with a derive-from-deepest-
+surviving-doc approach + a pre-cascade `_validate_partial_cut_feasibility`
+that runs BEFORE Step 1 and fails closed on any unmapped (current_status,
+cut_point) pair. The decision matrix `_CD_PARTIAL_MATRIX` is the explicit
+allowlist. New lessons 278 (state-machine inverse must derive, not map) +
+279 (pre-cascade validation belongs with destructive engines).
 
 NO direct caller; only invoked by `cascade_delete_api.py` after CEO approval.
 Sets `frappe.flags.cascade_delete_mode = True` for the engine's lifetime
@@ -26,7 +35,8 @@ the log row's `execution_result_json` field.
 
 Lesson references: 175 / 222 (idempotent) / 224 (dual-gate has_permission) /
 237 (log_error kwargs) / 238 (best-effort side effects in caller) /
-262 (Option B surgical SQL pattern) / 275 (GE cancel tamper-guard fallback).
+262 (Option B surgical SQL pattern) / 275 (GE cancel tamper-guard fallback) /
+278 (derive-from-survivor) / 279 (pre-cascade validation).
 """
 
 import frappe
@@ -175,6 +185,80 @@ _DELETION_STEPS = [
 ]
 CUT_POINT_DOCTYPES = [d for _, d in _DELETION_STEPS]  # whitelist for API validation
 
+# v2.11.2 — cut-points that delete the TS Token outright (Token is NOT kept).
+# `None` and `TS Gate Entry` both fully delete the chain incl. Token. The user
+# decision (23-May-2026) was "engine wins — GE cut = Full Chain" so the JS
+# preview text now matches this behaviour.
+_FULL_CHAIN_CUT_POINTS = (None, "TS Gate Entry")
+
+# v2.11.2 PARTIAL CASCADE DECISION MATRIX — the allowlist of safe
+# (current_token_status, cut_point) → new_status transitions.
+#
+# A partial cut keeps the Token alive. The reset is DERIVED from the deepest
+# surviving doc after the cut (NOT from a static cut_point → status map; see
+# Lesson 278). This matrix is the cross-check: for every (current_status,
+# cut_point) cell, EITHER a safe target status is enumerated OR the cell
+# explicitly says "ABORT" with a reason (fail-closed, Lesson 279). Any pair
+# missing from the matrix is also ABORT (defensive default).
+#
+# Justification of every non-ABORT cell:
+#   - GRN Created × PI cut  → GRN Created (only PI deleted; PR survives)
+#   - GRN Created × PR/DS/QI/WB cuts → mirrors stores_receiving_api.
+#     pr_on_cancel_clear_token (1172-1199) which is the production-proven
+#     reverse hook BBPL has used since v2.5.
+#   - Tare Weighed × PR/DS/QI cuts → keep Tare Weighed (WB-with-tare survives).
+#   - Gross Weighed × PR/DS/QI cuts → keep Gross Weighed (WB-gross survives).
+#   - Tare/Gross × WB cut → PO Linked (only GE survives, matches
+#     ts_gate_entry.update_token_status:227).
+#   - Plant Exited / Campus Exited / Exited → ABORT (token has physically left
+#     the plant; reverting to an earlier phase would leave the physical-state
+#     pointer dangling — full chain delete is still allowed because it's a
+#     "this never happened" rewrite, but partial reset is unsafe).
+#   - Unloading / Quality Done / Graded → ABORT (legacy values; current code
+#     never writes them, so the desired end-state semantics are undefined).
+#   - Token Generated / PO Linked → ABORT (n/a; the cut-point doc doesn't
+#     exist for this chain shape — no PI/PR/DS/QI/WB at this phase).
+#
+# Stock-OUT statuses (SI Linked, Gross Recorded, Tare Recorded, Loading Done,
+# Dispatch Ready) ABORT for any cut — cascade tool is RM-only.
+_CD_PARTIAL_MATRIX = {
+	# (current_status, cut_point) → "new_status" or ("ABORT", "reason")
+	("GRN Created",   "Purchase Invoice"):    "GRN Created",
+	("GRN Created",   "Purchase Receipt"):    "Tare Weighed",
+	("GRN Created",   "TS Deduction Sheet"):  "Tare Weighed",
+	("GRN Created",   "TS Quality Inspection"): "Tare Weighed",
+	("GRN Created",   "TS Weighbridge Log"):  "PO Linked",
+	("Tare Weighed",  "Purchase Receipt"):    "Tare Weighed",
+	("Tare Weighed",  "TS Deduction Sheet"):  "Tare Weighed",
+	("Tare Weighed",  "TS Quality Inspection"): "Tare Weighed",
+	("Tare Weighed",  "TS Weighbridge Log"):  "PO Linked",
+	("Gross Weighed", "Purchase Receipt"):    "Gross Weighed",
+	("Gross Weighed", "TS Deduction Sheet"):  "Gross Weighed",
+	("Gross Weighed", "TS Quality Inspection"): "Gross Weighed",
+	("Gross Weighed", "TS Weighbridge Log"):  "PO Linked",
+	# Quality Done — legacy status, current code never writes it (audit B1).
+	# A partial cut from here has undefined semantics → fail-closed.
+	# Full Chain delete still works because the Token is removed entirely.
+}
+
+# Fields cleared on TS Token when the new_status is each value (mirrors
+# stores_receiving_api.pr_on_cancel_clear_token).
+_CD_CLEAR_FIELDS_BY_STATUS = {
+	"GRN Created":  {},
+	"Tare Weighed": {"purchase_receipt": "", "grn_time": None, "quality_time": None},
+	"Gross Weighed": {"purchase_receipt": "", "grn_time": None, "quality_time": None,
+	                  "wb_tare_time": None},
+	"PO Linked":    {"purchase_receipt": "", "grn_time": None, "quality_time": None,
+	                 "wb_gross_time": None, "wb_tare_time": None, "custom_rst_number": ""},
+}
+
+# Reasons used by `_validate_partial_cut_feasibility` ABORT branches.
+_LEGACY_STATUSES = ("Unloading", "Quality Done", "Graded")
+_POST_EXIT_STATUSES = ("Plant Exited", "Campus Exited", "Exited")
+_STOCK_OUT_STATUSES = ("SI Linked", "Gross Recorded", "Tare Recorded",
+                       "Loading Done", "Dispatch Ready")
+_PRE_CHAIN_STATUSES = ("Token Generated", "PO Linked", "G1 Entered", "G2 Entered")
+
 
 def _cut_index(cut_point: str | None) -> int:
 	"""Index in _DELETION_STEPS up to which deletion runs. None -> full (5)."""
@@ -186,6 +270,117 @@ def _cut_index(cut_point: str | None) -> int:
 	# M4 (v2.11.1) — unknown cut_point: a destructive engine must NEVER silently
 	# widen scope to a full cascade. Fail closed — refuse outright.
 	frappe.throw(_("Invalid cascade cut-point: {0}").format(str(cut_point)))
+
+
+def _validate_partial_cut_feasibility(token_name: str, cut_point: str) -> dict:
+	"""v2.11.2 — pre-cascade fail-closed feasibility check (Lesson 279).
+
+	Runs BEFORE any deletion. Reads the Token's CURRENT status, looks it up in
+	`_CD_PARTIAL_MATRIX`, returns either:
+	  {"ok": True, "current_status": ..., "projected_new_status": ...}
+	  {"ok": False, "error": "<reason>"}
+
+	Any (current_status, cut_point) pair NOT in the matrix → ABORT. The matrix
+	is the explicit allowlist — defensive default is ABORT. This means a
+	partial cut on a token at a legacy / post-exit / stock-OUT status fails
+	before anything is committed, with a clear operator-facing reason.
+	"""
+	current = frappe.db.get_value("TS Token", token_name, "status")
+	if not current:
+		return {"ok": False, "error": (
+			f"Token {token_name} has no status — partial cut requires a known "
+			"current state. Use Full Chain or fix the Token record."
+		)}
+
+	# Pre-chain — no document to cut at this phase.
+	if current in _PRE_CHAIN_STATUSES:
+		return {"ok": False, "error": (
+			f"Token {token_name} is at '{current}'. The chain has not yet "
+			f"reached '{cut_point}'. Use Full Chain to delete the Token, or "
+			"wait until the chain progresses."
+		)}
+
+	# Post-exit — semantically unsound to revert.
+	if current in _POST_EXIT_STATUSES:
+		return {"ok": False, "error": (
+			f"Token {token_name} is at '{current}' (vehicle has left the plant). "
+			"Partial cut cannot revert a token that has physically exited — the "
+			"forward-state pointer would dangle. Use Full Chain (delete the "
+			"entire chain) if a re-entry is needed."
+		)}
+
+	# Legacy statuses — current code never writes them.
+	if current in _LEGACY_STATUSES:
+		return {"ok": False, "error": (
+			f"Token {token_name} is at the legacy status '{current}' which the "
+			"current codebase never writes. Partial cut semantics are undefined "
+			"here. Either amend the Token status to a current-code value first, "
+			"or use Full Chain."
+		)}
+
+	# Stock-OUT path — cascade is RM-only.
+	if current in _STOCK_OUT_STATUSES:
+		return {"ok": False, "error": (
+			f"Token {token_name} is at the Stock-OUT status '{current}'. The "
+			"cascade tool only supports RM (Stock-IN) flows."
+		)}
+
+	# Matrix lookup — defensive default is ABORT.
+	target = _CD_PARTIAL_MATRIX.get((current, cut_point))
+	if target is None:
+		return {"ok": False, "error": (
+			f"Partial cut from current status '{current}' at cut-point "
+			f"'{cut_point}' has no enumerated safe target. The (status × cut-"
+			"point) cell is not in the allowlist."
+		)}
+
+	return {"ok": True, "current_status": current, "projected_new_status": target}
+
+
+def _detect_deepest_surviving_doc(token_name: str) -> str:
+	"""Return the deepest survivor's doctype after the cascade steps have run.
+
+	Walks PI → PR → DS → QI → WB → GE in that order; the FIRST doctype that
+	still has a row for this token is the survivor. Used by `_reset_token_status`
+	to derive the new Token status independently from the cut_point.
+
+	The 'WB with tare' vs 'WB gross-only' distinction is encoded via the
+	returned label — caller looks at the label to pick between Tare Weighed
+	and Gross Weighed.
+
+	Returns one of: "Purchase Invoice", "Purchase Receipt", "TS Deduction Sheet",
+	"TS Quality Inspection", "TS Weighbridge Log (tare)",
+	"TS Weighbridge Log (gross)", "TS Gate Entry", or "none".
+	"""
+	if frappe.db.exists("Purchase Invoice", {"ts_token": token_name}):
+		return "Purchase Invoice"
+	if frappe.db.exists("Purchase Receipt", {"ts_token": token_name}):
+		return "Purchase Receipt"
+	# DS is linked via QI; if a QI exists, check if any DS still links to it.
+	qi_names = frappe.db.sql_list(
+		"SELECT name FROM `tabTS Quality Inspection` WHERE token_number=%s",
+		(token_name,),
+	)
+	if qi_names:
+		if frappe.db.sql(
+			"SELECT 1 FROM `tabTS Deduction Sheet` WHERE quality_inspection IN %s LIMIT 1",
+			(tuple(qi_names),),
+		):
+			return "TS Deduction Sheet"
+		return "TS Quality Inspection"
+	wb = frappe.db.sql(
+		"""SELECT tare_weight FROM `tabTS Weighbridge Log`
+		   WHERE token_number=%s ORDER BY tare_weight DESC LIMIT 1""",
+		(token_name,), as_dict=True,
+	)
+	if wb:
+		# tare_weight is `decimal NOT NULL DEFAULT 0.00` — magnitude-based
+		# tie-break (Lesson 275 v2.11.0.2 fix).
+		return ("TS Weighbridge Log (tare)" if wb[0].get("tare_weight")
+		        else "TS Weighbridge Log (gross)")
+	if frappe.db.exists("TS Gate Entry", {"token_number": token_name}):
+		return "TS Gate Entry"
+	return "none"
 
 
 def execute_cascade(
@@ -210,7 +405,7 @@ def execute_cascade(
 	steps: list[dict] = []
 	lesson_275_used = False
 	cut_idx = _cut_index(cut_point)
-	is_partial = cut_point not in (None, "TS Gate Entry")
+	is_partial = cut_point not in _FULL_CHAIN_CUT_POINTS
 	frappe.flags.cascade_delete_mode = True
 	try:
 		# B4 (v2.11.1) — financial-linkage gate. Checked BEFORE any deletion so
@@ -233,6 +428,25 @@ def execute_cascade(
 				),
 			})
 			return _abort(steps, "FIN", lesson_275_used)
+
+		# v2.11.2 (Lesson 279) — pre-cascade feasibility check for PARTIAL cuts.
+		# Runs BEFORE any deletion. If the (current_status, cut_point) pair is
+		# not in `_CD_PARTIAL_MATRIX`, abort cleanly — nothing committed.
+		# Full Chain skips this gate (Token is deleted; no inverse-mapping needed).
+		if is_partial:
+			feas = _validate_partial_cut_feasibility(token_name, cut_point)
+			if not feas.get("ok"):
+				steps.append({
+					"step": "VAL", "action": "partial-cut-unsafe",
+					"success": False, "error": feas.get("error"),
+				})
+				return _abort(steps, "VAL", lesson_275_used)
+			steps.append({
+				"step": "VAL", "action": "partial-cut-validated",
+				"current_status": feas["current_status"],
+				"projected_new_status": feas["projected_new_status"],
+				"success": True,
+			})
 
 		# Step 1 — Purchase Invoices  (deletion index 0)
 		if 0 <= cut_idx:
@@ -337,7 +551,9 @@ def execute_cascade(
 		else:
 			steps.append({"step": "GE", "action": "skipped-below-cutpoint", "success": True})
 
-		# Step 7 — Token: DELETE for full cascade; RESET status for a partial cut.
+		# Step 7 — Token: DELETE for full cascade (cut_point=None or "TS Gate
+		# Entry"); RESET status for a partial cut. `is_partial` was set at the
+		# top using `_FULL_CHAIN_CUT_POINTS` (v2.11.2 — engine wins on GE cut).
 		if is_partial:
 			res = _reset_token_status(token_name, cut_point, log_name)
 			steps.append({"step": "TOK", **res})
@@ -542,56 +758,74 @@ def _abort(steps: list[dict], step_name: str, lesson_275_used: bool) -> dict:
 
 
 def _reset_token_status(token_name: str, cut_point: str, log_name: str) -> dict:
-	"""Partial cascade — the Token is KEPT; reset its status to the real phase
-	of the deepest surviving document.
+	"""Partial cascade — the Token is KEPT; reset its status using the
+	v2.11.2 derive-from-deepest-surviving-doc algorithm (Lesson 278).
 
-	Mapping (planner-validated against the BBF codebase — only 5 token statuses
-	are ever written by lifecycle hooks; 'Quality Done'/'Graded'/'Unloading' are
-	dead, so a token with a QI but no GRN genuinely sits at the weighbridge phase):
+	Two-stage decision:
+	  1. Read CURRENT status, cross-check against `_CD_PARTIAL_MATRIX` for the
+	     EXPECTED post-cut status. (The pre-cascade `_validate_partial_cut_
+	     feasibility` already proved this combination is in the allowlist;
+	     we re-check here as TOCTOU defence — status may have changed between
+	     CEO approval and execute.)
+	  2. CALL `_detect_deepest_surviving_doc` to find what actually survived.
+	     If the survivor's implied status disagrees with the matrix's expected
+	     status, ABORT (status integrity > best-effort). This catches the case
+	     where a doc that the chain snapshot showed as present silently failed
+	     to delete or the chain shape changed unexpectedly.
+	  3. Apply the new status + clear fields per `_CD_CLEAR_FIELDS_BY_STATUS`.
 
-	  cut_point          deepest surviving   ->  Token.status
-	  Purchase Invoice   Purchase Receipt        GRN Created
-	  Purchase Receipt   DS / QI / WB            Tare Weighed | Gross Weighed
-	  TS Deduction Sheet QI / WB                 Tare Weighed | Gross Weighed
-	  TS Quality Inspect WB                      Tare Weighed | Gross Weighed
-	  TS Weighbridge Log Gate Entry              PO Linked
+	Mirrors stores_receiving_api.pr_on_cancel_clear_token (lines 1172-1199),
+	the production-proven reverse hook. A reset failure ABORTS the cascade.
 
-	Mirrors the production-proven stores_receiving_api.pr_on_cancel_clear_token
-	reset logic. A reset failure ABORTS the cascade (status integrity is NOT
-	best-effort — a token left at a stale forward status is the Lesson 275 bug).
+	Returns {step, action, success, name, new_status?, cleared_fields?,
+	         deepest_survivor?, error?}.
 	"""
 	try:
 		if not frappe.db.exists("TS Token", token_name):
 			return {"step": "TOK", "action": "reset-skipped-token-gone",
 			        "success": True, "name": token_name}
 
-		clear: dict = {}
-		if cut_point == "Purchase Invoice":
-			new_status = "GRN Created"
-		elif cut_point in ("Purchase Receipt", "TS Deduction Sheet", "TS Quality Inspection"):
-			# Deepest surviving is the Weighbridge Log (DS/QI carry no own status).
-			# tare_weight is `decimal NOT NULL DEFAULT 0.00` — a "no tare yet" WB
-			# stores 0.00, never NULL. Rank by tare MAGNITUDE so any WB that
-			# actually carries a tare weight wins the tie-break.
-			wb = frappe.db.sql(
-				"""SELECT tare_weight FROM `tabTS Weighbridge Log`
-				   WHERE token_number=%s ORDER BY tare_weight DESC LIMIT 1""",
-				(token_name,), as_dict=True,
-			)
-			has_tare = bool(wb and wb[0].get("tare_weight"))
-			new_status = "Tare Weighed" if has_tare else "Gross Weighed"
-			clear = {"purchase_receipt": "", "grn_time": None}
-			if cut_point == "TS Quality Inspection":
-				clear["quality_time"] = None
-		elif cut_point == "TS Weighbridge Log":
-			# Deepest surviving is the Gate Entry.
-			new_status = "PO Linked"
-			clear = {"purchase_receipt": "", "grn_time": None, "quality_time": None,
-			         "wb_gross_time": None, "wb_tare_time": None, "custom_rst_number": ""}
-		else:
-			# Defensive fallback — never leave a stale forward status.
-			new_status = "PO Linked"
+		current = frappe.db.get_value("TS Token", token_name, "status")
+		expected = _CD_PARTIAL_MATRIX.get((current, cut_point))
+		if expected is None:
+			# Should not happen — _validate_partial_cut_feasibility already
+			# rejected this combination. TOCTOU safety net.
+			return {
+				"step": "TOK", "action": "status-reset-failed", "name": token_name,
+				"success": False,
+				"error": (f"TOCTOU: current status '{current}' at cut '{cut_point}' "
+				          "is not in the partial-cut allowlist. Token status may "
+				          "have changed between approval and execute."),
+			}
 
+		# Cross-check via the derive-from-survivor path. If the survivor's
+		# implied status differs from the matrix's expected, fail closed.
+		survivor = _detect_deepest_surviving_doc(token_name)
+		survivor_implied = {
+			"Purchase Receipt": "GRN Created",
+			"TS Deduction Sheet": ("Tare Weighed" if current == "Tare Weighed"
+			                       else expected),
+			"TS Quality Inspection": ("Tare Weighed" if current == "Tare Weighed"
+			                          else expected),
+			"TS Weighbridge Log (tare)": "Tare Weighed",
+			"TS Weighbridge Log (gross)": "Gross Weighed",
+			"TS Gate Entry": "PO Linked",
+		}.get(survivor)
+		if survivor_implied is None or survivor_implied != expected:
+			return {
+				"step": "TOK", "action": "status-reset-failed", "name": token_name,
+				"success": False,
+				"error": (
+					f"Survivor cross-check failed: deepest surviving doc is "
+					f"'{survivor}' (implies status '{survivor_implied}') but matrix "
+					f"expected '{expected}' for ({current!r}, {cut_point!r}). "
+					"Chain shape diverged from the pre-cascade snapshot — partial "
+					"reset aborted."
+				),
+			}
+
+		new_status = expected
+		clear = _CD_CLEAR_FIELDS_BY_STATUS.get(new_status, {})
 		updates = {"status": new_status}
 		# Only clear fields that actually exist on TS Token.
 		valid_cols = set(frappe.db.get_table_columns("TS Token"))
@@ -600,20 +834,23 @@ def _reset_token_status(token_name: str, cut_point: str, log_name: str) -> dict:
 				updates[k] = v
 		frappe.db.set_value("TS Token", token_name, updates, update_modified=False)
 
-		# Audit comment on the token.
+		# Audit comment on the token (best-effort — status reset is authoritative).
 		try:
 			frappe.get_doc("TS Token", token_name).add_comment(
 				"Comment",
-				text=(f"[PARTIAL CASCADE] Status reset to '{new_status}' after cut-point "
-				      f"'{cut_point}' deletion (cascade log {log_name})."),
+				text=(f"[PARTIAL CASCADE] Status reset {current!r} → {new_status!r} "
+				      f"after cut-point {cut_point!r} deletion (cascade log "
+				      f"{log_name}; deepest survivor: {survivor})."),
 			)
 		except Exception:
-			pass  # comment is best-effort; the status reset is what matters
+			pass
 
 		frappe.db.commit()
 		return {
 			"step": "TOK", "action": "status-reset", "name": token_name,
-			"new_status": new_status, "cleared_fields": list(clear.keys()),
+			"prev_status": current, "new_status": new_status,
+			"deepest_survivor": survivor,
+			"cleared_fields": list(clear.keys()),
 			"success": True,
 		}
 	except Exception as e:
@@ -626,33 +863,82 @@ def _reset_token_status(token_name: str, cut_point: str, log_name: str) -> dict:
 # ---------------------------------------------------------------- orphan-trail scan
 
 
-def scan_orphans(token_name: str) -> dict:
-	"""Post-delete invariant check (Hardening G). 7 cross-table xrefs must all be 0."""
-	checks = {}
-	for label, dt, fn in [
-		("Purchase Invoice", "tabPurchase Invoice", "ts_token"),
-		("Purchase Receipt", "tabPurchase Receipt", "ts_token"),
-		("TS Quality Inspection", "tabTS Quality Inspection", "token_number"),
-		("TS Weighbridge Log", "tabTS Weighbridge Log", "token_number"),
-		("TS Gate Entry", "tabTS Gate Entry", "token_number"),
-	]:
+def scan_orphans(token_name: str, cut_point: str | None = None) -> dict:
+	"""Post-delete invariant check (Hardening G).
+
+	v2.11.2 — cut_point-aware. For a Full Chain cascade, every chain doctype
+	must be at 0 rows for the token. For a partial cut, doctypes ABOVE the
+	cut (i.e. that were KEPT by the engine's `skipped-below-cutpoint` steps)
+	are NOT orphans — they are intentional survivors. Pass `cut_point=None`
+	or "TS Gate Entry" (the Full Chain cut-points) to get the strict check.
+	Pass the actual partial cut_point to exempt the kept doctypes.
+
+	Returns {orphans: {label: count}, orphan_count, clean, kept: [labels]}.
+	The `kept` array lists doctype labels intentionally skipped from orphan
+	accounting; their row counts are still reported under `kept_rows` for
+	forensic visibility but do NOT contribute to `orphan_count`.
+	"""
+	checks: dict = {}
+	kept_rows: dict = {}
+	# Decide which doctypes should be 0 (orphan-checked) vs left alone.
+	# A partial cut at cut_point X deletes index <= cut_idx; survivors are
+	# steps below the cut (higher index in _DELETION_STEPS).
+	if cut_point in _FULL_CHAIN_CUT_POINTS:
+		check_codes = {"PI", "PR", "DS", "QI", "WB", "GE"}
+	else:
+		cut_idx = _cut_index(cut_point)
+		check_codes = {code for i, (code, _dt) in enumerate(_DELETION_STEPS)
+		               if i <= cut_idx}
+	# Map deletion-step code → (label, table, fk-column)
+	_CHAIN_TABLES = [
+		("PI", "Purchase Invoice", "tabPurchase Invoice", "ts_token"),
+		("PR", "Purchase Receipt", "tabPurchase Receipt", "ts_token"),
+		# DS has no direct token_number FK on tabTS Deduction Sheet; it's
+		# only reachable via QI. Skip orphan-counting DS rows directly
+		# (a stranded DS implies its parent QI is also stranded — caught
+		# by the QI check).
+		("QI", "TS Quality Inspection", "tabTS Quality Inspection", "token_number"),
+		("WB", "TS Weighbridge Log", "tabTS Weighbridge Log", "token_number"),
+		("GE", "TS Gate Entry", "tabTS Gate Entry", "token_number"),
+	]
+	for code, label, dt, fn in _CHAIN_TABLES:
 		try:
 			c = frappe.db.sql(
 				f"SELECT COUNT(*) FROM `{dt}` WHERE {fn}=%s",
 				(token_name,),
 			)[0][0]
-			checks[label] = c
+			if code in check_codes:
+				checks[label] = c
+			else:
+				kept_rows[label] = c
 		except Exception as e:
 			checks[label] = f"error: {e}"
-	checks["Comment[TS Token ref]"] = frappe.db.sql(
+	# Comments / Versions — for a FULL cascade the Token itself is gone, so
+	# any leftover reference IS an orphan. For a partial cut the Token is
+	# kept, so these are EXPECTED (they're the Token's audit trail). Move
+	# them to kept_rows in the partial case.
+	cmt = frappe.db.sql(
 		"SELECT COUNT(*) FROM `tabComment` "
 		"WHERE reference_doctype='TS Token' AND reference_name=%s",
 		(token_name,),
 	)[0][0]
-	checks["Version[TS Token docname]"] = frappe.db.sql(
+	ver = frappe.db.sql(
 		"SELECT COUNT(*) FROM `tabVersion` "
 		"WHERE ref_doctype='TS Token' AND docname=%s",
 		(token_name,),
 	)[0][0]
+	if cut_point in _FULL_CHAIN_CUT_POINTS:
+		checks["Comment[TS Token ref]"] = cmt
+		checks["Version[TS Token docname]"] = ver
+	else:
+		kept_rows["Comment[TS Token ref]"] = cmt
+		kept_rows["Version[TS Token docname]"] = ver
 	total = sum(v for v in checks.values() if isinstance(v, int))
-	return {"orphans": checks, "orphan_count": total, "clean": total == 0}
+	return {
+		"orphans": checks,
+		"orphan_count": total,
+		"clean": total == 0,
+		"kept": sorted(kept_rows.keys()),
+		"kept_rows": kept_rows,
+		"cut_point": cut_point or "Full Chain",
+	}

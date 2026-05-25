@@ -143,7 +143,44 @@ def restore_from_backup(log_doc) -> dict:
 		data = json.load(f)
 
 	restored = {"ts_token": 0, "ge": 0, "wb": 0, "qi": 0, "ds": 0, "pr": 0, "pi": 0}
+	token_status_restored = False
 	docs = data.get("docs", {})
+
+	# v2.11.2 — for a PARTIAL cascade the Token was KEPT and its status was
+	# REWRITTEN by `_reset_token_status`. The backup file holds the original
+	# pre-cascade Token row (incl. the original status). The plain `db.exists`
+	# skip below would leave the rewritten status in place. Detect the partial
+	# case BEFORE the loop and restore the pre-cascade Token field values.
+	token_backup = docs.get("ts_token")
+	if isinstance(token_backup, list):
+		token_backup = token_backup[0] if token_backup else None
+	token_name = (token_backup or {}).get("name")
+	if (token_backup and token_name and frappe.db.exists("TS Token", token_name)):
+		# Token survived (= partial cascade). Restore the fields that
+		# `_reset_token_status` may have rewritten.
+		_RESTORABLE = ("status", "purchase_receipt", "grn_time", "quality_time",
+		               "wb_gross_time", "wb_tare_time", "custom_rst_number")
+		valid_cols = set(frappe.db.get_table_columns("TS Token"))
+		updates = {k: token_backup.get(k) for k in _RESTORABLE
+		           if k in valid_cols and k in token_backup}
+		if updates:
+			try:
+				frappe.db.set_value("TS Token", token_name, updates,
+				                    update_modified=False)
+				token_status_restored = True
+				try:
+					frappe.get_doc("TS Token", token_name).add_comment(
+						"Comment",
+						text=(f"[CASCADE REVERT] Token field values restored from "
+						      f"pre-cascade backup (status → {updates.get('status')!r})."),
+					)
+				except Exception:
+					pass
+			except Exception as e:
+				frappe.log_error(
+					title=f"Cascade revert: TS Token status restore failed for {token_name}",
+					message=f"{type(e).__name__}: {e}",
+				)
 
 	# Restore order: Token first (parent), then GE, then siblings (WB/QI/DS), then PR, then PI.
 	# Restore via db_insert NOT doc.insert — bypasses lifecycle hooks (we want
@@ -192,4 +229,8 @@ def restore_from_backup(log_doc) -> dict:
 				)
 
 	frappe.db.commit()
-	return {"success": True, "restored": restored}
+	return {
+		"success": True,
+		"restored": restored,
+		"token_status_restored": token_status_restored,
+	}

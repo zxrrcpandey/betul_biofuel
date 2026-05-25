@@ -144,14 +144,10 @@ def initiate_cascade(
 	cut_point = (cut_point or "Full Chain").strip()
 	if cut_point not in _CUT_POINT_VALUES:
 		frappe.throw(_("Invalid cut-point: {0}").format(escape_html(cut_point)))
-	# v2.11.1 — partial cascade is temporarily DISABLED. _reset_token_status has a
-	# silent wrong-status bug on post-GRN tokens (audit B1); the rewrite + re-enable
-	# ship in v2.11.2. Until then ONLY a Full Chain cascade is permitted.
-	if cut_point != "Full Chain":
-		frappe.throw(_(
-			"Partial cascade (cut-point deletion) is temporarily disabled in v2.11.1 — "
-			"only a Full Chain cascade is available. Partial cascade returns in v2.11.2."
-		))
+	# v2.11.2 — partial cascade RE-ENABLED. The engine's _validate_partial_cut_
+	# feasibility (Lesson 279) runs BEFORE any deletion and fails closed on any
+	# (current_status, cut_point) pair not in the _CD_PARTIAL_MATRIX allowlist
+	# (e.g. legacy / post-exit / Stock-OUT statuses).
 
 	# Type-to-confirm gates (Q&A item 4)
 	if (confirm_token_name_typed or "").strip() != token_name:

@@ -25,19 +25,30 @@ from frappe.utils import add_days, today
 def run_orphan_scan_for_log(log_name: str) -> dict:
 	"""Scan orphans for a single log row's target_token. Persists result.
 
-	Reads `log_doc.target_token`, calls `cascade_delete_engine.scan_orphans`,
-	writes `integrity_scan_*` fields back to the log row.
+	Reads `log_doc.target_token` + `log_doc.cut_point`, calls
+	`cascade_delete_engine.scan_orphans` with cut-point awareness so the
+	intentionally-kept docs from a partial cascade are NOT false-flagged as
+	orphans (v2.11.2). Writes `integrity_scan_*` fields back to the log row.
 	"""
 	from trustbit_ethanol.ts_gate_entry.cascade_delete_engine import scan_orphans
 
 	if not frappe.db.exists("TS Cascade Delete Log", log_name):
 		return {"error": "log row not found", "log_name": log_name}
 
-	token_name = frappe.db.get_value("TS Cascade Delete Log", log_name, "target_token")
+	row = frappe.db.get_value(
+		"TS Cascade Delete Log", log_name,
+		["target_token", "cut_point"],
+		as_dict=True,
+	) or {}
+	token_name = row.get("target_token")
 	if not token_name:
 		return {"error": "log has no target_token", "log_name": log_name}
+	# v2.11.2 — translate the log's stored "Full Chain" sentinel into the
+	# engine's None convention. A partial cut_point passes through unchanged.
+	cut_point = row.get("cut_point") or "Full Chain"
+	engine_cut = None if cut_point == "Full Chain" else cut_point
 
-	result = scan_orphans(token_name)
+	result = scan_orphans(token_name, cut_point=engine_cut)
 	clean = bool(result.get("clean"))
 	orphans_json = json.dumps(result.get("orphans") or {}, indent=2, default=str)
 
