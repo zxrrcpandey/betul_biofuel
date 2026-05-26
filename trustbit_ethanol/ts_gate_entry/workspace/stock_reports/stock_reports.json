@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Stock Reports</b></span>\",\"col\":12}},{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Pending Material Issues\",\"col\":4}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Material Issues This Month\",\"col\":4}},{\"id\":\"sp1\",\"type\":\"spacer\",\"data\":{\"col\":4}},{\"id\":\"sc0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Material Issue Ledger\",\"col\":4}},{\"id\":\"sc1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Stock Ledger FIFO\",\"col\":4}},{\"id\":\"sc2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Ledger\",\"col\":4}},{\"id\":\"sc3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Entry\",\"col\":4}},{\"id\":\"sc4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Balance\",\"col\":4}}]",
+ "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Stock Reports</b></span>\",\"col\":12}},{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Pending Material Issues\",\"col\":4}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Material Issues This Month\",\"col\":4}},{\"id\":\"sp1\",\"type\":\"spacer\",\"data\":{\"col\":4}},{\"id\":\"sc0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Material Issue Ledger\",\"col\":4}},{\"id\":\"sc1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Stock Ledger FIFO\",\"col\":4}},{\"id\":\"sc2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Ledger\",\"col\":4}},{\"id\":\"sc3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Entry\",\"col\":4}},{\"id\":\"sc4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stock Balance\",\"col\":4}},{\"id\":\"sc5\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Item - Warehouse Wise\",\"col\":4}}]",
  "creation": "2026-05-11 14:45:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -58,6 +58,15 @@
   },
   {
    "hidden": 0,
+   "is_query_report": 1,
+   "label": "Item - Warehouse Wise",
+   "link_to": "TS Item - Warehouse Wise",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
    "is_query_report": 0,
    "label": "Operations",
    "link_type": "DocType",
@@ -74,7 +83,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-05-11 14:45:00",
+ "modified": "2026-05-26 01:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "Stock Reports",
@@ -129,6 +138,14 @@
    "label": "Stock Balance",
    "link_to": "TS Stock Balance Computed",
    "type": "Report"
+  },
+  {
+   "color": "Purple",
+   "format": "{} report",
+   "label": "Item - Warehouse Wise",
+   "link_to": "TS Item - Warehouse Wise",
+   "type": "Report",
+   "doc_view": "Report Builder"
   }
  ],
  "title": "Stock Reports"

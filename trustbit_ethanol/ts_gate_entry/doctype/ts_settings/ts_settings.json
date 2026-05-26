@@ -606,11 +606,19 @@
    "default": "5",
    "permlevel": 1,
    "description": "Grace window (minutes) during which an executed cascade can be reverted from its backup. Default 5; allowed range 5–60. Widen it to give a financial cascade a longer recovery window (M2, v2.11.1)."
+  },
+  {
+   "fieldname": "ts_pivot_warehouse_threshold",
+   "fieldtype": "Int",
+   "label": "Item - Warehouse Wise — Pivot Threshold (Active Warehouses)",
+   "default": "10",
+   "permlevel": 1,
+   "description": "TS Item - Warehouse Wise auto-switches between pivot (warehouses as columns) and tree (CC → Item → Warehouse) layout based on active-warehouse count. Reports with active WHs ≤ this value use PIVOT; > this use TREE. Default 10; recommended range 5–20. User can force either layout via the report's Force Layout filter."
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-03-22 00:00:00",
+ "modified": "2026-05-26 01:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Settings",
