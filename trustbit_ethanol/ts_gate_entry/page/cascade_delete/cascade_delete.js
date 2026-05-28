@@ -3,7 +3,7 @@
 // Lesson 174 — version pill rendered into DOM by JS; bump on every page edit.
 // Frappe v15 does NOT auto-inject {page}.html — JS builds the DOM via page.main.html().
 
-const CD_PAGE_VERSION = "v2.11.2-2026-05-25-2";
+const CD_PAGE_VERSION = "v2.13.1-2026-05-28";
 
 const CD_CSS = `
 	#cd-root { padding: 18px 22px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -196,8 +196,13 @@ function _init() {
 	_render_pending_list();
 	_render_recent_list();
 	// 3. Wire search box (only for initiate-capable users)
+	// v2.13.1 — mirror server-side _INITIATE_ROLES from v2.13.0
+	// (cascade_delete_api.py:42). Stock User + Stock Manager can now initiate.
+	// Server is still the authoritative gate; this just controls UI visibility.
 	const user_roles = new Set(frappe.user_roles || []);
-	const can_initiate = user_roles.has("Super Admin");
+	const can_initiate = user_roles.has("Super Admin")
+		|| user_roles.has("Stock Manager")
+		|| user_roles.has("Stock User");
 	if (can_initiate) {
 		const search_row = document.getElementById("cd-search-row");
 		if (search_row) search_row.style.display = "flex";
