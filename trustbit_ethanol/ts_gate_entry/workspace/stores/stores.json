@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Stores — Receiving &amp; Quality</b></span>\",\"col\":12}},{\"id\":\"ssr\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stores Receiving Dashboard\",\"col\":4}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Quality Inspection\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Pending Quality\",\"col\":4}}]",
+ "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Stores — Receiving &amp; Quality</b></span>\",\"col\":12}},{\"id\":\"ssr\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Stores Receiving Dashboard\",\"col\":4}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Quality Inspection\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Pending Quality\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Cascade Delete\",\"col\":4}}]",
  "creation": "2026-03-07 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -43,7 +43,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-04-17 06:00:00",
+ "modified": "2026-05-28 13:30:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "Stores",
@@ -77,6 +77,12 @@
    "link_to": "TS Token",
    "stats_filter": "[[\"TS Token\",\"status\",\"=\",\"Tare Weighed\"]]",
    "type": "DocType"
+  },
+  {
+   "color": "Red",
+   "label": "Cascade Delete",
+   "link_to": "cascade-delete",
+   "type": "Page"
   }
  ],
  "title": "Stores"
