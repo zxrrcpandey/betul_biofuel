@@ -8,7 +8,7 @@
  "engine": "InnoDB",
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-20 17:30:00",
+ "modified": "2026-05-28 10:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Cascade Delete Log",
@@ -60,6 +60,7 @@
   "webhook_response_body_excerpt",
   "section_execution",
   "executed_at",
+  "executed_as",
   "col_execution_right",
   "execution_result_json",
   "section_revert",
@@ -386,6 +387,15 @@
    "read_only": 1,
    "permlevel": 1,
    "in_list_view": 1
+  },
+  {
+   "fieldname": "executed_as",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Executed As",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "v2.13.0 — the user the engine ran AS (a Super-Admin-roled user). For Super-Admin-initiated cascades this equals initiated_by. For Stock User / Stock Manager initiated cascades, this is the resolved executor (TS Setting ts_cascade_executor_user or first enabled Super Admin user). EXCLUDED from _HASH_FIELDS (cut_point precedent); captured here for audit attribution."
   },
   {
    "fieldname": "col_execution_right",

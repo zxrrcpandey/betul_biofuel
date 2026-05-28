@@ -3,7 +3,7 @@
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-05-20 17:30:00",
+ "modified": "2026-05-28 10:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "cascade-delete",
@@ -15,7 +15,9 @@
   {"role": "MD"},
   {"role": "System Manager"},
   {"role": "Administrator"},
-  {"role": "Auditor"}
+  {"role": "Auditor"},
+  {"role": "Stock User"},
+  {"role": "Stock Manager"}
  ],
  "standard": "Yes",
  "system_page": 0,

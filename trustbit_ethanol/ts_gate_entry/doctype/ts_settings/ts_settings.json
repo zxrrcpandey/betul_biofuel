@@ -614,11 +614,19 @@
    "default": "10",
    "permlevel": 1,
    "description": "TS Item - Warehouse Wise auto-switches between pivot (warehouses as columns) and tree (CC → Item → Warehouse) layout based on active-warehouse count. Reports with active WHs ≤ this value use PIVOT; > this use TREE. Default 10; recommended range 5–20. User can force either layout via the report's Force Layout filter."
+  },
+  {
+   "fieldname": "ts_cascade_executor_user",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Cascade Delete — Executor User",
+   "permlevel": 1,
+   "description": "v2.13.0 — when a Stock User or Stock Manager initiates a cascade delete and CEO approves, the engine needs to run as a user with Super Admin role (to hold the delete grants on PR/PI/Token/GE/WB/QI/DS). Set this field to the dedicated executor user. When empty, the engine falls back to the first enabled user with the Super Admin role. If neither is available, the cascade fails closed with a clear remediation message — no destructive operation. Super Admin–initiated cascades are UNAFFECTED (they continue to run as the initiator)."
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-05-26 01:00:00",
+ "modified": "2026-05-28 10:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Settings",

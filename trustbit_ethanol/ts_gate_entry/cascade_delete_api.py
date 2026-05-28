@@ -39,10 +39,17 @@ _FORCE_PR_LITERAL = "FORCE-DELETE-PR"
 _FORCE_MI_LITERAL = "FORCE-DELETE-MI"
 _FORCE_PAYMENT_LITERAL = "FORCE-DELETE-WITH-PAYMENTS"  # v2.11.1 audit B4
 _REVERT_GRACE_MINUTES = 5
-_READ_ROLES = {"Super Admin", "CEO", "MD", "System Manager", "Administrator", "Auditor", "IT Head"}
-_INITIATE_ROLES = {"Super Admin"}
+_READ_ROLES = {"Super Admin", "CEO", "MD", "System Manager", "Administrator", "Auditor", "IT Head", "Stock User", "Stock Manager"}
+# v2.13.0 — Stock User + Stock Manager can initiate cascade requests.
+# The engine still runs under a Super-Admin-privileged user (resolved via
+# `_resolve_executor_user`). Stock User permissions are NOT expanded.
+_INITIATE_ROLES = {"Super Admin", "Stock Manager", "Stock User"}
 _APPROVE_ROLES = {"CEO"}
 _REVERT_ROLES = {"Super Admin", "CEO", "MD"}
+# v2.13.0 — roles that the resolved executor MUST hold. Only "Super Admin" today
+# (Custom DocPerm grants delete on all 7 cascade-target doctypes — see
+# setup_super_admin_role._SUPER_ADMIN_PERMS).
+_EXECUTOR_REQUIRED_ROLES = {"Super Admin"}
 
 
 # ---------------------------------------------------------------- common gates
@@ -62,6 +69,62 @@ def _gate_role(allowed: set, action_label: str = "this action"):
 			_("You do not have permission to perform {0}.").format(action_label),
 			frappe.PermissionError,
 		)
+
+
+def _resolve_executor_user(initiator: str) -> str:
+	"""v2.13.0 — return the user the engine should run AS.
+
+	When initiator IS a Super Admin → return initiator unchanged (current
+	v2.11.x behavior; preserves attributability for Super-Admin-led cascades).
+
+	When initiator is NOT a Super Admin (Stock User / Stock Manager flows):
+	  1. Look up TS Setting `ts_cascade_executor_user`. If set + enabled +
+	     has Super Admin role → use it.
+	  2. Else: pick the FIRST enabled user with the Super Admin role
+	     (deterministic order by `creation` so the choice is stable).
+	  3. Else: fail-closed — throw with a clear remediation message.
+
+	The engine NEEDS the executor to have Custom DocPerm delete grants on the
+	7 cascade-target doctypes (PR, PI, Token, GE, WB, QI, DS); those are seeded
+	by `setup_super_admin_role._SUPER_ADMIN_PERMS`. Stock User / Manager do NOT
+	have those grants — running the engine as them would throw mid-cascade with
+	a partially-deleted chain.
+	"""
+	initiator_roles = set(frappe.get_roles(initiator))
+	if not initiator_roles.isdisjoint(_EXECUTOR_REQUIRED_ROLES):
+		return initiator
+
+	# Configured executor — admin-set, explicit
+	configured = frappe.db.get_single_value("TS Settings", "ts_cascade_executor_user")
+	if configured:
+		ok_enabled = frappe.db.get_value("User", configured, "enabled")
+		configured_roles = set(frappe.get_roles(configured)) if ok_enabled else set()
+		if ok_enabled and not configured_roles.isdisjoint(_EXECUTOR_REQUIRED_ROLES):
+			return configured
+
+	# Fallback — any enabled user with Super Admin role, oldest first
+	fallback = frappe.db.sql(
+		"""SELECT u.name FROM `tabUser` u
+		   JOIN `tabHas Role` hr ON hr.parent = u.name
+		   WHERE u.enabled = 1
+		     AND hr.role IN %(roles)s
+		   ORDER BY u.creation ASC
+		   LIMIT 1""",
+		{"roles": tuple(_EXECUTOR_REQUIRED_ROLES)},
+	)
+	if fallback:
+		return fallback[0][0]
+
+	# Fail-closed — no executor available. Surface a clear remediation.
+	frappe.throw(_(
+		"Cascade Delete cannot execute: no enabled user with the Super Admin role "
+		"is available to run the deletion. An admin must either (a) assign the "
+		"Super Admin role to an enabled user via TS Users, OR (b) set "
+		"`ts_cascade_executor_user` in TS Settings to a Super-Admin-roled user. "
+		"This restriction protects the cascade from running with insufficient "
+		"permissions on Purchase Receipt / Purchase Invoice / Token / Gate Entry / "
+		"Weighbridge / Quality Inspection / Deduction Sheet."
+	), frappe.PermissionError)
 
 
 def _validate_token_name(token_name: str):
@@ -329,32 +392,56 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 	log_doc = frappe.get_doc("TS Cascade Delete Log", log_name)
 	from trustbit_ethanol.ts_gate_entry.cascade_delete_engine import execute_cascade
 	# The engine cancels/deletes the Token + 6 downstream doctypes. It must run
-	# with the INITIATING Super Admin's permissions — that role holds the
-	# cancel/delete Custom DocPerm grants (setup_super_admin_role._SUPER_ADMIN_PERMS).
-	# The approving CEO's session does NOT have cancel perm on TS Gate Entry etc.,
-	# so running the engine as the CEO throws PermissionError mid-cascade.
-	# Authorization has already happened at this point: kill switch + role gate +
-	# 2-person rule + CEO approval. The CEO approves; the Super Admin executes.
+	# with a user holding the cancel/delete Custom DocPerm grants on all 7
+	# cascade-target doctypes (Super Admin role — see
+	# setup_super_admin_role._SUPER_ADMIN_PERMS). The approving CEO's session
+	# does NOT have those grants → running as CEO would throw mid-cascade.
+	#
+	# v2.13.0 — Stock User / Stock Manager initiators don't hold those grants
+	# either, so the engine is run as a RESOLVED EXECUTOR via
+	# `_resolve_executor_user` (TS Setting + fallback to any Super Admin user).
+	# When the initiator IS Super Admin, executor==initiator (current behavior).
+	#
+	# Authorization has already happened at this point: kill switch + role gate
+	# + 2-person rule + CEO approval. The CEO approves; the executor executes.
 	_approver_user = frappe.session.user
-	_engine_user = log_doc.initiated_by
+	_initiator_user = log_doc.initiated_by
 	# M3 (v2.11.1) — do NOT fall back to Administrator when the initiator is
-	# disabled/missing. Running this destructive engine as Administrator widens
-	# the blast radius beyond the audited Super Admin scope and breaks the
-	# attributability of every deletion. Abort + mark Failed instead.
-	if not _engine_user or not frappe.db.get_value("User", _engine_user, "enabled"):
+	# disabled/missing. Abort + mark Failed.
+	if not _initiator_user or not frappe.db.get_value("User", _initiator_user, "enabled"):
 		_transition_log_state(log_name, "Failed", extra={
 			"executed_at": now_datetime(),
 			"execution_result_json": json.dumps({
-				"error": (f"Initiator account '{_engine_user}' is disabled or missing — "
-				          "cascade aborted (M3). Re-initiate from an enabled Super Admin account."),
+				"error": (f"Initiator account '{_initiator_user}' is disabled or missing — "
+				          "cascade aborted (M3). Re-initiate from an enabled account."),
 			}),
 		})
 		frappe.clear_messages()
 		return {
 			"success": False, "approval_status": "Failed",
-			"error": (f"Initiator account '{_engine_user}' is disabled or missing — "
-			          "cascade aborted. Re-initiate from an enabled Super Admin account."),
+			"error": (f"Initiator account '{_initiator_user}' is disabled or missing — "
+			          "cascade aborted. Re-initiate from an enabled account."),
 		}
+	# v2.13.0 — resolve who the engine runs AS. Throws (PermissionError) if no
+	# Super-Admin-roled enabled user is available. Caught below → log Failed.
+	try:
+		_engine_user = _resolve_executor_user(_initiator_user)
+	except frappe.PermissionError as e:
+		_transition_log_state(log_name, "Failed", extra={
+			"executed_at": now_datetime(),
+			"execution_result_json": json.dumps({
+				"error": (f"Executor resolution failed for initiator '{_initiator_user}': "
+				          f"{str(e)}"),
+			}),
+		})
+		frappe.clear_messages()
+		return {
+			"success": False, "approval_status": "Failed",
+			"error": str(e),
+		}
+	# Persist the resolved executor on the log (permlevel=1; insert-only via
+	# api_caller flag).
+	_persist_log_field(log_name, "executed_as", _engine_user)
 	try:
 		frappe.set_user(_engine_user)
 		result = execute_cascade(
@@ -366,6 +453,11 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 			           else log_doc.cut_point),
 			force_payment_links=bool(log_doc.get("force_payment_links")),
 		)
+		# Attach attribution to the engine result for audit visibility.
+		if isinstance(result, dict):
+			result["initiator"] = _initiator_user
+			result["executor"] = _engine_user
+			result["approver"] = _approver_user
 	finally:
 		# ALWAYS restore the approving CEO's session before post-engine steps
 		# (state transition, integrity scan, webhook, email) — Lesson 176 pattern.

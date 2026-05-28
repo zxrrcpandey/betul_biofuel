@@ -26,7 +26,11 @@ from frappe.utils import now_datetime
 
 # Fields that contribute to the hash chain (deterministic order).
 # Append-only — never reorder, never remove. Adding a new field requires a
-# migration that re-hashes the entire chain.
+# migration that re-hashes the entire chain. v2.13.0 `executed_as` is
+# DELIBERATELY EXCLUDED here (same precedent as `cut_point` + `force_payment_links`)
+# so the chain stays verifiable on every existing prod log row. The executor's
+# identity is captured in `forensic_block_json` + `executed_as` (permlevel=1)
+# for audit purposes.
 _HASH_FIELDS = (
 	"target_token",
 	"initiated_by",
@@ -49,6 +53,7 @@ _API_MUTABLE_FIELDS = {
 	"approved_at",
 	"rejection_reason",
 	"executed_at",
+	"executed_as",  # v2.13.0 — resolved executor user (Stock User init flow)
 	"execution_result_json",
 	"webhook_delivered",
 	"webhook_response_code",
