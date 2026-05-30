@@ -23,6 +23,8 @@
   {"role": "Stock Manager"},
   {"role": "Stores Manager"},
   {"role": "Stock User"},
-  {"role": "Accounts Manager"}
+  {"role": "Accounts Manager"},
+  {"role": "CEO"},
+  {"role": "MD"}
  ]
 }

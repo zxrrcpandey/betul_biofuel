@@ -1,14 +1,17 @@
-# TS Material Issue Ledger — v2.10.1.0
+# TS Material Issue Ledger — v2.14.0
 #
-# Combined view of Material Issue REQUESTS (Material Request type='Material Issue')
-# and their ACTUAL ISSUES (Stock Entry purpose='Material Issue'). One row per
-# request line; LEFT JOIN aggregates Stock Entry Detail rows that fulfilled it.
-# A second UNION pulls standalone Stock Entry Material Issues with no MR origin
-# so they don't get missed.
+# Combined view of material-movement REQUESTS (Material Request type in
+# 'Material Issue' / 'Material Transfer') and their ACTUAL movements (Stock Entry
+# purpose in 'Material Issue' / 'Material Transfer'). One row per request line;
+# correlated sub-selects aggregate the Stock Entry Detail rows that fulfilled it.
+# A second pass pulls standalone Stock Entry movements with no MR origin so they
+# don't get missed.
 #
 # Per row: Requested Qty vs Issued Qty vs Pending Qty + Status
 # (Pending / Partial / Fulfilled / Standalone).
-# Remarks cascade: Stock Entry Detail row → MR Item row → Stock Entry header.
+# Use Location  = MR line ts_delivery_location ("Define Use Location").
+# Item Remark   = MR line ts_item_remark (same field shown on PO/PR/PI Item tables);
+#                 blank for standalone Stock Entries (no MR line, field not on SE Detail).
 
 import frappe
 from frappe import _
@@ -57,7 +60,7 @@ def get_columns():
 		{"fieldname": "cost_center", "label": _("Cost Center"), "fieldtype": "Link", "options": "Cost Center", "width": 170},
 		{"fieldname": "rate", "label": _("Rate"), "fieldtype": "Currency", "options": "Company:company:default_currency", "width": 100},
 		{"fieldname": "value", "label": _("Value"), "fieldtype": "Currency", "options": "Company:company:default_currency", "width": 120},
-		{"fieldname": "remarks", "label": _("Remarks"), "fieldtype": "Data", "width": 220},
+		{"fieldname": "item_remark", "label": _("Item Remark"), "fieldtype": "Data", "width": 220},
 		{"fieldname": "status", "label": _("Status"), "fieldtype": "Data", "width": 110},
 	]
 
@@ -107,7 +110,7 @@ def get_data(filters):
 
 
 def _query_mr_based(filters):
-	"""Material Request rows of type=Material Issue + aggregated SE Detail join."""
+	"""Material Request rows of type Material Issue / Material Transfer + aggregated SE Detail join."""
 	conds, params = _common_mr_conditions(filters)
 	use_loc = filters.get("use_location")
 	if use_loc:
@@ -124,7 +127,7 @@ def _query_mr_based(filters):
 			(SELECT MIN(se2.name) FROM `tabStock Entry Detail` sed2
 				JOIN `tabStock Entry` se2 ON se2.name = sed2.parent
 				WHERE sed2.material_request_item = mri.name
-				  AND se2.purpose = 'Material Issue'
+				  AND se2.purpose IN ('Material Issue', 'Material Transfer')
 				  AND se2.docstatus = 1) AS stock_entry,
 			mri.item_code, mri.item_name, item.item_group,
 			mri.qty AS requested_qty,
@@ -132,42 +135,49 @@ def _query_mr_based(filters):
 				SELECT SUM(sed3.qty) FROM `tabStock Entry Detail` sed3
 				JOIN `tabStock Entry` se3 ON se3.name = sed3.parent
 				WHERE sed3.material_request_item = mri.name
-				  AND se3.purpose = 'Material Issue'
+				  AND se3.purpose IN ('Material Issue', 'Material Transfer')
 				  AND se3.docstatus = 1
 			), 0) AS issued_qty,
 			mri.uom,
 			(SELECT MAX(sed4.s_warehouse) FROM `tabStock Entry Detail` sed4
 				JOIN `tabStock Entry` se4 ON se4.name = sed4.parent
 				WHERE sed4.material_request_item = mri.name
-				  AND se4.purpose = 'Material Issue'
+				  AND se4.purpose IN ('Material Issue', 'Material Transfer')
 				  AND se4.docstatus = 1) AS source_warehouse_se,
 			mri.from_warehouse AS source_warehouse_mr,
 			mri.warehouse AS source_warehouse_fallback,
-			mri.ts_delivery_location AS use_location,
+			(SELECT MAX(sedL.ts_delivery_location) FROM `tabStock Entry Detail` sedL
+				JOIN `tabStock Entry` seL ON seL.name = sedL.parent
+				WHERE sedL.material_request_item = mri.name
+				  AND seL.purpose IN ('Material Issue', 'Material Transfer')
+				  AND seL.docstatus = 1
+				  AND COALESCE(sedL.ts_delivery_location, '') <> '') AS se_use_location,
+			mri.ts_delivery_location AS mr_use_location,
 			mri.cost_center,
 			(SELECT MAX(sed5.basic_rate) FROM `tabStock Entry Detail` sed5
 				JOIN `tabStock Entry` se5 ON se5.name = sed5.parent
 				WHERE sed5.material_request_item = mri.name
-				  AND se5.purpose = 'Material Issue'
+				  AND se5.purpose IN ('Material Issue', 'Material Transfer')
 				  AND se5.docstatus = 1) AS rate,
 			COALESCE((
 				SELECT SUM(sed6.amount) FROM `tabStock Entry Detail` sed6
 				JOIN `tabStock Entry` se6 ON se6.name = sed6.parent
 				WHERE sed6.material_request_item = mri.name
-				  AND se6.purpose = 'Material Issue'
+				  AND se6.purpose IN ('Material Issue', 'Material Transfer')
 				  AND se6.docstatus = 1
 			), 0) AS value,
-			mri.ts_item_remark AS mr_remark,
-			(SELECT MIN(se7.remarks) FROM `tabStock Entry Detail` sed7
-				JOIN `tabStock Entry` se7 ON se7.name = sed7.parent
-				WHERE sed7.material_request_item = mri.name
-				  AND se7.purpose = 'Material Issue'
-				  AND se7.docstatus = 1) AS se_header_remark,
+			(SELECT MAX(sedR.ts_item_remark) FROM `tabStock Entry Detail` sedR
+				JOIN `tabStock Entry` seR ON seR.name = sedR.parent
+				WHERE sedR.material_request_item = mri.name
+				  AND seR.purpose IN ('Material Issue', 'Material Transfer')
+				  AND seR.docstatus = 1
+				  AND COALESCE(sedR.ts_item_remark, '') <> '') AS se_item_remark,
+			mri.ts_item_remark AS mr_item_remark,
 			0 AS is_standalone
 		FROM `tabMaterial Request Item` mri
 		JOIN `tabMaterial Request` mr ON mr.name = mri.parent
 		LEFT JOIN `tabItem` item ON item.name = mri.item_code
-		WHERE mr.material_request_type = 'Material Issue'
+		WHERE mr.material_request_type IN ('Material Issue', 'Material Transfer')
 		  AND mr.docstatus = 1
 		  AND mr.company = %(company)s
 		  AND mr.transaction_date BETWEEN %(from_date)s AND %(to_date)s
@@ -179,19 +189,24 @@ def _query_mr_based(filters):
 	rows = frappe.db.sql(sql, params, as_dict=True)
 	for row in rows:
 		row["source_warehouse"] = row.pop("source_warehouse_se", None) or row.pop("source_warehouse_mr", None) or row.pop("source_warehouse_fallback", None)
-		# Remarks cascade: MR row remark first (since SE row remark requires a separate lookup; SE header is the last fallback)
-		row["remarks"] = (row.pop("mr_remark", None) or row.pop("se_header_remark", None) or "")
+		# Use Location / Item Remark: prefer the value entered on the actual Stock Entry
+		# (issue time, v2.14.0), fall back to the originating MR line so older MR-entered
+		# data still shows. Both fields use the same "Define Use Location" / "Item Remark"
+		# label as PO/PR/PI/SE Detail.
+		row["use_location"] = row.pop("se_use_location", None) or row.pop("mr_use_location", None) or ""
+		row["item_remark"] = row.pop("se_item_remark", None) or row.pop("mr_item_remark", None) or ""
 	return rows
 
 
 def _query_standalone_se(filters):
-	"""Stock Entry Detail rows where purpose=Material Issue + NO material_request_item link."""
+	"""Stock Entry Detail rows where purpose in Material Issue / Material Transfer + NO material_request_item link."""
 	conds, params = _common_se_conditions(filters)
 	use_loc = filters.get("use_location")
 	if use_loc:
-		# Standalone SE has no MR row, so use_location filter excludes everything by definition
-		# unless ts_delivery_location is also stored on SE Detail (not standard).
-		return []
+		# SE Detail now carries ts_delivery_location (v2.14.0), so the Use Location filter
+		# applies to standalone Stock Entries too.
+		conds.append("sed.ts_delivery_location LIKE %(use_location)s")
+		params["use_location"] = f"%{use_loc}%"
 
 	match_cond = frappe.build_match_conditions("Stock Entry")
 	match_clause = f" AND ({match_cond}) " if match_cond else ""
@@ -208,16 +223,16 @@ def _query_standalone_se(filters):
 			sed.qty AS issued_qty,
 			sed.uom,
 			sed.s_warehouse AS source_warehouse,
-			'' AS use_location,
+			sed.ts_delivery_location AS use_location,
 			sed.cost_center,
 			sed.basic_rate AS rate,
 			sed.amount AS value,
-			COALESCE(NULLIF(se.remarks, ''), '') AS remarks,
+			sed.ts_item_remark AS item_remark,
 			1 AS is_standalone
 		FROM `tabStock Entry Detail` sed
 		JOIN `tabStock Entry` se ON se.name = sed.parent
 		LEFT JOIN `tabItem` item ON item.name = sed.item_code
-		WHERE se.purpose = 'Material Issue'
+		WHERE se.purpose IN ('Material Issue', 'Material Transfer')
 		  AND se.docstatus = 1
 		  AND se.company = %(company)s
 		  AND se.posting_date BETWEEN %(from_date)s AND %(to_date)s
@@ -292,7 +307,7 @@ def _get_summary(data, truncated, filters):
 		{"label": _("Total Requested"), "value": total_requested, "datatype": "Float"},
 		{"label": _("Total Issued"), "value": total_issued, "datatype": "Float", "indicator": "Green"},
 		{"label": _("Total Pending"), "value": total_pending, "datatype": "Float", "indicator": "Orange" if total_pending > 0 else "Green"},
-		{"label": _("Total Value Issued"), "value": total_value, "datatype": "Currency", "currency": filters.get("company")},
+		{"label": _("Total Value Issued"), "value": total_value, "datatype": "Currency"},
 	]
 	if truncated:
 		summary.append({

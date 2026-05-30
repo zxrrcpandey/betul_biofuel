@@ -768,6 +768,36 @@ def create_custom_fields():
 				"fetch_from": "po_detail.ts_item_remark",
 			},
 		],
+		# v2.14.0 — capture Use Location + Item Remark at issue time on the Stock
+		# Entry items grid. Gated to Material Issue / Material Transfer via the same
+		# parent.purpose depends_on pattern ERPNext uses (putaway_rule, subcontracted_item).
+		# fetch_from + fetch_if_empty auto-fills from the linked MR line; editable.
+		"Stock Entry Detail": [
+			{
+				"fieldname": "ts_delivery_location",
+				"fieldtype": "Data",
+				"label": "Define Use Location",
+				"insert_after": "cost_center",
+				"in_list_view": 1,
+				"columns": 2,
+				"translatable": 0,
+				"fetch_from": "material_request_item.ts_delivery_location",
+				"fetch_if_empty": 1,
+				"depends_on": "eval:in_list(['Material Issue','Material Transfer'], parent.purpose)",
+			},
+			{
+				"fieldname": "ts_item_remark",
+				"fieldtype": "Data",
+				"label": "Item Remark",
+				"insert_after": "ts_delivery_location",
+				"in_list_view": 1,
+				"columns": 2,
+				"translatable": 0,
+				"fetch_from": "material_request_item.ts_item_remark",
+				"fetch_if_empty": 1,
+				"depends_on": "eval:in_list(['Material Issue','Material Transfer'], parent.purpose)",
+			},
+		],
 	}
 
 	# ── v2.6.0+ Priority, Remark, Project fields on MR and PO ──

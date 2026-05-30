@@ -1,0 +1,115 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>{{ report_title }}</title>
+<style>
+@page { size: A4 landscape; margin: 10mm 8mm; }
+body { font-family: "Helvetica","Arial",sans-serif; font-size: 7pt; color: #222; margin: 0; }
+table { border-collapse: collapse; width: 100%; }
+.hdr-tbl td { vertical-align: middle; padding: 0; }
+.hdr-logo { width: 70px; }
+.hdr-logo img { width: 60px; height: auto; }
+.hdr-title { font-size: 14pt; font-weight: bold; color: #1F3A5F; }
+.hdr-sub { font-size: 9pt; color: #555; font-style: italic; }
+.hdr-meta { text-align: right; font-size: 8.5pt; color: #444; }
+.filter-band { background:#F1F4F9; border:1px solid #D5DCE7; padding:5pt 8pt; margin:6pt 0 4pt 0; font-size: 8pt; }
+.data-tbl { table-layout: fixed; }
+.data-tbl th { background:#1F3A5F; color:#fff; font-size: 6.8pt; padding: 3pt 2pt; text-align:left; border:1px solid #1F3A5F; word-wrap: break-word; }
+.data-tbl td { font-size: 6.8pt; padding: 2pt; border:1px solid #BBB; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; }
+.data-tbl td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-right: 4pt; }
+.tot-row td { background:#EDF1F7; font-weight:bold; border-top:2px solid #1F3A5F; }
+.pill { display: inline-block; padding: 1pt 3pt; border-radius: 5pt; color:#fff; font-size: 6.2pt; font-weight: bold; white-space: nowrap; }
+.pill-red { background:#cc0000; } .pill-orange { background:#d97706; }
+.pill-green { background:#16a34a; } .pill-blue { background:#2563eb; } .pill-gray { background:#888; }
+.fnote { font-size: 7pt; color:#777; font-style: italic; margin-top:4pt; }
+.pg-ftr { position: fixed; bottom: 4mm; left: 0; right: 0; text-align: center; font-size: 7pt; color: #888; }
+</style></head><body>
+
+<table class="hdr-tbl"><tr>
+<td class="hdr-logo">{% if logo_url %}<img src="{{ logo_url }}" alt="logo">{% endif %}</td>
+<td>
+<div class="hdr-title">{{ company_name|e }}</div>
+<div class="hdr-sub">TS Material Issue Ledger — Audit Report</div>
+</td>
+<td class="hdr-meta">
+Generated: {{ generated_at|e }}<br>
+By: {{ generated_by|e }}<br>
+Rows: {{ rows|length }}{% if truncated %} (truncated at {{ row_limit }}){% endif %}
+</td>
+</tr></table>
+
+<div class="filter-band">
+<b>Filters:</b>
+Company: {{ filters.company|e }}
+| From: {{ filters.from_date|e }} to {{ filters.to_date|e }}
+{% if filters.item_code %} | Item: {{ filters.item_code|e }}{% endif %}
+{% if filters.item_group %} | Item Group: {{ filters.item_group|e }}{% endif %}
+{% if filters.source_warehouse %} | Source WH: {{ filters.source_warehouse|e }}{% endif %}
+{% if filters.cost_center %} | Cost Center: {{ filters.cost_center|e }}{% endif %}
+{% if filters.use_location %} | Use Location ~ {{ filters.use_location|e }}{% endif %}
+{% if filters.status and filters.status != 'All' %} | Status: {{ filters.status|e }}{% endif %}
+{% if filters.include_cancelled %} | Including Cancelled{% endif %}
+</div>
+
+<table class="data-tbl">
+<colgroup>
+<col style="width:5%"><col style="width:8%"><col style="width:7%"><col style="width:6%">
+<col style="width:8%"><col style="width:6%"><col style="width:4%"><col style="width:4%">
+<col style="width:4%"><col style="width:3%"><col style="width:8%"><col style="width:6%">
+<col style="width:8%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:8%">
+</colgroup>
+<thead><tr>
+<th>Date</th><th>Material Request</th><th>Stock Entry</th><th>Item Code</th>
+<th>Item Name</th><th>Item Group</th>
+<th class="num">Req Qty</th><th class="num">Iss Qty</th><th class="num">Pend Qty</th>
+<th>UOM</th><th>Source WH</th><th>Use Location</th><th>Cost Center</th>
+<th class="num">Rate</th><th class="num">Value</th><th>Item Remark</th><th>Status</th>
+</tr></thead>
+<tbody>
+{% for r in rows %}
+<tr>
+<td>{{ (r.posting_date or '')|e }}</td>
+<td>{{ (r.material_request or '')|e }}</td>
+<td>{{ (r.stock_entry or '')|e }}</td>
+<td>{{ (r.item_code or '')|e }}</td>
+<td>{{ (r.item_name or '')|e }}</td>
+<td>{{ (r.item_group or '')|e }}</td>
+<td class="num">{{ "%.2f"|format(r.requested_qty or 0) }}</td>
+<td class="num">{{ "%.2f"|format(r.issued_qty or 0) }}</td>
+<td class="num">{{ "%.2f"|format(r.pending_qty or 0) }}</td>
+<td>{{ (r.uom or '')|e }}</td>
+<td>{{ (r.source_warehouse or '')|e }}</td>
+<td>{{ (r.use_location or '')|e }}</td>
+<td>{{ (r.cost_center or '—')|e }}</td>
+<td class="num">{{ "%.2f"|format(r.rate or 0) }}</td>
+<td class="num">{{ "%.2f"|format(r.value or 0) }}</td>
+<td>{{ (r.item_remark or '')|e }}</td>
+<td>
+{% set s = r.status or '' %}
+{% if s == 'Pending' %}<span class="pill pill-red">Pending</span>
+{% elif s == 'Partial' %}<span class="pill pill-orange">Partial</span>
+{% elif s == 'Fulfilled' %}<span class="pill pill-green">Fulfilled</span>
+{% elif s == 'Standalone' %}<span class="pill pill-blue">Standalone</span>
+{% elif s %}<span class="pill pill-gray">{{ s|e }}</span>
+{% else %}—{% endif %}
+</td>
+</tr>
+{% endfor %}
+<tr class="tot-row">
+<td colspan="6">TOTALS ({{ rows|length }} rows)</td>
+<td class="num">{{ "%.2f"|format(total_requested or 0) }}</td>
+<td class="num">{{ "%.2f"|format(total_issued or 0) }}</td>
+<td class="num">{{ "%.2f"|format(total_pending or 0) }}</td>
+<td colspan="4">—</td>
+<td class="num">—</td>
+<td class="num">{{ "%.2f"|format(total_value or 0) }}</td>
+<td colspan="2">—</td>
+</tr>
+</tbody>
+</table>
+
+<div class="fnote">
+Combined view of material-movement requests (Material Request type = Material Issue / Material Transfer) and their actual movements (Stock Entry purpose = Material Issue / Material Transfer). Pending = Requested − Issued. Standalone rows are Stock Entry movements with no Material Request origin. Item Remark is the request line's remark (ts_item_remark) — blank for standalone Stock Entries. Qty totals (Req / Iss / Pend) span mixed UOMs and are indicative only — Value (₹) is the authoritative monetary total.
+</div>
+
+<div class="pg-ftr">TS Material Issue Ledger • {{ app_version|e }} • {{ generated_at|e }}</div>
+
+</body></html>
