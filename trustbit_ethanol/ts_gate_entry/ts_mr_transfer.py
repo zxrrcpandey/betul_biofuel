@@ -167,8 +167,101 @@ def _validate_transfer_for_submit(doc):
 
 
 # ─────────────────────────────────────────────────────────────────────────
+#  VALUATION PRE-CHECK (v2.14.1)
+# ─────────────────────────────────────────────────────────────────────────
+
+def _item_source_warehouse(doc, row):
+	"""Return the SOURCE warehouse for an item line, by MR type.
+
+	Material Transfer values the OUTGOING stock from `from_warehouse`.
+	Material Issue issues OUT from `warehouse` (ERPNext stores the source there).
+	Mirrors the warehouse mapping used when the Stock Entry is built
+	(see approve_transfer lines for s_warehouse assignment).
+	"""
+	if doc.material_request_type == "Material Transfer":
+		return row.get("from_warehouse")
+	return row.get("warehouse")
+
+
+def _check_item_valuations(doc):
+	"""Return a list of {item_code, item_name, warehouse} for STOCK item lines
+	that have NO usable valuation rate in their source warehouse.
+
+	A Material Transfer / Issue values the outgoing stock at the source-warehouse
+	valuation rate; if that rate is zero/missing the Stock Entry submit fails with
+	"Valuation Rate for the Item ... is required". A missing Bin row (no stock yet)
+	resolves to 0 and is therefore flagged too. Non-stock items never need a
+	valuation rate, so they are skipped. De-duplicated by (item_code, warehouse).
+	"""
+	problems = []
+	seen = set()
+	for row in (doc.items or []):
+		if not row.item_code:
+			continue
+		s_wh = _item_source_warehouse(doc, row)
+		if not s_wh:
+			# Missing source warehouse is enforced by _validate_transfer_for_submit.
+			continue
+		if not cint(frappe.db.get_value("Item", row.item_code, "is_stock_item")):
+			continue
+		key = (row.item_code, s_wh)
+		if key in seen:
+			continue
+		seen.add(key)
+		rate = frappe.db.get_value(
+			"Bin", {"item_code": row.item_code, "warehouse": s_wh}, "valuation_rate"
+		)
+		if not flt(rate):
+			problems.append({
+				"item_code": row.item_code,
+				"item_name": row.get("item_name")
+					or frappe.db.get_value("Item", row.item_code, "item_name") or "",
+				"warehouse": s_wh,
+			})
+	return problems
+
+
+def _block_if_missing_valuation(doc):
+	"""HARD BLOCK: raise a popup naming every item that has no valuation rate in its
+	source warehouse, so the approver sets the rate first. Called BEFORE any status
+	change or Stock Entry creation in approve_transfer — the MR is therefore never
+	left "Approved" without a backing Stock Entry (the v2.14.0 stuck-state bug)."""
+	problems = _check_item_valuations(doc)
+	if not problems:
+		return
+	esc = frappe.utils.escape_html
+	rows = "".join(
+		"<li><b>{0}</b> — {1} <span style='color:#6b7280'>(in {2})</span></li>".format(
+			esc(p["item_code"]), esc(p["item_name"]), esc(p["warehouse"])
+		)
+		for p in problems
+	)
+	frappe.throw(
+		_("The following item(s) have no valuation rate in their source warehouse, "
+		  "so the stock transfer cannot be posted:")
+		+ "<ul style='margin-top:6px'>" + rows + "</ul>"
+		+ _("Please set the valuation rate for these item(s) first "
+		    "(Stock &rarr; Stock Reconciliation), then approve the transfer again."),
+		title=_("Valuation Rate Required"),
+	)
+
+
+# ─────────────────────────────────────────────────────────────────────────
 #  WHITELISTED ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────
+
+@frappe.whitelist()
+def get_transfer_valuation_warnings(mr_name):
+	"""Read-only: return the item lines that have no valuation rate in their source
+	warehouse, for the MR form banner. Read-only endpoint — no methods=["POST"]
+	(Lesson 175 governs MUTATIONS); gated on Material Request read perm (Lesson 224).
+	Returns an empty list for non-stores-flow MR types."""
+	doc = frappe.get_doc("Material Request", mr_name)
+	frappe.has_permission("Material Request", "read", doc=doc, throw=True)
+	if not _is_stores_flow_type(doc.material_request_type):
+		return {"warnings": []}
+	return {"warnings": _check_item_valuations(doc)}
+
 
 @frappe.whitelist(methods=["POST"])
 def submit_for_stores_approval(mr_name):
@@ -272,6 +365,13 @@ def approve_transfer(mr_name):
 			exc=frappe.PermissionError,
 		)
 
+	# v2.14.1 — HARD BLOCK before ANY mutation (no save/submit/SE/status change yet).
+	# If any stock item lacks a valuation rate in its source warehouse, raise a popup
+	# naming the item(s). This is what prevented the old "stuck Approved, no Stock
+	# Entry" bug: the throw happens before the status flip below, so the MR stays in
+	# its current (recoverable) state and the approver sets the rate first.
+	_block_if_missing_valuation(doc)
+
 	# v2.9.9.11/12 — Direct approval path is restricted to AMENDED drafts only.
 	# Fresh drafts must go through Submit → Pending → Approve to enforce
 	# separation of duties (creator cannot self-approve their own fresh doc).
@@ -332,19 +432,31 @@ def approve_transfer(mr_name):
 		except Exception:
 			pass
 
-	# Update MR status regardless of SE outcome (per spec — surface SE error to user)
+	# v2.14.1 — Status is ATOMIC with Stock Entry creation. The MR is marked
+	# "Approved" ONLY when the draft Stock Entry was actually created, so it can
+	# never be left "Approved" with no backing Stock Entry (the v2.14.0 stuck-state
+	# bug). The zero-valuation case is already hard-blocked above; this else-branch
+	# remains as defense-in-depth for any OTHER (e.g. insufficient-stock) SE failure —
+	# the MR keeps its current status (recoverable) and the error is shown to the user.
+	if not se_name:
+		doc.add_comment(
+			"Comment",
+			_("Stock Entry creation FAILED (error: {0}). Approval was NOT recorded — "
+			  "please resolve the issue and approve again.").format(se_error or "unknown"),
+		)
+		frappe.db.commit()
+		frappe.throw(
+			_("Stock Entry could not be created, so the transfer was NOT approved:") +
+			"<br><br>" + frappe.utils.escape_html(se_error or "unknown") +
+			"<br><br>" + _("Please resolve the issue and approve again."),
+			title=_("Stock Entry Creation Failed"),
+		)
+
 	doc.db_set("ts_mr_status", "Approved", update_modified=False)
-	if se_name:
-		doc.add_comment(
-			"Comment",
-			_("Approved by {0}. Draft Stock Entry {1} created.").format(user, se_name),
-		)
-	else:
-		doc.add_comment(
-			"Comment",
-			_("Approved by {0}. Stock Entry creation deferred (error: {1}). "
-			  "Please create Stock Entry manually.").format(user, se_error or "unknown"),
-		)
+	doc.add_comment(
+		"Comment",
+		_("Approved by {0}. Draft Stock Entry {1} created.").format(user, se_name),
+	)
 
 	# v2.9.9.10 — defensive: notification failure must NEVER block approval
 	try: _notify_creator(doc.name, "approved", stock_entry=se_name)
@@ -357,11 +469,7 @@ def approve_transfer(mr_name):
 		"status": "ok",
 		"ts_mr_status": "Approved",
 		"stock_entry": se_name,
-		"message": (
-			_("Approved. Draft Stock Entry {0} created — please review + submit it.").format(se_name)
-			if se_name
-			else _("Approved, but Stock Entry creation failed: {0}. Create manually.").format(se_error)
-		),
+		"message": _("Approved. Draft Stock Entry {0} created — please review + submit it.").format(se_name),
 	}
 
 

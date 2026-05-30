@@ -1218,9 +1218,39 @@ function _load_transfer_context(frm) {
 					frappe.set_route("Form", "Stock Entry", ctx.stock_entry);
 				}, __("Stores Workflow")).addClass("btn-info");
 			}
+
+			// v2.14.1 — flag items with no valuation rate in their source
+			// warehouse so the approver sets a rate BEFORE approving (the
+			// transfer hard-blocks on approve otherwise).
+			_show_transfer_valuation_banner(frm);
 		},
 		error(err) {
 			console.error("Transfer context load failed:", err);
+		},
+	});
+}
+
+function _show_transfer_valuation_banner(frm) {
+	// v2.14.1 — red banner listing item lines that have no valuation rate in their
+	// source warehouse. Reuses the existing _show_ts_banner DOM pattern (NOT
+	// set_headline, per MR_BANNERS lock). Clears itself when nothing is unvalued.
+	frappe.call({
+		method: "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.get_transfer_valuation_warnings",
+		args: {mr_name: frm.doc.name},
+		callback(r) {
+			const key = "transfer-valuation";
+			$(frm.page.wrapper).find(`.ts-banner[data-key="${key}"]`).remove();
+			const warnings = (r && r.message && r.message.warnings) || [];
+			if (!warnings.length) return;
+			const rows = warnings.map((w) =>
+				`<li><b>${frappe.utils.escape_html(w.item_code)}</b> — `
+				+ `${frappe.utils.escape_html(w.item_name || "")} `
+				+ `<span style="color:#6b7280">(in ${frappe.utils.escape_html(w.warehouse)})</span></li>`
+			).join("");
+			const html = `<b>⚠ Valuation rate missing.</b> Set a valuation rate for the `
+				+ `following item(s) before approving this transfer `
+				+ `(Stock &rarr; Stock Reconciliation):<ul style="margin:6px 0 0">${rows}</ul>`;
+			_show_ts_banner(frm, key, html, "#fef2f2", "#dc2626");
 		},
 	});
 }
