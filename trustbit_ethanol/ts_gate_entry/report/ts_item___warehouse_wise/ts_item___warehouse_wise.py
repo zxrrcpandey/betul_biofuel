@@ -379,10 +379,12 @@ def _render_tree(rows, cc_value, filters):
 				"item_code": item_code, "uom": uom,
 				"qty": i_qty, "valuation_rate": i_rate, "stock_value": i_value,
 				"pct_of_parent": (i_value / cc_total_value * 100) if cc_total_value else 0,
-				"indent": 1, "is_group": (len(grp) > 1), "parent": cc_label,
+				"indent": 1, "is_group": 1, "parent": cc_label,
 			})
-			# Warehouse leaves only if item is in >1 warehouse OR if only 1 WH show it for consistency
-			if len(grp) > 1 or filters.get("show_single_wh_breakdown"):
+			# Always emit the warehouse leaf — even a single-warehouse item must show
+			# WHICH warehouse holds the stock (the report's core purpose). `grp` is
+			# always non-empty here, so this guard is effectively unconditional.
+			if grp:
 				for wh_row in sorted(grp, key=lambda x: flt(x["stock_value"]), reverse=True):
 					data.append({
 						"name": f"↳ {wh_row['warehouse']}",
