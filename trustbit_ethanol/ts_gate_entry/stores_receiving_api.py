@@ -588,14 +588,32 @@ def create_grn_for_weighed_token(token_name, manual_qty_per_po=None):
 
 	net_weight_kg = flt(wb_log.net_weight)
 
-	# Build PR items — use weighbridge net weight, same logic as locked create_grn
-	pr_items = []
+	# v2.14.x — PARTIAL RECEIPT: only build PR lines for items that actually arrived
+	# on this truck. KG items are always received (weighbridge weight). Non-KG items
+	# are received only when Stores entered a manual qty > 0; blank/zero non-KG items
+	# are SKIPPED (no PR line) and stay open on the PO for a future truck/token
+	# (multi-token-per-PO is allowed until the PO is 100% received — ts_gate_entry.py).
+	received_ge_items = []
 	for ge_item in ge_items:
+		if _is_kg_uom(ge_item["uom"] or "Kg"):
+			received_ge_items.append(ge_item)
+		else:
+			_mq = ((manual_qty_per_po or {}).get(ge_item["purchase_order"] or po.name) or {}).get(ge_item["item_code"])
+			if _mq is not None and flt(_mq) > 0:
+				received_ge_items.append(ge_item)
+	if not received_ge_items:
+		frappe.throw(_("Enter a received quantity greater than zero for at least one item."))
+
+	# Build PR items — use weighbridge net weight, same logic as locked create_grn.
+	# Weight is distributed over RECEIVED items only, so a skipped non-KG line never
+	# silently shrinks a KG line's weight share (partial-receipt mass-loss guard).
+	pr_items = []
+	for ge_item in received_ge_items:
 		# Weight distribution for multi-item deliveries
-		if len(ge_items) == 1:
+		if len(received_ge_items) == 1:
 			weight_kg = net_weight_kg
 		else:
-			total_ordered = sum(flt(i["ordered_qty"]) for i in ge_items)
+			total_ordered = sum(flt(i["ordered_qty"]) for i in received_ge_items)
 			proportion = flt(ge_item["ordered_qty"]) / total_ordered if total_ordered else 1
 			weight_kg = net_weight_kg * proportion
 

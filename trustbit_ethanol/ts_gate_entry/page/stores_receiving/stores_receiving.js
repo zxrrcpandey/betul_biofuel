@@ -304,7 +304,7 @@ function _sr_open_manual_qty_dialog(btn, token, summary) {
 			<td>${poLink}</td>
 			<td>${itemLabel}</td>
 			<td>${ordered}</td>
-			<td><input type="number" step="0.001" min="0" class="form-control sr-qty-input" data-idx="${idx}" placeholder="${Number(row.ordered_qty || 0)}"></td>
+			<td><input type="number" step="0.001" min="0" class="form-control sr-qty-input" data-idx="${idx}" placeholder="received qty (blank = skip)"></td>
 			<td><span class="sr-density" data-idx="${idx}" style="color:#6b7280; font-size:12px;">—</span></td>
 		</tr>`;
 	}).join("");
@@ -313,6 +313,7 @@ function _sr_open_manual_qty_dialog(btn, token, summary) {
 		<div style="margin-bottom:12px;">
 			<div style="font-weight:600;">Token ${safeToken}</div>
 			<div style="color:#6b7280; font-size:13px;">Weighbridge Net: <strong>${wbNet}</strong> KG <span style="color:#9ca3af;">(reference — not auto-applied to non-KG items)</span></div>
+			<div style="color:#6b7280; font-size:12px; margin-top:4px;">Enter the qty received for each item on this truck. <strong>Leave a row blank to skip</strong> items not delivered — they stay open on the PO for a future delivery. (Ordered qty is shown in the Ordered column.)</div>
 		</div>
 		<table class="table table-bordered" style="font-size:13px; margin-bottom:0;">
 			<thead><tr style="background:#f8fafc;">
@@ -330,30 +331,34 @@ function _sr_open_manual_qty_dialog(btn, token, summary) {
 		primary_action: async () => {
 			// Build manual_qty_per_po from inputs.
 			const manual = {};
-			let bad = null;
+			let receivedCount = 0;
 			dlg.$wrapper.find(".sr-qty-input").each(function () {
 				const idx = Number($(this).data("idx"));
 				const row = rows[idx];
 				if (!row) return;
+				if (_sr_is_kg_uom(row.uom)) {
+					// KG rows are weighbridge-driven and always received; backend uses
+					// wb_net_kg directly (not manual_qty_per_po). Count as received.
+					receivedCount++;
+					return;
+				}
 				const raw = $(this).val();
 				const qty = Number(raw);
 				if (!raw || !(qty > 0)) {
-					bad = row.item_code;
-					return false;
-				}
-				if (_sr_is_kg_uom(row.uom)) {
-					// KG rows don't go into manual_qty_per_po — backend uses wb_net_kg
-					// directly for KG items. Skip.
+					// PARTIAL RECEIPT: a blank/zero non-KG row = not received on this
+					// truck → skip it (no PR line); it stays open on the PO for a
+					// future truck/token. Not an error.
 					return;
 				}
 				const po = row.po_name || "";
 				if (!manual[po]) manual[po] = {};
 				manual[po][row.item_code] = qty;
+				receivedCount++;
 			});
-			if (bad) {
+			if (receivedCount === 0) {
 				frappe.msgprint({
-					title: "Missing quantity",
-					message: `Enter a received quantity greater than zero for item ${frappe.utils.escape_html(bad)}.`,
+					title: "No quantity entered",
+					message: "Enter a received quantity for at least one item. Rows left blank are skipped (not received on this truck) and stay open on the PO.",
 					indicator: "orange",
 				});
 				return;
