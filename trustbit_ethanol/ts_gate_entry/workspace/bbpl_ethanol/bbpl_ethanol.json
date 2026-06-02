@@ -171,6 +171,23 @@
    "link_type": "Report",
    "onboard": 1,
    "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Production",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "TS Production Entry",
+   "link_to": "TS Production Entry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
   }
  ],
  "modified": "2026-03-09 20:30:00",
@@ -230,6 +247,15 @@
   },
   {
    "role": "AVP"
+  },
+  {
+   "role": "Manufacturing User"
+  },
+  {
+   "role": "Manufacturing Manager"
+  },
+  {
+   "role": "Stock Manager"
   }
  ],
  "sequence_id": 0,

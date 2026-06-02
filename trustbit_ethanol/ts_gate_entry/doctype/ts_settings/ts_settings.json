@@ -622,6 +622,59 @@
    "label": "Cascade Delete — Executor User",
    "permlevel": 1,
    "description": "v2.13.0 — when a Stock User or Stock Manager initiates a cascade delete and CEO approves, the engine needs to run as a user with Super Admin role (to hold the delete grants on PR/PI/Token/GE/WB/QI/DS). Set this field to the dedicated executor user. When empty, the engine falls back to the first enabled user with the Super Admin role. If neither is available, the cascade fails closed with a clear remediation message — no destructive operation. Super Admin–initiated cascades are UNAFFECTED (they continue to run as the initiator)."
+  },
+  {
+   "fieldname": "tab_production",
+   "fieldtype": "Tab Break",
+   "label": "Production"
+  },
+  {
+   "fieldname": "production_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Production Entry (Variance + CEO Approval)"
+  },
+  {
+   "fieldname": "ts_production_entry_enabled",
+   "fieldtype": "Check",
+   "label": "Production Entry Flow Enabled",
+   "default": "0",
+   "permlevel": 1,
+   "description": "Kill switch (v2.15.0). When OFF, the Production Entry submit/approve/reject endpoints are disabled. Ships OFF — set the warehouses + tolerance below, then turn ON."
+  },
+  {
+   "fieldname": "ts_production_variance_tolerance_pct",
+   "fieldtype": "Percent",
+   "label": "Production Variance Tolerance (%)",
+   "permlevel": 1,
+   "description": "If material-consumption variance OR produced-qty variance exceeds this %, the Production Entry is routed to the CEO for approval. Fail-closed: if blank, every run is treated as a breach. (No JSON default — so a configured value is never clobbered on migrate; Lesson 227.)"
+  },
+  {
+   "fieldname": "column_break_production",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ts_production_wip_warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Default WIP / Source Warehouse",
+   "permlevel": 1,
+   "description": "Raw materials are consumed FROM this warehouse on the Manufacture Stock Entry (per-row override available)."
+  },
+  {
+   "fieldname": "ts_production_fg_warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Default Finished-Goods Warehouse",
+   "permlevel": 1,
+   "description": "Finished product (e.g. Ethanol) is received INTO this warehouse."
+  },
+  {
+   "fieldname": "ts_production_byproduct_warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Default By-Product Warehouse",
+   "permlevel": 1,
+   "description": "By-products (DDGS / DWGS / LCO2 / ...) are received INTO this warehouse (per-row override available)."
   }
  ],
  "issingle": 1,

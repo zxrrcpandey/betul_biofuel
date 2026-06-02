@@ -1,0 +1,363 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-06-01 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "production_section",
+  "naming_series",
+  "bom",
+  "production_item",
+  "production_item_name",
+  "company",
+  "column_break_1",
+  "posting_date",
+  "shift",
+  "batch_ref",
+  "work_order",
+  "qty_section",
+  "standard_batches",
+  "standard_qty",
+  "actual_produced_qty",
+  "production_uom",
+  "column_break_2",
+  "material_variance_pct",
+  "produced_variance_pct",
+  "variance_breach",
+  "material_coverage_warning",
+  "status_section",
+  "ts_variance_status",
+  "linked_stock_entry",
+  "column_break_3",
+  "submitted_by",
+  "posted_by",
+  "rejected_by",
+  "rejection_reason",
+  "actual_produced_qty_at_submission",
+  "materials_section",
+  "materials",
+  "byproducts_section",
+  "byproducts"
+ ],
+ "fields": [
+  {
+   "fieldname": "production_section",
+   "fieldtype": "Section Break",
+   "label": "Production Details"
+  },
+  {
+   "default": "PROD-.YYYY.-",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Naming Series",
+   "no_copy": 1,
+   "options": "PROD-.YYYY.-",
+   "print_hide": 1
+  },
+  {
+   "bold": 1,
+   "description": "The Standard BOM. Defines expected materials + by-products (scrap items) per produced quantity.",
+   "fieldname": "bom",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Standard BOM",
+   "options": "BOM",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "bom.item",
+   "fieldname": "production_item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Finished Item",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "bom.item_name",
+   "fieldname": "production_item_name",
+   "fieldtype": "Data",
+   "label": "Finished Item Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "bom.company",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Today",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Posting Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "shift",
+   "fieldtype": "Data",
+   "label": "Shift"
+  },
+  {
+   "fieldname": "batch_ref",
+   "fieldtype": "Data",
+   "label": "Batch / Lot Ref"
+  },
+  {
+   "description": "Optional. Production Entry can reference the BOM directly without a Work Order.",
+   "fieldname": "work_order",
+   "fieldtype": "Link",
+   "label": "Work Order (optional)",
+   "options": "Work Order"
+  },
+  {
+   "fieldname": "qty_section",
+   "fieldtype": "Section Break",
+   "label": "Standard vs Actual — Output"
+  },
+  {
+   "default": "1",
+   "description": "How many standard BOM batches this run represents. Standard qty = BOM qty × batches. Use >1 to run a multiple of the BOM batch without a false produced-variance.",
+   "fieldname": "standard_batches",
+   "fieldtype": "Float",
+   "label": "Standard Batches (× BOM qty)"
+  },
+  {
+   "description": "BOM quantity × Standard Batches (the standard output target for this run). Read-only.",
+   "fieldname": "standard_qty",
+   "fieldtype": "Float",
+   "label": "Standard Produced Qty",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "description": "Actual quantity of finished product produced in this run.",
+   "fieldname": "actual_produced_qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Actual Produced Qty",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "bom.uom",
+   "fieldname": "production_uom",
+   "fieldtype": "Data",
+   "label": "UOM",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Max material consumption variance across all materials (actual vs BOM standard).",
+   "fieldname": "material_variance_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Material Variance %",
+   "read_only": 1
+  },
+  {
+   "description": "Produced qty variance (actual vs standard, scaled to materials consumed).",
+   "fieldname": "produced_variance_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Produced Variance %",
+   "read_only": 1
+  },
+  {
+   "description": "Set when material OR produced variance exceeds the tolerance in TS Settings. A breach requires CEO approval.",
+   "fieldname": "variance_breach",
+   "fieldtype": "Check",
+   "label": "Variance Breach",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.material_coverage_warning",
+   "description": "Warns if a material defined on the BOM is missing from this entry (it would not be consumed).",
+   "fieldname": "material_coverage_warning",
+   "fieldtype": "Small Text",
+   "label": "BOM Coverage Warning",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status_section",
+   "fieldtype": "Section Break",
+   "label": "Status & Approval"
+  },
+  {
+   "bold": 1,
+   "default": "Draft",
+   "fieldname": "ts_variance_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Draft\nPending CEO\nPosted\nRejected\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "linked_stock_entry",
+   "fieldtype": "Link",
+   "label": "Manufacture Stock Entry",
+   "no_copy": 1,
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "submitted_by",
+   "fieldtype": "Link",
+   "label": "Submitted By",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "posted_by",
+   "fieldtype": "Link",
+   "label": "Posted / Approved By",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rejected_by",
+   "fieldtype": "Link",
+   "label": "Rejected By",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.ts_variance_status=='Rejected'",
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Rejection Reason",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "actual_produced_qty_at_submission",
+   "fieldtype": "Float",
+   "hidden": 1,
+   "label": "Actual Produced Qty (at submission)",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "materials_section",
+   "fieldtype": "Section Break",
+   "label": "Materials Consumed (Standard vs Actual)"
+  },
+  {
+   "fieldname": "materials",
+   "fieldtype": "Table",
+   "label": "Materials",
+   "options": "TS Production Material"
+  },
+  {
+   "fieldname": "byproducts_section",
+   "fieldtype": "Section Break",
+   "label": "By-Products (Standard vs Actual)"
+  },
+  {
+   "description": "Auto-filled from the BOM's Scrap Items. Data-driven — works for Ethanol and any other BOM.",
+   "fieldname": "byproducts",
+   "fieldtype": "Table",
+   "label": "By-Products",
+   "options": "TS Production By-Product"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "links": [],
+ "modified": "2026-06-01 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Production Entry",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "CEO",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "MD",
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

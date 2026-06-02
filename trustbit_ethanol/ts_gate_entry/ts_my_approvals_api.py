@@ -55,6 +55,13 @@ ROLE_STATUS_MAP = {
 			"CEO": ["Pending CEO"],
 		},
 	},
+	# v2.15.0 — Production variance approvals surface in the CEO inbox.
+	"TS Production Entry": {
+		"field": "ts_variance_status",
+		"roles": {
+			"CEO": ["Pending CEO"],
+		},
+	},
 }
 
 # Submission-owner field per doctype for the "My Submissions" toggle.
@@ -63,6 +70,7 @@ SUBMITTER_FIELD_MAP = {
 	"Purchase Order":            "ts_submitted_by",
 	"TS Post Dated Entry Request": None,  # uses owner
 	"TS Budget Proposal":        None,    # uses owner
+	"TS Production Entry":       "submitted_by",
 }
 
 
@@ -128,7 +136,8 @@ def get_user_pending_statuses(doctype):
 
 @frappe.whitelist()
 def get_my_pending_counts():
-	"""Return count of pending-my-approval docs across all 4 doctypes.
+	"""Return count of pending-my-approval docs across the configured doctypes
+	(every entry in ROLE_STATUS_MAP — MR / PO / Post-Dated / Budget / Production).
 
 	Used by the 'MR & PO Dashboard' workspace tiles. Returns per-doctype
 	count + status list (for hover tooltip) + link to filtered list.
