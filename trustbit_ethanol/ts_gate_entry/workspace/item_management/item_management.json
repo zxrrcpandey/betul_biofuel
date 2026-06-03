@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Item Code Builder</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Item Creator\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Item Code Settings\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Custom Variants\",\"col\":4}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#06b6d4,#0891b2);padding:20px 24px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:20px;font-weight:700;'>Item Management</div></div>\", \"col\": 12}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Total Active Items\", \"col\": 3}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Items Without Code\", \"col\": 3}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Total Item Groups\", \"col\": 3}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Total Brands\", \"col\": 3}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class='h6'>Quick Access</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Item Creator\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"TS Bulk Item Creator\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Item Code Settings\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Custom Variants\", \"col\": 4}}]",
  "creation": "2026-03-09 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -13,14 +13,9 @@
  "links": [
   {
    "hidden": 0,
-   "label": "Item Creator",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
+   "is_query_report": 0,
    "label": "Create New Item",
+   "link_count": 0,
    "link_to": "item-creator",
    "link_type": "Page",
    "onboard": 1,
@@ -28,7 +23,9 @@
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
    "label": "TS Item Creator (List)",
+   "link_count": 0,
    "link_to": "TS Item Creator",
    "link_type": "DocType",
    "onboard": 0,
@@ -36,14 +33,9 @@
   },
   {
    "hidden": 0,
-   "label": "Settings & Masters",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
+   "is_query_report": 0,
    "label": "TS Item Code Settings",
+   "link_count": 0,
    "link_to": "TS Item Code Settings",
    "link_type": "DocType",
    "onboard": 0,
@@ -51,7 +43,9 @@
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
    "label": "TS Variant",
+   "link_count": 0,
    "link_to": "TS Variant",
    "link_type": "DocType",
    "onboard": 0,
@@ -62,32 +56,59 @@
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "Item Management",
- "number_cards": [],
+ "number_cards": [
+  {
+   "number_card_name": "Total Active Items"
+  },
+  {
+   "number_card_name": "Items Without Code"
+  },
+  {
+   "number_card_name": "Total Item Groups"
+  },
+  {
+   "number_card_name": "Total Brands"
+  }
+ ],
  "owner": "Administrator",
- "parent_page": "Trustbit Ethanol",
+ "parent_page": "BBPL Ethanol",
  "public": 1,
  "roles": [
-  {"role": "IT Head"},
-  {"role": "Stores User"},
-  {"role": "System Manager"}
+  {
+   "role": "IT Head"
+  },
+  {
+   "role": "Stores User"
+  },
+  {
+   "role": "System Manager"
+  }
  ],
  "sequence_id": 8,
  "shortcuts": [
   {
-   "color": "Green",
-   "label": "Create New Item",
-   "link_to": "item-creator",
-   "type": "Page"
-  },
-  {
+   "doc_view": "",
    "label": "Item Code Settings",
    "link_to": "TS Item Code Settings",
    "type": "DocType"
   },
   {
+   "doc_view": "",
    "label": "Custom Variants",
    "link_to": "TS Variant",
    "type": "DocType"
+  },
+  {
+   "doc_view": "",
+   "label": "New Item Creator",
+   "link_to": "item-creator",
+   "type": "Page"
+  },
+  {
+   "doc_view": "",
+   "label": "TS Bulk Item Creator",
+   "link_to": "item-bulk-import",
+   "type": "Page"
   }
  ],
  "title": "Item Management"

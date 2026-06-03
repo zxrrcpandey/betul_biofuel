@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Actions</b></span>\",\"col\":12}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Todays Visitors\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Currently Inside\",\"col\":4}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"All Visitors\",\"col\":4}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#6366f1,#4f46e5);padding:20px 24px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:20px;font-weight:700;'>Admin Reception</div></div>\", \"col\": 12}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Visitors Inside Campus\", \"col\": 3}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Visitors Today\", \"col\": 3}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Visitors Inside Plant\", \"col\": 3}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Total Visitors Master\", \"col\": 3}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class='h6'>Quick Access</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Gate Pass\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Todays Visitors\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Currently Inside\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"All Visitors\", \"col\": 4}}]",
  "creation": "2026-03-20 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -15,6 +15,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Visitor Management",
+   "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -23,6 +24,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "TS Token",
+   "link_count": 0,
    "link_to": "TS Token",
    "link_type": "DocType",
    "onboard": 1,
@@ -32,6 +34,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "TS Visitor",
+   "link_count": 0,
    "link_to": "TS Visitor",
    "link_type": "DocType",
    "onboard": 1,
@@ -41,6 +44,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "TS Gate Pass Destination",
+   "link_count": 0,
    "link_to": "TS Gate Pass Destination",
    "link_type": "DocType",
    "onboard": 0,
@@ -51,13 +55,30 @@
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "Admin Reception",
- "number_cards": [],
+ "number_cards": [
+  {
+   "number_card_name": "Visitors Inside Campus"
+  },
+  {
+   "number_card_name": "Visitors Today"
+  },
+  {
+   "number_card_name": "Visitors Inside Plant"
+  },
+  {
+   "number_card_name": "Total Visitors Master"
+  }
+ ],
  "owner": "Administrator",
- "parent_page": "Trustbit Ethanol",
+ "parent_page": "BBPL Ethanol",
  "public": 1,
  "roles": [
-  {"role": "Admin Reception"},
-  {"role": "System Manager"}
+  {
+   "role": "Admin Reception"
+  },
+  {
+   "role": "System Manager"
+  }
  ],
  "sequence_id": 8,
  "shortcuts": [

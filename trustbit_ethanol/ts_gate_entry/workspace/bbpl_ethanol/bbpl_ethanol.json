@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Betul Bio Fuel Pvt. Ltd. - Ethanol Division</b></span>\",\"col\":12}},{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Vehicles Inside - Main\",\"col\":3}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Today - Main\",\"col\":3}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Exited Today - Main\",\"col\":3}},{\"id\":\"h2\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Gate Entry Operations</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Token\",\"col\":3}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Gate Entry\",\"col\":3}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Weighbridge Log\",\"col\":3}},{\"id\":\"h3\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Reports</b></span>\",\"col\":12}},{\"id\":\"s5\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Tracker - Main\",\"col\":4}},{\"id\":\"s6\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Turnaround Report - Main\",\"col\":4}},{\"id\":\"s7\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Settings - Main\",\"col\":4}},{\"id\":\"h4\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Item Management</b></span>\",\"col\":12}},{\"id\":\"s8\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Item Creator\",\"col\":4}},{\"id\":\"s9\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Item Creator\",\"col\":4}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#1a365d,#2563eb);padding:24px 28px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:22px;font-weight:700;'>Betul Biofuel Pvt. Ltd.</div><div style='font-size:13px;opacity:0.8;margin-top:4px;'>Ethanol Division \\u2014 Gate Entry Operations</div></div>\", \"col\": 12}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Vehicles Inside - Main\", \"col\": 3}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Total Today - Main\", \"col\": 3}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Exited Today - Main\", \"col\": 3}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Active Unloading - Main\", \"col\": 3}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #3b82f6;padding-bottom:6px;'>Quick Actions</div>\", \"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:8px 0;'><a href='/app/ts-token' style='text-decoration:none;'><div style='background:linear-gradient(135deg,#3b82f6,#1d4ed8);padding:20px 16px;border-radius:10px;color:#fff;text-align:center;transition:transform 0.2s;cursor:pointer;'><div style='font-size:28px;margin-bottom:6px;'>&#128663;</div><div style='font-size:14px;font-weight:600;'>Tokens</div><div style='font-size:11px;opacity:0.8;'>G1 Gate Entry</div></div></a><a href='/app/ts-gate-entry' style='text-decoration:none;'><div style='background:linear-gradient(135deg,#10b981,#059669);padding:20px 16px;border-radius:10px;color:#fff;text-align:center;cursor:pointer;'><div style='font-size:28px;margin-bottom:6px;'>&#128203;</div><div style='font-size:14px;font-weight:600;'>Gate Entry</div><div style='font-size:11px;opacity:0.8;'>G2 Operations</div></div></a><a href='/app/ts-weighbridge-log' style='text-decoration:none;'><div style='background:linear-gradient(135deg,#f59e0b,#d97706);padding:20px 16px;border-radius:10px;color:#fff;text-align:center;cursor:pointer;'><div style='font-size:28px;margin-bottom:6px;'>&#9878;</div><div style='font-size:14px;font-weight:600;'>Weighbridge</div><div style='font-size:11px;opacity:0.8;'>Weight Capture</div></div></a><a href='/app/ts-unloading-entry' style='text-decoration:none;'><div style='background:linear-gradient(135deg,#8b5cf6,#7c3aed);padding:20px 16px;border-radius:10px;color:#fff;text-align:center;cursor:pointer;'><div style='font-size:28px;margin-bottom:6px;'>&#128230;</div><div style='font-size:14px;font-weight:600;'>Unloading</div><div style='font-size:11px;opacity:0.8;'>Material Handling</div></div></a></div>\", \"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:8px 0;'><a href='/app/ts-quality-inspection' style='text-decoration:none;'><div style='background:linear-gradient(135deg,#ef4444,#dc2626);padding:20px 16px;border-radius:10px;color:#fff;text-align:center;cursor:pointer;'><div style='font-size:28px;margin-bottom:6px;'>&#128300;</div><div style='font-size:14px;font-weight:600;'>Quality</div><div style='font-size:11px;opacity:0.8;'>Inspection</div></div></a><a href='/app/ts-deduction-sheet' style='text-decoration:none;'><div style='background:linear-gradient(135deg,#ec4899,#db2777);padding:20px 16px;border-radius:10px;color:#fff;text-align:center;cursor:pointer;'><div style='font-size:28px;margin-bottom:6px;'>&#128209;</div><div style='font-size:14px;font-weight:600;'>Deductions</div><div style='font-size:11px;opacity:0.8;'>Grading Sheet</div></div></a><a href='/app/ts-settings' style='text-decoration:none;'><div style='background:linear-gradient(135deg,#64748b,#475569);padding:20px 16px;border-radius:10px;color:#fff;text-align:center;cursor:pointer;'><div style='font-size:28px;margin-bottom:6px;'>&#9881;</div><div style='font-size:14px;font-weight:600;'>Settings</div><div style='font-size:11px;opacity:0.8;'>Configuration</div></div></a><a href='/app/item-creator' style='text-decoration:none;'><div style='background:linear-gradient(135deg,#06b6d4,#0891b2);padding:20px 16px;border-radius:10px;color:#fff;text-align:center;cursor:pointer;'><div style='font-size:28px;margin-bottom:6px;'>&#128230;</div><div style='font-size:14px;font-weight:600;'>Item Creator</div><div style='font-size:11px;opacity:0.8;'>New Items</div></div></a></div>\", \"col\": 12}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #10b981;padding-bottom:6px;'>Reports & Dashboards</div>\", \"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:8px 0;'><a href='/app/query-report/TS Live Vehicle Tracker' style='text-decoration:none;'><div style='background:#fff;border:2px solid #3b82f6;padding:16px;border-radius:10px;text-align:center;cursor:pointer;'><div style='font-size:24px;margin-bottom:4px;'>&#128205;</div><div style='font-size:14px;font-weight:600;color:#1e40af;'>Live Vehicle Tracker</div><div style='font-size:11px;color:#64748b;'>Real-time tracking</div></div></a><a href='/app/query-report/TS Vehicle Turnaround Report' style='text-decoration:none;'><div style='background:#fff;border:2px solid #10b981;padding:16px;border-radius:10px;text-align:center;cursor:pointer;'><div style='font-size:24px;margin-bottom:4px;'>&#9202;</div><div style='font-size:14px;font-weight:600;color:#166534;'>Turnaround Report</div><div style='font-size:11px;color:#64748b;'>Cycle time analysis</div></div></a><a href='/app/gate-operations-dashboard' style='text-decoration:none;'><div style='background:#fff;border:2px solid #f59e0b;padding:16px;border-radius:10px;text-align:center;cursor:pointer;'><div style='font-size:24px;margin-bottom:4px;'>&#128200;</div><div style='font-size:14px;font-weight:600;color:#92400e;'>Gate Dashboard</div><div style='font-size:11px;color:#64748b;'>Operations overview</div></div></a></div>\", \"col\": 12}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #8b5cf6;padding-bottom:6px;'>Master Data</div>\", \"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:8px 0;'><a href='/app/ts-transport-master' style='text-decoration:none;'><div style='background:#f8fafc;border:1px solid #e2e8f0;padding:14px;border-radius:8px;text-align:center;cursor:pointer;'><div style='font-size:13px;font-weight:600;color:#334155;'>Transport Master</div></div></a><a href='/app/ts-vehicle-master' style='text-decoration:none;'><div style='background:#f8fafc;border:1px solid #e2e8f0;padding:14px;border-radius:8px;text-align:center;cursor:pointer;'><div style='font-size:13px;font-weight:600;color:#334155;'>Vehicle Master</div></div></a><a href='/app/ts-item-creator' style='text-decoration:none;'><div style='background:#f8fafc;border:1px solid #e2e8f0;padding:14px;border-radius:8px;text-align:center;cursor:pointer;'><div style='font-size:13px;font-weight:600;color:#334155;'>Item Creator List</div></div></a><a href='/app/ts-variant' style='text-decoration:none;'><div style='background:#f8fafc;border:1px solid #e2e8f0;padding:14px;border-radius:8px;text-align:center;cursor:pointer;'><div style='font-size:13px;font-weight:600;color:#334155;'>Custom Variants</div></div></a></div>\", \"col\": 12}}]",
  "creation": "2026-03-07 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -24,6 +24,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "TS Token",
+   "link_count": 0,
    "link_to": "TS Token",
    "link_type": "DocType",
    "onboard": 1,
@@ -33,6 +34,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "TS Gate Entry",
+   "link_count": 0,
    "link_to": "TS Gate Entry",
    "link_type": "DocType",
    "onboard": 1,
@@ -42,6 +44,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "TS Weighbridge Log",
+   "link_count": 0,
    "link_to": "TS Weighbridge Log",
    "link_type": "DocType",
    "onboard": 1,
@@ -51,13 +54,16 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Quality & Deductions",
+   "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
    "label": "TS Quality Inspection",
+   "link_count": 0,
    "link_to": "TS Quality Inspection",
    "link_type": "DocType",
    "onboard": 1,
@@ -65,7 +71,9 @@
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
    "label": "TS Deduction Sheet",
+   "link_count": 0,
    "link_to": "TS Deduction Sheet",
    "link_type": "DocType",
    "onboard": 1,
@@ -75,6 +83,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Master Data",
+   "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -83,6 +92,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "TS Transport Master",
+   "link_count": 0,
    "link_to": "TS Transport Master",
    "link_type": "DocType",
    "onboard": 0,
@@ -92,6 +102,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "TS Vehicle Master",
+   "link_count": 0,
    "link_to": "TS Vehicle Master",
    "link_type": "DocType",
    "onboard": 0,
@@ -101,13 +112,16 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Item Management",
+   "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
    "label": "Item Creator (Wizard)",
+   "link_count": 0,
    "link_to": "item-creator",
    "link_type": "Page",
    "onboard": 1,
@@ -115,7 +129,9 @@
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
    "label": "TS Item Creator",
+   "link_count": 0,
    "link_to": "TS Item Creator",
    "link_type": "DocType",
    "onboard": 0,
@@ -123,7 +139,9 @@
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
    "label": "TS Item Code Settings",
+   "link_count": 0,
    "link_to": "TS Item Code Settings",
    "link_type": "DocType",
    "onboard": 0,
@@ -131,7 +149,9 @@
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
    "label": "TS Variant",
+   "link_count": 0,
    "link_to": "TS Variant",
    "link_type": "DocType",
    "onboard": 0,
@@ -141,6 +161,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Settings & Reports",
+   "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -149,6 +170,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "TS Settings",
+   "link_count": 0,
    "link_to": "TS Settings",
    "link_type": "DocType",
    "onboard": 0,
@@ -158,6 +180,7 @@
    "hidden": 0,
    "is_query_report": 1,
    "label": "TS Live Vehicle Tracker",
+   "link_count": 0,
    "link_to": "TS Live Vehicle Tracker",
    "link_type": "Report",
    "onboard": 1,
@@ -167,25 +190,9 @@
    "hidden": 0,
    "is_query_report": 1,
    "label": "TS Vehicle Turnaround Report",
+   "link_count": 0,
    "link_to": "TS Vehicle Turnaround Report",
    "link_type": "Report",
-   "onboard": 1,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Production",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "TS Production Entry",
-   "link_to": "TS Production Entry",
-   "link_type": "DocType",
    "onboard": 1,
    "type": "Link"
   }
@@ -279,21 +286,27 @@
    "type": "DocType"
   },
   {
+   "doc_view": "",
    "label": "Live Tracker - Main",
    "link_to": "TS Live Vehicle Tracker",
+   "report_ref_doctype": "TS Token",
    "type": "Report"
   },
   {
+   "doc_view": "",
    "label": "Turnaround Report - Main",
    "link_to": "TS Vehicle Turnaround Report",
+   "report_ref_doctype": "TS Token",
    "type": "Report"
   },
   {
+   "doc_view": "",
    "label": "TS Settings - Main",
    "link_to": "TS Settings",
    "type": "DocType"
   },
   {
+   "doc_view": "",
    "label": "Item Creator",
    "link_to": "item-creator",
    "type": "Page"
@@ -305,5 +318,5 @@
    "type": "DocType"
   }
  ],
- "title": "Trustbit Ethanol"
+ "title": "BBPL Ethanol"
 }

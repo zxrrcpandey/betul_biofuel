@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Awaiting PO Link\",\"col\":4}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Sent to Weighbridge\",\"col\":4}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Sent to Stores\",\"col\":4}},{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quick Actions</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New Gate Entry\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Pending Tokens\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Todays Gate Entries\",\"col\":4}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#10b981,#059669);padding:20px 24px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:20px;font-weight:700;'>G2 Gate Operations</div></div>\", \"col\": 12}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Awaiting PO Link\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Sent to Weighbridge\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Sent to Stores\", \"col\": 4}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class='h6'>Quick Access</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Gate Entry\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Pending Tokens\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Todays Gate Entries\", \"col\": 4}}]",
  "creation": "2026-03-07 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -15,13 +15,16 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Gate Operations",
+   "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
    "label": "TS Gate Entry",
+   "link_count": 0,
    "link_to": "TS Gate Entry",
    "link_type": "DocType",
    "onboard": 1,
@@ -29,7 +32,9 @@
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
    "label": "TS Token",
+   "link_count": 0,
    "link_to": "TS Token",
    "link_type": "DocType",
    "onboard": 0,
@@ -41,16 +46,26 @@
  "module": "TS Gate Entry",
  "name": "G2 Gate Operations",
  "number_cards": [
-  {"number_card_name": "Awaiting PO Link"},
-  {"number_card_name": "Sent to Weighbridge"},
-  {"number_card_name": "Sent to Stores"}
+  {
+   "number_card_name": "Awaiting PO Link"
+  },
+  {
+   "number_card_name": "Sent to Weighbridge"
+  },
+  {
+   "number_card_name": "Sent to Stores"
+  }
  ],
  "owner": "Administrator",
- "parent_page": "Trustbit Ethanol",
+ "parent_page": "BBPL Ethanol",
  "public": 1,
  "roles": [
-  {"role": "G2 Gate Operator"},
-  {"role": "System Manager"}
+  {
+   "role": "G2 Gate Operator"
+  },
+  {
+   "role": "System Manager"
+  }
  ],
  "sequence_id": 2,
  "shortcuts": [
