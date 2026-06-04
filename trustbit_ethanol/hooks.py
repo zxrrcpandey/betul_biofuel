@@ -191,6 +191,7 @@ doc_events = {
 		"onload": "trustbit_ethanol.ts_gate_entry.ts_mr_available_refresh.refresh_actual_qty_onload",
 	},
 	"Purchase Receipt": {
+		"before_validate": "trustbit_ethanol.ts_gate_entry.ts_use_location_propagation.purchase_receipt_backfill",
 		"validate": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.validate_unique_supplier_bill",
 		"before_save": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_before_save_audit_guard",
 		"on_submit": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_on_submit_update_token",
@@ -198,6 +199,7 @@ doc_events = {
 		"after_delete": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_after_delete_clear_token",
 	},
 	"Purchase Invoice": {
+		"before_validate": "trustbit_ethanol.ts_gate_entry.ts_use_location_propagation.purchase_invoice_backfill",
 		"validate": [
 			"trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_qc_approved",
 			"trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_ds_required",
