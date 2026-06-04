@@ -296,6 +296,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_cascade_delete.seed_cascade_delete",
 	# v2.16.4 — read-only Vehicle Number Custom Field on Purchase Receipt (after vehicle_origin)
 	"trustbit_ethanol.ts_gate_entry.ts_vehicle_origin_propagation.seed_pr_vehicle_number_field",
+	# v2.17.3 — Stock Reconciliation: lock create/submit to IT Head only (Stock Manager -> read-only)
+	"trustbit_ethanol.ts_gate_entry.ts_stock_recon_perms.seed_stock_recon_permissions",
 ]
 
 # Scheduled Tasks
