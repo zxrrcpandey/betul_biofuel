@@ -6,7 +6,7 @@
      C — Approved Direct PO (new, no token)
    ═══════════════════════════════════════════════════════════════════ */
 
-const SR_VERSION = "v6.1-2026-04-20-v2.8.9";
+const SR_VERSION = "v6.2-2026-06-04-token-search";
 const SR_API = "trustbit_ethanol.ts_gate_entry.stores_receiving_api";
 console.log("[stores-receiving]", SR_VERSION, "loaded");
 
@@ -66,6 +66,16 @@ function _sr_render_shell() {
 			</div>
 		</div>
 
+		<div class="sr-search" id="sr-search">
+			<div class="sr-search-bar">
+				<svg class="sr-search-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12.9 14.32a8 8 0 1 1 1.41-1.41l5.35 5.33-1.42 1.42-5.33-5.34zM8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12z"/></svg>
+				<input type="text" id="sr-search-input" class="sr-search-input" placeholder="Search token #, vehicle, supplier or PO…" autocomplete="off" spellcheck="false">
+				<button class="sr-search-clear" id="sr-search-clear" title="Clear" aria-label="Clear search" style="display:none">&times;</button>
+			</div>
+			<div class="sr-search-meta" id="sr-search-meta" style="display:none"><span class="sr-search-count" id="sr-search-count"></span></div>
+			<div class="sr-result" id="sr-result" style="display:none"></div>
+		</div>
+
 		<div class="sr-section sr-section-draft" id="sr-section-d" style="display:none">
 			<div class="sr-section-head sr-draft-head">
 				<div class="sr-section-title">Draft PRs — Pending Review & Submit</div>
@@ -91,6 +101,7 @@ function _sr_render_shell() {
 		</div>
 
 	`);
+	_sr_bind_search();
 }
 
 async function _sr_load_all() {
@@ -115,6 +126,7 @@ async function _sr_load_all() {
 		}
 		$("#sr-count-a").text(counts.section_a_count ?? _sr_state.a.length);
 		$("#sr-count-b").text(counts.section_b_count ?? _sr_state.b.length);
+		_sr_reapply_filter();
 	} catch (e) {
 		frappe.msgprint({ title: "Error", message: frappe.utils.escape_html(e.message || String(e)), indicator: "red" });
 		console.error(e);
@@ -129,7 +141,7 @@ function _sr_render_section_d() {
 		'<th>Purchase Receipt</th><th>Supplier</th><th>PO</th><th>Source</th>',
 		'<th>Total</th><th>Items</th><th>Age</th><th>Action</th>',
 		'</tr></thead><tbody>',
-		...rows.map(r => `<tr>
+		...rows.map(r => `<tr data-search="${_sr_search_key(r)}">
 			<td><strong>${_sr_esc(r.pr)}</strong></td>
 			<td>${_sr_esc(r.supplier)}</td>
 			<td>${r.po ? `<a href="/app/purchase-order/${encodeURIComponent(r.po)}" target="_blank">${_sr_esc(r.po)}</a>` : "—"}</td>
@@ -155,7 +167,7 @@ function _sr_render_section_a() {
 		'<th>Token</th><th>Vehicle</th><th>Supplier</th><th>PO</th>',
 		'<th>Net Wt (Kg)</th><th>Inspection</th><th>Age</th><th>Action</th>',
 		'</tr></thead><tbody>',
-		...rows.map(r => `<tr>
+		...rows.map(r => `<tr data-search="${_sr_search_key(r)}">
 			<td><strong>${_sr_esc(r.token)}</strong></td>
 			<td>${_sr_esc(r.vehicle)}</td>
 			<td>${_sr_esc(r.supplier)}</td>
@@ -432,7 +444,7 @@ function _sr_render_section_b() {
 		'<th>Token</th><th>Vehicle</th><th>Supplier</th><th>PO</th>',
 		'<th>Items</th><th>Inspection</th><th>Age</th><th>Action</th>',
 		'</tr></thead><tbody>',
-		...rows.map(r => `<tr>
+		...rows.map(r => `<tr data-search="${_sr_search_key(r)}">
 			<td><strong>${_sr_esc(r.token)}</strong></td>
 			<td>${_sr_esc(r.vehicle)}</td>
 			<td>${_sr_esc(r.supplier)}</td>
@@ -452,56 +464,60 @@ function _sr_render_section_b() {
 		frappe.set_route("Form", "TS Token", $(this).data("token"));
 	});
 	$("#sr-b-body .sr-create-b").on("click", function () {
-		const btn = $(this);
-		const token = btn.data("token");
-		console.log("[stores-receiving] Section B click → token", token);
-		_sr_confirm_create(`Create GRN from token ${token}? This will create a Purchase Receipt using PO ordered qty.`, async () => {
-			console.log("[stores-receiving] Confirmed, calling API", token);
-			btn.prop("disabled", true).text("Creating…");
-			let succeeded = false;
-			try {
-				const r = await frappe.call({
-					method: `${SR_API}.create_grn_for_non_weighing_token`,
-					args: { token_name: token },
-					freeze: true, freeze_message: "Creating GRN…",
+		_sr_section_b_start($(this), $(this).data("token"));
+	});
+}
+
+// Section B (Non-RM no-weighing) GRN creation — extracted so both the Section B
+// table button and the Token Search result card can invoke the same flow.
+function _sr_section_b_start(btn, token) {
+	console.log("[stores-receiving] Section B start → token", token);
+	_sr_confirm_create(`Create GRN from token ${token}? This will create a Purchase Receipt using PO ordered qty.`, async () => {
+		console.log("[stores-receiving] Confirmed, calling API", token);
+		btn.prop("disabled", true).text("Creating…");
+		let succeeded = false;
+		try {
+			const r = await frappe.call({
+				method: `${SR_API}.create_grn_for_non_weighing_token`,
+				args: { token_name: token },
+				freeze: true, freeze_message: "Creating GRN…",
+			});
+			console.log("[stores-receiving] API response", r);
+			if (r && r.message && r.message.purchase_receipt) {
+				succeeded = true;
+				frappe.show_alert({
+					message: `Draft Purchase Receipt ${r.message.purchase_receipt} created — review quantities and submit.`,
+					indicator: "blue"
+				}, 8);
+				frappe.set_route("Form", "Purchase Receipt", r.message.purchase_receipt);
+			} else {
+				console.warn("[stores-receiving] API returned without purchase_receipt:", r);
+				frappe.msgprint({
+					title: "GRN not created",
+					message: "The server returned no Purchase Receipt. Check the browser console and server error log.",
+					indicator: "orange"
 				});
-				console.log("[stores-receiving] API response", r);
-				if (r && r.message && r.message.purchase_receipt) {
-					succeeded = true;
-					frappe.show_alert({
-						message: `Draft Purchase Receipt ${r.message.purchase_receipt} created — review quantities and submit.`,
-						indicator: "blue"
-					}, 8);
-					frappe.set_route("Form", "Purchase Receipt", r.message.purchase_receipt);
-				} else {
-					console.warn("[stores-receiving] API returned without purchase_receipt:", r);
-					frappe.msgprint({
-						title: "GRN not created",
-						message: "The server returned no Purchase Receipt. Check the browser console and server error log.",
-						indicator: "orange"
-					});
-				}
-			} catch (e) {
-				console.error("[stores-receiving] API error:", e);
-				// Frappe's native AJAX error handler already shows a dialog with the
-				// server's frappe.throw message. Only show our fallback for non-server
-				// errors (network, JS) where _server_messages is absent.
-				const has_server_msg = e && (e._server_messages || (e.responseJSON && e.responseJSON._server_messages));
-				if (!has_server_msg) {
-					frappe.msgprint({
-						title: "GRN creation failed",
-						message: frappe.utils.escape_html(
-							(e && (e.message || e.statusText)) || "Network or script error — see browser console."
-						),
-						indicator: "red"
-					});
-				}
-			} finally {
-				if (!succeeded) {
-					btn.prop("disabled", false).text("Create GRN");
-				}
 			}
-		});
+		} catch (e) {
+			console.error("[stores-receiving] API error:", e);
+			// Frappe's native AJAX error handler already shows a dialog with the
+			// server's frappe.throw message. Only show our fallback for non-server
+			// errors (network, JS) where _server_messages is absent.
+			const has_server_msg = e && (e._server_messages || (e.responseJSON && e.responseJSON._server_messages));
+			if (!has_server_msg) {
+				frappe.msgprint({
+					title: "GRN creation failed",
+					message: frappe.utils.escape_html(
+						(e && (e.message || e.statusText)) || "Network or script error — see browser console."
+					),
+					indicator: "red"
+				});
+			}
+		} finally {
+			if (!succeeded) {
+				btn.prop("disabled", false).text("Create GRN");
+			}
+		}
 	});
 }
 
@@ -535,6 +551,192 @@ function _sr_insp_badge(s) {
 		"Rejected": "sr-bad",
 	}[s] || "sr-muted";
 	return `<span class="sr-insp ${cls}">${_sr_esc(s || "-")}</span>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TOKEN SEARCH (v6.2) — live in-page filter + server fallback lookup
+// ═══════════════════════════════════════════════════════════════════
+
+let _sr_search_q = "";
+
+// Lowercased, attribute-safe key stashed on each row's data-search attribute.
+function _sr_search_key(r) {
+	const parts = [r.token, r.pr, r.vehicle, r.supplier, r.po];
+	return frappe.utils.escape_html(parts.filter(Boolean).join(" ").toLowerCase());
+}
+
+function _sr_bind_search() {
+	const $input = $("#sr-search-input");
+	if (!$input.length) return;
+	$input.off("input.sr").on("input.sr", function () {
+		const q = String($(this).val() || "");
+		_sr_search_q = q;
+		$("#sr-search-clear").toggle(!!q);
+		_sr_apply_filter(q);
+	});
+	$input.off("keydown.sr").on("keydown.sr", function (e) {
+		if (e.key === "Enter") { e.preventDefault(); _sr_server_search(); }
+	});
+	$("#sr-search-clear").off("click.sr").on("click.sr", function () {
+		$("#sr-search-input").val("");
+		_sr_search_q = "";
+		$(this).hide();
+		_sr_apply_filter("");
+		$("#sr-search-input").focus();
+	});
+}
+
+// Pure client-side filter over already-rendered rows. No backend call.
+function _sr_apply_filter(q) {
+	const query = String(q || "").trim().toLowerCase();
+	const $result = $("#sr-result");
+	const $meta = $("#sr-search-meta");
+
+	if (!query) {
+		$("#sr-container tr[data-search]").removeClass("sr-row-hidden");
+		$("#sr-container tr.sr-item-row").removeClass("sr-row-hidden");
+		$("#sr-container .sr-section").removeClass("sr-section-filtered-empty");
+		$meta.hide();
+		$result.hide().empty();
+		return;
+	}
+
+	let totalShown = 0, totalRows = 0;
+	$("#sr-container .sr-section").each(function () {
+		const $sec = $(this);
+		let shown = 0;
+		$sec.find("tr[data-search]").each(function () {
+			const $row = $(this);
+			totalRows++;
+			const hit = ($row.attr("data-search") || "").indexOf(query) !== -1;
+			$row.toggleClass("sr-row-hidden", !hit);
+			const $next = $row.next("tr.sr-item-row");
+			if ($next.length) $next.toggleClass("sr-row-hidden", !hit);
+			if (hit) { shown++; totalShown++; }
+		});
+		const hasRows = $sec.find("tr[data-search]").length > 0;
+		$sec.toggleClass("sr-section-filtered-empty", hasRows && shown === 0);
+	});
+
+	$("#sr-search-count").text(`Showing ${totalShown} of ${totalRows}`);
+	$meta.show();
+
+	if (totalShown === 0) {
+		$result.html(
+			`<div class="sr-result-fallback">
+				<div class="sr-result-fallback-text">No pending token matches <strong class="sr-result-q">${_sr_esc(q)}</strong>. It may already be received, exited, or still upstream.</div>
+				<button class="btn btn-sm btn-primary sr-result-search-all" id="sr-search-all">Search all tokens</button>
+			</div>`
+		).show();
+		$("#sr-search-all").off("click").on("click", () => _sr_server_search());
+	} else {
+		$result.hide().empty();
+	}
+}
+
+function _sr_reapply_filter() {
+	if (_sr_search_q && String(_sr_search_q).trim()) {
+		_sr_apply_filter(_sr_search_q);
+	}
+}
+
+// Server fallback — look up ANY token in any state.
+async function _sr_server_search() {
+	const q = String($("#sr-search-input").val() || "").trim();
+	const $result = $("#sr-result");
+	if (!q) {
+		frappe.show_alert({ message: "Type a token number, vehicle, supplier or PO first.", indicator: "orange" }, 4);
+		return;
+	}
+	$result.html(`<div class="sr-result-loading"><span class="sr-spinner"></span> Searching all tokens for <strong class="sr-result-q">${_sr_esc(q)}</strong>…</div>`).show();
+	try {
+		const r = await frappe.call({ method: `${SR_API}.search_token`, args: { query: q } });
+		_sr_render_search_result(r && r.message ? r.message : { count: 0, results: [], query: q });
+	} catch (e) {
+		console.error("[stores-receiving] search_token error:", e);
+		const has_server_msg = e && (e._server_messages || (e.responseJSON && e.responseJSON._server_messages));
+		if (has_server_msg) {
+			$result.hide().empty();  // Frappe's native dialog already shows the server message
+		} else {
+			$result.html(`<div class="sr-result-error">Could not search tokens. <button class="btn btn-xs btn-default sr-result-retry">Retry</button></div>`).show();
+			$result.find(".sr-result-retry").on("click", () => _sr_server_search());
+		}
+	}
+}
+
+function _sr_render_search_result(res) {
+	const $result = $("#sr-result");
+	const q = res.query || "";
+	const results = res.results || [];
+
+	if (!results.length) {
+		$result.html(
+			`<div class="sr-result-empty">No token found matching <strong class="sr-result-q">${_sr_esc(q)}</strong>. Check the token number, or open the <a href="/app/ts-token" target="_blank">Token list</a>.</div>`
+		).show();
+		return;
+	}
+
+	const cards = results.map(r => {
+		const poLink = r.po ? `<a href="/app/purchase-order/${encodeURIComponent(r.po)}" target="_blank">${_sr_esc(r.po)}</a>` : "—";
+		const createBtn = r.receivable
+			? `<button class="btn btn-xs btn-success sr-result-create" data-token="${_sr_esc(r.token)}" data-path="${_sr_esc(r.grn_path || "")}">Create GRN</button>`
+			: "";
+		const note = (!r.receivable && r.reason)
+			? `<div class="sr-result-note">${_sr_esc(r.reason)}</div>` : "";
+		return `<div class="sr-result-card ${r.receivable ? "" : "sr-result-warn"}">
+			<div class="sr-result-card-head">
+				<div class="sr-result-token">
+					<span class="sr-result-token-no">${_sr_esc(r.token)}</span>
+					${_sr_status_badge(r.status)}
+				</div>
+				<span class="sr-result-found-tag">Found via full search</span>
+			</div>
+			<div class="sr-result-grid">
+				<div class="sr-result-field"><div class="sr-result-lbl">Vehicle</div><div class="sr-result-val">${_sr_esc(r.vehicle) || "—"}</div></div>
+				<div class="sr-result-field"><div class="sr-result-lbl">Supplier</div><div class="sr-result-val">${_sr_esc(r.supplier) || "—"}</div></div>
+				<div class="sr-result-field"><div class="sr-result-lbl">PO</div><div class="sr-result-val">${poLink}</div></div>
+				<div class="sr-result-field"><div class="sr-result-lbl">Inspection</div><div class="sr-result-val">${_sr_insp_badge(r.inspection_status)}</div></div>
+				<div class="sr-result-field"><div class="sr-result-lbl">Age</div><div class="sr-result-val">${_sr_age(r.age_hours)}</div></div>
+			</div>
+			${note}
+			<div class="sr-result-actions">
+				<button class="btn btn-xs btn-default sr-open-token" data-token="${_sr_esc(r.token)}">Open Token</button>
+				${createBtn}
+			</div>
+		</div>`;
+	}).join("");
+
+	const capNote = res.capped
+		? `<div class="sr-search-meta" style="display:block">Showing first ${results.length} matches — refine your search to narrow down.</div>`
+		: "";
+	$result.html(cards + capNote).show();
+
+	$result.find(".sr-open-token").on("click", function () {
+		frappe.set_route("Form", "TS Token", $(this).data("token"));
+	});
+	$result.find(".sr-result-create").on("click", function () {
+		const btn = $(this);
+		const token = btn.data("token");
+		const path = String(btn.data("path") || "");
+		if (path === "A") {
+			_sr_section_a_start(btn, token);
+		} else if (path === "B") {
+			_sr_section_b_start(btn, token);
+		} else {
+			frappe.msgprint({ title: "Cannot receive", message: "This token is not in a receivable state.", indicator: "orange" });
+		}
+	});
+}
+
+function _sr_status_badge(s) {
+	const cls = {
+		"Tare Weighed": "sr-ok", "Gross Weighed": "sr-warn",
+		"Inside": "sr-warn", "Generated": "sr-muted", "Token Generated": "sr-muted",
+		"GRN Created": "sr-muted", "Received": "sr-muted",
+		"Exited": "sr-muted", "Plant Exited": "sr-muted", "Campus Exited": "sr-muted",
+		"Rejected": "sr-bad", "Cancelled": "sr-bad",
+	}[s] || "sr-muted";
+	return `<span class="sr-status ${cls}">${_sr_esc(s || "-")}</span>`;
 }
 
 const SR_CSS = `
@@ -597,4 +799,68 @@ const SR_CSS = `
 .sr-source-c { background:#dcfce7; color:#166534; }
 [data-theme="dark"] .sr-source-b { background:rgba(30,64,175,0.2); color:#93c5fd; }
 [data-theme="dark"] .sr-source-c { background:rgba(22,101,52,0.2); color:#86efac; }
+
+/* ── Token Search (v6.2) ─────────────────────────────────────────── */
+.sr-search { margin: -4px 0 18px; }
+.sr-search-bar { position:relative; display:flex; align-items:center; background: var(--card-bg, #ffffff); border:1px solid var(--border-color, #e2e8f0); border-radius:10px; padding:0 12px; transition:border-color .12s, box-shadow .12s; }
+.sr-search-bar:focus-within { border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,0.12); }
+.sr-search-icon { color: var(--text-muted, #94a3b8); flex:0 0 auto; }
+.sr-search-input { flex:1 1 auto; border:0; outline:0; background:transparent; padding:12px 10px; font-size:14px; color: var(--text-color); }
+.sr-search-input::placeholder { color: var(--text-muted, #94a3b8); }
+.sr-search-clear { flex:0 0 auto; border:0; background:transparent; color: var(--text-muted, #94a3b8); font-size:22px; line-height:1; cursor:pointer; padding:0 4px; border-radius:6px; }
+.sr-search-clear:hover { color: var(--text-color); background: var(--fg-color, #f1f5f9); }
+.sr-search-meta { margin:8px 2px 0; font-size:12px; color: var(--text-muted); }
+.sr-search-count { font-variant-numeric: tabular-nums; }
+[data-theme="dark"] .sr-search-bar { background:#1f2937; border-color:#374151; }
+[data-theme="dark"] .sr-search-bar:focus-within { border-color:#60a5fa; box-shadow:0 0 0 3px rgba(96,165,250,0.18); }
+[data-theme="dark"] .sr-search-clear:hover { background:#111827; }
+.sr-row-hidden { display:none !important; }
+.sr-section-filtered-empty { display:none !important; }
+.sr-result { margin-top:14px; }
+.sr-result-fallback { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; background: var(--fg-color, #f8fafc); border:1px dashed var(--border-color, #cbd5e1); border-radius:10px; padding:14px 16px; }
+.sr-result-fallback-text { font-size:13px; color: var(--text-muted); }
+.sr-result-q { color: var(--text-color); }
+[data-theme="dark"] .sr-result-fallback { background:#111827; border-color:#374151; }
+.sr-result-loading { display:flex; align-items:center; gap:10px; font-size:13px; color: var(--text-muted); background: var(--card-bg, #ffffff); border:1px solid var(--border-color, #e2e8f0); border-radius:10px; padding:16px 18px; }
+.sr-spinner { width:15px; height:15px; border:2px solid var(--border-color, #e2e8f0); border-top-color:#2563eb; border-radius:50%; display:inline-block; animation:sr-spin .7s linear infinite; }
+@keyframes sr-spin { to { transform:rotate(360deg); } }
+[data-theme="dark"] .sr-result-loading { background:#1f2937; border-color:#374151; }
+[data-theme="dark"] .sr-spinner { border-color:#374151; border-top-color:#60a5fa; }
+.sr-result-card { background: var(--card-bg, #ffffff); border:1px solid var(--border-color, #e2e8f0); border-left:4px solid #2563eb; border-radius:10px; padding:16px 18px; margin-bottom:10px; }
+.sr-result-card.sr-result-warn { border-left-color:#f59e0b; }
+.sr-result-card-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.sr-result-token { display:flex; align-items:center; gap:10px; }
+.sr-result-token-no { font-size:16px; font-weight:700; color: var(--text-color); }
+.sr-result-found-tag { font-size:10px; text-transform:uppercase; letter-spacing:0.4px; color: var(--text-muted); background: var(--fg-color, #f1f5f9); border-radius:10px; padding:3px 9px; }
+.sr-status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
+.sr-result-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px 18px; margin-bottom:12px; }
+.sr-result-lbl { font-size:10px; text-transform:uppercase; letter-spacing:0.4px; color: var(--text-muted); margin-bottom:3px; }
+.sr-result-val { font-size:13px; color: var(--text-color); }
+.sr-result-note { font-size:12px; color: var(--text-muted); background: var(--fg-color, #f8fafc); border-radius:8px; padding:8px 12px; margin-bottom:12px; }
+.sr-result-actions { display:flex; gap:8px; flex-wrap:wrap; }
+[data-theme="dark"] .sr-result-card { background:#1f2937; border-color:#374151; border-left-color:#60a5fa; }
+[data-theme="dark"] .sr-result-card.sr-result-warn { border-left-color:#fbbf24; }
+[data-theme="dark"] .sr-result-found-tag { background:#374151; color:#9ca3af; }
+[data-theme="dark"] .sr-result-note { background:#111827; }
+.sr-status.sr-ok { background:#dcfce7; color:#166534; }
+.sr-status.sr-warn { background:#fef3c7; color:#92400e; }
+.sr-status.sr-bad { background:#fee2e2; color:#991b1b; }
+.sr-status.sr-muted { background:#f1f5f9; color:#64748b; }
+[data-theme="dark"] .sr-status.sr-ok { background:rgba(22,163,74,0.2); color:#86efac; }
+[data-theme="dark"] .sr-status.sr-warn { background:rgba(217,119,6,0.2); color:#fcd34d; }
+[data-theme="dark"] .sr-status.sr-bad { background:rgba(239,68,68,0.2); color:#fca5a5; }
+[data-theme="dark"] .sr-status.sr-muted { background:rgba(100,116,139,0.2); color:#cbd5e1; }
+.sr-result-empty { font-size:13px; color: var(--text-muted); background: var(--card-bg, #ffffff); border:1px solid var(--border-color, #e2e8f0); border-radius:10px; padding:16px 18px; text-align:center; }
+.sr-result-error { display:flex; align-items:center; justify-content:center; gap:10px; font-size:13px; color:#991b1b; background:#fee2e2; border:1px solid #fecaca; border-radius:10px; padding:14px 18px; }
+[data-theme="dark"] .sr-result-empty { background:#1f2937; border-color:#374151; }
+[data-theme="dark"] .sr-result-error { background:rgba(239,68,68,0.12); border-color:rgba(239,68,68,0.3); color:#fca5a5; }
+@media (max-width: 768px) {
+  .sr-search { margin-top:0; }
+  .sr-search-input { font-size:16px; padding:11px 8px; }
+  .sr-result-fallback { flex-direction:column; align-items:stretch; }
+  .sr-result-fallback .sr-result-search-all { width:100%; }
+  .sr-result-grid { grid-template-columns:repeat(2,1fr); gap:10px 12px; }
+  .sr-result-card-head { align-items:flex-start; }
+  .sr-result-actions .btn { flex:1 1 auto; }
+}
 `;

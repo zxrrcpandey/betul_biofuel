@@ -215,6 +215,178 @@ def get_section_c_direct_po():
 	return _fetch_section_c_direct_po()
 
 
+# ═══════════════════════════════════════════════════════════════════════
+#  TOKEN SEARCH (v6.2) — read-only lookup for the dashboard search box
+# ═══════════════════════════════════════════════════════════════════════
+
+# Token statuses past the receivable window (mirror of the guards inside
+# create_grn_for_non_weighing_token).
+_TERMINAL_TOKEN_STATUSES = (STATUS_GRN_CREATED, "Exited", "Campus Exited", "Plant Exited", "Cancelled")
+
+# Cap on partial-match results — bounds query cost AND disclosure surface.
+_SEARCH_LIMIT = 25
+
+
+@frappe.whitelist()
+def search_token(query=None):
+	"""Read-only: find ANY TS Token by number / vehicle / supplier / PO.
+
+	Powers the Stores Receiving Dashboard "search all tokens" fallback. The
+	client first filters the already-loaded rows in-page; only when nothing
+	matches does it call this to locate a token in ANY state.
+
+	Read-only — performs no writes, so GET is correct (Lesson 175 mandates POST
+	only for *mutations*). Page access is gated by _check_read(); each candidate
+	is additionally filtered through has_permission so the search never discloses
+	a token the caller could not otherwise read (User Permissions honored).
+	"""
+	_check_read()
+
+	q = (query or "").strip()
+	if not q:
+		frappe.throw(_("Enter a token number, vehicle, supplier or PO to search."))
+	if len(q) > 140:
+		frappe.throw(_("Search term is too long."))
+
+	names = []
+	match_type = "none"
+
+	# 1) Exact token match first (Token name == token_number).
+	if frappe.db.exists("TS Token", q):
+		names = [q]
+		match_type = "exact"
+	else:
+		# 2) Parameterized partial match on token # / vehicle. Escape LIKE
+		#    wildcards in the user value so '%' / '_' are treated literally
+		#    (MariaDB default backslash escape char).
+		esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+		like = "%" + esc + "%"
+		rows = frappe.db.sql("""
+			SELECT t.name
+			FROM `tabTS Token` t
+			WHERE (t.name LIKE %s OR t.vehicle_number LIKE %s)
+			  AND t.docstatus != 2
+			ORDER BY t.entry_time DESC
+			LIMIT %s
+		""", (like, like, _SEARCH_LIMIT + 1), as_dict=True)
+		names = [r["name"] for r in rows]
+		# 3) Supplier / PO (on TS Gate Entry) — only when token/vehicle found
+		#    nothing, to keep the common path a single cheap query.
+		if not names:
+			ge_rows = frappe.db.sql("""
+				SELECT ge.token_number
+				FROM `tabTS Gate Entry` ge
+				WHERE ge.docstatus = 1
+				  AND IFNULL(ge.token_number, '') != ''
+				  AND (ge.supplier_name LIKE %s OR ge.purchase_order LIKE %s)
+				ORDER BY ge.creation DESC
+				LIMIT %s
+			""", (like, like, _SEARCH_LIMIT + 1), as_dict=True)
+			# de-dup token_numbers preserving order
+			seen = set()
+			names = [r["token_number"] for r in ge_rows
+					 if r["token_number"] not in seen and not seen.add(r["token_number"])]
+		if names:
+			match_type = "partial"
+
+	# Honor per-document read permission (User Permissions / row-level) — the
+	# page gate is not row-level, so filter each candidate explicitly.
+	names = [n for n in names if frappe.has_permission("TS Token", "read", doc=n)]
+
+	capped = len(names) > _SEARCH_LIMIT
+	names = names[:_SEARCH_LIMIT]
+
+	results = [r for r in (_build_token_search_result(n) for n in names) if r]
+
+	return {
+		"query": q,
+		"match_type": match_type if results else "none",
+		"count": len(results),
+		"capped": capped,
+		"results": results,
+	}
+
+
+def _build_token_search_result(token_name):
+	"""Assemble one result-card payload for a token. Reuses the inspection + age
+	helpers and classifies receivability by MIRRORING (never re-implementing)
+	the gate conditions of the create_grn_* POST endpoints."""
+	tok = frappe.db.get_value("TS Token", token_name,
+		["name", "vehicle_number", "status", "purpose", "entry_type",
+		 "docstatus", "purchase_receipt", "entry_time"],
+		as_dict=True)
+	if not tok:
+		return None
+
+	ge = frappe.db.get_value("TS Gate Entry",
+		{"token_number": tok["name"], "docstatus": 1},
+		["name", "purchase_order", "supplier_name", "material_flow", "requires_weighing"],
+		as_dict=True) or {}
+
+	insp_label = _get_inspection_status_label(tok["name"])
+	verdict = _classify_receivable(tok, ge, insp_label)
+
+	return {
+		"token": tok["name"],
+		"vehicle": tok.get("vehicle_number") or "",
+		"supplier": ge.get("supplier_name") or "",
+		"po": ge.get("purchase_order") or "",
+		"status": tok.get("status") or "",
+		"purpose": tok.get("purpose") or "",
+		"inspection_status": insp_label,
+		"age_hours": _age_hours(tok.get("entry_time")),
+		"receivable": verdict["receivable"],
+		"grn_path": verdict["grn_path"],
+		"reason": verdict["reason"],
+	}
+
+
+def _classify_receivable(tok, ge, insp_label):
+	"""Predict whether a token can have a GRN created, and via which dashboard
+	path (A = weighbridge-complete, B = Non-RM no-weighing). MIRRORS the guards
+	in create_grn_for_weighed_token / create_grn_for_non_weighing_token so the
+	UI shows the right button — the POST endpoints remain the authoritative gate.
+	Returns {receivable: bool, grn_path: 'A'|'B'|None, reason: str}."""
+	def no(reason):
+		return {"receivable": False, "grn_path": None, "reason": reason}
+
+	if (tok.get("entry_type") or "") != "Material":
+		return no("Not a Material token — no GRN.")
+	if tok.get("docstatus") == 2:
+		return no("Token is cancelled.")
+	if tok.get("purchase_receipt"):
+		return no("Already received — Purchase Receipt {0} exists.".format(tok["purchase_receipt"]))
+	if not ge:
+		return no("No submitted Gate Entry found for this token.")
+	if not ge.get("purchase_order"):
+		return no("No Purchase Order linked in the Gate Entry.")
+
+	gate_enabled = _get_inspection_gate_enabled()
+	status = tok.get("status") or ""
+
+	# Path A — weighbridge-complete (mirror create_grn_for_weighed_token).
+	if status == STATUS_TARE_WEIGHED:
+		# Inspection gate applies only to non-Raw-Material purpose in path A.
+		if tok.get("purpose") != "Raw Material" and gate_enabled and insp_label not in INSPECTION_PASS_STATES:
+			return no("Inspection is '{0}' — needs Quality approval before receiving.".format(insp_label))
+		return {"receivable": True, "grn_path": "A",
+				"reason": "Ready to receive (weighbridge complete)."}
+
+	# Path B — Non-RM without weighing (mirror create_grn_for_non_weighing_token).
+	if (ge.get("material_flow") or "") == FLOW_NON_RM and cint(ge.get("requires_weighing") or 0) == 0:
+		if status in _TERMINAL_TOKEN_STATUSES:
+			return no("Token status '{0}' does not allow GRN creation.".format(status))
+		if gate_enabled and insp_label not in INSPECTION_PASS_STATES:
+			return no("Inspection is '{0}' — needs Quality approval before receiving.".format(insp_label))
+		return {"receivable": True, "grn_path": "B",
+				"reason": "Ready to receive (Non-RM, no weighing)."}
+
+	# Otherwise not in a receivable state from this dashboard.
+	if status in _TERMINAL_TOKEN_STATUSES:
+		return no("Token status '{0}' — already processed or exited.".format(status))
+	return no("Not yet ready (status: '{0}'). Complete the gate / weighbridge flow first.".format(status or "—"))
+
+
 # ─── Internal fetch helpers (no auth — caller must check) ────────────
 
 def _fetch_section_d_drafts():
@@ -287,6 +459,14 @@ def _fetch_section_a_tokens():
 			["name", "purchase_order", "supplier_name", "material_flow"],
 			as_dict=True) or {}
 
+		# v6.2 — only list tokens that can ACTUALLY be received: mirror the
+		# create_grn_for_weighed_token guards (submitted Gate Entry + header PO).
+		# Without this, debris tokens (no GE / no PO) render a "Create GRN" button
+		# the POST endpoint immediately rejects. Such tokens remain discoverable
+		# via the Token Search lookup, which shows the blocking reason.
+		if not ge.get("name") or not ge.get("purchase_order"):
+			continue
+
 		wb = frappe.db.get_value("TS Weighbridge Log",
 			{"token_number": tok["name"]},
 			["net_weight"], as_dict=True) or {}
@@ -323,6 +503,7 @@ def _fetch_section_b_non_weighing():
 		WHERE ge.docstatus = 1
 		  AND ge.material_flow = %s
 		  AND IFNULL(ge.requires_weighing, 0) = 0
+		  AND IFNULL(ge.purchase_order, '') != ''
 		ORDER BY ge.creation ASC
 		LIMIT 500
 	""", (FLOW_NON_RM,), as_dict=True)
