@@ -34,3 +34,50 @@ def propagate_to_pi(doc, method=None):
         if (r.vehicle_origin or "").strip():
             doc.vehicle_origin = r.vehicle_origin
             return
+
+
+def seed_pr_vehicle_number_field():
+    """v2.16.4 — read-only 'Vehicle Number' Custom Field on Purchase Receipt,
+    placed right after vehicle_origin (Details tab). fetch_from the linked Token
+    for the form; pr_backfill_vehicle fills it server-side on GRN/programmatic PRs.
+    Idempotent; runs in after_migrate AFTER vehicle_origin is seeded."""
+    if frappe.db.exists("Custom Field", {"dt": "Purchase Receipt", "fieldname": "vehicle_number"}):
+        return
+    cf = frappe.get_doc({
+        "doctype": "Custom Field",
+        "dt": "Purchase Receipt",
+        "fieldname": "vehicle_number",
+        "fieldtype": "Data",
+        "label": "Vehicle Number",
+        "insert_after": "vehicle_origin",
+        "length": 140,
+        "read_only": 1,
+        "fetch_from": "ts_token.vehicle_number",
+        "fetch_if_empty": 1,
+        "description": "Truck/vehicle number — auto-fetched from the linked Gate Token.",
+    })
+    cf.flags.ignore_links = True
+    cf.insert(ignore_permissions=True, ignore_links=True)
+    frappe.db.updatedb("Purchase Receipt")
+    frappe.db.commit()
+
+
+def pr_backfill_vehicle(doc, method=None):
+    """PR.before_validate — fill vehicle_number + vehicle_origin from the linked
+    TS Token when EMPTY. fetch_from is client-only (doesn't fire on the GRN
+    'Get Items' mapper / programmatic creation), so the GRN-created PRs stay
+    blank without this. Fill-only-when-empty (never overwrites)."""
+    token = (doc.get("ts_token") or "").strip()
+    if not token:
+        return
+    need_num = not (doc.get("vehicle_number") or "").strip()
+    need_origin = not (doc.get("vehicle_origin") or "").strip()
+    if not (need_num or need_origin):
+        return
+    tok = frappe.db.get_value("TS Token", token, ["vehicle_number", "vehicle_origin"], as_dict=True)
+    if not tok:
+        return
+    if need_num and (tok.get("vehicle_number") or "").strip():
+        doc.vehicle_number = tok.vehicle_number
+    if need_origin and (tok.get("vehicle_origin") or "").strip():
+        doc.vehicle_origin = tok.vehicle_origin

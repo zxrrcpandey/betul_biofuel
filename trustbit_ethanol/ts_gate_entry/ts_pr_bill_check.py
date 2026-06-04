@@ -62,3 +62,25 @@ def validate_unique_supplier_bill(doc, method=None):
 		# Non-privileged users get a modal warning but save still proceeds
 		# (this is a warning, not a block — user can override by acknowledging).
 		frappe.msgprint(msg, title="Duplicate Invoice Warning", indicator="red", alert=True)
+
+
+def require_supplier_bill_on_submit(doc, method=None):
+	"""PR.before_submit — Supplier Invoice No + Date are MANDATORY before submitting.
+
+	v2.16.4 — enforced at SUBMIT (not on every save): the Stores Receiving
+	Dashboard / Token GRN create DRAFT Purchase Receipts that legitimately have no
+	supplier invoice yet at goods-receipt time. Drafts may be saved without these;
+	a finalized (submitted) PR must always record the supplier invoice.
+	"""
+	missing = []
+	if not (doc.get("bill_no") or "").strip():
+		missing.append("Supplier Invoice No")
+	if not doc.get("bill_date"):
+		missing.append("Supplier Invoice Date")
+	if missing:
+		frappe.throw(
+			"Please enter <b>{0}</b> before submitting this Purchase Receipt.".format(
+				" and ".join(missing)
+			),
+			title="Supplier Invoice Required",
+		)

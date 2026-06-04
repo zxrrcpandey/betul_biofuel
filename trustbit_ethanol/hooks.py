@@ -191,8 +191,12 @@ doc_events = {
 		"onload": "trustbit_ethanol.ts_gate_entry.ts_mr_available_refresh.refresh_actual_qty_onload",
 	},
 	"Purchase Receipt": {
-		"before_validate": "trustbit_ethanol.ts_gate_entry.ts_use_location_propagation.purchase_receipt_backfill",
+		"before_validate": [
+			"trustbit_ethanol.ts_gate_entry.ts_use_location_propagation.purchase_receipt_backfill",
+			"trustbit_ethanol.ts_gate_entry.ts_vehicle_origin_propagation.pr_backfill_vehicle",
+		],
 		"validate": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.validate_unique_supplier_bill",
+		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.require_supplier_bill_on_submit",
 		"before_save": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_before_save_audit_guard",
 		"on_submit": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_on_submit_update_token",
 		"on_cancel": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_on_cancel_clear_token",
@@ -283,6 +287,8 @@ after_migrate = [
 	# v2.11.0 — Token Cascade Delete System (Super Admin role + post-install setup)
 	"trustbit_ethanol.ts_gate_entry.setup_super_admin_role.seed_super_admin_role",
 	"trustbit_ethanol.ts_gate_entry.setup_cascade_delete.seed_cascade_delete",
+	# v2.16.4 — read-only Vehicle Number Custom Field on Purchase Receipt (after vehicle_origin)
+	"trustbit_ethanol.ts_gate_entry.ts_vehicle_origin_propagation.seed_pr_vehicle_number_field",
 ]
 
 # Scheduled Tasks
