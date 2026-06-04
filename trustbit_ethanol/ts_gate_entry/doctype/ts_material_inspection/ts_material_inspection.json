@@ -43,8 +43,8 @@
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
-   "options": "BBF-INSP-.YYYY.-.#####",
-   "default": "BBF-INSP-.YYYY.-.#####",
+   "options": "BBPL-INSP-.YYYY.-.#####",
+   "default": "BBPL-INSP-.YYYY.-.#####",
    "hidden": 1
   },
   {
