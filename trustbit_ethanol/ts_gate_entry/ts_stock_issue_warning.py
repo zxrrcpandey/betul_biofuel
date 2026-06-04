@@ -61,3 +61,51 @@ def warn_rejected_stock_in_warehouse(doc, method=None):
 		title="Rejected stock warning (informational)",
 		indicator="orange",
 	)
+
+
+# v2.16.5 — Material Issue mandatory fields
+# (Define Use Location / Item Remark / Cost Center / Project)
+_ISSUE_REQUIRED_FIELDS = (
+	("ts_delivery_location", "Define Use Location"),
+	("ts_item_remark", "Item Remark"),
+	("cost_center", "Cost Center"),
+	("project", "Project"),
+)
+
+
+def require_issue_fields_on_submit(doc, method=None):
+	"""Stock Entry before_submit hook — for a Material Issue, every item row must
+	carry Define Use Location, Item Remark, and Cost Center.
+
+	Enforced at SUBMIT (not save): the Stores Manager Independent flow
+	(ts_mr_transfer.approve_transfer) creates a DRAFT Material Issue Stock Entry
+	programmatically — drafts may exist incomplete, but a finalized (submitted)
+	issue must always record where the material is used, a remark, and the cost
+	centre it is charged to. Mirrors the v2.16.4 PR-invoice-at-submit pattern.
+	"""
+	if getattr(doc, "purpose", "") != "Material Issue":
+		return
+	if not doc.items:
+		return
+
+	problems = []
+	for row in doc.items:
+		missing = [
+			label for fieldname, label in _ISSUE_REQUIRED_FIELDS
+			if not (str(row.get(fieldname) or "").strip())
+		]
+		if missing:
+			problems.append((row.idx, missing))
+
+	if not problems:
+		return
+
+	lines = "".join(
+		f"<li>Row <b>{idx}</b>: {', '.join(missing)}</li>"
+		for idx, missing in problems
+	)
+	frappe.throw(
+		"Please fill the following mandatory field(s) before submitting this "
+		"Material Issue:<br><ul>" + lines + "</ul>",
+		title="Material Issue — Required Fields",
+	)

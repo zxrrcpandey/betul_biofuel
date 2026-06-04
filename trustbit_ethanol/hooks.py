@@ -148,6 +148,8 @@ doctype_js = {
 	"Material Request": "public/js/mr_approval.js",
 	"Purchase Receipt": "public/js/pr_pi_columns.js",
 	"Purchase Invoice": "public/js/pr_pi_columns.js",
+	# v2.16.5 — header Cost Center / Project cascade to item rows
+	"Stock Entry": "public/js/stock_entry_header_dims.js",
 }
 
 
@@ -220,7 +222,11 @@ doc_events = {
 		"on_submit": "trustbit_ethanol.ts_gate_entry.ts_qc_auto_reject.on_qi_submitted",
 	},
 	"Stock Entry": {
+		# v2.16.5 — header Cost Center / Project cascade (fill-blank) to item rows
+		"before_validate": "trustbit_ethanol.ts_gate_entry.ts_se_header_dimensions.cascade_se_header_dimensions",
 		"before_save": "trustbit_ethanol.ts_gate_entry.ts_stock_issue_warning.warn_rejected_stock_in_warehouse",
+		# v2.16.5 — Material Issue requires Define Use Location / Item Remark / Cost Center on every row (at submit)
+		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_stock_issue_warning.require_issue_fields_on_submit",
 		# v2.9.9 — revert linked Material Transfer MR back to Pending Stores Manager when SE is cancelled
 		# v2.15.0 — also flip a TS Production Entry to Cancelled when its Manufacture SE is cancelled
 		#           (both handlers early-return on non-matching purposes — mutually exclusive in effect)
@@ -237,6 +243,7 @@ doc_events = {
 # Setup custom fields on Purchase Receipt, Purchase Order, Material Request, Company, Item Group, Brand
 after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup.create_custom_fields",
+	"trustbit_ethanol.ts_gate_entry.ts_se_header_dimensions.seed_se_header_dimension_fields",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_gate_pass_destinations",
 	"trustbit_ethanol.ts_gate_entry.setup.seed_visiting_companies",
 	"trustbit_ethanol.ts_gate_entry.setup.migrate_store1_route",
