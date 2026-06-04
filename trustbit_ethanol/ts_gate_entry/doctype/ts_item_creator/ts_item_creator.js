@@ -7,16 +7,17 @@ frappe.ui.form.on("TS Item Creator", {
 	},
 
 	refresh(frm) {
-		// Lock all fields after item is created
-		if (frm.doc.status === "Created") {
+		// Lock all fields once the request is no longer an editable Draft
+		if (["Created", "Rejected", "Pending Approval"].includes(frm.doc.status)) {
 			_lock_all_fields(frm);
 		}
 
-		// Create Item button
+		// Create Item button — approver self-create on a Draft (one-step)
 		if (
 			frm.doc.status === "Draft" &&
 			!frm.is_new() &&
-			frm.doc.generated_item_code
+			frm.doc.generated_item_code &&
+			_is_item_approver()
 		) {
 			frm.add_custom_button(__("Create Item"), function () {
 				frappe.confirm(
@@ -28,6 +29,30 @@ frappe.ui.form.on("TS Item Creator", {
 					}
 				);
 			}, null).addClass("btn-primary");
+		}
+
+		// Approve / Reject — approver acting on a pending request
+		if (frm.doc.status === "Pending Approval" && !frm.is_new() && _is_item_approver()) {
+			frm.add_custom_button(__("Approve"), function () {
+				frappe.confirm(
+					`Approve and create Item <b>${frappe.utils.escape_html(frm.doc.generated_item_code || "")}</b>?`,
+					function () {
+						frm.call("approve_request").then(() => frm.reload_doc());
+					}
+				);
+			}, null).addClass("btn-primary");
+
+			frm.add_custom_button(__("Reject"), function () {
+				frappe.prompt(
+					[{ fieldname: "reason", fieldtype: "Small Text", label: __("Rejection Reason"), reqd: 1 }],
+					function (values) {
+						frm.call({ method: "reject_request", args: { reason: values.reason } })
+							.then(() => frm.reload_doc());
+					},
+					__("Reject Item Request"),
+					__("Reject")
+				);
+			});
 		}
 
 		// View Item button
@@ -45,11 +70,8 @@ frappe.ui.form.on("TS Item Creator", {
 		}
 
 		// Status indicator
-		if (frm.doc.status === "Created") {
-			frm.page.set_indicator(__("Created"), "green");
-		} else {
-			frm.page.set_indicator(__("Draft"), "orange");
-		}
+		const _ind = { Created: "green", Rejected: "red", "Pending Approval": "orange", Draft: "gray" };
+		frm.page.set_indicator(__(frm.doc.status || "Draft"), _ind[frm.doc.status] || "gray");
 
 		// Update preview on refresh
 		if (!frm.is_new()) {
@@ -141,6 +163,15 @@ frappe.ui.form.on("TS Item Creator", {
 		_update_preview(frm);
 	},
 });
+
+// ── Helper: client-side approver check (UX gate only — server re-checks) ──
+function _is_item_approver() {
+	if (frappe.session.user === "Administrator") return true;
+	const roles = frappe.user_roles || [];
+	return ["Stores User", "Stores Manager", "IT Head", "System Manager"].some((r) =>
+		roles.includes(r)
+	);
+}
 
 // ── Helper: Fetch company code ──
 function _fetch_company_code(frm) {

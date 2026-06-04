@@ -50,10 +50,32 @@ class TSItemCreator {
 		this._prompt_open = false;
 		this._category_code_fetching = false;
 
+		this._is_approver = false;
+
 		this._setup_fields();
 		this._bind_events();
 		this._refresh_meta_summaries();
 		this._load_recent();
+		this._fetch_approver_flag();
+	}
+
+	// ── Approver flag — decides the submit-vs-create branch (server re-checks) ──
+	_fetch_approver_flag() {
+		const me = this;
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.is_current_user_item_approver",
+			callback(r) {
+				me._is_approver = !!(r.message && r.message.is_approver);
+				me._apply_create_label();
+			},
+		});
+	}
+
+	_apply_create_label() {
+		const $label = this.$page.find("#bbf-btn-create .bbf-btn-label");
+		if ($label.length) {
+			$label.text(this._is_approver ? "Create Item" : "Submit for Approval");
+		}
 	}
 
 	// ── Helper: debounce Link control changes ──
@@ -1290,7 +1312,7 @@ class TSItemCreator {
 		if (!this._validate_all()) return;
 
 		$btn.prop("disabled", true);
-		this.$page.find("#bbf-btn-create .bbf-btn-label").text("Creating...");
+		this.$page.find("#bbf-btn-create .bbf-btn-label").text(this._is_approver ? "Creating..." : "Submitting...");
 
 		const doc = {
 			doctype: "TS Item Creator",
@@ -1334,39 +1356,73 @@ class TSItemCreator {
 			doc.opening_stock = s.opening_stock;
 		}
 
-		frappe.call({
-			method: "frappe.client.insert",
-			args: { doc: doc },
-			callback(r) {
-				if (r.message) {
-					frappe.call({
-						method: "run_doc_method",
-						args: { dt: "TS Item Creator", dn: r.message.name, method: "create_item" },
-						callback(res) {
-							me._reset_btn($btn);
-							if (res.message) {
-								me._last_created_item = res.message.item_code;
-								me._last_template_item = res.message.template_code || "";
-								me._show_success(res.message);
-							}
-						},
-						error() { me._reset_btn($btn); },
-					});
-				}
-			},
-			error() { me._reset_btn($btn); },
-		});
+		if (me._is_approver) {
+			// Approver — one-step: insert then create the Item immediately (today's behavior)
+			frappe.call({
+				method: "frappe.client.insert",
+				args: { doc: doc },
+				callback(r) {
+					if (r.message) {
+						frappe.call({
+							method: "run_doc_method",
+							args: { dt: "TS Item Creator", dn: r.message.name, method: "create_item" },
+							callback(res) {
+								me._reset_btn($btn);
+								if (res.message) {
+									me._last_created_item = res.message.item_code;
+									me._last_template_item = res.message.template_code || "";
+									me._show_success(res.message);
+								}
+							},
+							error() { me._reset_btn($btn); },
+						});
+					}
+				},
+				error() { me._reset_btn($btn); },
+			});
+		} else {
+			// Non-approver — submit a request for Stores / IT Head approval (no Item created yet)
+			frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.submit_item_request",
+				args: { doc: doc },
+				callback(r) {
+					me._reset_btn($btn);
+					if (r.message) {
+						me._show_pending(r.message);
+					}
+				},
+				error() { me._reset_btn($btn); },
+			});
+		}
 	}
 
 	_reset_btn($btn) {
 		$btn.prop("disabled", false);
-		this.$page.find("#bbf-btn-create .bbf-btn-label").text("Create Item");
+		this.$page.find("#bbf-btn-create .bbf-btn-label").text(this._is_approver ? "Create Item" : "Submit for Approval");
+	}
+
+	// ── Pending state (non-approver: request submitted, awaiting approval) ──
+	_show_pending(result) {
+		this.$page.find(".bbf-card, .bbf-preview-bar").hide();
+		this.$page.find("#bbf-success").addClass("is-pending").show();
+		this.$page.find("#bbf-success-title").text("Request Submitted — Pending Approval");
+		this.$page.find("#bbf-success-code").text(result.generated_item_code || result.name || "");
+		this.$page.find("#bbf-success-template").hide();
+		this.$page.find("#bbf-success-variant-list").hide();
+		// No Item exists yet — hide the View Item action, keep "Create Another"
+		this.$page.find("#bbf-view-item").hide();
+		frappe.show_alert({
+			message: __("Item request submitted — pending Stores / IT Head approval."),
+			indicator: "blue",
+		});
+		this._load_recent();
 	}
 
 	// ── Success state ──
 	_show_success(result) {
 		this.$page.find(".bbf-card, .bbf-preview-bar").hide();
-		this.$page.find("#bbf-success").show();
+		this.$page.find("#bbf-success").removeClass("is-pending").show();
+		this.$page.find("#bbf-view-item").show();
 		const esc = frappe.utils.escape_html;
 
 		if (result.variant_items && result.variant_items.length > 0) {
@@ -1471,20 +1527,15 @@ class TSItemCreator {
 		this._refresh_meta_summaries();
 
 		this.$page.find(".bbf-card, .bbf-preview-bar").show();
-		this.$page.find("#bbf-success").hide();
+		this.$page.find("#bbf-success").removeClass("is-pending").hide();
 	}
 
 	// ── Recent items ──
 	_load_recent() {
 		const me = this;
 		frappe.call({
-			method: "frappe.client.get_list",
-			args: {
-				doctype: "TS Item Creator",
-				fields: ["name", "generated_item_code", "item_name", "status", "item_created"],
-				order_by: "creation desc",
-				limit_page_length: 6,
-			},
+			method: "trustbit_ethanol.ts_gate_entry.doctype.ts_item_creator.ts_item_creator.get_my_recent_requests",
+			args: { limit: 6 },
 			callback: (r) => {
 				const $list = me.$page.find("#bbf-recent-list").empty();
 				if (!r.message || !r.message.length) {
@@ -1494,7 +1545,11 @@ class TSItemCreator {
 				me.$page.find("#bbf-recent").show();
 				const esc = frappe.utils.escape_html;
 				r.message.forEach((item) => {
-					const status_class = item.status === "Created" ? "status-created" : "status-draft";
+					const status_class = {
+						Created: "status-created",
+						"Pending Approval": "status-pending",
+						Rejected: "status-rejected",
+					}[item.status] || "status-draft";
 					const $el = $(
 						`<div class="bbf-recent-item">
 							<div class="bbf-recent-item-info">

@@ -52,8 +52,12 @@
   "result_section",
   "item_created",
   "template_item",
+  "requested_by",
   "column_break_result",
-  "status"
+  "status",
+  "approved_by",
+  "approved_on",
+  "rejection_reason"
  ],
  "fields": [
   {
@@ -388,11 +392,41 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Draft\nCreated",
+   "options": "Draft\nPending Approval\nCreated\nRejected",
    "default": "Draft",
    "read_only": 1,
    "in_list_view": 1,
    "in_standard_filter": 1
+  },
+  {
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "label": "Requested By",
+   "options": "User",
+   "read_only": 1,
+   "description": "User who submitted this item-creation request"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved/Actioned By",
+   "options": "User",
+   "read_only": 1,
+   "depends_on": "eval:['Created','Rejected'].includes(doc.status)"
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "Approved/Actioned On",
+   "read_only": 1,
+   "depends_on": "eval:['Created','Rejected'].includes(doc.status)"
+  },
+  {
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Rejection Reason",
+   "read_only": 1,
+   "depends_on": "eval:doc.status=='Rejected'"
   }
  ],
  "links": [],
@@ -420,6 +454,12 @@
    "read": 1,
    "write": 1,
    "role": "Stores User"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Stores Manager"
   }
  ],
  "search_fields": "generated_item_code, company, item_group",

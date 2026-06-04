@@ -581,6 +581,9 @@
 	box-shadow: 0 4px 20px rgba(0,0,0,0.04);
 }
 .bbf-success-icon { color: #38a169; margin-bottom: 12px; }
+/* Pending-approval reuses the success card but must NOT read as "done/approved" */
+.bbf-success.is-pending .bbf-success-icon { color: #d97706; }
+[data-theme="dark"] .bbf-success.is-pending .bbf-success-icon { color: #fbbf24; }
 .bbf-success-title {
 	font-size: 22px;
 	font-weight: 700;
@@ -694,6 +697,8 @@
 }
 .bbf-recent-item-status.status-created { background: #dcfce7; color: #15803d; }
 .bbf-recent-item-status.status-draft { background: #fef3c7; color: #92400e; }
+.bbf-recent-item-status.status-pending { background: #dbeafe; color: #1d4ed8; }
+.bbf-recent-item-status.status-rejected { background: #fee2e2; color: #b91c1c; }
 
 /* ───── Item Name typeahead dropdown (v2.9.17.7) ───── */
 .bbf-item-name-group { position: relative; }
@@ -924,6 +929,14 @@
 [data-theme="dark"] .bbf-recent-item-status.status-draft {
 	background: rgba(234, 179, 8, 0.18);
 	color: #fbbf24;
+}
+[data-theme="dark"] .bbf-recent-item-status.status-pending {
+	background: rgba(59, 130, 246, 0.18);
+	color: #60a5fa;
+}
+[data-theme="dark"] .bbf-recent-item-status.status-rejected {
+	background: rgba(239, 68, 68, 0.18);
+	color: #f87171;
 }
 [data-theme="dark"] .bbf-prompt-info {
 	background: rgba(59,130,246,0.10);

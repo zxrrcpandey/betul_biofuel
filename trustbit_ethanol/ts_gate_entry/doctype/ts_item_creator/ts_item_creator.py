@@ -1,8 +1,49 @@
+import json
 import re
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, getdate, nowtime
+from frappe.utils import escape_html, flt, getdate, now_datetime, nowtime
+
+
+# ── Item Creator approval flow ──
+# Roles that may APPROVE an item-creation request (and self-create one-step).
+ITEM_APPROVER_ROLES = {"Stores User", "Stores Manager", "IT Head", "System Manager"}
+# Pure floor-operator roles that may NOT submit item requests.
+ITEM_REQUEST_FLOOR_ONLY = {"G1 Security", "G2 Gate Operator", "Weighbridge Operator"}
+# Generic baseline roles almost everyone carries — they don't signal desk-work
+# authority, so they are ignored when deciding the denylist (otherwise a floor
+# operator who also has "Employee" would leak through). DENYLIST semantics: a
+# user may submit if they hold at least ONE role that is neither a floor-op role
+# nor a baseline role — so any genuine functional role (incl. ones added later)
+# is auto-included, while a pure floor operator is excluded. The page role list
+# is only the UX gate; this is the real security gate.
+ITEM_REQUEST_BASELINE_ROLES = {"All", "Guest", "Employee", "Desk User"}
+
+
+def _is_item_approver(user=None):
+	"""True if the user may approve item requests / create Items directly."""
+	user = user or frappe.session.user
+	if user == "Administrator":
+		return True
+	return bool(set(frappe.get_roles(user)) & ITEM_APPROVER_ROLES)
+
+
+def _can_request_item(user=None):
+	"""DENYLIST gate — True unless the user's roles are ONLY floor-op / Guest.
+
+	Lets all desk staff submit an item-creation request while excluding pure
+	G1 / G2 / Weighbridge operators (and Guest). New roles auto-included.
+	"""
+	user = user or frappe.session.user
+	if user in ("Guest", "", None):
+		return False
+	if user == "Administrator":
+		return True
+	# Strip baseline roles, then require at least one non-floor functional role.
+	roles = set(frappe.get_roles(user)) - ITEM_REQUEST_BASELINE_ROLES
+	return bool(roles - ITEM_REQUEST_FLOOR_ONLY)
 
 
 def derive_fy_short(fiscal_year):
@@ -41,6 +82,38 @@ class TSItemCreator(Document):
 		if not self.serial_number:
 			self._assign_serial()
 		self._build_item_code()
+		self._block_item_field_tampering()
+
+	def _block_item_field_tampering(self):
+		"""Lesson 162 tamper guard — only approvers may set the approval
+		control-plane fields. A requester must not be able to self-set
+		approved_by / status=Created / item_created to fake an approval.
+		Our own endpoints set frappe.flags.in_item_request to bypass (Lesson 176).
+		"""
+		if frappe.session.user == "Administrator":
+			return
+		if getattr(frappe.flags, "in_item_request", False):
+			return
+		watched = [
+			"requested_by", "approved_by", "approved_on",
+			"rejection_reason", "status", "item_created",
+		]
+		if not self.is_new():
+			changed = any(self.has_value_changed(f) for f in watched)
+		else:
+			# On a fresh insert allow the benign request states (Draft /
+			# Pending Approval); block anything that asserts an approval.
+			changed = bool(
+				self.approved_by or self.rejection_reason or self.item_created
+				or (self.status not in (None, "", "Draft", "Pending Approval"))
+			)
+		if not changed:
+			return
+		if not _is_item_approver():
+			raise frappe.PermissionError(_(
+				"Approval fields are locked. Only Stores User / Stores Manager / "
+				"IT Head / System Manager may set them."
+			))
 
 	def _fetch_codes(self):
 		"""Fetch company and category codes based on selected code type.
@@ -241,9 +314,20 @@ class TSItemCreator(Document):
 			if self.variant_source == "Custom Variant" and not self.variant:
 				frappe.throw("Please select a Custom Variant or uncheck 'Has Variant'")
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def create_item(self):
-		"""Create Item(s) in ERPNext from the generated item code."""
+		"""Create Item(s) in ERPNext from the generated item code.
+
+		Privileged: only approvers may mint a real Item (Lesson 175 POST-only +
+		Lesson 224 explicit role check on top of the ignore_permissions insert).
+		Non-approvers must use submit_item_request and await approval.
+		"""
+		if not _is_item_approver():
+			raise frappe.PermissionError(_(
+				"Only Stores User / Stores Manager / IT Head / System Manager may "
+				"create Items. Use 'Submit for Approval' instead."
+			))
+
 		if self.item_created:
 			frappe.throw(
 				f"Item(s) already created from this record: <b>{self.item_created}</b>"
@@ -279,6 +363,61 @@ class TSItemCreator(Document):
 		)
 
 		return result
+
+	@frappe.whitelist(methods=["POST"])
+	def approve_request(self):
+		"""Approver action — approve a Pending Approval request and create the Item."""
+		if not _is_item_approver():
+			raise frappe.PermissionError(_("Only approvers may approve item requests."))
+		frappe.has_permission("TS Item Creator", "write", doc=self, throw=True)
+		if self.status != "Pending Approval":
+			frappe.throw(_(
+				"Only a request that is 'Pending Approval' can be approved "
+				"(current status: {0})."
+			).format(self.status or "Draft"))
+
+		frappe.flags.in_item_request = True
+		try:
+			self.approved_by = frappe.session.user
+			self.approved_on = now_datetime()
+			self.add_comment("Info", f"[ITEM_APPROVED] by {frappe.session.user}")
+		finally:
+			frappe.flags.in_item_request = False
+
+		# create_item sets status=Created + item_created and saves (its own approver
+		# gate passes for this user); it persists approved_by/approved_on too.
+		return self.create_item()
+
+	@frappe.whitelist(methods=["POST"])
+	def reject_request(self, reason=None):
+		"""Approver action — reject a Pending Approval request with a reason."""
+		if not _is_item_approver():
+			raise frappe.PermissionError(_("Only approvers may reject item requests."))
+		frappe.has_permission("TS Item Creator", "write", doc=self, throw=True)
+		if self.status != "Pending Approval":
+			frappe.throw(_(
+				"Only a request that is 'Pending Approval' can be rejected "
+				"(current status: {0})."
+			).format(self.status or "Draft"))
+		reason = (reason or "").strip()
+		if not reason:
+			frappe.throw(_("A rejection reason is required."))
+
+		frappe.flags.in_item_request = True
+		try:
+			self.status = "Rejected"
+			self.rejection_reason = reason
+			self.approved_by = frappe.session.user
+			self.approved_on = now_datetime()
+			self.add_comment(
+				"Info",
+				f"[ITEM_REJECTED] by {frappe.session.user}: {escape_html(reason)[:500]}"
+			)
+			self.save(ignore_permissions=True)
+		finally:
+			frappe.flags.in_item_request = False
+
+		return {"status": self.status, "rejection_reason": self.rejection_reason}
 
 	def _has_custom_posting_date(self):
 		"""Check if a custom (backdated) posting date is set."""
@@ -877,5 +1016,81 @@ def search_existing_items(query, limit=10):
 
 		results.sort(key=lambda r: (-r["usage_count"], r["item_name"] or ""))
 		return results[:lim]
+	except Exception:
+		return []
+
+
+@frappe.whitelist(methods=["POST"])
+def submit_item_request(doc):
+	"""Non-approver entry point — insert an item-creation request in 'Pending
+	Approval' WITHOUT creating any Item. Gated by the desk-staff denylist.
+
+	Uses ignore_permissions (AFTER the denylist gate) so the raw TS Item Creator
+	doctype need not be opened to every desk role (Lesson 224: the denylist IS
+	the explicit permission check; there are no permlevel>0 fields here).
+	"""
+	if not _can_request_item():
+		raise frappe.PermissionError(_(
+			"You are not permitted to submit item-creation requests."
+		))
+
+	if isinstance(doc, str):
+		doc = json.loads(doc)
+	doc = dict(doc or {})
+	# Force doctype + strip any control-plane / server-computed fields a caller
+	# might inject; the server recomputes serial/code and sets status itself.
+	doc["doctype"] = "TS Item Creator"
+	for f in (
+		"name", "status", "item_created", "template_item", "approved_by",
+		"approved_on", "rejection_reason", "requested_by",
+		"serial_number", "generated_item_code",
+	):
+		doc.pop(f, None)
+
+	frappe.flags.in_item_request = True
+	try:
+		d = frappe.get_doc(doc)
+		d.requested_by = frappe.session.user
+		d.status = "Pending Approval"
+		d.insert(ignore_permissions=True)
+		d.add_comment("Info", f"[ITEM_REQUEST] submitted by {frappe.session.user}")
+	finally:
+		frappe.flags.in_item_request = False
+
+	return {
+		"name": d.name,
+		"status": d.status,
+		"generated_item_code": d.generated_item_code,
+	}
+
+
+@frappe.whitelist()
+def is_current_user_item_approver():
+	"""Lesson 168 helper — lets the Item Creator page choose the submit-vs-create
+	branch without the JS reading roles directly (avoids a perm modal)."""
+	return {"is_approver": _is_item_approver()}
+
+
+@frappe.whitelist()
+def get_my_recent_requests(limit=6):
+	"""Lesson 168 helper — the Item Creator page 'Recent' list for ANY desk user,
+	without requiring read DocPerm on TS Item Creator (the page is now open to
+	non-approver desk staff who lack that perm). Returns the caller's OWN recent
+	records only. Fail-closed: any error / Guest returns []."""
+	user = frappe.session.user
+	if user in ("Guest", "", None):
+		return []
+	try:
+		lim = max(1, min(int(limit or 6), 20))
+	except (TypeError, ValueError):
+		lim = 6
+	try:
+		return frappe.get_all(
+			"TS Item Creator",
+			filters={"owner": user},
+			fields=["name", "generated_item_code", "item_name", "status", "item_created"],
+			order_by="creation desc",
+			limit_page_length=lim,
+		)
 	except Exception:
 		return []

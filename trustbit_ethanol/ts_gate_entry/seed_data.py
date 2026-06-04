@@ -98,6 +98,7 @@ CUSTOM_DOCPERM = [
 	{"parent": "TS Item Creator", "role": "Purchase Master Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1},
 	{"parent": "TS Item Creator", "role": "Stock User", "read": 1, "write": 1, "create": 1, "report": 1, "export": 1},
 	{"parent": "TS Item Creator", "role": "Stores User", "read": 1, "write": 1, "create": 1},
+	{"parent": "TS Item Creator", "role": "Stores Manager", "read": 1, "write": 1, "create": 1},
 	{"parent": "TS Item Creator", "role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
 	{"parent": "TS MR Approval Route", "role": "AVP", "read": 1},
 	{"parent": "TS MR Approval Route", "role": "CEO", "read": 1},
