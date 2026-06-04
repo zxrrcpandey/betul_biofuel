@@ -1182,6 +1182,23 @@ function _load_transfer_context(frm) {
 			// Create > Material Transfer, Stop, Resume, etc.) that bypass our flow
 			_hide_native_mr_buttons_for_stores_flow(frm);
 
+			// v2.16.2 (Option A) — while "Pending Stores Manager" the MR is a DRAFT:
+			// keep the items grid EDITABLE for the Stores Manager (adjust qty before
+			// approving) and READ-ONLY for everyone else. The server guard enforces it too.
+			if (ctx.ts_mr_status === "Pending Stores Manager" && frm.doc.docstatus === 0) {
+				if (ctx.can_edit_items) {
+					_show_ts_banner(frm, "sm-edit",
+						"✏️ You can adjust item quantities, then click <b>Approve</b>.",
+						"#eff6ff", "#2563eb");
+				} else {
+					frm.set_df_property("items", "read_only", 1);
+					if (frm.fields_dict.items && frm.fields_dict.items.grid) {
+						frm.fields_dict.items.grid.toggle_enable("*", false);
+					}
+					frm.disable_save();
+				}
+			}
+
 			// Status indicator (color-coded pill)
 			const STATUS_COLOR = {
 				"Not Submitted": "gray",
@@ -1286,6 +1303,7 @@ function _call_transfer_endpoint(frm, action_key, extra_args) {
 		"submit_for_stores_approval": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.submit_for_stores_approval",
 		"approve_transfer": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.approve_transfer",
 		"reject_transfer": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.reject_transfer",
+		"revise_and_resubmit_transfer": "trustbit_ethanol.ts_gate_entry.ts_mr_transfer.revise_and_resubmit_transfer",
 	};
 	const method = method_map[action_key];
 	if (!method) {
@@ -1293,18 +1311,30 @@ function _call_transfer_endpoint(frm, action_key, extra_args) {
 		return;
 	}
 	const args = Object.assign({mr_name: frm.doc.name}, extra_args);
-	frappe.call({
-		method: method,
-		args: args,
-		freeze: true,
-		freeze_message: __("Processing..."),
-		callback(r) {
-			if (r && r.message) {
-				if (r.message.message) {
-					frappe.show_alert({message: r.message.message, indicator: "green"}, 7);
+	const _do_call = () => {
+		frappe.call({
+			method: method,
+			args: args,
+			freeze: true,
+			freeze_message: __("Processing..."),
+			callback(r) {
+				if (r && r.message) {
+					if (r.message.message) {
+						frappe.show_alert({message: r.message.message, indicator: "green"}, 7);
+					}
+					frm.reload_doc();
 				}
-				frm.reload_doc();
-			}
-		},
-	});
+			},
+		});
+	};
+	// v2.16.2 (Option A) — for Approve, persist the Stores Manager's unsaved item-qty
+	// edits FIRST: approve_transfer reloads the MR from the DB, so grid edits must be
+	// saved or they'd be lost.
+	if (action_key === "approve_transfer" && frm.is_dirty()) {
+		frm.save().then(_do_call).catch(() => {
+			frappe.msgprint(__("Please resolve the errors and save before approving."));
+		});
+		return;
+	}
+	_do_call();
 }

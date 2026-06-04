@@ -178,7 +178,7 @@ def _query_mr_based(filters):
 		JOIN `tabMaterial Request` mr ON mr.name = mri.parent
 		LEFT JOIN `tabItem` item ON item.name = mri.item_code
 		WHERE mr.material_request_type IN ('Material Issue', 'Material Transfer')
-		  AND mr.docstatus = 1
+		  AND (mr.docstatus = 1 OR (mr.docstatus = 0 AND mr.ts_mr_status = 'Pending Stores Manager'))
 		  AND mr.company = %(company)s
 		  AND mr.transaction_date BETWEEN %(from_date)s AND %(to_date)s
 		  {(" AND " + " AND ".join(conds)) if conds else ""}

@@ -44,7 +44,7 @@ ALLOWED_TRANSITIONS = {
 	"Not Submitted": {"Pending Stores Manager"},
 	"Pending Stores Manager": {"Approved", "Rejected"},
 	"Approved": {"Pending Stores Manager"},  # only via SE on_cancel
-	"Rejected": set(),  # terminal — user must Amend
+	"Rejected": {"Not Submitted"},  # v2.16.2 — creator 'Revise & Resubmit' reopens a rejected DRAFT
 }
 
 REQUIRED_ITEM_FIELDS = ("item_code", "qty", "from_warehouse",
@@ -101,12 +101,27 @@ def handle_before_save(doc):
 	# save from Not Submitted → Pending Stores Manager doesn't trip on itself.
 	if not doc.is_new() and doc.has_value_changed("items"):
 		old_status = frappe.db.get_value("Material Request", doc.name, "ts_mr_status")
-		if old_status in ("Pending Stores Manager", "Approved"):
+		# "Approved" is ALWAYS hard-locked — a Stock Entry already exists; editing
+		# items would desync it. Cancel the SE first.
+		if old_status == "Approved":
 			frappe.throw(
 				_("Cannot modify items while MR is in status '{0}'. "
 				  "Cancel the linked Stock Entry first OR ask the Stores "
 				  "Manager to reject this request.").format(old_status)
 			)
+		# v2.16.2 (Option A) — while "Pending Stores Manager" the MR is a DRAFT and
+		# the STORES MANAGER (or admin / the workflow endpoints) may adjust item
+		# quantities before approving. Anyone else (e.g. the creator) is blocked —
+		# they wait for the Stores Manager to approve or reject.
+		if old_status == "Pending Stores Manager":
+			roles = frappe.get_roles(frappe.session.user)
+			is_sm = ("Stores Manager" in roles) or ("System Manager" in roles) \
+				or (frappe.session.user == "Administrator")
+			if not is_sm and not doc.flags.get("ts_approval_workflow_call"):
+				frappe.throw(
+					_("This request is pending Stores Manager review — only the "
+					  "Stores Manager can adjust items now (or reject it).")
+				)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -297,18 +312,20 @@ def submit_for_stores_approval(mr_name):
 	# Hard validate
 	_validate_transfer_for_submit(doc)
 
-	# Set status + submit (docstatus 0 → 1)
+	# v2.16.2 (Option A) — forward WITHOUT submit: the MR stays a DRAFT (docstatus=0)
+	# at "Pending Stores Manager" so the Stores Manager can EDIT item quantities
+	# before approving. The MR is submitted (0→1) only on Approve (approve_transfer).
 	doc.ts_mr_status = "Pending Stores Manager"
 	doc.flags.ignore_permissions = True
 	# v2.9.14.6 — signal legitimate workflow caller to bypass _block_gate_field_tampering
 	doc.flags.ts_approval_workflow_call = True
 
-	# Do NOT save+submit if already submitted (idempotency)
 	if doc.docstatus == 0:
+		# Option A: SAVE ONLY — do NOT submit (keep the draft editable for the SM).
 		doc.save()
-		doc.submit()
 	else:
-		# Already submitted — just update status field
+		# Back-compat: a doc already submitted under the OLD forward=submit flow —
+		# just update the status field in place.
 		doc.db_set("ts_mr_status", "Pending Stores Manager", update_modified=False)
 
 	doc.add_comment(
@@ -372,9 +389,9 @@ def approve_transfer(mr_name):
 	# its current (recoverable) state and the approver sets the rate first.
 	_block_if_missing_valuation(doc)
 
-	# v2.9.9.11/12 — Direct approval path is restricted to AMENDED drafts only.
-	# Fresh drafts must go through Submit → Pending → Approve to enforce
-	# separation of duties (creator cannot self-approve their own fresh doc).
+	# v2.9.9.11/12 — Direct approval (skipping Submit) is restricted to AMENDED
+	# drafts only. Fresh drafts must go Submit → Pending → Approve (separation of
+	# duties — creator cannot self-approve their own fresh doc).
 	if doc.ts_mr_status == "Not Submitted":
 		if not doc.get("amended_from") and not is_admin:
 			frappe.throw(
@@ -382,14 +399,21 @@ def approve_transfer(mr_name):
 				  "For fresh drafts, please use 'Submit for Stores Approval' first."),
 				exc=frappe.ValidationError,
 			)
+
+	# v2.16.2 (Option A) — the MR may still be a DRAFT here: "Pending Stores Manager"
+	# under the new forward-stays-draft flow, OR a Not-Submitted amended draft. ERPNext's
+	# make_stock_entry mapper REQUIRES docstatus=1, so submit the MR FIRST — atomically
+	# before SE creation (Lesson 288): valuation is already hard-blocked above; now
+	# re-validate (the Stores Manager may have edited quantities) then save + submit.
+	# A legacy "Pending Stores Manager" doc already at docstatus=1 skips this block.
+	if doc.docstatus == 0:
 		_validate_transfer_for_submit(doc)
-		if doc.docstatus == 0:
-			doc.flags.ignore_permissions = True
-			# v2.9.14.6 — signal legitimate workflow caller (direct approve on amended draft)
-			doc.flags.ts_approval_workflow_call = True
-			doc.save()
-			doc.submit()
-			doc.reload()
+		doc.flags.ignore_permissions = True
+		# v2.9.14.6 — signal legitimate workflow caller to bypass _block_gate_field_tampering
+		doc.flags.ts_approval_workflow_call = True
+		doc.save()
+		doc.submit()
+		doc.reload()
 
 	# Create the Stock Entry (DRAFT)
 	# Purpose follows MR type: "Material Transfer" → SE purpose=Material Transfer (FROM+TO)
@@ -523,7 +547,55 @@ def reject_transfer(mr_name, reason):
 	return {
 		"status": "ok",
 		"ts_mr_status": "Rejected",
-		"message": _("Rejected. Creator notified. To re-attempt, Amend the MR."),
+		"message": _("Rejected. Creator notified. The creator can use 'Revise & Resubmit' to edit and resend."),
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def revise_and_resubmit_transfer(mr_name):
+	"""Creator reopens a REJECTED DRAFT for editing.
+
+	v2.16.2 (Option A): under the forward-stays-draft flow a rejected MR is a
+	DRAFT (docstatus=0), so Frappe's native Amend (which needs a cancelled doc)
+	doesn't apply. This moves Rejected → Not Submitted so the creator can edit
+	items/quantities and Submit for Stores Approval again — same MR, history kept.
+	"""
+	if not _is_flow_enabled():
+		frappe.throw(_("Material Transfer flow is currently disabled (kill switch)."))
+
+	doc = frappe.get_doc("Material Request", mr_name)
+	if not _is_stores_flow_type(doc.material_request_type):
+		frappe.throw(_("This endpoint is only available for Material Transfer / Material Issue MRs."))
+
+	if doc.ts_mr_status != "Rejected":
+		frappe.throw(
+			_("Only a Rejected request can be revised. Current status: '{0}'.").format(doc.ts_mr_status)
+		)
+	if doc.docstatus != 0:
+		frappe.throw(
+			_("This rejected MR is submitted — use Frappe's Amend instead of Revise & Resubmit.")
+		)
+
+	user = frappe.session.user
+	is_creator = (user == doc.owner)
+	is_admin = user == "Administrator" or "System Manager" in frappe.get_roles(user)
+	if not (is_creator or is_admin):
+		frappe.throw(
+			_("Only the creator can revise and resubmit this request."),
+			exc=frappe.PermissionError,
+		)
+
+	doc.flags.ignore_permissions = True
+	# v2.9.14.6 — legitimate workflow caller (gate-field write bypass)
+	doc.flags.ts_approval_workflow_call = True
+	doc.db_set("ts_mr_status", "Not Submitted", update_modified=False)
+	doc.add_comment("Comment", _("Reopened for revision by {0} (was Rejected).").format(user))
+	frappe.db.commit()
+
+	return {
+		"status": "ok",
+		"ts_mr_status": "Not Submitted",
+		"message": _("Reopened for editing. Make your changes, then Submit for Stores Approval again."),
 	}
 
 
@@ -879,7 +951,7 @@ def get_transfer_context(doc):
 	stock_entry = frappe.db.get_value(
 		"Stock Entry",
 		{
-			"purpose": "Material Transfer",
+			"purpose": ["in", ["Material Transfer", "Material Issue"]],
 			"docstatus": ["<", 2],
 			"name": ["in",
 				frappe.db.sql_list("""
@@ -900,6 +972,14 @@ def get_transfer_context(doc):
 		"is_admin": is_admin,
 		"actions": actions,
 		"stock_entry": stock_entry,
+		# v2.16.2 (Option A) — the Stores Manager may edit item quantities while the
+		# MR is a "Pending Stores Manager" DRAFT (docstatus=0). The form JS uses this
+		# to keep the items grid editable for the SM and read-only for everyone else.
+		"can_edit_items": (
+			status == "Pending Stores Manager"
+			and (is_stores_manager or is_admin)
+			and doc.docstatus == 0
+		),
 	}
 
 
@@ -962,6 +1042,18 @@ def _compute_transfer_actions(status, is_creator, is_stores_manager, is_admin, d
 			"prompt_reason": True,  # JS opens frappe.prompt for reason
 		})
 
-	# Rejected is terminal — no actions
+	# v2.16.2 (Option A) — a REJECTED DRAFT can be reopened by its creator to edit
+	# items/quantities and resubmit (native Amend doesn't apply to a draft).
+	elif status == "Rejected" and (is_creator or is_admin) and docstatus == 0:
+		actions.append({
+			"key": "revise_and_resubmit_transfer",
+			"label": _("Revise & Resubmit"),
+			"primary": True,
+			"icon": "✏️",
+			"confirm_msg": _(
+				"Reopen this rejected request for editing? You can change "
+				"items / quantities and submit it again."
+			),
+		})
 
 	return actions
