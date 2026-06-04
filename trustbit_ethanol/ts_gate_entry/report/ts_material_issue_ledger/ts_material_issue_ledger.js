@@ -54,6 +54,34 @@ frappe.query_reports["TS Material Issue Ledger"] = {
 			options: "Warehouse",
 		},
 		{
+			fieldname: "material_request_type",
+			label: __("Material Request Type"),
+			fieldtype: "Select",
+			// Display labels are prefixed "MR ·" so this dropdown is instantly
+			// distinguishable from the Stock Entry Type filter; the bound VALUE
+			// stays the raw type ("Material Issue" / "Material Transfer") for the query.
+			options: [
+				{ value: "All", label: __("MR · All") },
+				{ value: "Material Issue", label: __("MR · Material Issue") },
+				{ value: "Material Transfer", label: __("MR · Material Transfer") },
+			],
+			default: "All",
+			description: __("Material REQUEST type — a specific type also hides standalone Stock Entries (no MR origin)"),
+		},
+		{
+			fieldname: "stock_entry_type",
+			label: __("Stock Entry Type"),
+			fieldtype: "Select",
+			// "SE ·" prefixed display labels — value stays the raw movement type.
+			options: [
+				{ value: "All", label: __("SE · All") },
+				{ value: "Material Issue", label: __("SE · Material Issue") },
+				{ value: "Material Transfer", label: __("SE · Material Transfer") },
+			],
+			default: "All",
+			description: __("Stock ENTRY (movement) type — includes standalone Stock Entries of this type"),
+		},
+		{
 			fieldname: "use_location",
 			label: __("Use Location (contains)"),
 			fieldtype: "Data",

@@ -186,6 +186,25 @@ def _query_mr_based(filters):
 		LIMIT {ROW_LIMIT + 1}
 	"""
 
+	# v2.16.1 — optional narrowing. Both default "All" = unchanged. On this MR-based
+	# pass a request's movement type equals its request type, so BOTH filters
+	# constrain mr.material_request_type (MR Type wins if both set); Stock Entry Type
+	# additionally narrows the SE-purpose subqueries. Values are bound as parameters
+	# (%(eff_type)s / %(se_type)s) — never interpolated.
+	mr_type = filters.get("material_request_type")
+	se_type = filters.get("stock_entry_type")
+	eff_type = mr_type if (mr_type and mr_type != "All") else (se_type if (se_type and se_type != "All") else None)
+	if eff_type:
+		sql = sql.replace(
+			"mr.material_request_type IN ('Material Issue', 'Material Transfer')",
+			"mr.material_request_type = %(eff_type)s")
+		params["eff_type"] = eff_type
+	if se_type and se_type != "All":
+		sql = sql.replace(
+			"purpose IN ('Material Issue', 'Material Transfer')",
+			"purpose = %(se_type)s")
+		params["se_type"] = se_type
+
 	rows = frappe.db.sql(sql, params, as_dict=True)
 	for row in rows:
 		row["source_warehouse"] = row.pop("source_warehouse_se", None) or row.pop("source_warehouse_mr", None) or row.pop("source_warehouse_fallback", None)
@@ -200,6 +219,10 @@ def _query_mr_based(filters):
 
 def _query_standalone_se(filters):
 	"""Stock Entry Detail rows where purpose in Material Issue / Material Transfer + NO material_request_item link."""
+	# v2.16.1 — a specific Material Request Type excludes standalone SEs (they have no MR origin).
+	mr_type = filters.get("material_request_type")
+	if mr_type and mr_type != "All":
+		return []
 	conds, params = _common_se_conditions(filters)
 	use_loc = filters.get("use_location")
 	if use_loc:
@@ -241,6 +264,13 @@ def _query_standalone_se(filters):
 		  {match_clause}
 		LIMIT {ROW_LIMIT + 1}
 	"""
+
+	se_type = filters.get("stock_entry_type")
+	if se_type and se_type != "All":
+		sql = sql.replace(
+			"purpose IN ('Material Issue', 'Material Transfer')",
+			"purpose = %(se_type)s")
+		params["se_type"] = se_type
 
 	return frappe.db.sql(sql, params, as_dict=True)
 
