@@ -333,6 +333,15 @@ class TSItemCreator(Document):
 				f"Item(s) already created from this record: <b>{self.item_created}</b>"
 			)
 
+		# Never trust a client-submitted generated_item_code. The desk form's
+		# _update_preview() rebuilds the code WITHOUT the Fixed-Asset "FA-" prefix
+		# and frm.call ships that dirtied value here — which would mint the Item
+		# under the wrong code (e.g. BBPL-26-27-00017 instead of FA-BBPL-26-27-00017).
+		# Recompute authoritatively from the persisted serial + master codes before
+		# any _create_* branch reads it. Idempotent for every other path.
+		self._fetch_codes()
+		self._build_item_code()
+
 		if not self.generated_item_code:
 			frappe.throw("Generated Item Code is empty. Please save the form first.")
 

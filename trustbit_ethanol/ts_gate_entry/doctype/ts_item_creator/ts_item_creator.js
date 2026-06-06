@@ -46,7 +46,11 @@ frappe.ui.form.on("TS Item Creator", {
 				frappe.prompt(
 					[{ fieldname: "reason", fieldtype: "Small Text", label: __("Rejection Reason"), reqd: 1 }],
 					function (values) {
-						frm.call({ method: "reject_request", args: { reason: values.reason } })
+						// String form sets doc=this.doc → routes to the reject_request
+						// DOC method. The object form (without doc) wrongly routes to a
+						// non-existent MODULE-level reject_request and silently fails —
+						// that was the "can't reject" bug (zero Rejected records ever).
+						frm.call("reject_request", { reason: values.reason })
 							.then(() => frm.reload_doc());
 					},
 					__("Reject Item Request"),
@@ -73,8 +77,11 @@ frappe.ui.form.on("TS Item Creator", {
 		const _ind = { Created: "green", Rejected: "red", "Pending Approval": "orange", Draft: "gray" };
 		frm.page.set_indicator(__(frm.doc.status || "Draft"), _ind[frm.doc.status] || "gray");
 
-		// Update preview on refresh
-		if (!frm.is_new()) {
+		// Update preview on refresh — ONLY while still an editable Draft. On a
+		// finalized request (Pending Approval / Created / Rejected) the stored
+		// generated_item_code is authoritative; recomputing it here would dirty
+		// the form and (for Fixed Assets) ship a wrong code to approve_request.
+		if (!frm.is_new() && frm.doc.status === "Draft") {
 			_update_preview(frm);
 		}
 	},
@@ -224,9 +231,25 @@ function _fetch_serial_preview(frm) {
 
 // ── Helper: Update preview ──
 function _update_preview(frm) {
+	const ser = frm.doc.serial_number || "";
+
+	// Fixed Asset: FA-{company_code}-{fiscal_year_short}-{serial}
+	// Mirror the server _build_item_code() so the preview (and the value shipped
+	// by frm.call) keeps the "FA-" prefix. A plain cc-cat-ser build here was the
+	// root cause of Fixed Assets being minted without the prefix on approval.
+	if (frm.doc.creation_type === "Fixed Asset") {
+		const acc = frm.doc.company_code || "";
+		const fy = frm.doc.fiscal_year_short || "";
+		if (!acc || !fy) {
+			frm.set_value("generated_item_code", "");
+			return;
+		}
+		frm.set_value("generated_item_code", ["FA", acc, fy, ser || "_____"].join("-"));
+		return;
+	}
+
 	const cc = frm.doc.company_code || "";
 	const cat = frm.doc.category_code || "";
-	const ser = frm.doc.serial_number || "";
 
 	if (!cc || !cat) {
 		frm.set_value("generated_item_code", "");
