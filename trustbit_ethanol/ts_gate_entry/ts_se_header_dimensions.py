@@ -53,6 +53,22 @@ def seed_se_header_dimension_fields():
             "insert_after": "ts_set_cost_center",
             "description": "Setting this fills Project on every item row.",
         },
+        # v2.17.6 — read-only parent Cost Center, auto-mirrored from the item rows,
+        # purely so the Stock Entry LIST VIEW can be filtered by Cost Center (the
+        # native cost_center lives on the child rows, which cannot be a standard
+        # filter). Maintained by _set_filter_cost_center() in before_validate.
+        {
+            "dt": "Stock Entry",
+            "fieldname": "ts_cost_center",
+            "fieldtype": "Link",
+            "options": "Cost Center",
+            "label": "Cost Center",
+            "insert_after": "ts_set_project",
+            "read_only": 1,
+            "no_copy": 1,
+            "in_standard_filter": 1,
+            "description": "Auto-set from the item rows — enables Cost Center filtering in the list view.",
+        },
     ]
     created = False
     for f in fields:
@@ -62,8 +78,19 @@ def seed_se_header_dimension_fields():
         cf.flags.ignore_links = True
         cf.insert(ignore_permissions=True, ignore_links=True)
         created = True
+    # Idempotent: ensure the list-view filter flag is set even if the field
+    # pre-existed without it (defensive — migrate re-runs this seeder).
+    if frappe.db.exists("Custom Field", {"dt": "Stock Entry", "fieldname": "ts_cost_center"}):
+        cf_name = frappe.db.get_value(
+            "Custom Field", {"dt": "Stock Entry", "fieldname": "ts_cost_center"}, "name"
+        )
+        if not frappe.db.get_value("Custom Field", cf_name, "in_standard_filter"):
+            frappe.db.set_value("Custom Field", cf_name, "in_standard_filter", 1)
+            created = True
+    _grant_cost_center_read_to_stock_roles()
     if created:
         frappe.db.updatedb("Stock Entry")
+        frappe.clear_cache(doctype="Stock Entry")
         frappe.db.commit()
 
 
@@ -117,3 +144,72 @@ def cascade_se_header_dimensions(doc, method=None):
         for row in doc.items:
             if not row.get(row_field):
                 row.set(row_field, header_val)
+    _set_filter_cost_center(doc)
+
+
+def _set_filter_cost_center(doc):
+    """Mirror the first item row's cost_center up to the read-only parent field
+    `ts_cost_center` so the Stock Entry LIST VIEW can be filtered by Cost Center.
+    The native cost_center is per-row (a child field can't be a standard filter),
+    so this derived header value is what the list filter targets. Recomputed every
+    save from the rows (the rows are the source of truth); blank if no row has one.
+    """
+    cc = None
+    for row in doc.items:
+        if row.get("cost_center"):
+            cc = row.cost_center
+            break
+    doc.ts_cost_center = cc
+
+
+def _grant_cost_center_read_to_stock_roles():
+    """Idempotent — grant Cost Center READ (permlevel 0) to the stock/manufacturing
+    roles that use the Stock Entry list, so the new `ts_cost_center` standard-filter
+    autocomplete works for them (else Frappe throws "No permission for Cost Center").
+    Mirrors _seed_cost_center_approval_perms (Lesson 169 safe: get_doc + db_insert,
+    never raw INSERT which would drop the Standard DocPerm). Skips missing roles and
+    rows that already exist.
+    """
+    for role in ("Stock Manager", "Manufacturing User", "Manufacturing Manager"):
+        if not frappe.db.exists("Role", role):
+            continue
+        if frappe.db.exists("Custom DocPerm", {
+            "parent": "Cost Center", "role": role, "permlevel": 0,
+        }):
+            continue
+        try:
+            frappe.get_doc({
+                "doctype": "Custom DocPerm",
+                "parent": "Cost Center",
+                "parenttype": "DocType",
+                "parentfield": "permissions",
+                "role": role,
+                "permlevel": 0,
+                "read": 1,
+            }).db_insert()
+        except Exception as e:
+            frappe.log_error(message=f"grant CC read to {role}: {e}",
+                             title="grant_cost_center_read_to_stock_roles")
+
+
+def backfill_se_cost_center_filter():
+    """One-time data op — populate `ts_cost_center` on EXISTING Stock Entries from
+    their first item row's cost_center, so the new list filter finds historical
+    records. Idempotent (re-derives from the rows each run). Run via bench console
+    on each server after deploy; NOT wired to after_migrate (would re-scan every
+    Stock Entry on every migrate). Returns the count updated.
+    """
+    names = frappe.get_all("Stock Entry", pluck="name")
+    n = 0
+    for name in names:
+        row = frappe.db.sql(
+            """SELECT cost_center FROM `tabStock Entry Detail`
+               WHERE parent=%s AND IFNULL(cost_center,'')<>''
+               ORDER BY idx LIMIT 1""", (name,))
+        cc = row[0][0] if row else None
+        if cc and frappe.db.get_value("Stock Entry", name, "ts_cost_center") != cc:
+            frappe.db.set_value("Stock Entry", name, "ts_cost_center", cc,
+                                update_modified=False)
+            n += 1
+    frappe.db.commit()
+    return n
