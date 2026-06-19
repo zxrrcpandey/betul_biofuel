@@ -100,19 +100,32 @@ def export_material_issue_ledger_pdf(filters=None):
 	# module-level FIFO import that export_stock_ledger_pdf depends on.
 	from trustbit_ethanol.ts_gate_entry.report.ts_material_issue_ledger.ts_material_issue_ledger import (
 		get_data as get_mi_data,
+		get_consolidated_data,
+		_is_consolidated,
 		ROW_LIMIT as MI_ROW_LIMIT,
 	)
 
+	consolidated = _is_consolidated(filters)
 	try:
-		rows, truncated = get_mi_data(filters)
+		if consolidated:
+			rows, truncated = get_consolidated_data(filters)
+		else:
+			rows, truncated = get_mi_data(filters)
 	except Exception as e:
 		frappe.log_error(title="ts_pdf_export mi_get_data", message=str(e))
 		raise
 
-	total_requested = sum(flt(r.get("requested_qty")) for r in rows)
-	total_issued = sum(flt(r.get("issued_qty")) for r in rows)
-	total_pending = sum(flt(r.get("pending_qty")) for r in rows)
-	total_value = sum(flt(r.get("value")) for r in rows)
+	if consolidated:
+		# Grand totals over item rows only (subtotal rows already aggregate them).
+		item_rows = [r for r in rows if not r.get("is_subtotal")]
+		total_requested = total_pending = 0
+		total_issued = sum(flt(r.get("total_issued")) for r in item_rows)
+		total_value = sum(flt(r.get("total_value")) for r in item_rows)
+	else:
+		total_requested = sum(flt(r.get("requested_qty")) for r in rows)
+		total_issued = sum(flt(r.get("issued_qty")) for r in rows)
+		total_pending = sum(flt(r.get("pending_qty")) for r in rows)
+		total_value = sum(flt(r.get("value")) for r in rows)
 
 	template_path = os.path.join(os.path.dirname(__file__), "..", "report",
 	                             "ts_material_issue_ledger", "pdf_template.html")
@@ -122,6 +135,9 @@ def export_material_issue_ledger_pdf(filters=None):
 
 	context = {
 		"report_title": "TS Material Issue Ledger",
+		"report_subtitle": ("Consolidated Consumption by Cost Center"
+		                    if consolidated else "Detailed Ledger — Audit Report"),
+		"consolidated": consolidated,
 		"company_name": filters.get("company"),
 		"logo_url": LOGO_URL,
 		"filters": filters,
@@ -140,8 +156,9 @@ def export_material_issue_ledger_pdf(filters=None):
 	html = frappe.render_template(template, context)
 	pdf_bytes = get_pdf(html, options={"orientation": "Landscape", "page-size": "A4"})
 
+	tag = "Consolidated" if consolidated else "Ledger"
 	abbr = (filters.get("company") or "BBPL").replace(" ", "_")[:12]
-	fname = f"TS_Material_Issue_Ledger_{abbr}_{filters.get('from_date')}_to_{filters.get('to_date')}.pdf"
+	fname = f"TS_Material_Issue_{tag}_{abbr}_{filters.get('from_date')}_to_{filters.get('to_date')}.pdf"
 	frappe.local.response.filename = fname
 	frappe.local.response.filecontent = pdf_bytes
 	frappe.local.response.type = "download"

@@ -16,6 +16,7 @@ table { border-collapse: collapse; width: 100%; }
 .data-tbl td { font-size: 6.8pt; padding: 2pt; border:1px solid #BBB; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; }
 .data-tbl td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-right: 4pt; }
 .tot-row td { background:#EDF1F7; font-weight:bold; border-top:2px solid #1F3A5F; }
+.sub-row td { background:#F6F8FB; font-weight:bold; border-top:1px solid #1F3A5F; }
 .pill { display: inline-block; padding: 1pt 3pt; border-radius: 5pt; color:#fff; font-size: 6.2pt; font-weight: bold; white-space: nowrap; }
 .pill-red { background:#cc0000; } .pill-orange { background:#d97706; }
 .pill-green { background:#16a34a; } .pill-blue { background:#2563eb; } .pill-gray { background:#888; }
@@ -27,7 +28,7 @@ table { border-collapse: collapse; width: 100%; }
 <td class="hdr-logo">{% if logo_url %}<img src="{{ logo_url }}" alt="logo">{% endif %}</td>
 <td>
 <div class="hdr-title">{{ company_name|e }}</div>
-<div class="hdr-sub">TS Material Issue Ledger — Audit Report</div>
+<div class="hdr-sub">TS Material Issue — {{ (report_subtitle or 'Detailed Ledger — Audit Report')|e }}</div>
 </td>
 <td class="hdr-meta">
 Generated: {{ generated_at|e }}<br>
@@ -40,15 +41,18 @@ Rows: {{ rows|length }}{% if truncated %} (truncated at {{ row_limit }}){% endif
 <b>Filters:</b>
 Company: {{ filters.company|e }}
 | From: {{ filters.from_date|e }} to {{ filters.to_date|e }}
+{% if consolidated %} | Mode: Consolidated (Item × Cost Center){% endif %}
 {% if filters.item_code %} | Item: {{ filters.item_code|e }}{% endif %}
 {% if filters.item_group %} | Item Group: {{ filters.item_group|e }}{% endif %}
 {% if filters.source_warehouse %} | Source WH: {{ filters.source_warehouse|e }}{% endif %}
 {% if filters.cost_center %} | Cost Center: {{ filters.cost_center|e }}{% endif %}
-{% if filters.use_location %} | Use Location ~ {{ filters.use_location|e }}{% endif %}
-{% if filters.status and filters.status != 'All' %} | Status: {{ filters.status|e }}{% endif %}
-{% if filters.include_cancelled %} | Including Cancelled{% endif %}
+{% if filters.stock_entry_type and filters.stock_entry_type != 'All' %} | SE Type: {{ filters.stock_entry_type|e }}{% endif %}
+{% if not consolidated and filters.use_location %} | Use Location ~ {{ filters.use_location|e }}{% endif %}
+{% if not consolidated and filters.status and filters.status != 'All' %} | Status: {{ filters.status|e }}{% endif %}
+{% if not consolidated and filters.include_cancelled %} | Including Cancelled{% endif %}
 </div>
 
+{% if not consolidated %}
 <table class="data-tbl">
 <colgroup>
 <col style="width:5%"><col style="width:8%"><col style="width:7%"><col style="width:6%">
@@ -105,9 +109,58 @@ Company: {{ filters.company|e }}
 </tr>
 </tbody>
 </table>
+{% else %}
+<table class="data-tbl">
+<colgroup>
+<col style="width:22%"><col style="width:12%"><col style="width:22%"><col style="width:11%">
+<col style="width:5%"><col style="width:8%"><col style="width:5%"><col style="width:7%"><col style="width:8%">
+</colgroup>
+<thead><tr>
+<th>Cost Center</th><th>Item Code</th><th>Item Name</th><th>Item Group</th>
+<th>UOM</th><th class="num">Total Issued</th><th class="num"># SE</th>
+<th class="num">Avg Rate</th><th class="num">Total Value</th>
+</tr></thead>
+<tbody>
+{% for r in rows %}
+{% if r.is_subtotal %}
+<tr class="sub-row">
+<td colspan="5">{{ (r.item_name or '')|e }}</td>
+<td class="num">{{ "%.2f"|format(r.total_issued or 0) }}</td>
+<td class="num">—</td>
+<td class="num">—</td>
+<td class="num">{{ "%.2f"|format(r.total_value or 0) }}</td>
+</tr>
+{% else %}
+<tr>
+<td>{{ (r.cost_center or '—')|e }}</td>
+<td>{{ (r.item_code or '')|e }}</td>
+<td>{{ (r.item_name or '')|e }}</td>
+<td>{{ (r.item_group or '')|e }}</td>
+<td>{{ (r.uom or '')|e }}</td>
+<td class="num">{{ "%.2f"|format(r.total_issued or 0) }}</td>
+<td class="num">{{ r.num_entries if r.num_entries is not none else '' }}</td>
+<td class="num">{{ "%.2f"|format(r.avg_rate or 0) }}</td>
+<td class="num">{{ "%.2f"|format(r.total_value or 0) }}</td>
+</tr>
+{% endif %}
+{% endfor %}
+<tr class="tot-row">
+<td colspan="5">GRAND TOTAL</td>
+<td class="num">{{ "%.2f"|format(total_issued or 0) }}</td>
+<td class="num">—</td>
+<td class="num">—</td>
+<td class="num">{{ "%.2f"|format(total_value or 0) }}</td>
+</tr>
+</tbody>
+</table>
+{% endif %}
 
 <div class="fnote">
+{% if consolidated %}
+Item-wise <b>actual consumption</b> (Stock Entry purpose = {{ (filters.stock_entry_type if (filters.stock_entry_type and filters.stock_entry_type != 'All') else 'Material Issue')|e }}, submitted) summed by the Stock-Entry-row <b>Cost Center</b> where the material was charged. Subtotal rows total each Cost Center. Total Issued spans mixed UOMs and is indicative only — <b>Total Value (₹)</b> is the authoritative monetary total.
+{% else %}
 Combined view of material-movement requests (Material Request type = Material Issue / Material Transfer) and their actual movements (Stock Entry purpose = Material Issue / Material Transfer). Pending = Requested − Issued. Standalone rows are Stock Entry movements with no Material Request origin. Item Remark is the request line's remark (ts_item_remark) — blank for standalone Stock Entries. Qty totals (Req / Iss / Pend) span mixed UOMs and are indicative only — Value (₹) is the authoritative monetary total.
+{% endif %}
 </div>
 
 <div class="pg-ftr">TS Material Issue Ledger • {{ app_version|e }} • {{ generated_at|e }}</div>

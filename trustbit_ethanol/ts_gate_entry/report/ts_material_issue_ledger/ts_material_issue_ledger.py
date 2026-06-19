@@ -26,10 +26,24 @@ def execute(filters=None):
 
 	filters = filters or {}
 	_validate_filters(filters)
+
+	# v2.18 — two report modes. "Consolidated" = item-wise actual consumption summed
+	# by Cost Center (a dedicated aggregate on Stock Entry Detail). "Detailed" (default)
+	# = the original per-request/per-issue ledger.
+	if _is_consolidated(filters):
+		columns = get_consolidated_columns()
+		data, truncated = get_consolidated_data(filters)
+		report_summary = _get_consolidated_summary(data, truncated, filters)
+		return columns, data, None, None, report_summary
+
 	columns = get_columns()
 	data, truncated = get_data(filters)
 	report_summary = _get_summary(data, truncated, filters)
 	return columns, data, None, None, report_summary
+
+
+def _is_consolidated(filters):
+	return (filters.get("report_type") or "Detailed") == "Consolidated"
 
 
 def _validate_filters(filters):
@@ -63,6 +77,134 @@ def get_columns():
 		{"fieldname": "item_remark", "label": _("Item Remark"), "fieldtype": "Data", "width": 220},
 		{"fieldname": "status", "label": _("Status"), "fieldtype": "Data", "width": 110},
 	]
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# CONSOLIDATED MODE — item-wise actual consumption summed by Cost Center
+# ──────────────────────────────────────────────────────────────────────────
+
+def get_consolidated_columns():
+	return [
+		{"fieldname": "cost_center", "label": _("Cost Center"), "fieldtype": "Link", "options": "Cost Center", "width": 230},
+		{"fieldname": "item_code", "label": _("Item Code"), "fieldtype": "Link", "options": "Item", "width": 140},
+		{"fieldname": "item_name", "label": _("Item Name"), "fieldtype": "Data", "width": 240},
+		{"fieldname": "item_group", "label": _("Item Group"), "fieldtype": "Link", "options": "Item Group", "width": 140},
+		{"fieldname": "uom", "label": _("UOM"), "fieldtype": "Data", "width": 70},
+		{"fieldname": "total_issued", "label": _("Total Issued Qty"), "fieldtype": "Float", "width": 130, "precision": 2},
+		{"fieldname": "num_entries", "label": _("# Stock Entries"), "fieldtype": "Int", "width": 110},
+		{"fieldname": "avg_rate", "label": _("Avg Rate"), "fieldtype": "Currency", "options": "Company:company:default_currency", "width": 110},
+		{"fieldname": "total_value", "label": _("Total Value"), "fieldtype": "Currency", "options": "Company:company:default_currency", "width": 150},
+	]
+
+
+def _consolidated_purposes(filters):
+	"""Consolidated defaults to Material Issue (true consumption). The Stock Entry
+	Type filter widens it: a specific type is honoured; 'All'/blank → Material Issue."""
+	se_type = filters.get("stock_entry_type")
+	if se_type and se_type != "All":
+		return (se_type,)
+	return ("Material Issue",)
+
+
+def get_consolidated_data(filters):
+	"""Aggregate ACTUAL Stock Entry Detail consumption, grouped by (Cost Center, Item).
+	Uses the SE-row cost_center (where the material was charged) — not the request
+	line — so it reflects real consumption. Adds a Subtotal row per Cost Center.
+	"""
+	purposes = _consolidated_purposes(filters)
+	conds, params = _common_se_conditions(filters)
+	params["purposes"] = purposes
+
+	match_cond = frappe.build_match_conditions("Stock Entry")
+	# build_match_conditions qualifies columns with the full table name; this query
+	# aliases `tabStock Entry` AS se, so re-point the clause to the alias (no-op when
+	# the user has no Stock Entry user-permission → clause empty).
+	if match_cond:
+		match_cond = match_cond.replace("`tabStock Entry`", "se")
+	match_clause = f" AND ({match_cond}) " if match_cond else ""
+
+	sql = f"""
+		SELECT
+			sed.cost_center,
+			sed.item_code,
+			MAX(COALESCE(item.item_name, sed.item_name)) AS item_name,
+			MAX(item.item_group) AS item_group,
+			MAX(sed.uom) AS uom,
+			SUM(sed.qty) AS total_issued,
+			SUM(sed.amount) AS total_value,
+			CASE WHEN SUM(sed.qty) <> 0 THEN SUM(sed.amount) / SUM(sed.qty) ELSE 0 END AS avg_rate,
+			COUNT(DISTINCT se.name) AS num_entries
+		FROM `tabStock Entry Detail` sed
+		JOIN `tabStock Entry` se ON se.name = sed.parent
+		LEFT JOIN `tabItem` item ON item.name = sed.item_code
+		WHERE se.purpose IN %(purposes)s
+		  AND se.docstatus = 1
+		  AND se.company = %(company)s
+		  AND se.posting_date BETWEEN %(from_date)s AND %(to_date)s
+		  {(" AND " + " AND ".join(conds)) if conds else ""}
+		  {match_clause}
+		GROUP BY sed.cost_center, sed.item_code
+		ORDER BY sed.cost_center ASC, total_value DESC
+		LIMIT {ROW_LIMIT + 1}
+	"""
+	grouped = frappe.db.sql(sql, params, as_dict=True)
+	truncated = len(grouped) > ROW_LIMIT
+	if truncated:
+		grouped = grouped[:ROW_LIMIT]
+
+	# Insert a Subtotal row per Cost Center (rows already sorted by cost_center).
+	out = []
+	cc_qty = cc_val = cc_items = 0
+	cur_cc = None
+
+	def _flush(cc):
+		if cur_cc is not None:
+			out.append({
+				"cost_center": cc,
+				"item_code": "",
+				"item_name": _("Subtotal — {0} ({1} items)").format(cc or _("(No Cost Center)"), cc_items),
+				"item_group": "",
+				"uom": "",
+				"total_issued": cc_qty,
+				"num_entries": None,
+				"avg_rate": None,
+				"total_value": cc_val,
+				"is_subtotal": 1,
+			})
+
+	for r in grouped:
+		if cur_cc is not None and r.get("cost_center") != cur_cc:
+			_flush(cur_cc)
+			cc_qty = cc_val = cc_items = 0
+		cur_cc = r.get("cost_center")
+		cc_qty += flt(r.get("total_issued"))
+		cc_val += flt(r.get("total_value"))
+		cc_items += 1
+		out.append(r)
+	_flush(cur_cc)
+
+	return out, truncated
+
+
+def _get_consolidated_summary(data, truncated, filters):
+	item_rows = [r for r in data if not r.get("is_subtotal")]
+	total_issued = sum(flt(r.get("total_issued")) for r in item_rows)
+	total_value = sum(flt(r.get("total_value")) for r in item_rows)
+	distinct_cc = len({r.get("cost_center") for r in item_rows})
+	distinct_items = len({r.get("item_code") for r in item_rows if r.get("item_code")})
+	summary = [
+		{"label": _("Cost Centers"), "value": distinct_cc, "datatype": "Int"},
+		{"label": _("Distinct Items"), "value": distinct_items, "datatype": "Int"},
+		{"label": _("Total Issued (mixed UOM)"), "value": total_issued, "datatype": "Float"},
+		{"label": _("Total Value"), "value": total_value, "datatype": "Currency", "indicator": "Green"},
+	]
+	if truncated:
+		summary.append({
+			"label": _("Notice"),
+			"value": _("Result truncated at {0} groups — refine filters").format(ROW_LIMIT),
+			"datatype": "Data", "indicator": "Orange",
+		})
+	return summary
 
 
 def get_data(filters):
@@ -118,6 +260,9 @@ def _query_mr_based(filters):
 		params["use_location"] = f"%{use_loc}%"
 
 	match_cond = frappe.build_match_conditions("Material Request")
+	# Re-point the qualified columns to this query's alias `mr` (no-op when empty).
+	if match_cond:
+		match_cond = match_cond.replace("`tabMaterial Request`", "mr")
 	match_clause = f" AND ({match_cond}) " if match_cond else ""
 
 	sql = f"""
@@ -232,6 +377,11 @@ def _query_standalone_se(filters):
 		params["use_location"] = f"%{use_loc}%"
 
 	match_cond = frappe.build_match_conditions("Stock Entry")
+	# build_match_conditions qualifies columns with the full table name; this query
+	# aliases `tabStock Entry` AS se, so re-point the clause to the alias (no-op when
+	# the user has no Stock Entry user-permission → clause empty).
+	if match_cond:
+		match_cond = match_cond.replace("`tabStock Entry`", "se")
 	match_clause = f" AND ({match_cond}) " if match_cond else ""
 
 	sql = f"""

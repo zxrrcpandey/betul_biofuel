@@ -30,6 +30,18 @@ frappe.query_reports["TS Material Issue Ledger"] = {
 			reqd: 1,
 		},
 		{
+			fieldname: "report_type",
+			label: __("Report Type"),
+			fieldtype: "Select",
+			options: [
+				{ value: "Detailed", label: __("Detailed (per transaction)") },
+				{ value: "Consolidated", label: __("Consolidated (Item × Cost Center)") },
+			],
+			default: "Detailed",
+			reqd: 1,
+			description: __("Consolidated = item-wise actual consumption summed by Cost Center (defaults to Material Issue; widen via Stock Entry Type)"),
+		},
+		{
 			fieldname: "cost_center",
 			label: __("Cost Center"),
 			fieldtype: "Link",
@@ -158,6 +170,10 @@ frappe.query_reports["TS Material Issue Ledger"] = {
 	formatter(value, row, column, data, default_formatter) {
 		const formatted = default_formatter(value, row, column, data);
 		if (!data) return formatted;
+		// Consolidated mode — bold the per-Cost-Center subtotal rows.
+		if (data.is_subtotal) {
+			return `<span style="font-weight:700;">${formatted}</span>`;
+		}
 		// Status indicator pill
 		if (column.fieldname === "status" && value) {
 			const map = {

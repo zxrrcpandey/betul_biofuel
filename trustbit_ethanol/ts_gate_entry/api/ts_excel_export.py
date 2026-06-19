@@ -36,14 +36,26 @@ def export_material_issue_ledger_excel(filters=None):
 	from trustbit_ethanol.ts_gate_entry.report.ts_material_issue_ledger.ts_material_issue_ledger import (
 		get_columns,
 		get_data,
+		get_consolidated_columns,
+		get_consolidated_data,
+		_is_consolidated,
 	)
 
-	columns = get_columns()
+	consolidated = _is_consolidated(filters)
 	try:
-		rows, _truncated = get_data(filters)
+		if consolidated:
+			columns = get_consolidated_columns()
+			rows, _truncated = get_consolidated_data(filters)
+		else:
+			columns = get_columns()
+			rows, _truncated = get_data(filters)
 	except Exception as e:
 		frappe.log_error(title="ts_excel_export mi_get_data", message=str(e))
 		raise
+
+	# Mode-aware totals (Consolidated subtotal rows are excluded from the grand total).
+	total_fields = ("total_issued", "total_value") if consolidated else _TOTAL_FIELDS
+	sheet_name = "Consolidated by Cost Center" if consolidated else "Material Issue Ledger"
 
 	header = [c.get("label") for c in columns]
 	# Excel column width ~= report px width / 7 (clamped to a sane range).
@@ -61,23 +73,26 @@ def export_material_issue_ledger_excel(filters=None):
 				out_row.append("" if val is None else val)
 		xlsx_data.append(out_row)
 
-	# TOTALS footer row aligned to column positions.
-	totals_by_field = {f: sum(flt(r.get(f)) for r in rows) for f in _TOTAL_FIELDS}
+	# TOTALS footer row aligned to column positions. Consolidated subtotal rows are
+	# excluded so the grand total isn't double-counted.
+	total_rows = [r for r in rows if not r.get("is_subtotal")]
+	totals_by_field = {f: sum(flt(r.get(f)) for r in total_rows) for f in total_fields}
 	totals_row = []
 	for idx, c in enumerate(columns):
 		fn = c.get("fieldname")
 		if idx == 0:
-			totals_row.append(f"TOTALS ({len(rows)} rows)")
+			totals_row.append(f"TOTALS ({len(total_rows)} rows)")
 		elif fn in totals_by_field:
 			totals_row.append(totals_by_field[fn])
 		else:
 			totals_row.append("")
 	xlsx_data.append(totals_row)
 
-	content = make_xlsx(xlsx_data, "Material Issue Ledger", column_widths=widths).getvalue()
+	content = make_xlsx(xlsx_data, sheet_name, column_widths=widths).getvalue()
 
+	tag = "Consolidated" if consolidated else "Ledger"
 	abbr = (filters.get("company") or "BBPL").replace(" ", "_")[:12]
-	fname = f"TS_Material_Issue_Ledger_{abbr}_{filters.get('from_date')}_to_{filters.get('to_date')}.xlsx"
+	fname = f"TS_Material_Issue_{tag}_{abbr}_{filters.get('from_date')}_to_{filters.get('to_date')}.xlsx"
 	frappe.local.response.filename = fname
 	frappe.local.response.filecontent = content
 	frappe.local.response.type = "download"
