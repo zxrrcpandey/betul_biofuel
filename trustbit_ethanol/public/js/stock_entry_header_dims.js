@@ -12,9 +12,18 @@
 frappe.ui.form.on("Stock Entry", {
 	refresh(frm) {
 		_ts_toggle_header_reqd(frm);
+		_ts_backfill_header_from_rows(frm);
 	},
 	purpose(frm) {
 		_ts_toggle_header_reqd(frm);
+		_ts_backfill_header_from_rows(frm);
+	},
+	validate(frm) {
+		// Guaranteed pre-mandatory fill: Frappe runs the `validate` trigger BEFORE
+		// check_mandatory in the save pipeline, so even when items arrive via
+		// "Get Items From → Material Request" (which doesn't re-fire `refresh`), the
+		// header CC/Project are filled from the rows before the mandatory check.
+		_ts_backfill_header_from_rows(frm);
 	},
 	ts_set_cost_center(frm) {
 		_ts_apply_to_rows(frm, "ts_set_cost_center", "cost_center");
@@ -29,6 +38,27 @@ function _ts_toggle_header_reqd(frm) {
 	const req = frm.doc.purpose === "Material Issue" ? 1 : 0;
 	frm.set_df_property("ts_set_cost_center", "reqd", req);
 	frm.set_df_property("ts_set_project", "reqd", req);
+}
+
+function _ts_backfill_header_from_rows(frm) {
+	// Auto-fetch ONLY from a Material-Request-sourced row. "Get Items From →
+	// Material Request" maps the MR's cost_center / project onto each row (and
+	// stamps row.material_request); mirror those up to the blank header so the
+	// mandatory header is satisfied without manual entry. A STANDALONE Material
+	// Issue (no MR link) keeps manual CC/Project entry — we never default from
+	// company/row values. Fill-blank only (a header the user set is never
+	// touched), draft-only, synchronous, idempotent. Server before_validate is
+	// the backstop for the programmatic Stores Material-Issue draft.
+	if (frm.doc.purpose !== "Material Issue") return;
+	if (frm.doc.docstatus !== 0) return; // draft/new only — never dirty a submitted SE
+	const mrRow = (frm.doc.items || []).find((x) => x.material_request);
+	if (!mrRow) return; // no Material Request behind this issue → no auto-fetch
+	if (!frm.doc.ts_set_cost_center && mrRow.cost_center) {
+		frm.set_value("ts_set_cost_center", mrRow.cost_center);
+	}
+	if (!frm.doc.ts_set_project && mrRow.project) {
+		frm.set_value("ts_set_project", mrRow.project);
+	}
 }
 
 frappe.ui.form.on("Stock Entry Detail", {

@@ -21,6 +21,12 @@ _HEADER_MAP = (
     ("ts_set_project", "project"),
 )
 
+# (Stock Entry header field  <-  Material Request source field) — for auto-fetch.
+_MR_SOURCE_MAP = (
+    ("ts_set_cost_center", "cost_center"),
+    ("ts_set_project", "ts_project"),
+)
+
 
 def seed_se_header_dimension_fields():
     """after_migrate — create the 2 header Custom Fields on Stock Entry. Idempotent.
@@ -61,13 +67,49 @@ def seed_se_header_dimension_fields():
         frappe.db.commit()
 
 
+def _autofetch_header_dims_from_mr(doc):
+    """Fill BLANK header dimension fields from the Stock Entry's source Material
+    Request. ERPNext's make_stock_entry mapper stamps `material_request` on every
+    item row created from an MR — both the Stores Material-Issue flow
+    (ts_mr_transfer.approve_transfer) and a manual "Get Items From -> Material
+    Request" — so the MR that drove the approval (and carries the cost_center used
+    for routing + ts_project) can be recovered from the rows and re-applied.
+
+    Fill-blank only: a header value the user picked is never overwritten, and a
+    standalone Stock Entry with no MR link simply no-ops (manual entry as before).
+    """
+    # Nothing to fetch if both header dims are already set.
+    if doc.get("ts_set_cost_center") and doc.get("ts_set_project"):
+        return
+    mr_name = None
+    for row in doc.items:
+        if row.get("material_request"):
+            mr_name = row.material_request
+            break
+    if not mr_name:
+        return
+    mr = frappe.db.get_value(
+        "Material Request", mr_name, ["cost_center", "ts_project"], as_dict=True
+    )
+    if not mr:
+        return
+    for header_field, mr_field in _MR_SOURCE_MAP:
+        if not doc.get(header_field) and mr.get(mr_field):
+            doc.set(header_field, mr.get(mr_field))
+
+
 def cascade_se_header_dimensions(doc, method=None):
     """Stock Entry before_validate — fill BLANK item-row cost_center/project from
     the header fields. Fill-only (never overwrites an existing row value), so a
     programmatic SE with blank headers no-ops and per-row overrides are respected.
+
+    The header fields themselves are first auto-fetched from the source Material
+    Request (when blank) so an MR-sourced issue inherits the MR's Cost Center +
+    Project end-to-end without manual re-entry.
     """
     if not doc.get("items"):
         return
+    _autofetch_header_dims_from_mr(doc)
     for header_field, row_field in _HEADER_MAP:
         header_val = doc.get(header_field)
         if not header_val:
