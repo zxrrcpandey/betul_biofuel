@@ -298,6 +298,9 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.ts_vehicle_origin_propagation.seed_pr_vehicle_number_field",
 	# v2.17.3 — Stock Reconciliation: lock create/submit to IT Head only (Stock Manager -> read-only)
 	"trustbit_ethanol.ts_gate_entry.ts_stock_recon_perms.seed_stock_recon_permissions",
+	# v2.18.x — WhatsApp Integration Phase 1a: TS Settings + User Custom Fields + template-map rows (ships inert behind ts_whatsapp_enabled)
+	"trustbit_ethanol.ts_gate_entry.setup_whatsapp.seed_whatsapp_settings_fields",
+	"trustbit_ethanol.ts_gate_entry.ts_whatsapp_recipients.seed_whatsapp_user_fields",
 ]
 
 # Scheduled Tasks

@@ -1,0 +1,231 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-06-20 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "recipient_number",
+  "recipient_user",
+  "recipient_contact",
+  "direction",
+  "column_break_main",
+  "ref_doctype",
+  "ref_name",
+  "template_key",
+  "template_id",
+  "language",
+  "section_status",
+  "status",
+  "skip_reason",
+  "provider_message_id",
+  "vendor_ack_id",
+  "column_break_status",
+  "error_code",
+  "error_message",
+  "retry_count",
+  "status_updated_at",
+  "section_meta",
+  "variables_sent",
+  "is_sandbox",
+  "triggered_by",
+  "sent_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "recipient_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Recipient Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "recipient_user",
+   "fieldtype": "Link",
+   "label": "Recipient User",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "recipient_contact",
+   "fieldtype": "Link",
+   "label": "Recipient Contact",
+   "options": "Contact",
+   "read_only": 1
+  },
+  {
+   "default": "Outbound",
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Direction",
+   "options": "Outbound\nInbound",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ref_doctype",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Reference Document Type",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ref_name",
+   "fieldtype": "Dynamic Link",
+   "in_standard_filter": 1,
+   "label": "Reference Name",
+   "options": "ref_doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "template_key",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Template Key",
+   "read_only": 1
+  },
+  {
+   "fieldname": "template_id",
+   "fieldtype": "Data",
+   "label": "Template Id",
+   "read_only": 1
+  },
+  {
+   "default": "en",
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Language",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_status",
+   "fieldtype": "Section Break",
+   "label": "Delivery"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Queued\nSent\nDelivered\nRead\nFailed\nSkipped",
+   "read_only": 1
+  },
+  {
+   "fieldname": "skip_reason",
+   "fieldtype": "Data",
+   "label": "Skip / Fail Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "provider_message_id",
+   "fieldtype": "Data",
+   "label": "Provider Message Id",
+   "read_only": 1
+  },
+  {
+   "fieldname": "vendor_ack_id",
+   "fieldtype": "Data",
+   "label": "Vendor Ack Id",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "error_code",
+   "fieldtype": "Data",
+   "label": "Error Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Message",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "retry_count",
+   "fieldtype": "Int",
+   "label": "Retry Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status_updated_at",
+   "fieldtype": "Datetime",
+   "label": "Status Updated At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_meta",
+   "fieldtype": "Section Break",
+   "label": "Audit"
+  },
+  {
+   "fieldname": "variables_sent",
+   "fieldtype": "Small Text",
+   "label": "Variables Sent",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_sandbox",
+   "fieldtype": "Check",
+   "label": "Sent in Sandbox Mode",
+   "read_only": 1
+  },
+  {
+   "fieldname": "triggered_by",
+   "fieldtype": "Link",
+   "label": "Triggered By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sent_at",
+   "fieldtype": "Datetime",
+   "label": "Sent At",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-06-20 00:00:00.000000",
+ "module": "TS Gate Entry",
+ "name": "TS WhatsApp Log",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IT Head"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
