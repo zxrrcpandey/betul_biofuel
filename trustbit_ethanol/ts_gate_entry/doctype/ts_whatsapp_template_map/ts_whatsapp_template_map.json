@@ -37,8 +37,8 @@
    "fieldname": "template_id",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Airtel Template Id",
-   "description": "Paste the Airtel/Meta-approved Template Id here. e.g. 01j6rmpxaypjmrv3pe5n4naqdp"
+   "label": "Template Name / Id",
+   "description": "The approved template reference for your provider. WhatsHub360: the template NAME (e.g. order_update). Airtel IQ: the templateId (e.g. 01j6rmpxaypjmrv3pe5n4naqdp)."
   },
   {
    "columns": 1,

@@ -19,12 +19,10 @@ from trustbit_ethanol.ts_gate_entry.ts_whatsapp_recipients import (
 	normalize_msisdn,
 	_whatsapp_recipients,
 )
+from trustbit_ethanol.ts_gate_entry.ts_whatsapp_providers import get_provider, DEFAULT_PROVIDER
 
-# Meta/Airtel codes worth retrying (transient). Everything else fails fast.
-RETRYABLE_CODES = {"130429", "131000", "100", "400", "-8"}
-# HTTP statuses worth retrying.
+# HTTP statuses worth retrying (provider-relayed transient codes are per-provider).
 RETRYABLE_HTTP = {429, 500, 502, 503, 504}
-DEFAULT_BASE_URL = "https://iqwhatsapp.airtel.in:443/gateway/airtel-xchange/basic/whatsapp-manager/v1"
 HTTP_TIMEOUT = 30
 
 
@@ -113,7 +111,7 @@ def _process_one(rec, template_key, tmpl, var_json, sandbox_on, test_numbers,
 # Delivery worker — the ONLY HTTP caller
 # --------------------------------------------------------------------------- #
 def _deliver_template(log_name):
-	"""Enqueued worker. POST the template to Airtel, retry retryable codes."""
+	"""Enqueued worker. Build the request via the active provider, POST, retry."""
 	try:
 		log = frappe.get_doc("TS WhatsApp Log", log_name)
 	except Exception:
@@ -122,7 +120,8 @@ def _deliver_template(log_name):
 		return  # idempotent — already processed
 
 	conn = _conn_settings()
-	missing = [k for k in ("base_url", "app_id", "token", "sender") if not conn.get(k)]
+	provider = get_provider(conn["provider"])
+	missing = [k for k in provider["required"] if not conn.get(k)]
 	if missing:
 		_update_log(log_name, status="Failed", skip_reason="no_credentials:" + ",".join(missing))
 		return
@@ -133,51 +132,47 @@ def _deliver_template(log_name):
 		_update_log(log_name, status="Failed", skip_reason="requests_unavailable")
 		return
 
-	url = conn["base_url"].rstrip("/") + "/template/send"
-	headers = {
-		"app-id": conn["app_id"],
-		"Content-Type": "application/json",
-		"Authorization": "Basic " + conn["token"],
-	}
 	try:
 		variables = frappe.parse_json(log.variables_sent) or []
 	except Exception:
 		variables = []
-	payload = {
-		"templateId": log.template_id,
+	ctx = {
 		"to": log.recipient_number,
-		"from": conn["sender"],
-		"filterBlacklistNumbers": bool(conn.get("filter_blacklist")),
-		"message": {"variables": [str(v) for v in variables]},
+		"template_ref": log.template_id,
+		"language": log.language,
+		"variables": variables,
 	}
+	retryable_codes = provider.get("retryable_codes") or frozenset()
 
 	max_retries = conn.get("max_retries", 3)
 	for attempt in range(max_retries + 1):
 		try:
+			url, headers, payload = provider["build"](conn, ctx)
 			resp = requests.post(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
 			http = resp.status_code
 			try:
 				data = resp.json()
 			except Exception:
 				data = {}
-			code, msg = _extract_error(data)
-			if 200 <= http < 300 and not code:
-				mid, ack = _extract_ids(data)
+			result = provider["parse"](http, data)
+			if result.get("ok"):
 				_update_log(
 					log_name, status="Sent", retry_count=attempt,
-					provider_message_id=mid, vendor_ack_id=ack,
+					provider_message_id=result.get("message_id"),
+					vendor_ack_id=result.get("vendor_ack"),
 					status_updated_at=frappe.utils.now_datetime(),
 				)
 				return
 			# Error path.
-			retryable = (str(code) in RETRYABLE_CODES) or (http in RETRYABLE_HTTP)
+			code = result.get("error_code")
+			retryable = (str(code) in retryable_codes) or (http in RETRYABLE_HTTP)
 			if retryable and attempt < max_retries:
 				time.sleep(min(2 ** attempt, 8))
 				continue
 			_update_log(
 				log_name, status="Failed", retry_count=attempt,
 				error_code=str(code) if code is not None else str(http),
-				error_message=_short(msg) or f"HTTP {http}",
+				error_message=_short(result.get("error_message")) or f"HTTP {http}",
 				status_updated_at=frappe.utils.now_datetime(),
 			)
 			return
@@ -213,9 +208,13 @@ def _conn_settings():
 	# Honor an explicit 0 (operator means "never retry"); only fall back to 3 when unset.
 	_mr = gv("TS Settings", "ts_whatsapp_max_retries")
 	return {
-		"base_url": (gv("TS Settings", "ts_whatsapp_base_url") or DEFAULT_BASE_URL),
-		"app_id": gv("TS Settings", "ts_whatsapp_app_id"),
+		"provider": gv("TS Settings", "ts_whatsapp_provider") or DEFAULT_PROVIDER,
+		# base_url is an OPTIONAL override; blank -> the provider's own default base.
+		"base_url": gv("TS Settings", "ts_whatsapp_base_url") or "",
 		"token": token,
+		"vendor_uid": gv("TS Settings", "ts_whatsapp_vendor_uid"),
+		"from_phone_number_id": gv("TS Settings", "ts_whatsapp_from_phone_number_id"),
+		"app_id": gv("TS Settings", "ts_whatsapp_app_id"),
 		"sender": gv("TS Settings", "ts_whatsapp_from"),
 		"filter_blacklist": bool(int(gv("TS Settings", "ts_whatsapp_filter_blacklist") or 0)),
 		"max_retries": int(_mr) if _mr not in (None, "") else 3,
@@ -293,40 +292,6 @@ def _update_log(log_name, **fields):
 		frappe.db.commit()
 	finally:
 		frappe.flags.in_whatsapp_server = False
-
-
-def _extract_error(data):
-	"""Return (code, message) from an Airtel/Meta response, or (None, None)."""
-	if not isinstance(data, dict):
-		return None, None
-	err = data.get("error")
-	if isinstance(err, dict):
-		code = err.get("code")
-		msg = err.get("message")
-		if isinstance(msg, dict):  # nested Airtel wrapper: error.message.error.{code,message}
-			inner = msg.get("error", {})
-			if isinstance(inner, dict):
-				code = inner.get("code", code)
-				msg = inner.get("message", None)
-		return (str(code) if code is not None else None), msg
-	# Top-level Airtel-specific failure (e.g. code -8) with a non-success code.
-	code = data.get("code")
-	if code not in (None, 0, "0", 200, "200"):
-		return str(code), data.get("title") or data.get("message")
-	# messageStatus / msgStatus FAILED without a structured code.
-	status = (data.get("messageStatus") or data.get("msgStatus") or "").upper()
-	if status == "FAILED":
-		return "FAILED", data.get("title") or "Send reported FAILED"
-	return None, None
-
-
-def _extract_ids(data):
-	if not isinstance(data, dict):
-		return None, None
-	inner = data.get("data") if isinstance(data.get("data"), dict) else {}
-	mid = data.get("messageId") or inner.get("messageId")
-	ack = data.get("vendorAckId") or inner.get("vendorAckId")
-	return mid, ack
 
 
 def _short(text, limit=900):

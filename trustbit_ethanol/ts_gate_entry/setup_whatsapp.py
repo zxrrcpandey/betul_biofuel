@@ -1,19 +1,19 @@
 # Copyright (c) 2026, Trustbit Software and contributors
-# WhatsApp Integration (Airtel IQ) — Phase 1a setup / seeders.
+# WhatsApp Integration — multi-adapter setup / seeders.
 #
 # Adds the WhatsApp config fields to TS Settings as Custom Fields (lock-safe:
-# does not touch the app-owned ts_settings.json), seeds fail-closed defaults
-# (Lesson 227 — never let a JSON default clobber an operator's setting on
-# migrate), and seeds the event->template map rows (blank template_ids until
-# Meta approves them).
+# does not touch the app-owned ts_settings.json). The config is PROVIDER-AWARE:
+# a Provider selector (WhatsHub360 | Airtel IQ) shows/requires only the fields
+# that provider needs. Fail-closed defaults (Lesson 227) + event->template map.
 #
 # Registered in hooks.py after_migrate. Idempotent.
 
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields as _create_custom_fields
 
-# Default API base (Airtel IQ send path; adapter appends /template/send).
-DEFAULT_BASE_URL = "https://iqwhatsapp.airtel.in:443/gateway/airtel-xchange/basic/whatsapp-manager/v1"
+# Legacy value seeded by Phase 1a (when Airtel was the only provider). base_url
+# is now an optional override; clear this so the provider default applies.
+LEGACY_AIRTEL_BASE = "https://iqwhatsapp.airtel.in:443/gateway/airtel-xchange/basic/whatsapp-manager/v1"
 
 # The HYBRID template set (user decision 20 Jun) — 6 custom PO/MR + 4 shared.
 TEMPLATE_EVENT_KEYS = (
@@ -29,11 +29,13 @@ TEMPLATE_EVENT_KEYS = (
 	"reminder_generic",
 )
 
-# Custom Fields added to the TS Settings Single. permlevel 1 = IT Head /
-# System Manager; secrets (auth token) permlevel 2 = System Manager only.
-# NOTE: the two safety switches (enabled, sandbox_mode) and filter_blacklist
-# carry NO `default` here — their initial value is set by the fail-closed
-# seeder so a later migrate can never overwrite an operator's choice (L227).
+_WH360 = "eval:doc.ts_whatsapp_provider=='WhatsHub360'"
+_AIRTEL = "eval:doc.ts_whatsapp_provider=='Airtel IQ'"
+
+# Custom Fields on TS Settings. permlevel 1 = IT Head / System Manager; the
+# token (secret) is permlevel 2 = System Manager only. The two safety switches
+# (enabled, sandbox_mode), filter_blacklist and provider carry NO JSON `default`
+# — their initial value is set by the fail-closed seeder (Lesson 227).
 WHATSAPP_TS_SETTINGS_FIELDS = {
 	"TS Settings": [
 		{
@@ -45,7 +47,7 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 		{
 			"fieldname": "ts_whatsapp_section_conn",
 			"fieldtype": "Section Break",
-			"label": "WhatsApp Connection (Airtel IQ)",
+			"label": "WhatsApp Connection",
 			"insert_after": "tab_whatsapp",
 		},
 		{
@@ -54,71 +56,104 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"label": "Enable WhatsApp Notifications",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_section_conn",
-			"description": "MASTER ON/OFF switch. When OFF (default) no WhatsApp is ever sent and the system behaves exactly as before. Turn ON only after the Token, App Id, Sender Number and at least one approved template are filled in. Writable by IT Head / System Manager only. Example: keep OFF until setup is complete.",
+			"description": "MASTER ON/OFF switch. When OFF (default) no WhatsApp is ever sent and the system behaves exactly as before. Turn ON only after the provider credentials and at least one approved template are filled in. Writable by IT Head / System Manager only.",
+		},
+		{
+			"fieldname": "ts_whatsapp_provider",
+			"fieldtype": "Select",
+			"label": "Provider",
+			"options": "WhatsHub360\nAirtel IQ",
+			"permlevel": 1,
+			"insert_after": "ts_whatsapp_enabled",
+			"description": "Choose your WhatsApp gateway. The credential fields below change to match the provider you pick. Default: WhatsHub360.",
 		},
 		{
 			"fieldname": "ts_whatsapp_base_url",
 			"fieldtype": "Data",
-			"label": "API Base URL",
+			"label": "API Base URL (optional override)",
 			"permlevel": 1,
-			"insert_after": "ts_whatsapp_enabled",
-			"description": "Airtel IQ send-API base path; the system automatically adds '/template/send'. Leave the default unless Airtel gives you a different host. Example: https://iqwhatsapp.airtel.in:443/gateway/airtel-xchange/basic/whatsapp-manager/v1",
-		},
-		{
-			"fieldname": "ts_whatsapp_app_id",
-			"fieldtype": "Data",
-			"label": "App Id (app-id header)",
-			"permlevel": 1,
-			"insert_after": "ts_whatsapp_base_url",
-			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled",
-			"description": "REQUIRED to send — mandatory once WhatsApp is enabled. The 'app-id' header value Airtel issues for your account (their documentation shows the sample value 'IRONMAN' — Airtel gives you your real one). Example: IRONMAN",
+			"insert_after": "ts_whatsapp_provider",
+			"description": "Leave BLANK to use the selected provider's default API URL. Only set this if your provider gave you a custom host. WhatsHub360 default: https://app.whatshub360.com/api",
 		},
 		{
 			"fieldname": "ts_whatsapp_auth_token",
 			"fieldtype": "Password",
-			"label": "Authorization Token (Basic)",
+			"label": "API Token",
 			"permlevel": 2,
-			"insert_after": "ts_whatsapp_app_id",
+			"insert_after": "ts_whatsapp_base_url",
 			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled",
-			"description": "REQUIRED to send — mandatory once WhatsApp is enabled. The Basic-auth token from Airtel = base64 of 'username:password', sent as the 'Authorization: Basic <token>' header on every call. Stored encrypted; System Manager only. Example: YWxhZGRpbjpvcGVuc2VzYW1l",
+			"description": "REQUIRED to send — mandatory once WhatsApp is enabled. WhatsHub360: your API Access Token (sent as 'Authorization: Bearer <token>'). Airtel IQ: the Basic-auth token = base64('username:password'). Stored encrypted; System Manager only.",
+		},
+		{
+			"fieldname": "ts_whatsapp_vendor_uid",
+			"fieldtype": "Data",
+			"label": "Vendor UID (WhatsHub360)",
+			"permlevel": 1,
+			"insert_after": "ts_whatsapp_auth_token",
+			"depends_on": _WH360,
+			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled && doc.ts_whatsapp_provider=='WhatsHub360'",
+			"description": "REQUIRED for WhatsHub360. Your Vendor UID — it forms part of the send URL (/api/<vendor_uid>/contact/send-message). Example: 5a712c48-05cd-411f-8444-ab9096cae95e",
+		},
+		{
+			"fieldname": "ts_whatsapp_from_phone_number_id",
+			"fieldtype": "Data",
+			"label": "From Phone Number Id (WhatsHub360, optional)",
+			"permlevel": 1,
+			"insert_after": "ts_whatsapp_vendor_uid",
+			"depends_on": _WH360,
+			"description": "Optional (WhatsHub360). The phone-number id to send FROM; if blank, your account's default sender is used.",
+		},
+		{
+			"fieldname": "ts_whatsapp_app_id",
+			"fieldtype": "Data",
+			"label": "App Id (Airtel IQ)",
+			"permlevel": 1,
+			"insert_after": "ts_whatsapp_from_phone_number_id",
+			"depends_on": _AIRTEL,
+			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled && doc.ts_whatsapp_provider=='Airtel IQ'",
+			"description": "REQUIRED for Airtel IQ. The 'app-id' header value Airtel issues for your account. Example: IRONMAN",
 		},
 		{
 			"fieldname": "ts_whatsapp_col_conn",
 			"fieldtype": "Column Break",
-			"insert_after": "ts_whatsapp_auth_token",
+			"insert_after": "ts_whatsapp_app_id",
 		},
 		{
 			"fieldname": "ts_whatsapp_customer_id",
 			"fieldtype": "Data",
-			"label": "Customer Id",
+			"label": "Customer Id (Airtel IQ)",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_col_conn",
-			"description": "NOT needed to send. Used only by the in-app Template Designer (Phase 3) for Create/Fetch/Edit Template calls. Your Airtel customer/account id. Example: WA_NEW_CONV_2",
+			"depends_on": _AIRTEL,
+			"description": "Airtel IQ only. Used by the in-app Template Designer (Phase 3); not needed to send. Example: WA_NEW_CONV_2",
 		},
 		{
 			"fieldname": "ts_whatsapp_waba_id",
 			"fieldtype": "Data",
-			"label": "WABA Id",
+			"label": "WABA Id (Airtel IQ)",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_customer_id",
-			"description": "NOT needed to send. Used only by the Template Designer (Phase 3). Your WhatsApp Business Account (WABA) id from Airtel/Meta. Example: 102290129912345",
+			"depends_on": _AIRTEL,
+			"description": "Airtel IQ only. WhatsApp Business Account id. Used by the Template Designer (Phase 3); not needed to send.",
 		},
 		{
 			"fieldname": "ts_whatsapp_subaccount_id",
 			"fieldtype": "Data",
-			"label": "Sub-Account Id",
+			"label": "Sub-Account Id (Airtel IQ)",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_waba_id",
-			"description": "NOT needed to send. Used only by the Template Designer (Phase 3). Your Airtel sub-account id. Example: SUBACC_001",
+			"depends_on": _AIRTEL,
+			"description": "Airtel IQ only. Used by the Template Designer (Phase 3); not needed to send.",
 		},
 		{
 			"fieldname": "ts_whatsapp_from",
 			"fieldtype": "Data",
-			"label": "Sender Number (91XXXXXXXXXX)",
+			"label": "Sender Number (Airtel IQ)",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_subaccount_id",
-			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled",
-			"description": "REQUIRED to send — mandatory once WhatsApp is enabled. Your registered Airtel WhatsApp sender number — country code + 10 digits, NO '+', no spaces. This is the number messages come FROM. Example: 919812345678",
+			"depends_on": _AIRTEL,
+			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled && doc.ts_whatsapp_provider=='Airtel IQ'",
+			"description": "REQUIRED for Airtel IQ. Registered sender number — country code + 10 digits, NO '+'. Example: 919812345678",
 		},
 		{
 			"fieldname": "ts_whatsapp_section_safety",
@@ -132,7 +167,7 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"label": "Sandbox Mode (only message test numbers)",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_section_safety",
-			"description": "When ON (default) ONLY the numbers in 'Test Numbers' receive messages; everyone else is skipped and logged. KEEP ON while testing so real staff/suppliers are never messaged by accident. Turn OFF only on production once you are confident. Example: ON on demo, OFF at go-live.",
+			"description": "When ON (default) ONLY the numbers in 'Test Numbers' receive messages; everyone else is skipped and logged. KEEP ON while testing so real staff/suppliers are never messaged by accident. Turn OFF only on production once you are confident.",
 		},
 		{
 			"fieldname": "ts_whatsapp_test_numbers",
@@ -141,15 +176,15 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_sandbox_mode",
 			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled && doc.ts_whatsapp_sandbox_mode",
-			"description": "While Sandbox Mode is ON, only these numbers can receive messages. Mandatory when WhatsApp is enabled AND Sandbox Mode is on, so you can't go live in sandbox with an empty allowlist. Separate with commas or new lines, each as 91XXXXXXXXXX. Example: 919812345678, 919900112233",
+			"description": "While Sandbox Mode is ON, only these numbers can receive messages. Mandatory when enabled AND sandbox is on, so you can't go live in sandbox with an empty allowlist. Comma / newline separated, each 91XXXXXXXXXX. Example: 919812345678, 919900112233",
 		},
 		{
 			"fieldname": "ts_whatsapp_filter_blacklist",
 			"fieldtype": "Check",
-			"label": "Respect Blacklist (filterBlacklistNumbers)",
+			"label": "Respect Blacklist",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_test_numbers",
-			"description": "When ON (default) Airtel skips any number on its blacklist / opt-out list (sends 'filterBlacklistNumbers=true'). Leave ON to honour opt-outs.",
+			"description": "When ON (default) the provider skips numbers on its blacklist / opt-out list. Leave ON to honour opt-outs. (Used by Airtel's filterBlacklistNumbers.)",
 		},
 		{
 			"fieldname": "ts_whatsapp_col_safety",
@@ -159,10 +194,10 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 		{
 			"fieldname": "ts_whatsapp_callback_secret",
 			"fieldtype": "Password",
-			"label": "Delivery Webhook Secret",
+			"label": "Delivery / Inbound Webhook Secret",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_col_safety",
-			"description": "A secret YOU choose and give to Airtel. Airtel must send it back in the 'X-Callback-Token' header on every delivery-status webhook, so forged callbacks are rejected. Use a long random string. Example: 7f3c9b1e2a4d6f8091a2b3c4d5e6f70a",
+			"description": "A secret YOU choose and give to your provider; it must be sent back (X-Callback-Token header) on webhooks, so forged callbacks are rejected. Use a long random string.",
 		},
 		{
 			"fieldname": "ts_whatsapp_source_ip_allowlist",
@@ -170,16 +205,16 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"label": "Webhook Source IP Allowlist",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_callback_secret",
-			"description": "Optional extra security: only these Airtel server IPs may call the delivery webhook. Comma / newline separated. Leave blank if you rely on the secret alone. Example: 13.234.10.20, 65.0.30.40",
+			"description": "Optional: only these provider server IPs may call the webhook. Comma / newline separated. Leave blank to rely on the secret alone.",
 		},
 		{
 			"fieldname": "ts_whatsapp_max_retries",
 			"fieldtype": "Int",
-			"label": "Max Retries (retryable codes)",
+			"label": "Max Retries (transient errors)",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_source_ip_allowlist",
 			"default": "3",
-			"description": "How many times to retry a send that fails with a TEMPORARY error (e.g. rate-limit). 0 = never retry. Default 3. Example: 3",
+			"description": "How many times to retry a send that fails with a TEMPORARY error (e.g. rate-limit / 5xx). 0 = never retry. Default 3.",
 		},
 		{
 			"fieldname": "ts_whatsapp_section_esc",
@@ -194,7 +229,7 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_section_esc",
 			"default": "4",
-			"description": "FIRST reminder: how many hours a document may sit pending before the approver gets a WhatsApp nudge. (Used by the Phase 1b escalation scheduler.) Default 4. Example: 4",
+			"description": "FIRST reminder: hours a document may sit pending before the approver gets a WhatsApp nudge. Default 4.",
 		},
 		{
 			"fieldname": "ts_whatsapp_l2_hours",
@@ -203,7 +238,7 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_l1_hours",
 			"default": "12",
-			"description": "SECOND reminder: hours pending before a stronger nudge is sent. Default 12. Example: 12",
+			"description": "SECOND reminder: hours pending before a stronger nudge. Default 12.",
 		},
 		{
 			"fieldname": "ts_whatsapp_l3_hours",
@@ -212,7 +247,7 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_l2_hours",
 			"default": "24",
-			"description": "ESCALATION: hours pending before the reminder climbs the chain to leadership (CEO / MD). Default 24. Example: 24",
+			"description": "ESCALATION: hours pending before the reminder climbs to leadership (CEO / MD). Default 24.",
 		},
 		{
 			"fieldname": "ts_whatsapp_col_esc",
@@ -226,7 +261,7 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_col_esc",
 			"default": "72",
-			"description": "How many hours a QC / inspection may stay pending before a WhatsApp nudge fires. Default 72. Example: 72",
+			"description": "Hours a QC / inspection may stay pending before a WhatsApp nudge fires. Default 72.",
 		},
 		{
 			"fieldname": "ts_whatsapp_section_tpl",
@@ -241,7 +276,7 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"options": "TS WhatsApp Template Map",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_section_tpl",
-			"description": "Maps each business event to its Airtel/Meta-approved template. For each row, paste the Airtel Template Id and tick Enabled once Meta approves it. Rows with no id or not enabled are skipped (logged as 'no_template'). The 10 rows are pre-created for you.",
+			"description": "Maps each business event to its approved template. Paste the provider template reference (WhatsHub360: template NAME; Airtel: templateId) and tick Enabled once it's approved. Rows with no ref / not enabled are skipped. The 10 rows are pre-created.",
 		},
 	]
 }
@@ -258,8 +293,7 @@ def seed_whatsapp_settings_fields():
 
 
 def _singles_has_value(field):
-	"""True if tabSingles already holds a stored value for this TS Settings field.
-	tabSingles has no `modified` column, so raw SQL (mirrors seed_ts_settings)."""
+	"""True if tabSingles already holds a stored value for this TS Settings field."""
 	rows = frappe.db.sql(
 		"""SELECT value FROM `tabSingles`
 		   WHERE doctype='TS Settings' AND field=%s LIMIT 1""",
@@ -269,29 +303,33 @@ def _singles_has_value(field):
 
 
 def _seed_whatsapp_defaults():
-	"""Seed initial TS Settings values. Writes directly to tabSingles via
-	set_single_value (avoids the Single-load default-application ambiguity and
-	the TS Settings controller)."""
+	"""Seed initial TS Settings values via set_single_value (avoids the Single
+	default-application ambiguity and the TS Settings controller)."""
 	if not frappe.db.exists("TS Settings", "TS Settings"):
 		return
 	changed = False
 
-	# Safety switches — set ONLY when never set before, so a later migrate can
-	# never overwrite an operator's intentional setting (Lesson 227).
+	# Switches / provider — set ONLY when never set before (Lesson 227).
 	fail_closed = {
-		"ts_whatsapp_enabled": 0,       # master kill-switch ships OFF
-		"ts_whatsapp_sandbox_mode": 1,  # sandbox ON until explicitly disabled
+		"ts_whatsapp_enabled": 0,            # master kill-switch ships OFF
+		"ts_whatsapp_sandbox_mode": 1,       # sandbox ON until explicitly disabled
 		"ts_whatsapp_filter_blacklist": 1,
+		"ts_whatsapp_provider": "WhatsHub360",  # default provider
 	}
 	for field, value in fail_closed.items():
 		if not _singles_has_value(field):
 			frappe.db.set_single_value("TS Settings", field, value)
 			changed = True
 
-	# Non-safety defaults — fill when the stored value is empty/zero. These are
-	# all non-empty defaults, so once set they are never re-applied.
+	# base_url is now an OPTIONAL override; clear the legacy Phase-1a Airtel value
+	# so the selected provider's default base applies. A custom override won't
+	# match LEGACY_AIRTEL_BASE and is preserved.
+	if frappe.db.get_single_value("TS Settings", "ts_whatsapp_base_url") == LEGACY_AIRTEL_BASE:
+		frappe.db.set_single_value("TS Settings", "ts_whatsapp_base_url", "")
+		changed = True
+
+	# Numeric defaults — fill when the stored value is empty/zero.
 	plain = {
-		"ts_whatsapp_base_url": DEFAULT_BASE_URL,
 		"ts_whatsapp_max_retries": 3,
 		"ts_whatsapp_l1_hours": 4,
 		"ts_whatsapp_l2_hours": 12,
@@ -309,7 +347,7 @@ def _seed_whatsapp_defaults():
 
 
 def _seed_template_map_rows():
-	"""Ensure one (disabled, blank-templateId) row per event_key exists."""
+	"""Ensure one (disabled, blank-ref) row per event_key exists."""
 	if not frappe.db.exists("TS Settings", "TS Settings"):
 		return
 	doc = frappe.get_doc("TS Settings")
