@@ -129,7 +129,7 @@ function _um_render_table(page) {
 
 		const can_edit = !u.is_protected && !u.is_self;
 		const edit_btn = can_edit
-			? `<button class="btn btn-xs btn-default um-edit-btn" data-email="${frappe.utils.escape_html(u.name)}" style="margin-right:5px;">Edit Roles</button>`
+			? `<button class="btn btn-xs btn-default um-edit-btn" data-email="${frappe.utils.escape_html(u.name)}" style="margin-right:5px;">Edit</button>`
 			: '';
 		const toggle_btn = can_edit
 			? (u.enabled
@@ -233,6 +233,18 @@ function _um_show_create_dialog(page) {
 				options: "Phone",
 			},
 			{
+				fieldname: "ts_whatsapp_number",
+				label: __("WhatsApp Number"),
+				fieldtype: "Data",
+				description: __("Country code + number, e.g. 919812345678 (no +). For WhatsApp notifications."),
+			},
+			{
+				fieldname: "ts_whatsapp_opt_in",
+				label: __("WhatsApp Opt-In"),
+				fieldtype: "Check",
+				default: 1,
+			},
+			{
 				fieldtype: "Section Break",
 				label: __("Assign Roles"),
 				description: __("Select the roles this user should have. Only operational roles are available."),
@@ -273,6 +285,8 @@ function _um_show_create_dialog(page) {
 				last_name: values.last_name,
 				email: values.email,
 				mobile_no: values.mobile_no,
+				whatsapp_number: values.ts_whatsapp_number,
+				whatsapp_opt_in: values.ts_whatsapp_opt_in ? 1 : 0,
 				roles: selected_roles,
 				send_welcome_email: values.send_welcome_email ? 1 : 0,
 			}).then((result) => {
@@ -323,7 +337,7 @@ function _um_show_create_dialog(page) {
 	d.show();
 }
 
-// ── EDIT ROLES DIALOG ───────────────────────────────────────────────
+// ── EDIT USER DIALOG ────────────────────────────────────────────────
 
 function _um_show_edit_dialog(page, email) {
 	frappe.xcall("trustbit_ethanol.ts_gate_entry.ts_user_management.get_user_detail", {
@@ -341,12 +355,29 @@ function _um_show_edit_dialog(page, email) {
 		const current_roles = new Set(user.roles || []);
 
 		const d = new frappe.ui.Dialog({
-			title: __("Edit Roles — {0}", [frappe.utils.escape_html(user.full_name || email)]),
+			title: __("Edit User — {0}", [frappe.utils.escape_html(user.full_name || email)]),
 			size: "large",
 			fields: [
 				{
 					fieldtype: "HTML",
 					fieldname: "info_html",
+				},
+				{
+					fieldtype: "Section Break",
+					label: __("WhatsApp"),
+				},
+				{
+					fieldname: "ts_whatsapp_number",
+					label: __("WhatsApp Number"),
+					fieldtype: "Data",
+					description: __("Country code + number, e.g. 919812345678 (no +)."),
+					default: user.whatsapp_number || "",
+				},
+				{
+					fieldname: "ts_whatsapp_opt_in",
+					label: __("WhatsApp Opt-In"),
+					fieldtype: "Check",
+					default: user.whatsapp_opt_in ? 1 : 0,
 				},
 				{
 					fieldtype: "Section Break",
@@ -357,7 +388,7 @@ function _um_show_edit_dialog(page, email) {
 					fieldtype: "HTML",
 				},
 			],
-			primary_action_label: __("Save Roles"),
+			primary_action_label: __("Save"),
 			primary_action() {
 				const selected_roles = [];
 				d.$wrapper.find(".um-role-check:checked").each(function () {
@@ -369,15 +400,24 @@ function _um_show_edit_dialog(page, email) {
 					return;
 				}
 
+				const wa_number = d.get_value("ts_whatsapp_number");
+				const wa_opt = d.get_value("ts_whatsapp_opt_in") ? 1 : 0;
+
 				d.disable_primary_action();
 
 				frappe.xcall("trustbit_ethanol.ts_gate_entry.ts_user_management.update_user_roles", {
 					email: email,
 					roles: selected_roles,
-				}).then((result) => {
+				}).then(() => {
+					return frappe.xcall("trustbit_ethanol.ts_gate_entry.ts_user_management.set_user_whatsapp", {
+						email: email,
+						whatsapp_number: wa_number,
+						whatsapp_opt_in: wa_opt,
+					});
+				}).then(() => {
 					d.hide();
 					frappe.show_alert({
-						message: __("Roles updated for {0}", [frappe.utils.escape_html(email)]),
+						message: __("Updated {0}", [frappe.utils.escape_html(email)]),
 						indicator: "green",
 					}, 3);
 					_um_load(page);

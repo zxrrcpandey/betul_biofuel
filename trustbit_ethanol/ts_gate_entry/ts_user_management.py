@@ -268,8 +268,28 @@ def get_users():
     return users
 
 
+def _normalize_whatsapp(whatsapp_number, opt_in):
+    """Validate + normalize a WhatsApp number to 91XXXXXXXXXX and return the
+    User field values to set. Empty input clears the number + opt-in."""
+    from trustbit_ethanol.ts_gate_entry.ts_whatsapp_recipients import normalize_msisdn
+    raw = cstr(whatsapp_number).strip()
+    if not raw:
+        return {"ts_whatsapp_number": None, "ts_whatsapp_opt_in": 0}
+    number = normalize_msisdn(raw)
+    if not number:
+        frappe.throw(_("WhatsApp Number '{0}' is not valid. Use country code + number, e.g. 919812345678.").format(
+            frappe.utils.escape_html(raw)
+        ))
+    opted = 1 if int(opt_in or 0) else 0
+    values = {"ts_whatsapp_number": number, "ts_whatsapp_opt_in": opted}
+    if opted:
+        values["ts_whatsapp_opted_out_at"] = None
+    return values
+
+
 @frappe.whitelist()
-def create_user(first_name, email, roles, last_name=None, mobile_no=None, send_welcome_email=0):
+def create_user(first_name, email, roles, last_name=None, mobile_no=None, send_welcome_email=0,
+                whatsapp_number=None, whatsapp_opt_in=0):
     """Create a new user with specified operational roles."""
     _check_it_head()
     _check_rate_limit()
@@ -313,6 +333,7 @@ def create_user(first_name, email, roles, last_name=None, mobile_no=None, send_w
         user.first_name = first_name
         user.last_name = cstr(last_name).strip() or None
         user.mobile_no = cstr(mobile_no).strip() or None
+        user.update(_normalize_whatsapp(whatsapp_number, whatsapp_opt_in))
         user.user_type = "System User"
         user.send_welcome_email = send_email
         user.enabled = 1
@@ -554,6 +575,8 @@ def get_user_detail(email):
         "last_name": user.last_name,
         "full_name": user.full_name,
         "mobile_no": user.mobile_no,
+        "whatsapp_number": user.get("ts_whatsapp_number"),
+        "whatsapp_opt_in": 1 if user.get("ts_whatsapp_opt_in") else 0,
         "enabled": user.enabled,
         "user_image": user.user_image,
         "creation": user.creation,
@@ -562,6 +585,30 @@ def get_user_detail(email):
         "has_system_roles": any(r in BLOCKED_ROLES for r in all_roles),
         "is_protected": user.email.lower() in [p.lower() for p in PROTECTED_USERS] or "Administrator" in all_roles,
         "is_self": user.email.lower() == frappe.session.user.lower(),
+    }
+
+
+@frappe.whitelist(methods=["POST"])
+def set_user_whatsapp(email, whatsapp_number=None, whatsapp_opt_in=0):
+    """Add / update an existing user's WhatsApp number + opt-in (IT Head)."""
+    _check_it_head()
+    email = cstr(email).strip().lower()
+    if not frappe.db.exists("User", email):
+        frappe.throw(_("User '{0}' does not exist.").format(frappe.utils.escape_html(email)))
+    if email in [p.lower() for p in PROTECTED_USERS]:
+        frappe.throw(_("This user is protected and cannot be edited here."))
+
+    values = _normalize_whatsapp(whatsapp_number, whatsapp_opt_in)
+    frappe.db.set_value("User", email, values, update_modified=True)
+    frappe.db.commit()
+
+    _audit_log(email, "WhatsApp updated", "Number: {0}, Opt-In: {1}".format(
+        values.get("ts_whatsapp_number") or "(cleared)", values.get("ts_whatsapp_opt_in")
+    ))
+    return {
+        "email": email,
+        "whatsapp_number": values.get("ts_whatsapp_number"),
+        "whatsapp_opt_in": values.get("ts_whatsapp_opt_in"),
     }
 
 
