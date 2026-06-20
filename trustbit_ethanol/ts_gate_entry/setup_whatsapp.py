@@ -70,7 +70,8 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"label": "App Id (app-id header)",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_base_url",
-			"description": "REQUIRED to send. The 'app-id' header value Airtel issues for your account (their documentation shows the sample value 'IRONMAN' — Airtel gives you your real one). Example: IRONMAN",
+			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled",
+			"description": "REQUIRED to send — mandatory once WhatsApp is enabled. The 'app-id' header value Airtel issues for your account (their documentation shows the sample value 'IRONMAN' — Airtel gives you your real one). Example: IRONMAN",
 		},
 		{
 			"fieldname": "ts_whatsapp_auth_token",
@@ -78,7 +79,8 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"label": "Authorization Token (Basic)",
 			"permlevel": 2,
 			"insert_after": "ts_whatsapp_app_id",
-			"description": "REQUIRED to send. The Basic-auth token from Airtel = base64 of 'username:password', sent as the 'Authorization: Basic <token>' header on every call. Stored encrypted; System Manager only. Example: YWxhZGRpbjpvcGVuc2VzYW1l",
+			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled",
+			"description": "REQUIRED to send — mandatory once WhatsApp is enabled. The Basic-auth token from Airtel = base64 of 'username:password', sent as the 'Authorization: Basic <token>' header on every call. Stored encrypted; System Manager only. Example: YWxhZGRpbjpvcGVuc2VzYW1l",
 		},
 		{
 			"fieldname": "ts_whatsapp_col_conn",
@@ -115,7 +117,8 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"label": "Sender Number (91XXXXXXXXXX)",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_subaccount_id",
-			"description": "REQUIRED to send. Your registered Airtel WhatsApp sender number — country code + 10 digits, NO '+', no spaces. This is the number messages come FROM. Example: 919812345678",
+			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled",
+			"description": "REQUIRED to send — mandatory once WhatsApp is enabled. Your registered Airtel WhatsApp sender number — country code + 10 digits, NO '+', no spaces. This is the number messages come FROM. Example: 919812345678",
 		},
 		{
 			"fieldname": "ts_whatsapp_section_safety",
@@ -137,7 +140,8 @@ WHATSAPP_TS_SETTINGS_FIELDS = {
 			"label": "Test Numbers (sandbox allowlist)",
 			"permlevel": 1,
 			"insert_after": "ts_whatsapp_sandbox_mode",
-			"description": "While Sandbox Mode is ON, only these numbers can receive messages. Separate with commas or new lines, each as 91XXXXXXXXXX. Example: 919812345678, 919900112233",
+			"mandatory_depends_on": "eval:doc.ts_whatsapp_enabled && doc.ts_whatsapp_sandbox_mode",
+			"description": "While Sandbox Mode is ON, only these numbers can receive messages. Mandatory when WhatsApp is enabled AND Sandbox Mode is on, so you can't go live in sandbox with an empty allowlist. Separate with commas or new lines, each as 91XXXXXXXXXX. Example: 919812345678, 919900112233",
 		},
 		{
 			"fieldname": "ts_whatsapp_filter_blacklist",
