@@ -1508,6 +1508,15 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 			message=frappe.get_traceback()
 		)
 
+	# v2.18.x — WhatsApp Phase 1b: instant nudge alongside the email/bell.
+	# Lazy import + own try/except so it can NEVER break the approval/email path;
+	# inert when the WhatsApp kill-switch is off (send_template no-ops).
+	try:
+		from trustbit_ethanol.ts_gate_entry.ts_whatsapp_notify import whatsapp_notify_for_approval
+		whatsapp_notify_for_approval(doc, action, recipients, extra)
+	except Exception:
+		pass
+
 
 def _send_post_approval_notification(doc, action_type):
 	"""Send notifications to configured post-approval recipients in TS Settings."""
