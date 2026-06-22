@@ -93,6 +93,7 @@ def _process_one(rec, template_key, tmpl, var_json, sandbox_on, test_numbers,
 
 	# Sendable — queue it.
 	base["template_id"] = tmpl["template_id"]
+	base["button_payloads"] = ", ".join(tmpl.get("button_payloads") or [])
 	log = _create_log(base, status="Queued")
 	try:
 		frappe.enqueue(
@@ -141,6 +142,7 @@ def _deliver_template(log_name):
 		"template_ref": log.template_id,
 		"language": log.language,
 		"variables": variables,
+		"button_payloads": _parse_button_payloads(log.get("button_payloads")),
 	}
 	retryable_codes = provider.get("retryable_codes") or frozenset()
 
@@ -193,30 +195,32 @@ def _deliver_template(log_name):
 # Settings / template / sandbox helpers
 # --------------------------------------------------------------------------- #
 def _kill_switch_on():
-	return bool(int(frappe.db.get_single_value("TS Settings", "ts_whatsapp_enabled") or 0))
+	return bool(int(frappe.db.get_single_value("TS WhatsApp Settings", "ts_whatsapp_enabled") or 0))
 
 
 def _conn_settings():
+	# v2.18.5 split: connection + credentials live on TS WhatsApp Provider;
+	# operational toggles (filter_blacklist, max_retries) on TS WhatsApp Settings.
 	token = None
 	try:
-		token = frappe.get_cached_doc("TS Settings").get_password(
+		token = frappe.get_cached_doc("TS WhatsApp Provider").get_password(
 			"ts_whatsapp_auth_token", raise_exception=False
 		)
 	except Exception:
 		token = None
 	gv = frappe.db.get_single_value
 	# Honor an explicit 0 (operator means "never retry"); only fall back to 3 when unset.
-	_mr = gv("TS Settings", "ts_whatsapp_max_retries")
+	_mr = gv("TS WhatsApp Settings", "ts_whatsapp_max_retries")
 	return {
-		"provider": gv("TS Settings", "ts_whatsapp_provider") or DEFAULT_PROVIDER,
+		"provider": gv("TS WhatsApp Provider", "ts_whatsapp_provider") or DEFAULT_PROVIDER,
 		# base_url is an OPTIONAL override; blank -> the provider's own default base.
-		"base_url": gv("TS Settings", "ts_whatsapp_base_url") or "",
+		"base_url": gv("TS WhatsApp Provider", "ts_whatsapp_base_url") or "",
 		"token": token,
-		"vendor_uid": gv("TS Settings", "ts_whatsapp_vendor_uid"),
-		"from_phone_number_id": gv("TS Settings", "ts_whatsapp_from_phone_number_id"),
-		"app_id": gv("TS Settings", "ts_whatsapp_app_id"),
-		"sender": gv("TS Settings", "ts_whatsapp_from"),
-		"filter_blacklist": bool(int(gv("TS Settings", "ts_whatsapp_filter_blacklist") or 0)),
+		"vendor_uid": gv("TS WhatsApp Provider", "ts_whatsapp_vendor_uid"),
+		"from_phone_number_id": gv("TS WhatsApp Provider", "ts_whatsapp_from_phone_number_id"),
+		"app_id": gv("TS WhatsApp Provider", "ts_whatsapp_app_id"),
+		"sender": gv("TS WhatsApp Provider", "ts_whatsapp_from"),
+		"filter_blacklist": bool(int(gv("TS WhatsApp Settings", "ts_whatsapp_filter_blacklist") or 0)),
 		"max_retries": int(_mr) if _mr not in (None, "") else 3,
 	}
 
@@ -224,8 +228,8 @@ def _conn_settings():
 def _resolve_template(event_key):
 	rows = frappe.get_all(
 		"TS WhatsApp Template Map",
-		filters={"parenttype": "TS Settings", "event_key": event_key, "enabled": 1},
-		fields=["template_id", "language", "variable_order"],
+		filters={"parenttype": "TS WhatsApp Settings", "event_key": event_key, "enabled": 1},
+		fields=["template_id", "language", "variable_order", "button_payloads"],
 		limit=1,
 	)
 	if not rows or not (rows[0].get("template_id") or "").strip():
@@ -234,12 +238,20 @@ def _resolve_template(event_key):
 		"template_id": rows[0]["template_id"].strip(),
 		"language": rows[0].get("language") or "en",
 		"variable_order": rows[0].get("variable_order"),
+		"button_payloads": _parse_button_payloads(rows[0].get("button_payloads")),
 	}
 
 
+def _parse_button_payloads(raw):
+	"""Comma/newline-separated quick-reply payloads -> ordered list of strings."""
+	if not raw:
+		return []
+	return [p.strip() for p in re.split(r"[,\n]+", str(raw)) if p.strip()]
+
+
 def _sandbox_state():
-	on = bool(int(frappe.db.get_single_value("TS Settings", "ts_whatsapp_sandbox_mode") or 0))
-	raw = frappe.db.get_single_value("TS Settings", "ts_whatsapp_test_numbers") or ""
+	on = bool(int(frappe.db.get_single_value("TS WhatsApp Settings", "ts_whatsapp_sandbox_mode") or 0))
+	raw = frappe.db.get_single_value("TS WhatsApp Settings", "ts_whatsapp_test_numbers") or ""
 	nums = set()
 	for tok in re.split(r"[,\s]+", raw):
 		n = normalize_msisdn(tok)

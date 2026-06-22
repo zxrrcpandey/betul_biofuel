@@ -1,0 +1,127 @@
+{
+ "actions": [],
+ "creation": "2026-06-22 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "ts_whatsapp_section_gateway",
+  "ts_whatsapp_provider",
+  "ts_whatsapp_base_url",
+  "ts_whatsapp_auth_token",
+  "ts_whatsapp_col_gateway",
+  "ts_whatsapp_vendor_uid",
+  "ts_whatsapp_from_phone_number_id",
+  "ts_whatsapp_app_id",
+  "ts_whatsapp_from",
+  "ts_whatsapp_waba_id",
+  "ts_whatsapp_customer_id",
+  "ts_whatsapp_subaccount_id"
+ ],
+ "fields": [
+  {
+   "fieldname": "ts_whatsapp_section_gateway",
+   "fieldtype": "Section Break",
+   "label": "Gateway & Credentials"
+  },
+  {
+   "fieldname": "ts_whatsapp_provider",
+   "fieldtype": "Select",
+   "label": "Provider",
+   "options": "WhatsHub360\nAirtel IQ",
+   "description": "Choose your WhatsApp gateway. The credential fields change to match the provider you pick. Default: WhatsHub360."
+  },
+  {
+   "fieldname": "ts_whatsapp_base_url",
+   "fieldtype": "Data",
+   "label": "API Base URL (optional override)",
+   "description": "Leave BLANK to use the selected provider's default API URL. Only set this if your provider gave you a custom host. WhatsHub360 default: https://app.whatshub360.com/api"
+  },
+  {
+   "fieldname": "ts_whatsapp_auth_token",
+   "fieldtype": "Password",
+   "label": "API Token",
+   "description": "REQUIRED to send. WhatsHub360: your API Access Token (sent as 'Authorization: Bearer <token>'). Airtel IQ: the Basic-auth token = base64('username:password'). Stored encrypted."
+  },
+  {
+   "fieldname": "ts_whatsapp_col_gateway",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ts_whatsapp_vendor_uid",
+   "fieldtype": "Data",
+   "label": "Vendor UID (WhatsHub360)",
+   "depends_on": "eval:doc.ts_whatsapp_provider=='WhatsHub360'",
+   "description": "REQUIRED for WhatsHub360. Your Vendor UID — it forms part of the send URL (/api/<vendor_uid>/contact/send-template-message). Example: 9f8e7d6c-1234-4abc-9def-0123456789ab"
+  },
+  {
+   "fieldname": "ts_whatsapp_from_phone_number_id",
+   "fieldtype": "Data",
+   "label": "From Phone Number Id (WhatsHub360, optional)",
+   "depends_on": "eval:doc.ts_whatsapp_provider=='WhatsHub360'",
+   "description": "Optional (WhatsHub360). The phone-number id to send FROM; if blank, your account's default sender is used."
+  },
+  {
+   "fieldname": "ts_whatsapp_app_id",
+   "fieldtype": "Data",
+   "label": "App Id (Airtel IQ)",
+   "depends_on": "eval:doc.ts_whatsapp_provider=='Airtel IQ'",
+   "description": "REQUIRED for Airtel IQ. The 'app-id' header value Airtel issues for your account. Example: 1234567890123456"
+  },
+  {
+   "fieldname": "ts_whatsapp_from",
+   "fieldtype": "Data",
+   "label": "Sender Number (Airtel IQ)",
+   "depends_on": "eval:doc.ts_whatsapp_provider=='Airtel IQ'",
+   "description": "REQUIRED for Airtel IQ. Registered WhatsApp Business / sender number — country code + 10 digits, NO '+'. Example: 919812345678"
+  },
+  {
+   "fieldname": "ts_whatsapp_waba_id",
+   "fieldtype": "Data",
+   "label": "WABA Id (Airtel IQ)",
+   "depends_on": "eval:doc.ts_whatsapp_provider=='Airtel IQ'",
+   "description": "Airtel IQ only. WhatsApp Business Account id. Used by the Template Designer (Phase 3); not needed to send."
+  },
+  {
+   "fieldname": "ts_whatsapp_customer_id",
+   "fieldtype": "Data",
+   "label": "Customer Id (Airtel IQ)",
+   "depends_on": "eval:doc.ts_whatsapp_provider=='Airtel IQ'",
+   "description": "Airtel IQ only. Used by the in-app Template Designer (Phase 3); not needed to send."
+  },
+  {
+   "fieldname": "ts_whatsapp_subaccount_id",
+   "fieldtype": "Data",
+   "label": "Sub-Account Id (Airtel IQ)",
+   "depends_on": "eval:doc.ts_whatsapp_provider=='Airtel IQ'",
+   "description": "Airtel IQ only. Used by the Template Designer (Phase 3); not needed to send."
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-06-22 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS WhatsApp Provider",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "IT Head",
+   "write": 1
+  }
+ ],
+ "quick_entry": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

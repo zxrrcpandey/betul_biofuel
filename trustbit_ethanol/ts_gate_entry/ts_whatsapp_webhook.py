@@ -37,8 +37,13 @@ def delivery_status():
 			return ack
 
 		message_id = _clean(payload.get("messageId"))
-		vendor_ack = _clean(payload.get("vendorAckId"))
-		raw_status = (payload.get("msgStatus") or payload.get("messageStatus") or "").upper()
+		# Airtel's DLR carries messageRequestId (== the id /template/send returned,
+		# stored as this Log's vendor_ack_id at send). Prefer it for matching.
+		msg_req_id = _clean(payload.get("messageRequestId"))
+		vendor_ack = _clean(payload.get("vendorAckId")) or msg_req_id
+		raw_status = (
+			payload.get("msgStatus") or payload.get("messageStatus") or payload.get("status") or ""
+		).upper()
 		new_status = STATUS_MAP.get(raw_status)
 		if not new_status or not (message_id or vendor_ack):
 			return ack
@@ -88,19 +93,35 @@ def _verify_request():
 	Fail-closed: if neither a secret nor an IP allowlist is configured, reject."""
 	secret = None
 	try:
-		secret = frappe.get_cached_doc("TS Settings").get_password(
+		secret = frappe.get_cached_doc("TS WhatsApp Settings").get_password(
 			"ts_whatsapp_callback_secret", raise_exception=False
 		)
 	except Exception:
 		secret = None
-	allow = frappe.db.get_single_value("TS Settings", "ts_whatsapp_source_ip_allowlist") or ""
+	allow = frappe.db.get_single_value("TS WhatsApp Settings", "ts_whatsapp_source_ip_allowlist") or ""
 	allow_ips = {ip.strip() for ip in re.split(r"[,\s]+", allow) if ip.strip()}
 
 	if secret:
+		# Airtel sends NO custom header on its DLR callback, so ALSO accept the
+		# secret passed as a URL query param ?k=<secret> (Airtel echoes back the
+		# exact registered callback URL). The X-Callback-Token header still works
+		# for providers that can attach one (e.g. WhatsHub360).
 		token = frappe.get_request_header("X-Callback-Token") or ""
+		if not token:
+			# ?k=<secret> query param. A JSON-body POST does NOT merge query
+			# params into form_dict, so read request.args first, then fall back.
+			try:
+				token = (frappe.request.args.get("k") if getattr(frappe, "request", None) else None) or ""
+			except Exception:
+				token = ""
+			if not token:
+				try:
+					token = (frappe.local.form_dict or {}).get("k") or ""
+				except Exception:
+					token = ""
 		if hmac.compare_digest(str(token), str(secret)):
 			return True
-		# Secret configured but header didn't match — reject (don't fall through).
+		# Secret configured but neither header nor ?k= matched — reject.
 		return False
 	if allow_ips:
 		return _request_ip() in allow_ips
@@ -144,13 +165,18 @@ def _match_log(message_id, vendor_ack):
 def _extract_error(payload):
 	err = payload.get("error")
 	if isinstance(err, dict):
-		code = err.get("code")
-		msg = err.get("message")
+		code = err.get("code") or err.get("errorCode")
+		msg = err.get("message") or err.get("errorTitle") or err.get("errorDetails")
 		if isinstance(msg, dict):
 			inner = msg.get("error", {})
 			if isinstance(inner, dict):
 				code = inner.get("code", code)
 				msg = inner.get("message", None)
+		return (str(code) if code is not None else None), (str(msg) if msg else None)
+	# Airtel may send flat error columns (report CSV: Error Code / Title / Details).
+	code = payload.get("errorCode") or payload.get("error_code")
+	msg = payload.get("errorTitle") or payload.get("errorDetails") or payload.get("error_message")
+	if code or msg:
 		return (str(code) if code is not None else None), (str(msg) if msg else None)
 	return None, None
 

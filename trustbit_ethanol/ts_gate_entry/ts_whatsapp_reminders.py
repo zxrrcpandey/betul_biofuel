@@ -21,7 +21,7 @@ def run_whatsapp_escalations():
 	try:
 		if not _enabled():
 			return  # inert when the feature is off
-		settings = frappe.get_single("TS Settings")
+		settings = frappe.get_single("TS WhatsApp Settings")
 		thresholds = {
 			1: cint(settings.get("ts_whatsapp_l1_hours")) or 4,
 			2: cint(settings.get("ts_whatsapp_l2_hours")) or 12,
@@ -162,7 +162,7 @@ def _highest_sent_stage(doctype, name):
 
 
 def _enabled():
-	return bool(int(frappe.db.get_single_value("TS Settings", "ts_whatsapp_enabled") or 0))
+	return bool(int(frappe.db.get_single_value("TS WhatsApp Settings", "ts_whatsapp_enabled") or 0))
 
 
 def _log_error(title, message):

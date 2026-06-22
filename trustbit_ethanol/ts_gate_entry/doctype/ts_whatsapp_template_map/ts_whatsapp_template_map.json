@@ -11,7 +11,8 @@
   "template_id",
   "language",
   "category",
-  "variable_order"
+  "variable_order",
+  "button_payloads"
  ],
  "fields": [
   {
@@ -62,6 +63,12 @@
    "fieldtype": "Small Text",
    "label": "Variable Order (doc reference)",
    "description": "Reference only: documents which {{1}}, {{2}}... the message expects. e.g. 1=approver, 2=PO no., 3=amount, 4=status"
+  },
+  {
+   "fieldname": "button_payloads",
+   "fieldtype": "Small Text",
+   "label": "Quick-Reply Button Payloads",
+   "description": "ONLY if this template has Quick Reply buttons. One callback payload per quick-reply button, in button order, comma or newline separated (e.g. OK  or  Yes,No). Static Call / URL buttons need NO entry. Leave blank for templates with no quick-reply buttons. (Airtel sends these as message.payload[].)"
   }
  ],
  "index_web_pages_for_search": 0,

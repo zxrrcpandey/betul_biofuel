@@ -29,6 +29,7 @@
   "status_updated_at",
   "section_meta",
   "variables_sent",
+  "button_payloads",
   "is_sandbox",
   "triggered_by",
   "sent_at"
@@ -176,6 +177,12 @@
    "fieldname": "variables_sent",
    "fieldtype": "Small Text",
    "label": "Variables Sent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "button_payloads",
+   "fieldtype": "Small Text",
+   "label": "Quick-Reply Button Payloads Sent",
    "read_only": 1
   },
   {

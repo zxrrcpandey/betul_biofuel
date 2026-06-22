@@ -1,0 +1,157 @@
+{
+ "actions": [],
+ "creation": "2026-06-22 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "ts_whatsapp_section_master",
+  "ts_whatsapp_enabled",
+  "ts_whatsapp_section_safety",
+  "ts_whatsapp_sandbox_mode",
+  "ts_whatsapp_test_numbers",
+  "ts_whatsapp_filter_blacklist",
+  "ts_whatsapp_col_safety",
+  "ts_whatsapp_callback_secret",
+  "ts_whatsapp_source_ip_allowlist",
+  "ts_whatsapp_max_retries",
+  "ts_whatsapp_section_esc",
+  "ts_whatsapp_l1_hours",
+  "ts_whatsapp_l2_hours",
+  "ts_whatsapp_l3_hours",
+  "ts_whatsapp_col_esc",
+  "ts_whatsapp_qc_overdue_hours",
+  "ts_whatsapp_section_tpl",
+  "ts_whatsapp_templates"
+ ],
+ "fields": [
+  {
+   "fieldname": "ts_whatsapp_section_master",
+   "fieldtype": "Section Break",
+   "label": "Master Switch"
+  },
+  {
+   "fieldname": "ts_whatsapp_enabled",
+   "fieldtype": "Check",
+   "label": "Enable WhatsApp Notifications",
+   "description": "MASTER ON/OFF switch. When OFF (default) no WhatsApp is ever sent and the system behaves exactly as before. Turn ON only after the Provider (TS WhatsApp Provider) credentials and at least one approved template are filled in."
+  },
+  {
+   "fieldname": "ts_whatsapp_section_safety",
+   "fieldtype": "Section Break",
+   "label": "Safety & Sandbox"
+  },
+  {
+   "fieldname": "ts_whatsapp_sandbox_mode",
+   "fieldtype": "Check",
+   "label": "Sandbox Mode (only message test numbers)",
+   "description": "When ON (default) ONLY the numbers in 'Test Numbers' receive messages; everyone else is skipped and logged. KEEP ON while testing so real staff/suppliers are never messaged by accident."
+  },
+  {
+   "fieldname": "ts_whatsapp_test_numbers",
+   "fieldtype": "Small Text",
+   "label": "Test Numbers (sandbox allowlist)",
+   "description": "While Sandbox Mode is ON, only these numbers can receive messages. Comma / newline separated, each 91XXXXXXXXXX. Example: 919812345678, 919900112233"
+  },
+  {
+   "fieldname": "ts_whatsapp_filter_blacklist",
+   "fieldtype": "Check",
+   "label": "Respect Blacklist",
+   "description": "When ON (default) the provider skips numbers on its blacklist / opt-out list. Leave ON to honour opt-outs. (Used by Airtel's filterBlacklistNumbers.)"
+  },
+  {
+   "fieldname": "ts_whatsapp_col_safety",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ts_whatsapp_callback_secret",
+   "fieldtype": "Password",
+   "label": "Delivery / Inbound Webhook Secret",
+   "description": "A secret YOU choose and give to your provider; it must be sent back (X-Callback-Token header) on webhooks, so forged callbacks are rejected. Use a long random string."
+  },
+  {
+   "fieldname": "ts_whatsapp_source_ip_allowlist",
+   "fieldtype": "Small Text",
+   "label": "Webhook Source IP Allowlist",
+   "description": "Optional: only these provider server IPs may call the webhook. Comma / newline separated. Leave blank to rely on the secret alone."
+  },
+  {
+   "fieldname": "ts_whatsapp_max_retries",
+   "fieldtype": "Int",
+   "label": "Max Retries (transient errors)",
+   "description": "How many times to retry a send that fails with a TEMPORARY error (e.g. rate-limit / 5xx). 0 = never retry. Default 3."
+  },
+  {
+   "fieldname": "ts_whatsapp_section_esc",
+   "fieldtype": "Section Break",
+   "label": "Reminder Escalation Thresholds (hours)"
+  },
+  {
+   "fieldname": "ts_whatsapp_l1_hours",
+   "fieldtype": "Int",
+   "label": "Reminder L1 (hours)",
+   "description": "FIRST reminder: hours a document may sit pending before the approver gets a WhatsApp nudge. Default 4."
+  },
+  {
+   "fieldname": "ts_whatsapp_l2_hours",
+   "fieldtype": "Int",
+   "label": "Reminder L2 (hours)",
+   "description": "SECOND reminder: hours pending before a stronger nudge. Default 12."
+  },
+  {
+   "fieldname": "ts_whatsapp_l3_hours",
+   "fieldtype": "Int",
+   "label": "Reminder L3 - escalate (hours)",
+   "description": "ESCALATION: hours pending before the reminder climbs to leadership (CEO / MD). Default 24."
+  },
+  {
+   "fieldname": "ts_whatsapp_col_esc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ts_whatsapp_qc_overdue_hours",
+   "fieldtype": "Int",
+   "label": "QC Stuck Threshold (hours)",
+   "description": "Hours a QC / inspection may stay pending before a WhatsApp nudge fires. Default 72."
+  },
+  {
+   "fieldname": "ts_whatsapp_section_tpl",
+   "fieldtype": "Section Break",
+   "label": "Template Map"
+  },
+  {
+   "fieldname": "ts_whatsapp_templates",
+   "fieldtype": "Table",
+   "label": "WhatsApp Templates",
+   "options": "TS WhatsApp Template Map",
+   "description": "Maps each business event to its approved template. Paste the provider template reference (WhatsHub360: template NAME; Airtel: templateId) and tick Enabled once it's approved. Rows with no ref / not enabled are skipped. The 10 rows are pre-created."
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-06-22 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS WhatsApp Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "IT Head",
+   "write": 1
+  }
+ ],
+ "quick_entry": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

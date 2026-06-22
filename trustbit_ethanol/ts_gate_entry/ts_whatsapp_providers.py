@@ -33,7 +33,9 @@ AIRTEL_RETRYABLE_CODES = {"130429", "131000", "100", "400", "-8"}
 def _wh360_build(conn, ctx):
 	base = (conn.get("base_url") or WHATSHUB360_BASE).rstrip("/")
 	vendor_uid = conn.get("vendor_uid") or ""
-	url = f"{base}/{vendor_uid}/contact/send-message"
+	# Template sends go to /contact/send-template-message (the /contact/send-message
+	# endpoint is for free-text and demands a `message_body`). Confirmed live 21 Jun.
+	url = f"{base}/{vendor_uid}/contact/send-template-message"
 	headers = {
 		"Content-Type": "application/json",
 		"Accept": "application/json",
@@ -88,12 +90,22 @@ def _airtel_build(conn, ctx):
 		"Content-Type": "application/json",
 		"Authorization": "Basic " + (conn.get("token") or ""),
 	}
+	message = {"variables": [str(v) for v in (ctx.get("variables") or [])]}
+	# Quick-reply buttons: Airtel's /template/send expects a FLAT positional
+	# string array at message.payload — exactly ONE entry per QUICK_REPLY button,
+	# in the template's button order. Static Call / URL buttons take NO slot
+	# (that's why Airtel's error counts "all N buttons" = quick-reply buttons
+	# only). Each string is the callback token echoed on the inbound webhook when
+	# the user taps. Confirmed delivering live (template Erp_Notification, 1 QR).
+	qr = [str(p) for p in (ctx.get("button_payloads") or []) if str(p).strip()]
+	if qr:
+		message["payload"] = qr
 	body = {
 		"templateId": ctx["template_ref"],
 		"to": ctx["to"],
 		"from": conn.get("sender") or "",
 		"filterBlacklistNumbers": bool(conn.get("filter_blacklist")),
-		"message": {"variables": [str(v) for v in (ctx.get("variables") or [])]},
+		"message": message,
 	}
 	return url, headers, body
 
@@ -137,7 +149,16 @@ def _airtel_ids(data):
 		return None, None
 	inner = data.get("data") if isinstance(data.get("data"), dict) else {}
 	mid = data.get("messageId") or inner.get("messageId")
-	ack = data.get("vendorAckId") or inner.get("vendorAckId")
+	# Airtel's /template/send returns "messageRequestId" (no messageId at send
+	# time). Store it as the vendor-ack so the later delivery-status callback —
+	# which carries the same messageRequestId — can match this Log row. The Meta
+	# wamid (messageId) only arrives on the DLR and backfills provider_message_id.
+	ack = (
+		data.get("messageRequestId")
+		or inner.get("messageRequestId")
+		or data.get("vendorAckId")
+		or inner.get("vendorAckId")
+	)
 	return mid, ack
 
 
