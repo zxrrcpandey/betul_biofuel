@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#10b981,#059669);padding:20px 24px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:20px;font-weight:700;'>G2 Gate Operations</div></div>\", \"col\": 12}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Awaiting PO Link\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Sent to Weighbridge\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Sent to Stores\", \"col\": 4}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class='h6'>Quick Access</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Gate Entry\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Pending Tokens\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Todays Gate Entries\", \"col\": 4}}]",
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#10b981,#059669);padding:20px 24px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:20px;font-weight:700;'>G2 Gate Operations</div></div>\", \"col\": 12}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Awaiting PO Link\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Sent to Weighbridge\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Sent to Stores\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Sent to Weighbridge Today\", \"col\": 4}}, {\"type\": \"number_card\", \"data\": {\"number_card_name\": \"Sent to Stores Today\", \"col\": 4}}, {\"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class='h6'>Quick Access</span>\", \"col\": 12}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New Gate Entry\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Pending Tokens\", \"col\": 4}}, {\"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Todays Gate Entries\", \"col\": 4}}]",
  "creation": "2026-03-07 00:00:00",
  "custom_blocks": [],
  "doctype": "Workspace",
@@ -54,6 +54,12 @@
   },
   {
    "number_card_name": "Sent to Stores"
+  },
+  {
+   "number_card_name": "Sent to Weighbridge Today"
+  },
+  {
+   "number_card_name": "Sent to Stores Today"
   }
  ],
  "owner": "Administrator",
