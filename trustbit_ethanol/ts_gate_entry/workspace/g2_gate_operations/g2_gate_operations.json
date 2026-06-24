@@ -89,6 +89,7 @@
    "doc_view": "List",
    "label": "Todays Gate Entries",
    "link_to": "TS Gate Entry",
+   "stats_filter": "[[\"TS Gate Entry\",\"creation\",\"Timespan\",\"today\"]]",
    "type": "DocType"
   }
  ],
