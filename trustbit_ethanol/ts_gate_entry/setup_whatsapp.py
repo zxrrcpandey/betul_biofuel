@@ -27,7 +27,8 @@ SETTINGS_DT = "TS WhatsApp Settings"
 # is now an optional override; clear this so the provider default applies.
 LEGACY_AIRTEL_BASE = "https://iqwhatsapp.airtel.in:443/gateway/airtel-xchange/basic/whatsapp-manager/v1"
 
-# The HYBRID template set (user decision 20 Jun) — 6 custom PO/MR + 4 shared.
+# The HYBRID template set (user decision 20 Jun) — PO/MR + Item Creator +
+# Cascade Delete approval events + 4 shared reminders. New rows seed DISABLED.
 TEMPLATE_EVENT_KEYS = (
 	"po_needs_approval",
 	"po_approved",
@@ -35,6 +36,12 @@ TEMPLATE_EVENT_KEYS = (
 	"mr_needs_approval",
 	"mr_approved",
 	"mr_rejected",
+	"item_needs_approval",
+	"item_approved",
+	"item_rejected",
+	"cascade_needs_approval",
+	"cascade_executed",
+	"cascade_rejected",
 	"reminder_l1",
 	"reminder_l2",
 	"reminder_l3",

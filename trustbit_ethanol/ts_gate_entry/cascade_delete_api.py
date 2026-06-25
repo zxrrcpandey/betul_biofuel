@@ -808,6 +808,22 @@ def _render_cascade_email(log_doc, event: str) -> str:
 	)
 
 
+def _notify_cascade_whatsapp(log_name: str, action: str, recipients):
+	"""Fire the WhatsApp approval shim for a cascade-delete event alongside the
+	CEO/MD email. Fail-soft: never raises into the cascade flow; inert when the
+	WhatsApp kill-switch is off (send_template no-ops)."""
+	try:
+		if not recipients:
+			return
+		log_doc = frappe.get_doc("TS Cascade Delete Log", log_name)
+		from trustbit_ethanol.ts_gate_entry.ts_whatsapp_notify import whatsapp_notify_for_approval
+		whatsapp_notify_for_approval(
+			log_doc, action, recipients, extra={"reason": log_doc.get("rejection_reason")}
+		)
+	except Exception:
+		pass
+
+
 def _send_pending_approval_email(log_name: str):
 	"""MD + CEO receive bold-red alert when Pending CEO Approval row inserted."""
 	recipients = _resolve_alert_recipients()
@@ -827,6 +843,8 @@ def _send_pending_approval_email(log_name: str):
 			title=f"Cascade approval email failed for {log_name}",
 			message=f"{type(e).__name__}: {e}",
 		)
+	# WhatsApp nudge alongside the email — own fail-soft block, inert when off.
+	_notify_cascade_whatsapp(log_name, "cascade_pending", recipients)
 
 
 def _send_decision_email(log_name: str, decision_label: str):
@@ -848,6 +866,10 @@ def _send_decision_email(log_name: str, decision_label: str):
 			title=f"Cascade decision email failed for {log_name}",
 			message=f"{type(e).__name__}: {e}",
 		)
+	# WhatsApp only for the meaningful decisions (executed / rejected); inert when off.
+	_cd_action = {"Executed": "cascade_executed", "Rejected": "cascade_rejected"}.get(decision_label)
+	if _cd_action:
+		_notify_cascade_whatsapp(log_name, _cd_action, recipients)
 
 
 # ---------------------------------------------------------------- scheduler entry points

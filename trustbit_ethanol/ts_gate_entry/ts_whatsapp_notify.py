@@ -33,12 +33,28 @@ ACTION_EVENT = {
 	("Material Request", "mr_pending"): "mr_needs_approval",
 	("Material Request", "mr_approved"): "mr_approved",
 	("Material Request", "mr_rejected"): "mr_rejected",
+	("TS Item Creator", "item_pending"): "item_needs_approval",
+	("TS Item Creator", "item_approved"): "item_approved",
+	("TS Item Creator", "item_rejected"): "item_rejected",
+	("TS Cascade Delete Log", "cascade_pending"): "cascade_needs_approval",
+	("TS Cascade Delete Log", "cascade_executed"): "cascade_executed",
+	("TS Cascade Delete Log", "cascade_rejected"): "cascade_rejected",
 }
 
 # Human-readable label for the doc_type token / {{2}}.
 DOCTYPE_LABEL = {
 	"Purchase Order": "Purchase Order",
 	"Material Request": "Material Request",
+	"TS Item Creator": "Item Request",
+	"TS Cascade Delete Log": "Cascade Delete",
+}
+
+# Which field holds the approval status, per doctype (the status token).
+_STATUS_FIELD = {
+	"Purchase Order": "ts_approval_status",
+	"Material Request": "ts_mr_status",
+	"TS Item Creator": "status",
+	"TS Cascade Delete Log": "approval_status",
 }
 
 # Used when a Template Map row's recipe is blank (keeps unconfigured rows working).
@@ -118,7 +134,6 @@ def _resolve_recipe(recipe, doc, recipient_name, extra):
 def _resolve_token(token, doc, recipient_name, extra):
 	raw = token.strip()
 	low = raw.lower()
-	is_po = doc.doctype == "Purchase Order"
 
 	# field:/text: take a verbatim argument (which may contain spaces) — handle
 	# these FIRST, before the named-token normalization below.
@@ -147,15 +162,23 @@ def _resolve_token(token, doc, recipient_name, extra):
 	if key in ("doc_no", "docno", "no", "name"):
 		return doc.name
 	if key == "status":
-		return (doc.get("ts_approval_status") if is_po else doc.get("ts_mr_status")) or "Pending Approval"
+		return doc.get(_STATUS_FIELD.get(doc.doctype, "status")) or "Pending Approval"
 	if key in ("raised_by", "raisedby", "creator"):
-		return frappe.db.get_value("User", doc.owner, "full_name") or doc.owner or "ERP User"
+		# requester (Item) / initiator (Cascade) / owner (PO·MR), in that order.
+		u = doc.get("requested_by") or doc.get("initiated_by") or doc.owner
+		return frappe.db.get_value("User", u, "full_name") or u or "ERP User"
 	if key == "amount":
 		return frappe.format_value(flt(doc.get("grand_total") or 0), {"fieldtype": "Currency"})
 	if key in ("cost_center", "costcenter"):
 		return doc.get("cost_center") or ""
 	if key == "supplier":
 		return doc.get("supplier_name") or doc.get("supplier") or ""
+	if key in ("item_code", "itemcode"):
+		return doc.get("generated_item_code") or doc.get("item_code") or ""
+	if key in ("item_name", "itemname"):
+		return doc.get("item_name") or ""
+	if key == "token":
+		return doc.get("target_token") or doc.get("token_number") or ""
 	if key == "date":
 		d = doc.get("transaction_date") or doc.get("schedule_date") or doc.get("creation")
 		return formatdate(d) if d else ""
@@ -182,6 +205,12 @@ _EVENT_DOCTYPE = {
 	"mr_needs_approval": "Material Request",
 	"mr_approved": "Material Request",
 	"mr_rejected": "Material Request",
+	"item_needs_approval": "TS Item Creator",
+	"item_approved": "TS Item Creator",
+	"item_rejected": "TS Item Creator",
+	"cascade_needs_approval": "TS Cascade Delete Log",
+	"cascade_executed": "TS Cascade Delete Log",
+	"cascade_rejected": "TS Cascade Delete Log",
 }
 
 

@@ -395,7 +395,9 @@ class TSItemCreator(Document):
 
 		# create_item sets status=Created + item_created and saves (its own approver
 		# gate passes for this user); it persists approved_by/approved_on too.
-		return self.create_item()
+		result = self.create_item()
+		_notify_item_whatsapp(self, "item_approved", _item_requester_recipients(self))
+		return result
 
 	@frappe.whitelist(methods=["POST"])
 	def reject_request(self, reason=None):
@@ -426,6 +428,7 @@ class TSItemCreator(Document):
 		finally:
 			frappe.flags.in_item_request = False
 
+		_notify_item_whatsapp(self, "item_rejected", _item_requester_recipients(self))
 		return {"status": self.status, "rejection_reason": self.rejection_reason}
 
 	def _has_custom_posting_date(self):
@@ -1029,6 +1032,45 @@ def search_existing_items(query, limit=10):
 		return []
 
 
+# --------------------------------------------------------------------------- #
+# WhatsApp approval notifications — reuse the PO/MR shim. Fail-soft: never raises
+# into the item-request flow; inert when the WhatsApp kill-switch is off.
+# --------------------------------------------------------------------------- #
+def _item_approver_recipients():
+	"""Active users who can approve item requests (excludes the admin System
+	Manager role so god-mode accounts are not nudged)."""
+	try:
+		from trustbit_ethanol.ts_gate_entry.ts_po_approval import _get_role_users
+		users = set()
+		for role in (ITEM_APPROVER_ROLES - {"System Manager"}):
+			users.update(_get_role_users(role) or [])
+		return list(users)
+	except Exception:
+		return []
+
+
+def _item_requester_recipients(doc):
+	"""The requester + creator of a request — notified on approve / reject."""
+	out = []
+	for u in (doc.get("requested_by"), doc.owner):
+		if u and u not in out:
+			out.append(u)
+	return out
+
+
+def _notify_item_whatsapp(doc, action, recipients):
+	"""Fire the WhatsApp approval shim for an Item Creator event. Fail-soft."""
+	try:
+		if not recipients:
+			return
+		from trustbit_ethanol.ts_gate_entry.ts_whatsapp_notify import whatsapp_notify_for_approval
+		whatsapp_notify_for_approval(
+			doc, action, recipients, extra={"reason": doc.get("rejection_reason")}
+		)
+	except Exception:
+		pass
+
+
 @frappe.whitelist(methods=["POST"])
 def submit_item_request(doc):
 	"""Non-approver entry point — insert an item-creation request in 'Pending
@@ -1066,6 +1108,7 @@ def submit_item_request(doc):
 	finally:
 		frappe.flags.in_item_request = False
 
+	_notify_item_whatsapp(d, "item_pending", _item_approver_recipients())
 	return {
 		"name": d.name,
 		"status": d.status,
