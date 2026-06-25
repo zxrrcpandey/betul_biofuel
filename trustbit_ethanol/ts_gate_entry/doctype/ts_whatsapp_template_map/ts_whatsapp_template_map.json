@@ -61,8 +61,8 @@
   {
    "fieldname": "variable_order",
    "fieldtype": "Small Text",
-   "label": "Variable Order (doc reference)",
-   "description": "Reference only: documents which {{1}}, {{2}}... the message expects. e.g. 1=approver, 2=PO no., 3=amount, 4=status"
+   "label": "Message Variables (recipe, in order)",
+   "description": "The values that fill your template's {{1}},{{2}},... IN ORDER, comma-separated. Add/remove tokens to match the template's variable count; change a token to change its content. Tokens: approver, doc_type, doc_no, status, raised_by, amount, cost_center, supplier, date, reason, company, field:<fieldname> (any document field), text:<fixed words>. Blank = default (approver, doc_type, doc_no, status, raised_by). Example: approver, doc_type, doc_no, status, raised_by"
   },
   {
    "fieldname": "button_payloads",
