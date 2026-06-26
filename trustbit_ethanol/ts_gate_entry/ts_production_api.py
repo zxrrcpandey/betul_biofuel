@@ -1,12 +1,17 @@
 # Copyright (c) 2026, Trustbit Technologies and contributors
 # For license information, please see license.txt
 #
-# TS Production Entry — server logic + whitelisted endpoints (v2.15.0).
+# TS Production Entry — variance engine, Manufacture-SE builder, on_cancel
+# reverse-sync, notifications + the legacy direct-post endpoints.
 #
-# Flow:  Standard BOM  ->  Actual (materials consumed + produced qty)  ->  variance %
-#   within tolerance  -> auto-post: create+submit native Manufacture Stock Entry
-#   tolerance breach   -> Pending CEO -> CEO approve -> (atomic) create+submit SE
-#                                      -> CEO reject  -> Rejected (no SE)
+# Production Logging flow (the single Store-Manager release gate lives in
+# ts_production_release.py; the Work-Order/Job-Card automation in ts_production_wo.py):
+#   Draft -> Pending Stores Release -> Released -> Completed
+#   Variance is INFORMATIONAL ONLY — there is no CEO approval gate.
+#
+# This module still owns the variance engine, the valuation HARD BLOCK, the
+# Manufacture Stock Entry builder, the Stock Entry on_cancel reverse-sync, and the
+# notification helpers — all reused by the release gate.
 #
 # By-products (DDGS / DWGS / LCO2 / ...) are data-driven from the BOM Scrap Items
 # (no hardcoded list) and posted as is_scrap_item rows on the SAME Manufacture SE.
@@ -16,7 +21,7 @@
 #   - Role gate up front + frappe.has_permission(...,throw=True)  (Lesson 224)
 #   - Valuation HARD BLOCK before any mutation                    (v2.14.1)
 #   - Status is ATOMIC with SE creation: status flips ONLY after the SE submits
-#     (Lesson 288) — never "Posted" without a backing Stock Entry
+#     (Lesson 288) — never "Completed" without a backing Stock Entry
 #   - Control-plane fields written via db_set (skip save hooks); tamper-guarded
 #     in before_save                                              (Lesson 162)
 #   - Notifications best-effort, individually try/except          (Lesson 238)
@@ -39,6 +44,18 @@ CONTROL_FIELDS = [
 	"rejected_by",
 	"rejection_reason",
 	"actual_produced_qty_at_submission",
+	# Production Logging release flow — written ONLY by the release endpoints (db_set).
+	"work_order",
+	"release_stock_entry",
+	"released_by",
+	"released_at",
+	"bom_with_operations",
+	"bom_transfer_material_against",
+	"wip_released_qty",
+	"wip_consumed_qty",
+	"wip_reconcile_variance_pct",
+	"wip_returned_stock_entry",
+	"wip_reconcile_note",
 ]
 
 # Settings keys on TS Settings (Single). ts_settings.JSON only — ts_settings.py untouched.
@@ -47,6 +64,10 @@ SETTING_TOLERANCE = "ts_production_variance_tolerance_pct"
 SETTING_WIP_WH = "ts_production_wip_warehouse"
 SETTING_FG_WH = "ts_production_fg_warehouse"
 SETTING_BYPRODUCT_WH = "ts_production_byproduct_warehouse"
+# Production Logging (release flow) settings — new JSON fields.
+SETTING_RELEASE_SOURCE_WH = "ts_production_release_source_warehouse"
+SETTING_AUTO_RETURN = "ts_production_auto_return_surplus"
+SETTING_WIP_RECON_TOL = "ts_production_wip_recon_tolerance_pct"
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -67,12 +88,18 @@ def _is_enabled():
 
 
 def _get_settings():
+	auto_return = _setting(SETTING_AUTO_RETURN)
 	return {
 		"enabled": cint(_setting(SETTING_ENABLED)) == 1,
 		"tolerance_pct": _setting(SETTING_TOLERANCE),  # may be None -> fail-closed breach
 		"wip_warehouse": _setting(SETTING_WIP_WH),
 		"fg_warehouse": _setting(SETTING_FG_WH),
 		"byproduct_warehouse": _setting(SETTING_BYPRODUCT_WH),
+		# Production Logging release flow
+		"release_source_warehouse": _setting(SETTING_RELEASE_SOURCE_WH),
+		# Default ON when unset (field has no JSON default per Lesson 227).
+		"auto_return_surplus": (1 if auto_return is None else cint(auto_return)) == 1,
+		"wip_recon_tolerance_pct": _setting(SETTING_WIP_RECON_TOL),
 	}
 
 
@@ -87,6 +114,9 @@ def get_production_settings():
 		"wip_warehouse": s["wip_warehouse"],
 		"fg_warehouse": s["fg_warehouse"],
 		"byproduct_warehouse": s["byproduct_warehouse"],
+		"release_source_warehouse": s["release_source_warehouse"],
+		"auto_return_surplus": s["auto_return_surplus"],
+		"wip_recon_tolerance_pct": flt(s["wip_recon_tolerance_pct"]) if s["wip_recon_tolerance_pct"] is not None else None,
 	}
 
 
@@ -263,7 +293,7 @@ def guard_control_fields(doc):
 def _block_if_missing_valuation(doc, settings):
 	"""HARD BLOCK: raise a popup naming every line that would post at zero/missing
 	valuation, BEFORE any status change or Stock Entry creation, so the entry is
-	never left 'Posted' without a sound Stock Entry.
+	never left 'Completed' without a sound Stock Entry.
 
 	  - consumed materials  -> need a valuation rate in their source warehouse
 	    (outgoing stock is valued at source rate; missing => SE submit fails)
@@ -290,7 +320,10 @@ def _block_if_missing_valuation(doc, settings):
 			continue
 		if not _is_stock(row.item_code):
 			continue
-		s_wh = row.source_warehouse or wip
+		# Consumed RM is released FROM the configured release source (Stores) and only
+		# then transferred into WIP, so its valuation lives at the release source at
+		# pre-flight time (WIP may be empty pre-release). Check the release source first.
+		s_wh = settings.get("release_source_warehouse") or row.source_warehouse or wip
 		key = ("M", row.item_code, s_wh)
 		if key in seen:
 			continue
@@ -343,6 +376,14 @@ def _block_if_missing_valuation(doc, settings):
 
 # ─────────────────────────────────────────────────────────────────────────
 #  MANUFACTURE STOCK ENTRY BUILDER  (hand-built — reflects ACTUALS)
+#
+#  DEPRECATED in the Production Logging flow: the canonical Manufacture SE is now
+#  created via the Work Order in ts_production_wo.submit_manufacture_se() and consumes
+#  WIP per the BOM recipe (decision 2 — strict BOM-scaled consumption), NOT the edited
+#  actuals. _create_manufacture_stock_entry / _post_production below are retained ONLY
+#  as reference for the warehouse-company validation; they are NOT wired to any
+#  endpoint. Do NOT re-introduce a from-actuals Manufacture SE — it would diverge from
+#  the strict-BOM consumption the release flow guarantees.
 # ─────────────────────────────────────────────────────────────────────────
 
 def _create_manufacture_stock_entry(doc, settings):
@@ -452,7 +493,7 @@ def _create_manufacture_stock_entry(doc, settings):
 
 
 def _post_production(doc, settings, approver=None):
-	"""ATOMIC: valuation hard-block -> create+submit SE -> THEN flip status to Posted.
+	"""ATOMIC: valuation hard-block -> create+submit SE -> THEN flip status to Completed.
 	If SE creation fails, status is NOT changed (entry stays recoverable)."""
 	_block_if_missing_valuation(doc, settings)
 
@@ -480,11 +521,11 @@ def _post_production(doc, settings, approver=None):
 		)
 
 	doc.db_set("linked_stock_entry", se_name, update_modified=False)
-	doc.db_set("ts_variance_status", "Posted", update_modified=False)
+	doc.db_set("ts_variance_status", "Completed", update_modified=False)
 	doc.db_set("posted_by", approver or frappe.session.user, update_modified=False)
 	doc.add_comment(
 		"Comment",
-		_("Posted by {0}. Manufacture Stock Entry {1} created + submitted.").format(
+		_("Completed by {0}. Manufacture Stock Entry {1} created + submitted.").format(
 			frappe.session.user, se_name
 		),
 	)
@@ -500,145 +541,36 @@ def _require_enabled():
 		frappe.throw(_("The Production Entry flow is currently disabled (kill switch in TS Settings)."))
 
 
-def _is_ceo_or_admin(user=None):
-	user = user or frappe.session.user
-	roles = frappe.get_roles(user)
-	return ("CEO" in roles) or ("System Manager" in roles) or (user == "Administrator")
+# ── Production Logging single-gate flow ──────────────────────────────────────
+# The CEO variance gate has been REMOVED. The Production Manager submits a draft
+# for a single Store-Manager raw-material release; variance is informational only.
+# The canonical endpoints live in ts_production_release.py. The three method names
+# below are kept as thin delegators so older client calls / number cards keep
+# working and route through the new single gate (NO 'Pending CEO', NO direct post).
 
 
 @frappe.whitelist(methods=["POST"])
 def submit_production(name):
-	"""Operator submits a Draft entry. Within tolerance -> auto-post (SE created).
-	Breach -> Pending CEO (no SE yet). State: Draft -> Posted | Pending CEO."""
-	_require_enabled()
-	doc = frappe.get_doc("TS Production Entry", name)
-	frappe.has_permission("TS Production Entry", "write", doc=doc, throw=True)
-
-	if doc.ts_variance_status != "Draft":
-		frappe.throw(_("Only a Draft entry can be submitted (current status: {0}).").format(
-			doc.ts_variance_status))
-
-	# Recompute variance fresh from current data before deciding (do not trust stale fields)
-	compute_and_set_variance(doc)
-	validate_entry(doc)
-	if flt(doc.actual_produced_qty) <= 0:
-		frappe.throw(_("Enter the Actual Produced Qty before submitting."))
-	if not (doc.materials or doc.byproducts):
-		frappe.throw(_("Pull the standard from the BOM and enter actuals before submitting."))
-
-	settings = _get_settings()
-	# Snapshot the submitted output qty (tamper / amount-change reference)
-	doc.db_set("actual_produced_qty_at_submission", flt(doc.actual_produced_qty), update_modified=False)
-	doc.db_set("submitted_by", frappe.session.user, update_modified=False)
-	# Persist the freshly computed variance fields
-	doc.db_set("material_variance_pct", flt(doc.material_variance_pct), update_modified=False)
-	doc.db_set("produced_variance_pct", flt(doc.produced_variance_pct), update_modified=False)
-	doc.db_set("variance_breach", cint(doc.variance_breach), update_modified=False)
-
-	if cint(doc.variance_breach):
-		doc.db_set("ts_variance_status", "Pending CEO", update_modified=False)
-		doc.add_comment(
-			"Comment",
-			_("Submitted by {0}. Variance breach (material {1}% / produced {2}%) — routed to CEO.").format(
-				frappe.session.user, flt(doc.material_variance_pct), flt(doc.produced_variance_pct)
-			),
-		)
-		try:
-			_notify_ceo_pending(doc)
-		except Exception:
-			frappe.clear_messages()
-		frappe.db.commit()
-		return {
-			"ok": True,
-			"ts_variance_status": "Pending CEO",
-			"message": _("Variance exceeds tolerance — sent to CEO for approval."),
-		}
-
-	# Within tolerance -> auto-post
-	se_name = _post_production(doc, settings)
-	frappe.db.commit()
-	return {
-		"ok": True,
-		"ts_variance_status": "Posted",
-		"stock_entry": se_name,
-		"message": _("Within tolerance — Manufacture Stock Entry {0} created.").format(se_name),
-	}
+	"""Deprecated alias — routes to the single-gate release flow.
+	State: Draft -> Pending Stores Release (no SE yet; no 'Pending CEO')."""
+	from trustbit_ethanol.ts_gate_entry import ts_production_release as release
+	return release.submit_for_release(name)
 
 
 @frappe.whitelist(methods=["POST"])
 def approve_production(name):
-	"""CEO approves a breached entry. State: Pending CEO -> Posted (SE created).
-	Separation of duties: CEO may not approve an entry they created themselves."""
-	_require_enabled()
-	doc = frappe.get_doc("TS Production Entry", name)
-	if not _is_ceo_or_admin():
-		frappe.throw(_("Only the CEO can approve a production variance."), exc=frappe.PermissionError)
-	frappe.has_permission("TS Production Entry", "write", doc=doc, throw=True)
-
-	if doc.ts_variance_status != "Pending CEO":
-		frappe.throw(_("Only a 'Pending CEO' entry can be approved (current status: {0}).").format(
-			doc.ts_variance_status))
-
-	# Separation of duties (System Manager / Administrator bypass for recovery)
-	roles = frappe.get_roles(frappe.session.user)
-	is_admin = (frappe.session.user == "Administrator") or ("System Manager" in roles)
-	if doc.owner == frappe.session.user and not is_admin:
-		frappe.throw(
-			_("You created this entry, so you cannot approve it (separation of duties)."),
-			exc=frappe.PermissionError,
-		)
-
-	# Values must not have changed since submission (the form is locked while Pending CEO,
-	# but guard against any tamper/admin edit so the CEO approves exactly what was submitted).
-	snap = flt(doc.actual_produced_qty_at_submission)
-	if snap and abs(flt(doc.actual_produced_qty) - snap) > 1e-6:
-		frappe.throw(
-			_("The produced quantity changed since this entry was submitted ({0} → {1}). "
-			  "Reject it and have it re-submitted.").format(snap, flt(doc.actual_produced_qty)),
-			title=_("Values Changed Since Submission"),
-		)
-
-	settings = _get_settings()
-	se_name = _post_production(doc, settings, approver=frappe.session.user)
-	frappe.db.commit()
-	return {
-		"ok": True,
-		"ts_variance_status": "Posted",
-		"stock_entry": se_name,
-		"message": _("Approved. Manufacture Stock Entry {0} created.").format(se_name),
-	}
+	"""Deprecated alias — routes to the Store-Manager release approval.
+	State: Pending Stores Release -> Released -> Completed (SE created)."""
+	from trustbit_ethanol.ts_gate_entry import ts_production_release as release
+	return release.approve_release(name)
 
 
 @frappe.whitelist(methods=["POST"])
 def reject_production(name, reason):
-	"""CEO rejects a breached entry. Terminal. State: Pending CEO -> Rejected (no SE)."""
-	_require_enabled()
-	reason = (reason or "").strip()
-	if len(reason) < 10:
-		frappe.throw(_("Rejection reason must be at least 10 characters."))
-
-	doc = frappe.get_doc("TS Production Entry", name)
-	if not _is_ceo_or_admin():
-		frappe.throw(_("Only the CEO can reject a production variance."), exc=frappe.PermissionError)
-	frappe.has_permission("TS Production Entry", "write", doc=doc, throw=True)
-
-	if doc.ts_variance_status != "Pending CEO":
-		frappe.throw(_("Only a 'Pending CEO' entry can be rejected (current status: {0}).").format(
-			doc.ts_variance_status))
-
-	doc.db_set("ts_variance_status", "Rejected", update_modified=False)
-	doc.db_set("rejected_by", frappe.session.user, update_modified=False)
-	doc.db_set("rejection_reason", reason, update_modified=False)
-	doc.add_comment(
-		"Comment",
-		_("Rejected by {0}. Reason: {1}").format(frappe.session.user, escape_html(reason)),
-	)
-	try:
-		_notify_creator(doc, "rejected")
-	except Exception:
-		frappe.clear_messages()
-	frappe.db.commit()
-	return {"ok": True, "ts_variance_status": "Rejected"}
+	"""Deprecated alias — routes to the Store-Manager release rejection.
+	State: Pending Stores Release -> Rejected (no SE)."""
+	from trustbit_ethanol.ts_gate_entry import ts_production_release as release
+	return release.reject_release(name, reason)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -673,6 +605,12 @@ def revise_production(name):
 	doc.db_set("rejection_reason", None, update_modified=False)
 	doc.db_set("submitted_by", None, update_modified=False)
 	doc.db_set("actual_produced_qty_at_submission", 0, update_modified=False)
+	# Clear the release-flow linkage so a re-submission builds a fresh Work Order + SE
+	# (the previous WO + release SE were already torn down on rejection).
+	doc.db_set("work_order", None, update_modified=False)
+	doc.db_set("release_stock_entry", None, update_modified=False)
+	doc.db_set("bom_with_operations", 0, update_modified=False)
+	doc.db_set("bom_transfer_material_against", None, update_modified=False)
 	doc.add_comment("Comment", _("Reopened for revision by {0}.").format(user))
 	frappe.db.commit()
 	return {"ok": True, "ts_variance_status": "Draft"}
@@ -683,46 +621,78 @@ def revise_production(name):
 # ─────────────────────────────────────────────────────────────────────────
 
 def production_on_stock_entry_cancel(doc, method=None):
-	"""When a Manufacture Stock Entry created by a TS Production Entry is cancelled,
-	flip the entry to 'Cancelled' so it reflects the stock reversal. Early-returns
-	on every non-production Stock Entry (mirrors ts_mr_transfer.revert_on_stock_entry_cancel)."""
-	if getattr(doc, "purpose", None) != "Manufacture":
+	"""Reverse-sync a TS Production Entry when one of its backing Stock Entries is
+	cancelled. Two cases (early-returns on every other Stock Entry):
+
+	  - Manufacture SE (purpose 'Manufacture') == linked_stock_entry of a 'Completed'
+	    entry  -> flip the entry to 'Cancelled' (the production reversal).
+	  - Release SE (purpose 'Material Transfer for Manufacture') == release_stock_entry
+	    of a 'Released'/'Completed' entry -> revert to 'Pending Stores Release' so the
+	    Store Manager can re-release (the raw material went back to Stores).
+
+	Mirrors ts_mr_transfer.revert_on_stock_entry_cancel."""
+	purpose = getattr(doc, "purpose", None)
+
+	if purpose == "Manufacture":
+		entries = frappe.get_all(
+			"TS Production Entry",
+			filters={"linked_stock_entry": doc.name, "ts_variance_status": "Completed"},
+			pluck="name",
+		)
+		for name in entries:
+			frappe.db.set_value("TS Production Entry", name, "ts_variance_status", "Cancelled",
+								update_modified=False)
+			try:
+				frappe.get_doc("TS Production Entry", name).add_comment(
+					"Comment",
+					_("Manufacture Stock Entry {0} cancelled — production marked Cancelled.").format(doc.name),
+				)
+			except Exception:
+				# Best-effort comment; never break the SE cancel, and clear any leaked
+				# message so a clean cancel shows no scary popup (Lesson 276).
+				frappe.clear_messages()
 		return
-	entries = frappe.get_all(
-		"TS Production Entry",
-		filters={"linked_stock_entry": doc.name, "ts_variance_status": "Posted"},
-		pluck="name",
-	)
-	for name in entries:
-		frappe.db.set_value("TS Production Entry", name, "ts_variance_status", "Cancelled",
-							update_modified=False)
-		try:
-			frappe.get_doc("TS Production Entry", name).add_comment(
-				"Comment",
-				_("Manufacture Stock Entry {0} cancelled — production marked Cancelled.").format(doc.name),
-			)
-		except Exception:
-			# Best-effort comment; never let it break the SE cancel, and clear any
-			# leaked message so a clean cancel shows no scary popup (Lesson 276).
-			frappe.clear_messages()
+
+	if purpose == "Material Transfer for Manufacture":
+		entries = frappe.get_all(
+			"TS Production Entry",
+			filters={
+				"release_stock_entry": doc.name,
+				"ts_variance_status": ["in", ["Released", "Completed"]],
+			},
+			pluck="name",
+		)
+		for name in entries:
+			frappe.db.set_value("TS Production Entry", name, "ts_variance_status",
+								"Pending Stores Release", update_modified=False)
+			try:
+				frappe.get_doc("TS Production Entry", name).add_comment(
+					"Comment",
+					_("Release Stock Entry {0} cancelled — reverted to Pending Stores Release.").format(doc.name),
+				)
+			except Exception:
+				frappe.clear_messages()
+		return
 
 
 # ─────────────────────────────────────────────────────────────────────────
 #  NOTIFICATIONS  (best-effort — never block the workflow; Lessons 238/276)
 # ─────────────────────────────────────────────────────────────────────────
 
-def _notify_ceo_pending(doc):
-	recipients = _role_emails("CEO")
+def _notify_stores_managers_release(doc):
+	"""Email all active Stores Manager users that a production run awaits release."""
+	recipients = _role_emails("Stores Manager")
 	if not recipients:
 		return
 	frappe.sendmail(
 		recipients=recipients,
-		subject=_("Production variance pending your approval: {0}").format(doc.name),
+		subject=_("Production raw-material release pending: {0}").format(doc.name),
 		message=_(
-			"Production Entry <b>{0}</b> ({1}) breached the variance tolerance "
-			"(material {2}% / produced {3}%) and needs your approval."
+			"Production Entry <b>{0}</b> ({1}) is awaiting your raw-material release "
+			"(produced qty {2}). Approve the release to transfer material Stores &rarr; WIP "
+			"and run the manufacture."
 		).format(doc.name, escape_html(doc.production_item_name or doc.production_item or ""),
-				 flt(doc.material_variance_pct), flt(doc.produced_variance_pct)),
+				 flt(doc.actual_produced_qty)),
 		reference_doctype="TS Production Entry",
 		reference_name=doc.name,
 	)

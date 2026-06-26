@@ -1,17 +1,31 @@
 # Copyright (c) 2026, Trustbit Technologies and contributors
 # For license information, please see license.txt
 #
-# TS Production Entry — captures Standard (from native BOM) vs Actual material
-# consumed + actual produced quantity, computes variance %, and (auto when within
-# tolerance, or after CEO approval when a breach) creates+submits a native
-# Manufacture Stock Entry (finished good + DDGS/DWGS/LCO2 auto scrap rows).
+# TS Production Entry — Production Logging (Dashboard #2).
+#
+# A Production Manager picks a BOM, enters produced qty + by-products, edits the
+# raw-material RELEASE request, then submits for a single Store-Manager release
+# gate. On release the system creates+submits a Work Order, transfers raw material
+# Stores -> WIP (Material Transfer for Manufacture), auto-completes Job Cards for
+# operations BOMs, submits a native Manufacture Stock Entry (consumes WIP per the
+# BOM recipe scaled to produced qty), closes the Work Order, and auto-returns any
+# over-released surplus WIP back to Stores. Variance is informational only — there
+# is NO CEO approval gate in this flow.
 #
 # State machine lives in ts_variance_status (NOT docstatus): is_submittable=0.
-#   Draft -> Pending CEO -> Posted | Rejected ;  Posted -> Cancelled (SE cancel).
+#   Draft -> Pending Stores Release -> Released -> Completed
+#   Pending Stores Release -> Rejected ;  Rejected -> Draft (revise)
+#   Released -> Pending Stores Release (release SE cancelled, revert-on-cancel)
+#   Completed -> Cancelled (Manufacture SE cancelled, reverse-sync)
+# 'Released' is a recoverable mid-chain state: complete_released_production() can
+# re-run steps 7-10 idempotently so a Work Order is never half-completed.
 #
-# Heavy logic (variance, valuation hard-block, SE builder, approval endpoints,
-# notifications, Stock Entry on_cancel reverse-sync) lives in ts_production_api.py
-# so the controller stays thin and the whitelisted endpoints are co-located.
+# Heavy logic lives across:
+#   - ts_production_api.py     : variance engine, valuation hard-block, Manufacture
+#                                SE builder, on_cancel reverse-sync, notifications
+#   - ts_production_release.py : the Store-Manager release gate (whitelisted)
+#   - ts_production_wo.py      : Work-Order + Job-Card automation engine
+# so the controller stays thin.
 
 from frappe.model.document import Document
 

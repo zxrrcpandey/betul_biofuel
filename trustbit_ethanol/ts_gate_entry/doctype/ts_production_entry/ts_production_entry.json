@@ -35,6 +35,20 @@
   "rejected_by",
   "rejection_reason",
   "actual_produced_qty_at_submission",
+  "release_section",
+  "release_stock_entry",
+  "released_by",
+  "released_at",
+  "column_break_release",
+  "bom_with_operations",
+  "bom_transfer_material_against",
+  "wip_recon_section",
+  "wip_released_qty",
+  "wip_consumed_qty",
+  "column_break_wip",
+  "wip_reconcile_variance_pct",
+  "wip_returned_stock_entry",
+  "wip_reconcile_note",
   "materials_section",
   "materials",
   "byproducts_section",
@@ -114,11 +128,13 @@
    "label": "Batch / Lot Ref"
   },
   {
-   "description": "Optional. Production Entry can reference the BOM directly without a Work Order.",
+   "description": "Auto-created on Submit for Release (drives the raw-material transfer + Job Cards + Manufacture SE). Populated by the release flow — leave blank on a new draft.",
    "fieldname": "work_order",
    "fieldtype": "Link",
-   "label": "Work Order (optional)",
-   "options": "Work Order"
+   "label": "Work Order",
+   "no_copy": 1,
+   "options": "Work Order",
+   "read_only": 1
   },
   {
    "fieldname": "qty_section",
@@ -176,7 +192,7 @@
    "read_only": 1
   },
   {
-   "description": "Set when material OR produced variance exceeds the tolerance in TS Settings. A breach requires CEO approval.",
+   "description": "Set when material OR produced variance exceeds the tolerance in TS Settings. Informational only in the release flow (the single gate is the Store-Manager raw-material release; there is no CEO gate).",
    "fieldname": "variance_breach",
    "fieldtype": "Check",
    "label": "Variance Breach",
@@ -204,10 +220,11 @@
    "in_standard_filter": 1,
    "label": "Status",
    "no_copy": 1,
-   "options": "Draft\nPending CEO\nPosted\nRejected\nCancelled",
+   "options": "Draft\nPending Stores Release\nReleased\nCompleted\nRejected\nCancelled",
    "read_only": 1
   },
   {
+   "description": "The native Manufacture Stock Entry (consumes WIP per the BOM recipe, produces finished good + by-products). Created on Store-Manager release.",
    "fieldname": "linked_stock_entry",
    "fieldtype": "Link",
    "label": "Manufacture Stock Entry",
@@ -256,6 +273,109 @@
    "fieldtype": "Float",
    "hidden": 1,
    "label": "Actual Produced Qty (at submission)",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "release_section",
+   "fieldtype": "Section Break",
+   "label": "Raw-Material Release"
+  },
+  {
+   "description": "The Material-Transfer-for-Manufacture Stock Entry (Stores → WIP) the Store Manager releases. Created as a DRAFT on Submit for Release; submitted on Approve.",
+   "fieldname": "release_stock_entry",
+   "fieldtype": "Link",
+   "label": "Release Stock Entry",
+   "no_copy": 1,
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "released_by",
+   "fieldtype": "Link",
+   "label": "Released By (Store Manager)",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "released_at",
+   "fieldtype": "Datetime",
+   "label": "Released At",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_release",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Captured from the BOM at draft. 1 = this BOM has operations (Job Cards are auto-completed during release).",
+   "fieldname": "bom_with_operations",
+   "fieldtype": "Check",
+   "label": "BOM Has Operations",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Captured from the BOM at draft. Drives whether the raw-material transfer is done at Work-Order level or per Job Card.",
+   "fieldname": "bom_transfer_material_against",
+   "fieldtype": "Data",
+   "label": "Transfer Material Against",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "wip_recon_section",
+   "fieldtype": "Section Break",
+   "label": "WIP Reconciliation (Released vs Consumed)"
+  },
+  {
+   "description": "Total raw-material value the Store Manager released to WIP (drives what physically moves Stores → WIP).",
+   "fieldname": "wip_released_qty",
+   "fieldtype": "Float",
+   "label": "Released Value (to WIP)",
+   "no_copy": 1,
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "description": "Total raw-material value consumed by the Manufacture Stock Entry (BOM recipe scaled to produced qty).",
+   "fieldname": "wip_consumed_qty",
+   "fieldtype": "Float",
+   "label": "Consumed Value (from WIP)",
+   "no_copy": 1,
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_wip",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "(released − consumed) / consumed × 100. Positive = surplus released to WIP (auto-returned to Stores when enabled).",
+   "fieldname": "wip_reconcile_variance_pct",
+   "fieldtype": "Float",
+   "label": "WIP Reconcile Variance %",
+   "no_copy": 1,
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "description": "The auto-return Material-Transfer Stock Entry (WIP → Stores) that zeroed the surplus released raw material, if any.",
+   "fieldname": "wip_returned_stock_entry",
+   "fieldtype": "Link",
+   "label": "Surplus Return Stock Entry",
+   "no_copy": 1,
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.wip_reconcile_note",
+   "description": "Human summary of leftover / short WIP after the Manufacture Stock Entry.",
+   "fieldname": "wip_reconcile_note",
+   "fieldtype": "Small Text",
+   "label": "WIP Reconciliation Note",
    "no_copy": 1,
    "read_only": 1
   },
@@ -335,6 +455,15 @@
    "read": 1,
    "report": 1,
    "role": "CEO",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stores Manager",
    "share": 1,
    "write": 1
   },

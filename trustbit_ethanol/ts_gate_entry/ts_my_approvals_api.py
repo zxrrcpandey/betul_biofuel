@@ -55,11 +55,12 @@ ROLE_STATUS_MAP = {
 			"CEO": ["Pending CEO"],
 		},
 	},
-	# v2.15.0 — Production variance approvals surface in the CEO inbox.
+	# Production Logging — the single gate is the Store-Manager raw-material release
+	# (the CEO variance gate was removed). Surfaces in the Stores Manager inbox.
 	"TS Production Entry": {
 		"field": "ts_variance_status",
 		"roles": {
-			"CEO": ["Pending CEO"],
+			"Stores Manager": ["Pending Stores Release"],
 		},
 	},
 }
@@ -229,6 +230,13 @@ def count_post_dated_pending_for_me(**kwargs):
 def count_budget_pending_for_me(**kwargs):
 	"""Custom Number Card method: pending Budget Proposals for current user."""
 	return _count_pending_for_me("TS Budget Proposal")
+
+
+@frappe.whitelist()
+def count_production_release_pending_for_me(**kwargs):
+	"""Custom Number Card method: production runs pending raw-material release for the
+	current user (Stores Manager). Counts 'Pending Stores Release' entries."""
+	return _count_pending_for_me("TS Production Entry")
 
 
 @frappe.whitelist()

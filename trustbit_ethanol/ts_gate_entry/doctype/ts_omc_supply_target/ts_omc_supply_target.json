@@ -1,0 +1,219 @@
+{
+ "actions": [],
+ "autoname": "format:{omc}-{esy_code}",
+ "creation": "2026-06-25 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "omc",
+  "esy_code",
+  "column_break_head",
+  "esy_start",
+  "esy_end",
+  "is_active",
+  "allocations_section",
+  "q1_allocation_kl",
+  "q2_allocation_kl",
+  "column_break_alloc",
+  "q3_allocation_kl",
+  "q4_allocation_kl",
+  "annual_section",
+  "annual_allocation_kl",
+  "depot_plan_section",
+  "depot_plan",
+  "remarks_section",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "omc",
+   "fieldtype": "Link",
+   "label": "OMC",
+   "options": "TS OMC",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "The Oil Marketing Company this target belongs to"
+  },
+  {
+   "fieldname": "esy_code",
+   "fieldtype": "Data",
+   "label": "Ethanol Supply Year (ESY)",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "ESY code, e.g. 2025-26 (Nov 1 to Oct 31)"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "esy_start",
+   "fieldtype": "Date",
+   "label": "ESY Start",
+   "reqd": 1,
+   "description": "Auto-derived 01-Nov of the ESY start year (editable by IT Head)"
+  },
+  {
+   "fieldname": "esy_end",
+   "fieldtype": "Date",
+   "label": "ESY End",
+   "reqd": 1,
+   "description": "Auto-derived 31-Oct of the next year"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Active",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "allocations_section",
+   "fieldtype": "Section Break",
+   "label": "Quarter Allocations (KL)"
+  },
+  {
+   "fieldname": "q1_allocation_kl",
+   "fieldtype": "Float",
+   "label": "Q1 Allocation (Nov-Jan) KL",
+   "precision": "3",
+   "reqd": 1
+  },
+  {
+   "fieldname": "q2_allocation_kl",
+   "fieldtype": "Float",
+   "label": "Q2 Allocation (Feb-Apr) KL",
+   "precision": "3",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_alloc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "q3_allocation_kl",
+   "fieldtype": "Float",
+   "label": "Q3 Allocation (May-Jul) KL",
+   "precision": "3",
+   "reqd": 1
+  },
+  {
+   "fieldname": "q4_allocation_kl",
+   "fieldtype": "Float",
+   "label": "Q4 Allocation (Aug-Oct) KL",
+   "precision": "3",
+   "reqd": 1
+  },
+  {
+   "fieldname": "annual_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "annual_allocation_kl",
+   "fieldtype": "Float",
+   "label": "Annual Allocation (KL)",
+   "precision": "3",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Auto-sum of the four quarter allocations (computed server-side; read-only)"
+  },
+  {
+   "fieldname": "depot_plan_section",
+   "fieldtype": "Section Break",
+   "label": "Depot Dispatch Plan (Optional)"
+  },
+  {
+   "fieldname": "depot_plan",
+   "fieldtype": "Table",
+   "label": "Depot Plan",
+   "options": "TS OMC Depot Plan",
+   "description": "Optional per-depot dispatch instructions; quarter is derived from Instructed On"
+  },
+  {
+   "fieldname": "remarks_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-06-25 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS OMC Supply Target",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1,
+   "role": "IT Head"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1,
+   "role": "PM"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1,
+   "role": "Grain PM"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "role": "CEO"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "role": "MD"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

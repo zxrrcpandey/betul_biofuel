@@ -1,14 +1,17 @@
 // Copyright (c) 2026, Trustbit Technologies and contributors
 // For license information, please see license.txt
 //
-// TS Production Entry form — v2.15.0
+// TS Production Entry form — Production Logging (single Store-Manager release gate).
 //   - "Pull Standard from BOM"  (Draft): data-driven materials + by-products
-//   - "Submit Production Entry" (Draft): within tolerance auto-posts, breach -> CEO
-//   - "Approve" / "Reject"      (Pending CEO + CEO/SM): variance approval
+//   - "Submit for Release"      (Draft): creates the Work Order + draft release SE,
+//                                        routes to the Stores Manager (NO CEO gate)
+//   - "Approve Release" / "Reject" (Pending Stores Release + Stores Mgr): runs the
+//                                        Work-Order / Job-Card / Manufacture chain
+//   - "Complete Production"      (Released + Stores Mgr): idempotent recovery re-run
 //   - Status intro banner (frm.set_intro — re-applied each refresh, NOT set_headline)
 //   - Locks editable fields once the entry leaves Draft
 
-const TS_PROD_VERSION = "v2.15.0-2026-06-01-r2";
+const TS_PROD_VERSION = "v2.18.x-prodlogging-2026-06-25";
 
 frappe.ui.form.on("TS Production Entry", {
 	refresh(frm) {
@@ -33,9 +36,9 @@ frappe.ui.form.on("TS Production Entry", {
 	},
 });
 
-function _ts_prod_is_ceo(frm) {
+function _ts_prod_is_store_manager(frm) {
 	const roles = frappe.user_roles || [];
-	return roles.includes("CEO") || roles.includes("System Manager") || frappe.session.user === "Administrator";
+	return roles.includes("Stores Manager") || roles.includes("System Manager") || frappe.session.user === "Administrator";
 }
 
 function _ts_prod_lock_fields(frm) {
@@ -55,29 +58,32 @@ function _ts_prod_lock_fields(frm) {
 function _ts_prod_banner(frm) {
 	if (frm.is_new()) return;
 	const s = frm.doc.ts_variance_status;
-	const mv = flt(frm.doc.material_variance_pct);
-	const pv = flt(frm.doc.produced_variance_pct);
-	if (s === "Pending CEO") {
+	if (s === "Pending Stores Release") {
 		frm.set_intro(
-			__("Variance breach (material {0}% / produced {1}%) — pending CEO approval. Stock has NOT been posted.",
-				[mv.toFixed(2), pv.toFixed(2)]),
+			__("Awaiting Stores Manager raw-material release. Work Order {0} created; the release Stock Entry {1} is a DRAFT (no stock moved yet).",
+				[frm.doc.work_order || "", frm.doc.release_stock_entry || ""]),
 			"orange"
 		);
-	} else if (s === "Posted") {
+	} else if (s === "Released") {
 		frm.set_intro(
-			__("Posted. Manufacture Stock Entry {0} created (Ethanol + by-products).",
-				[frm.doc.linked_stock_entry || ""]),
+			__("Raw material RELEASED to WIP (Release SE {0}). Completing production — if this is stuck, click 'Complete Production' to retry.",
+				[frm.doc.release_stock_entry || ""]),
+			"blue"
+		);
+	} else if (s === "Completed") {
+		frm.set_intro(
+			__("Completed. Manufacture Stock Entry {0} created (finished good + by-products). {1}",
+				[frm.doc.linked_stock_entry || "", frm.doc.wip_reconcile_note || ""]),
 			"green"
 		);
 	} else if (s === "Rejected") {
-		frm.set_intro(__("Rejected by CEO. {0}", [frm.doc.rejection_reason || ""]), "red");
+		frm.set_intro(__("Release rejected. {0}", [frm.doc.rejection_reason || ""]), "red");
 	} else if (s === "Cancelled") {
 		frm.set_intro(__("Cancelled — the linked Manufacture Stock Entry was cancelled."), "red");
-	} else if (s === "Draft" && cint(frm.doc.variance_breach)) {
+	} else if (s === "Draft") {
 		frm.set_intro(
-			__("This run breaches the variance tolerance (material {0}% / produced {1}%). Submitting will route it to the CEO.",
-				[mv.toFixed(2), pv.toFixed(2)]),
-			"orange"
+			__("Draft. Edit the raw-material rows (this drives the RELEASE only; the finished-goods consumption follows the BOM recipe), then Submit for Release."),
+			"blue"
 		);
 	} else {
 		frm.set_intro("");
@@ -93,11 +99,11 @@ function _ts_prod_buttons(frm) {
 	}
 
 	if (s === "Draft") {
-		frm.add_custom_button(__("Submit Production Entry"), () => {
+		frm.add_custom_button(__("Submit for Release"), () => {
 			frappe.confirm(
-				__("Submit this production run? Within tolerance it will post a Manufacture Stock Entry; a variance breach will be routed to the CEO."),
-				// Save any unsaved edits FIRST so the server posts the actuals on screen, not stale values.
-				() => _ts_prod_save_then(frm, () => _ts_prod_call("submit_production", { name: frm.doc.name }, frm))
+				__("Submit this run for Stores Manager release? It will create a Work Order and a DRAFT raw-material release Stock Entry, then notify the Stores Manager. No stock moves until the Stores Manager approves the release."),
+				// Save any unsaved edits FIRST so the server acts on the actuals on screen.
+				() => _ts_prod_save_then(frm, () => _ts_prod_call("submit_for_release", { name: frm.doc.name }, frm))
 			);
 		}).addClass("btn-primary");
 	}
@@ -105,29 +111,48 @@ function _ts_prod_buttons(frm) {
 	if (s === "Rejected") {
 		frm.add_custom_button(__("Revise & Reopen"), () => {
 			frappe.confirm(
-				__("Reopen this rejected entry as a Draft so you can edit the actuals and resubmit it?"),
+				__("Reopen this rejected entry as a Draft so you can edit the raw materials and resubmit it?"),
 				() => _ts_prod_call("revise_production", { name: frm.doc.name }, frm)
 			);
 		}).addClass("btn-primary");
 	}
 
-	if (s === "Pending CEO" && _ts_prod_is_ceo(frm)) {
-		frm.add_custom_button(__("Approve"), () => {
+	if (s === "Pending Stores Release" && _ts_prod_is_store_manager(frm)) {
+		frm.add_custom_button(__("Approve Release"), () => {
 			frappe.confirm(
-				__("Approve this variance and post the Manufacture Stock Entry?"),
-				() => _ts_prod_call("approve_production", { name: frm.doc.name }, frm)
+				__("Approve the raw-material release? This transfers material Stores → WIP, auto-completes any Job Cards, posts the Manufacture Stock Entry, and closes the Work Order."),
+				() => _ts_prod_call("approve_release", { name: frm.doc.name }, frm)
 			);
-		}, __("Variance")).addClass("btn-primary");
+		}, __("Release")).addClass("btn-primary");
 
 		frm.add_custom_button(__("Reject"), () => {
 			frappe.prompt(
 				[{ fieldname: "reason", fieldtype: "Small Text", label: __("Rejection Reason (min 10 chars)"), reqd: 1 }],
-				(v) => _ts_prod_call("reject_production", { name: frm.doc.name, reason: v.reason }, frm),
-				__("Reject Production Variance"), __("Reject")
+				(v) => _ts_prod_call("reject_release", { name: frm.doc.name, reason: v.reason }, frm),
+				__("Reject Raw-Material Release"), __("Reject")
 			);
-		}, __("Variance"));
+		}, __("Release"));
 	}
 
+	if (s === "Released" && _ts_prod_is_store_manager(frm)) {
+		frm.add_custom_button(__("Complete Production"), () => {
+			frappe.confirm(
+				__("Retry completing this released run? Already-done steps are skipped — Job Cards, the Manufacture Stock Entry, and the Work Order close are re-run safely."),
+				() => _ts_prod_call("complete_released_production", { name: frm.doc.name }, frm)
+			);
+		}, __("Release")).addClass("btn-primary");
+	}
+
+	if (frm.doc.work_order) {
+		frm.add_custom_button(__("Work Order"), () => {
+			frappe.set_route("Form", "Work Order", frm.doc.work_order);
+		}, __("View"));
+	}
+	if (frm.doc.release_stock_entry) {
+		frm.add_custom_button(__("Release Stock Entry"), () => {
+			frappe.set_route("Form", "Stock Entry", frm.doc.release_stock_entry);
+		}, __("View"));
+	}
 	if (frm.doc.linked_stock_entry) {
 		frm.add_custom_button(__("Manufacture Stock Entry"), () => {
 			frappe.set_route("Form", "Stock Entry", frm.doc.linked_stock_entry);
@@ -202,16 +227,26 @@ function _ts_prod_save_then(frm, cb) {
 	}
 }
 
+// Release-flow endpoints live in ts_production_release.py; everything else (the
+// legacy revise_production) lives in ts_production_api.py. Route by method name.
+const _TS_PROD_RELEASE_METHODS = new Set([
+	"submit_for_release", "approve_release", "reject_release", "complete_released_production",
+]);
+
 function _ts_prod_call(method, args, frm) {
+	const mod = _TS_PROD_RELEASE_METHODS.has(method)
+		? "trustbit_ethanol.ts_gate_entry.ts_production_release."
+		: "trustbit_ethanol.ts_gate_entry.ts_production_api.";
 	frappe.call({
-		method: "trustbit_ethanol.ts_gate_entry.ts_production_api." + method,
+		method: mod + method,
 		args: args,
 		freeze: true,
 		freeze_message: __("Processing..."),
 		callback(r) {
 			const m = r.message || {};
 			if (m.message) {
-				frappe.show_alert({ message: m.message, indicator: m.stock_entry ? "green" : "orange" });
+				const ok = !!(m.ok || m.stock_entry || m.status === "ok");
+				frappe.show_alert({ message: m.message, indicator: ok ? "green" : "orange" });
 			}
 			frm.reload_doc();
 		},

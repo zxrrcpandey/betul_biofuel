@@ -1,0 +1,71 @@
+{
+ "actions": [],
+ "creation": "2026-06-25 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "depot_customer",
+  "instructed_on",
+  "quarter",
+  "column_break_1",
+  "planned_kl",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "depot_customer",
+   "fieldtype": "Link",
+   "label": "Depot (Customer)",
+   "options": "Customer",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "The depot the OMC instructed dispatch to (a Customer record)"
+  },
+  {
+   "fieldname": "instructed_on",
+   "fieldtype": "Date",
+   "label": "Instructed On",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "When the dispatch instruction was issued (derives the quarter)"
+  },
+  {
+   "fieldname": "quarter",
+   "fieldtype": "Select",
+   "label": "Quarter",
+   "options": "\nQ1\nQ2\nQ3\nQ4",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Derived from Instructed On vs the ESY quarter windows (set in parent validate)"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "planned_kl",
+   "fieldtype": "Float",
+   "label": "Planned (KL)",
+   "precision": "3",
+   "in_list_view": 1,
+   "description": "Planned dispatch to this depot for its quarter (KL)"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-06-25 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS OMC Depot Plan",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
+}

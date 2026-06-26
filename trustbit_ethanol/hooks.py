@@ -301,6 +301,12 @@ after_migrate = [
 	# v2.18.x — WhatsApp Integration Phase 1a: TS Settings + User Custom Fields + template-map rows (ships inert behind ts_whatsapp_enabled)
 	"trustbit_ethanol.ts_gate_entry.setup_whatsapp.seed_whatsapp_settings_fields",
 	"trustbit_ethanol.ts_gate_entry.ts_whatsapp_recipients.seed_whatsapp_user_fields",
+	# v2.19.0 — OMC Supply Tracker (Dashboard #1): Customer.ts_omc tag + TS Settings fields + OMC list seed
+	"trustbit_ethanol.ts_gate_entry.setup_omc_tracker.after_migrate_omc_tracker",
+	# v2.19.0 — Production Logging (Dashboard #2): status enum + Stores-Manager DocPerm + page roles + settings fields
+	"trustbit_ethanol.ts_gate_entry.ts_production_seed.after_migrate_production_logging",
+	# v2.19.0 — TS Production + OMC Supply workspaces + KPI number cards (idempotent, create-if-missing)
+	"trustbit_ethanol.ts_gate_entry.setup_dashboard_workspaces.seed_dashboard_workspaces",
 ]
 
 # Scheduled Tasks

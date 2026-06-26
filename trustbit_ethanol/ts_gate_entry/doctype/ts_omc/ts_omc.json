@@ -1,0 +1,96 @@
+{
+ "actions": [],
+ "autoname": "field:omc_name",
+ "creation": "2026-06-25 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "omc_name",
+  "omc_code",
+  "column_break_1",
+  "logo_color",
+  "logo_key",
+  "display_order",
+  "is_active"
+ ],
+ "fields": [
+  {
+   "fieldname": "omc_name",
+   "fieldtype": "Data",
+   "label": "OMC Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "bold": 1,
+   "description": "Oil Marketing Company display name, e.g. IOCL / HPCL / BPCL"
+  },
+  {
+   "fieldname": "omc_code",
+   "fieldtype": "Data",
+   "label": "OMC Code",
+   "in_list_view": 1,
+   "description": "Short code, e.g. IO / HP / BP"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "logo_color",
+   "fieldtype": "Data",
+   "label": "Logo Color",
+   "description": "Optional hex color used by the dashboard card, e.g. #f97316"
+  },
+  {
+   "fieldname": "logo_key",
+   "fieldtype": "Data",
+   "label": "Logo Key",
+   "description": "Optional CSS key for the dashboard logo class, e.g. iocl / hpcl / bpcl / total"
+  },
+  {
+   "fieldname": "display_order",
+   "fieldtype": "Int",
+   "label": "Display Order",
+   "description": "Sort order on the dashboard (lower first)"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Active",
+   "in_list_view": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-06-25 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS OMC",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "read": 1,
+   "role": "PM"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}
