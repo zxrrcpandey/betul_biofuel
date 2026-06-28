@@ -307,6 +307,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.ts_production_seed.after_migrate_production_logging",
 	# v2.19.0 — TS Production + OMC Supply workspaces + KPI number cards (idempotent, create-if-missing)
 	"trustbit_ethanol.ts_gate_entry.setup_dashboard_workspaces.seed_dashboard_workspaces",
+	# GST Breakdown summary field on Purchase Order (display-only; CGST/SGST/IGST + Total)
+	"trustbit_ethanol.ts_gate_entry.setup.seed_gst_breakdown_field",
 ]
 
 # Scheduled Tasks

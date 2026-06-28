@@ -80,3 +80,81 @@ window._ts_apply_gst_decomposition = function (frm) {
 		}
 	});
 };
+
+// ── GST Breakdown summary table (CGST/SGST/IGST + Total GST Amount) ──────────
+// Read-only panel rendered into the `ts_gst_breakdown_html` custom field on the
+// Terms tab. Auto-derived from doc.taxes (grouped by account_head/description);
+// recomputes on form refresh and on any change to the taxes grid. Display-only,
+// stores nothing — mirrors the GST table the BBPL PO PDF renders.
+frappe.ui.form.on("Purchase Order", {
+	refresh(frm) {
+		setTimeout(() => _ts_render_gst_breakdown(frm), 220);
+		setTimeout(() => _ts_render_gst_breakdown(frm), 800);
+	},
+});
+
+frappe.ui.form.on("Purchase Taxes and Charges", {
+	taxes_add(frm) { setTimeout(() => _ts_render_gst_breakdown(frm), 200); },
+	taxes_remove(frm) { setTimeout(() => _ts_render_gst_breakdown(frm), 200); },
+	tax_amount(frm) { setTimeout(() => _ts_render_gst_breakdown(frm), 150); },
+	rate(frm) { setTimeout(() => _ts_render_gst_breakdown(frm), 150); },
+	account_head(frm) { setTimeout(() => _ts_render_gst_breakdown(frm), 150); },
+});
+
+window._ts_render_gst_breakdown = function (frm) {
+	if (!frm || frm.doctype !== "Purchase Order") return;
+	const field = frm.fields_dict && frm.fields_dict.ts_gst_breakdown_html;
+	if (!field) return;
+
+	const currency = frm.doc.currency || "INR";
+	const grand = flt(frm.doc.grand_total);
+	const net = flt(frm.doc.net_total);
+
+	let cgst = 0, sgst = 0, igst = 0;
+	(frm.doc.taxes || []).forEach((t) => {
+		const amt = flt(t.tax_amount);
+		const hay = ((t.account_head || "") + " " + (t.description || "")).toUpperCase();
+		if (hay.indexOf("CGST") !== -1) cgst += amt;
+		else if (hay.indexOf("SGST") !== -1 || hay.indexOf("UTGST") !== -1) sgst += amt;
+		else if (hay.indexOf("IGST") !== -1) igst += amt;
+	});
+
+	const classified = cgst + sgst + igst;
+	const diff = grand - net;
+	const total = classified > 0 ? classified : (diff > 0 ? diff : 0);
+
+	// Blank placeholder (not "") so ControlHTML.refresh_input — which skips falsy
+	// content — still ACTIVELY repaints (clearing any stale table) when GST is removed.
+	let html = "<div></div>";
+	if (total > 0) {
+		const td = (txt, bold, right) =>
+			`<td style="padding:4px 8px;border:1px solid #d1d8dd;${right ? "text-align:right;" : ""}${bold ? "font-weight:bold;" : ""}">${txt}</td>`;
+		const tr = (label, amt, bold) =>
+			`<tr>${td(label, bold, false)}${td(format_currency(amt, currency), bold, true)}</tr>`;
+		let body = "";
+		if (classified > 0) {
+			if (cgst > 0) body += tr("CGST", cgst, false);
+			if (sgst > 0) body += tr("SGST", sgst, false);
+			if (igst > 0) body += tr("IGST", igst, false);
+		} else {
+			body += tr("GST", diff, false);
+		}
+		body += tr("Total GST Amount", total, true);
+		html =
+			`<div style="margin-top:8px;">` +
+			`<div style="font-weight:bold;margin-bottom:4px;">GST Breakdown</div>` +
+			`<table style="border-collapse:collapse;font-size:0.95em;">` +
+			`<thead><tr>` +
+			`<th style="padding:4px 8px;border:1px solid #d1d8dd;text-align:left;background:#f7f7f7;">Tax Type</th>` +
+			`<th style="padding:4px 8px;border:1px solid #d1d8dd;text-align:right;background:#f7f7f7;">Amount</th>` +
+			`</tr></thead><tbody>${body}</tbody></table></div>`;
+	}
+
+	// Persist into the HTML field's `options` so Frappe's ControlHTML.refresh_input()
+	// re-paints it on EVERY form/tab refresh. A bare $wrapper.html() write is blanked
+	// the next time the control (or its lazily-shown tab) refreshes, because Frappe
+	// only re-renders an HTML control from df.options — that was the "not showing" bug.
+	// We set df.options (persistent) AND paint immediately for the first render.
+	field.df.options = html;
+	if (field.$wrapper) field.$wrapper.html(html);
+};

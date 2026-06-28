@@ -2938,3 +2938,31 @@ def _seed_payment_amount_gst_field():
 	# Lesson 263 — bump tabDocType.modified so cached form metadata invalidates client-side
 	frappe.db.set_value("DocType", "Purchase Order", "modified", frappe.utils.now(), update_modified=False)
 	frappe.db.commit()
+
+
+def seed_gst_breakdown_field():
+	"""Display-only GST Breakdown summary on Purchase Order (Terms tab).
+
+	Adds one read-only HTML field `ts_gst_breakdown_html` rendered by
+	public/js/po_payment_amount_gst.js into a CGST/SGST/IGST + Total GST table,
+	auto-derived from the PO's `taxes` child table. The BBPL Purchase Order PDF
+	renders the same table server-side. Nothing is stored; ERPNext's tax/
+	payment_amount math is untouched. Idempotent (create-if-missing).
+	"""
+	if frappe.db.exists("Custom Field", {"dt": "Purchase Order", "fieldname": "ts_gst_breakdown_html"}):
+		return
+	frappe.get_doc({
+		"doctype": "Custom Field",
+		"dt": "Purchase Order",
+		"fieldname": "ts_gst_breakdown_html",
+		"label": "GST Breakdown",
+		"fieldtype": "HTML",
+		"insert_after": "ts_payment_amount_includes_gst",
+		"description": "Read-only CGST/SGST/IGST + Total GST summary, auto-computed from this PO's taxes. Display-only — also shown on the BBPL Purchase Order PDF.",
+		"no_copy": 1,
+		"print_hide": 1,
+		"translatable": 0,
+	}).insert(ignore_permissions=True)
+	# Lesson 263 — bump tabDocType.modified so cached form metadata invalidates client-side
+	frappe.db.set_value("DocType", "Purchase Order", "modified", frappe.utils.now(), update_modified=False)
+	frappe.db.commit()
