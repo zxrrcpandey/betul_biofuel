@@ -7,12 +7,18 @@ frappe.ui.form.on("Purchase Order", {
 		_ts_setup_deduction_template_query(frm);
 		// Show fallback banner if backend silently picked default master.
 		_ts_render_deduction_fallback_banner(frm);
+		// Deliveries are now shown ON DEMAND via the "Deliveries" button (dialog),
+		// never inline. Always strip any legacy inline delivery-chain DOM so it can
+		// never linger on a fresh PO (the old inline tracker leaked across the
+		// reused form DOM and only cleared on a full page reload).
+		_ts_clear_stale_lifecycle_ui(frm);
 		if (frm.is_new()) return;
 		// v2.9.8.31: default to BBPL Purchase Order (new mockup format).
 		_ts_add_print_button(frm, "BBPL Purchase Order");
+		// Deliveries button — opens the delivery chain in a dialog, next to Print PDF.
+		_ts_add_deliveries_button(frm);
 		_load_approval_context(frm);
 		_load_budget_indicator(frm);
-		_load_lifecycle_tracker(frm);
 		// v2.8.10: bilingual approval banner
 		if (typeof window.ts_render_approval_banner === "function") {
 			window.ts_render_approval_banner(frm);
@@ -614,6 +620,50 @@ function _render_timeline(frm) {
 }
 
 /* ── Delivery Lifecycle Tracker ─────────────────────────────────────── */
+
+function _ts_clear_stale_lifecycle_ui(frm) {
+	// Remove the injected delivery-chain DOM (siblings of the form layout) and
+	// empty the Stats-tab HTML field, so a form recycled for a New doc starts
+	// clean instead of showing the previous PO's deliveries. Same selectors as
+	// the cleanup at the top of _render_lifecycle().
+	$(frm.page.wrapper).find(".bbf-lifecycle-tracker, .bbf-lifecycle-badge").remove();
+	const $stats = frm.fields_dict.po_stats_html && frm.fields_dict.po_stats_html.$wrapper;
+	if ($stats && $stats.length) $stats.empty();
+}
+
+function _ts_add_deliveries_button(frm) {
+	// Deliveries only exist against a submitted PO (a Token / Gate Entry links to it).
+	if (frm.doc.docstatus < 1) return;
+	frm.add_custom_button(__("🚚 Deliveries"), () => _ts_show_deliveries_dialog(frm));
+}
+
+function _ts_show_deliveries_dialog(frm) {
+	frappe.call({
+		method: "trustbit_ethanol.ts_gate_entry.api.get_po_lifecycle",
+		args: { po_name: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Loading deliveries…"),
+		callback(r) {
+			const data = r.message || {};
+			const deliveries = data.deliveries || [];
+			const d = new frappe.ui.Dialog({
+				title: __("Deliveries — {0}", [frm.doc.name]),
+				size: "large",
+				primary_action_label: __("Close"),
+				primary_action() { d.hide(); },
+			});
+			// Reuse the existing tracker renderer (it escapes its own values).
+			const body = deliveries.length
+				? _build_lifecycle_tracker_html(data)
+				: `<div style="padding: 28px; text-align: center; color: #94a3b8; font-style: italic;">${__("No deliveries yet for this Purchase Order.")}</div>`;
+			d.$body.html(body);
+			d.show();
+		},
+		error() {
+			frappe.msgprint({ title: __("Deliveries"), message: __("Could not load deliveries for this PO."), indicator: "red" });
+		},
+	});
+}
 
 function _load_lifecycle_tracker(frm) {
 	// Only for submitted/cancelled POs (deliveries require submitted PO)
