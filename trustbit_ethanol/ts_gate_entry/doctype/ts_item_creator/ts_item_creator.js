@@ -7,8 +7,16 @@ frappe.ui.form.on("TS Item Creator", {
 	},
 
 	refresh(frm) {
-		// Lock all fields once the request is no longer an editable Draft
-		if (["Created", "Rejected", "Pending Approval"].includes(frm.doc.status)) {
+		// Lock all fields once the request is no longer an editable Draft —
+		// EXCEPT for approvers (IT Head / Stores Manager / Stores User / System
+		// Manager), who may edit a request at ANY status. This is a UX gate only:
+		// the server still enforces who may approve/create and the before_save
+		// tamper guard (_block_item_field_tampering) re-checks _is_item_approver,
+		// so unlocking the form here cannot bypass any server-side control.
+		if (
+			["Created", "Rejected", "Pending Approval"].includes(frm.doc.status) &&
+			!_is_item_approver()
+		) {
 			_lock_all_fields(frm);
 		}
 

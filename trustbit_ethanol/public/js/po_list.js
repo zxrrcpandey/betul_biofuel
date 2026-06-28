@@ -19,6 +19,15 @@ _TS_LIST_DOCTYPES.forEach((dt) => {
 	const _orig_setup_columns = _proto.setup_columns;
 	_proto.setup_columns = function() {
 		_orig_setup_columns.apply(this, arguments);
+		// Purchase Order: LOCK the column set. List View Settings is a single
+		// GLOBAL row shared by all users, so any System Manager's "Pick Columns"
+		// edit silently changed everyone's PO list ("columns changing
+		// automatically in production"). Rebuild this.columns to a fixed set so
+		// the displayed columns no longer depend on List View Settings at all.
+		if (this.doctype === "Purchase Order") {
+			_ts_lock_po_columns(this);
+			return;
+		}
 		if (!_TS_LIST_DOCTYPES.includes(this.doctype)) return;
 		if (!Array.isArray(this.columns)) return;
 		if (this.columns[2] && this.columns[2].df && this.columns[2].df.fieldname === "name") return;
@@ -32,6 +41,39 @@ _TS_LIST_DOCTYPES.forEach((dt) => {
 		this.columns.splice(2, 0, name_col);
 	};
 })();
+
+// Fixed, locked PO list column order (user-agreed):
+//   Supplier Name | ID | Status | % Received | % Billed | Approval Status | Total | Cost Center
+// Supplier Name is the title (Subject) column; Status is the standard indicator
+// column (rendered via the get_indicator override in _patch_po_list).
+function _ts_lock_po_columns(lv) {
+	try {
+		if (!lv || !Array.isArray(lv.columns) || !lv.columns.length) return;
+		const get_df = frappe.meta.get_docfield.bind(null, "Purchase Order");
+		const fld = (fn) => {
+			const df = get_df(fn);
+			return df ? { type: "Field", df: df } : null;
+		};
+		const subject = lv.columns[0]; // Subject = title_field (supplier_name)
+		const tag = (lv.columns[1] && lv.columns[1].type === "Tag") ? lv.columns[1] : { type: "Tag" };
+		const status_col = lv.columns.find((c) => c && c.type === "Status") || { type: "Status" };
+		const locked = [
+			subject,
+			tag,
+			{ type: "Field", df: { label: __("ID"), fieldname: "name" } },
+			status_col,
+			fld("per_received"),
+			fld("per_billed"),
+			fld("ts_approval_status"),
+			fld("total"),
+			fld("cost_center"),
+		].filter(Boolean);
+		lv.columns = locked;
+	} catch (e) {
+		// Never let the column lock break list rendering — fall back to whatever
+		// _orig_setup_columns produced.
+	}
+}
 
 $(document).on("page-change", function() {
 	if (cur_list && cur_list.doctype === "Purchase Order") {

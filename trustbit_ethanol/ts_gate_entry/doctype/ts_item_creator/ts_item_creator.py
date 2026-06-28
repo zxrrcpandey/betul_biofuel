@@ -396,7 +396,9 @@ class TSItemCreator(Document):
 		# create_item sets status=Created + item_created and saves (its own approver
 		# gate passes for this user); it persists approved_by/approved_on too.
 		result = self.create_item()
-		_notify_item_whatsapp(self, "item_approved", _item_requester_recipients(self))
+		_requesters = _item_requester_recipients(self)
+		_notify_item_whatsapp(self, "item_approved", _requesters)
+		_notify_item_approval_email_bell(self, "item_approved", _requesters)
 		return result
 
 	@frappe.whitelist(methods=["POST"])
@@ -428,7 +430,9 @@ class TSItemCreator(Document):
 		finally:
 			frappe.flags.in_item_request = False
 
-		_notify_item_whatsapp(self, "item_rejected", _item_requester_recipients(self))
+		_requesters = _item_requester_recipients(self)
+		_notify_item_whatsapp(self, "item_rejected", _requesters)
+		_notify_item_approval_email_bell(self, "item_rejected", _requesters)
 		return {"status": self.status, "rejection_reason": self.rejection_reason}
 
 	def _has_custom_posting_date(self):
@@ -1071,6 +1075,86 @@ def _notify_item_whatsapp(doc, action, recipients):
 		pass
 
 
+def _notify_item_approval_email_bell(doc, action, recipients):
+	"""Bell (Notification Log) + email for an Item Creator approval event.
+
+	This is the reliable on-prem channel — the WhatsApp shim above is inert on
+	prod until the kill switch is flipped + Airtel creds are configured, which is
+	why approvers were getting NO approval notification. Mirrors the PO/MR pattern
+	(ts_po_approval._send_approval_notification) and is fully fail-soft: a
+	notification error can NEVER bubble into the submit/approve/reject flow.
+	"""
+	try:
+		recipients = list({r for r in (recipients or []) if r and r != "Administrator"})
+		if not recipients:
+			return
+
+		code = doc.get("generated_item_code") or doc.name
+		item_name = doc.get("item_name") or ""
+		requester = doc.get("requested_by") or doc.owner or ""
+		subjects = {
+			"item_pending": f"[Action Required] Item request {doc.name} ({code}) awaiting your approval",
+			"item_approved": f"[Approved] Item request {doc.name} ({code}) — Item created",
+			"item_rejected": f"[Rejected] Item request {doc.name} ({code}) — Rejected",
+		}
+		subject = subjects.get(action, f"Item request {doc.name} — Approval Update")
+
+		if action == "item_pending":
+			body = "<p>A new item-creation request needs your approval.</p>"
+		elif action == "item_approved":
+			body = "<p>Your item-creation request has been approved and the Item was created.</p>"
+		elif action == "item_rejected":
+			body = (
+				"<p>Your item-creation request was rejected.</p>"
+				f"<p><b>Reason:</b> {escape_html(doc.get('rejection_reason') or '')}</p>"
+			)
+		else:
+			body = "<p>Item request status updated.</p>"
+
+		message = body + (
+			"<ul>"
+			f"<li><b>Request:</b> {escape_html(doc.name)}</li>"
+			f"<li><b>Item Code:</b> {escape_html(code)}</li>"
+			f"<li><b>Item Name:</b> {escape_html(item_name)}</li>"
+			f"<li><b>Requested By:</b> {escape_html(requester)}</li>"
+			f"<li><b>Status:</b> {escape_html(doc.get('status') or '')}</li>"
+			"</ul>"
+		)
+
+		for user in recipients:
+			try:
+				note = frappe.new_doc("Notification Log")
+				note.for_user = user
+				note.from_user = frappe.session.user
+				note.document_type = doc.doctype
+				note.document_name = doc.name
+				note.subject = subject
+				note.type = "Alert"
+				note.insert(ignore_permissions=True)
+			except Exception:
+				frappe.log_error(
+					title=f"Item notif bell error ({doc.name})"[:140],
+					message=frappe.get_traceback(),
+				)
+
+		try:
+			frappe.sendmail(
+				recipients=recipients,
+				subject=subject,
+				message=message,
+				reference_doctype=doc.doctype,
+				reference_name=doc.name,
+			)
+		except Exception:
+			frappe.log_error(
+				title=f"Item notif email error ({doc.name})"[:140],
+				message=frappe.get_traceback(),
+			)
+	except Exception:
+		# Never let a notification failure break the approval flow.
+		pass
+
+
 @frappe.whitelist(methods=["POST"])
 def submit_item_request(doc):
 	"""Non-approver entry point — insert an item-creation request in 'Pending
@@ -1108,7 +1192,9 @@ def submit_item_request(doc):
 	finally:
 		frappe.flags.in_item_request = False
 
-	_notify_item_whatsapp(d, "item_pending", _item_approver_recipients())
+	_approvers = _item_approver_recipients()
+	_notify_item_whatsapp(d, "item_pending", _approvers)
+	_notify_item_approval_email_bell(d, "item_pending", _approvers)
 	return {
 		"name": d.name,
 		"status": d.status,
