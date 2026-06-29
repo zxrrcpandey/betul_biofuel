@@ -466,7 +466,22 @@ function _call_action(frm, method, args) {
 		args,
 		freeze: true,
 		freeze_message: __("Processing..."),
-		callback() { frm.reload_doc(); },
+		callback(r) {
+			const reload = frm.reload_doc();
+			// The reload above issues a getdoc whose response runs frappe.hide_msgprint()
+			// (Frappe request cleanup), which would flash-dismiss any warning this action
+			// queued server-side (e.g. budget / MR-variance). Re-surface the server messages
+			// once the reload has settled so the user actually sees them.
+			let msgs = null;
+			if (r && r._server_messages) {
+				try { msgs = JSON.parse(r._server_messages); } catch (e) { msgs = null; }
+			}
+			if (msgs && msgs.length) {
+				const reshow = () => setTimeout(() => frappe.msgprint(msgs), 100);
+				if (reload && typeof reload.then === "function") { reload.then(reshow); }
+				else { setTimeout(reshow, 1200); }
+			}
+		},
 		error() { frm.reload_doc(); }
 	});
 }

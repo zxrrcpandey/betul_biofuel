@@ -444,9 +444,149 @@ def resume_mr(docname, comment=""):
 #  PO-SPECIFIC HANDLERS
 # ═══════════════════════════════════════════════════════════════════════
 
+def _warn_if_over_budget(doc):
+	"""Show the creator a NON-BLOCKING budget warning at 'Submit for Approval' when the PO
+	breaches its cost-center budget, so an over-budget PO is no longer a surprise that only
+	surfaces later at the CEO (via the budget-override approval).
+
+	Uses the project's own cost-center budget engine (detect_budget_breach_for_po — the same
+	one the v2.10.0 override divert uses), NOT ERPNext's account-based native budget (which
+	rarely matches these POs). It is READ-ONLY and does NOT change routing: an over-budget PO
+	still proceeds, and (for non-MR POs) still diverts to the CEO Budget Override Approval
+	exactly as before. Fail-soft — any error here is swallowed so a heads-up warning can never
+	stop a submit.
+	"""
+	try:
+		from trustbit_ethanol.ts_gate_entry.ts_budget import detect_budget_breach_for_po
+
+		breach = detect_budget_breach_for_po(doc)
+		if not breach.get("has_breach"):
+			return
+
+		shortfall = max(
+			flt(breach.get("annual_breach_delta", 0)),
+			flt(breach.get("monthly_breach_delta", 0)),
+		)
+		cur = {"fieldtype": "Currency"}
+		frappe.msgprint(
+			_(
+				"⚠ This Purchase Order exceeds the budget for <b>{0}</b>.<br><br>"
+				"Annual Budget: {1}<br>"
+				"Already Committed (POs): {2}<br>"
+				"Already Spent (Invoices): {3}<br>"
+				"Available: {4}<br>"
+				"This PO: {5}<br>"
+				"<b>Over budget by: {6}</b><br><br>"
+				"You can still submit this PO — reduce the amount to fit the budget, "
+				"or proceed to route it for the required budget approval."
+			).format(
+				breach.get("cost_center", ""),
+				frappe.format_value(breach.get("annual_budget_amount", 0), cur),
+				frappe.format_value(breach.get("annual_committed_amount", 0), cur),
+				frappe.format_value(breach.get("annual_spent_amount", 0), cur),
+				frappe.format_value(breach.get("annual_available", 0), cur),
+				frappe.format_value(breach.get("source_amount", 0), cur),
+				frappe.format_value(shortfall, cur),
+			),
+			title=_("Budget Warning"),
+			indicator="orange",
+		)
+	except Exception:
+		# A heads-up warning must never block submission.
+		pass
+
+
+def _warn_if_po_differs_from_mr(doc):
+	"""Non-blocking warning at 'Submit for Approval' when PO lines deviate from their source
+	Material Request — a different QUANTITY (any difference), or a different PRICE where the MR
+	line set a rate — so the approver knows the PO no longer matches the approved MR. Read-only
+	and fail-soft (a heads-up warning must never block a submit).
+
+	Quantity is compared in stock UOM (stock_qty) so a UOM change does not false-trigger, and is
+	aggregated per source MR line (one MR line may be split across several PO lines). Price is
+	only checked for lines whose MR line carries a rate (>0) — most MRs here do not set a rate.
+	"""
+	try:
+		from collections import defaultdict
+
+		def _q(v):
+			v = flt(v)
+			return str(int(v)) if v == int(v) else ("%s" % v)
+
+		tol = 0.01
+		mri_names = set()
+		po_sqty_by_mri = defaultdict(float)
+		price_rows = []  # (item_code, mri, po_rate)
+		for it in (doc.get("items") or []):
+			mri = it.get("material_request_item")
+			if not mri:
+				continue
+			mri_names.add(mri)
+			po_sqty_by_mri[mri] += flt(it.get("stock_qty"))
+			price_rows.append((it.get("item_code"), mri, flt(it.get("rate"))))
+
+		if not mri_names:
+			return
+
+		mr_item = {}
+		for mri in mri_names:
+			mr_item[mri] = frappe.db.get_value(
+				"Material Request Item", mri,
+				["item_code", "stock_qty", "stock_uom", "rate"], as_dict=True,
+			)
+
+		cur = {"fieldtype": "Currency"}
+		lines = []
+		# Quantity deviations (aggregated per MR line, compared in stock UOM)
+		for mri, po_sqty in po_sqty_by_mri.items():
+			mv = mr_item.get(mri)
+			if not mv:
+				continue
+			if abs(po_sqty - flt(mv.stock_qty)) > tol:
+				lines.append(_("• <b>{0}</b> — quantity: MR {1} → PO {2} {3}").format(
+					mv.item_code, _q(mv.stock_qty), _q(po_sqty), mv.stock_uom or ""))
+		# Price deviations (only where the MR line set a rate)
+		for item_code, mri, po_rate in price_rows:
+			mv = mr_item.get(mri)
+			if not mv or flt(mv.rate) <= 0:
+				continue
+			if abs(po_rate - flt(mv.rate)) > tol:
+				lines.append(_("• <b>{0}</b> — price: MR {1} → PO {2}").format(
+					item_code,
+					frappe.format_value(flt(mv.rate), cur),
+					frappe.format_value(po_rate, cur)))
+
+		if not lines:
+			return
+
+		frappe.msgprint(
+			_(
+				"⚠ This Purchase Order differs from its Material Request:<br><br>"
+				"{0}<br><br>"
+				"You can still submit — please confirm the change is intended."
+			).format("<br>".join(lines)),
+			title=_("PO differs from Material Request"),
+			indicator="orange",
+		)
+	except Exception:
+		# A heads-up warning must never block submission.
+		pass
+
+
 def _submit_po_for_approval(doc):
 	"""Submit a PO for approval using category-based routing."""
 	_validate_po_submittable(doc)
+
+	# Non-blocking creator-facing budget warning: if this PO breaches its cost-center
+	# budget, show the shortfall now (at 'Submit for Approval') instead of letting it
+	# surface only at the CEO. Does NOT block and does NOT change routing — the existing
+	# v2.10.0 override divert below still runs unchanged.
+	_warn_if_over_budget(doc)
+
+	# Non-blocking creator-facing MR-variance warning: if any PO line differs from its
+	# source Material Request (quantity, or price where the MR set a rate), show the
+	# deviations now so the approver knows the PO doesn't match the approved MR.
+	_warn_if_po_differs_from_mr(doc)
 
 	# v2.10.0 — Budget breach detection.
 	# Kill switch ON (default): breach diverts PO to 'Pending Budget Override' and
@@ -2259,6 +2399,12 @@ def po_on_update(doc, method):
 	_validate_amount_unchanged. db_set writes bypass the tamper guard
 	(same pattern as legitimate controller writes).
 	"""
+	# Non-blocking SAVE-time warning: flag PO lines that differ from their source Material
+	# Request (quantity any-difference, or price where the MR set a rate) so the buyer sees it
+	# the moment they save — not only at Submit for Approval (which a ₹0 PO never reaches).
+	# Read-only and self-wrapped fail-soft, so a variance warning can never break a save.
+	_warn_if_po_differs_from_mr(doc)
+
 	changes = getattr(doc.flags, "executive_override_changes", None)
 	if not changes:
 		return
