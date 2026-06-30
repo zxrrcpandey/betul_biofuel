@@ -2941,28 +2941,66 @@ def _seed_payment_amount_gst_field():
 
 
 def seed_gst_breakdown_field():
-	"""Display-only GST Breakdown summary on Purchase Order (Terms tab).
+	"""Display-only GST Breakdown + editable GST Due Date on Purchase Order (Terms tab).
 
-	Adds one read-only HTML field `ts_gst_breakdown_html` rendered by
-	public/js/po_payment_amount_gst.js into a CGST/SGST/IGST + Total GST table,
-	auto-derived from the PO's `taxes` child table. The BBPL Purchase Order PDF
-	renders the same table server-side. Nothing is stored; ERPNext's tax/
-	payment_amount math is untouched. Idempotent (create-if-missing).
+	Two custom fields, shown ONLY when "Including GST" (ts_payment_amount_includes_gst)
+	is UNticked (depends_on):
+	  - ts_gst_due_date       : editable Date the user sets; printed on the BBPL PO PDF.
+	  - ts_gst_breakdown_html : read-only CGST/SGST/IGST + Total GST table (with a
+	    GST Due Date row), rendered by public/js/po_payment_amount_gst.js + the PDF.
+	When unticked the Payment Schedule shows the NET (ex-GST) amount; ticked shows the
+	native with-GST amount (JS + print-format only). Display-only; ERPNext's stored
+	payment_amount / tax math is untouched. Fully idempotent (create-or-update).
 	"""
-	if frappe.db.exists("Custom Field", {"dt": "Purchase Order", "fieldname": "ts_gst_breakdown_html"}):
-		return
-	frappe.get_doc({
-		"doctype": "Custom Field",
-		"dt": "Purchase Order",
-		"fieldname": "ts_gst_breakdown_html",
-		"label": "GST Breakdown",
-		"fieldtype": "HTML",
-		"insert_after": "ts_payment_amount_includes_gst",
-		"description": "Read-only CGST/SGST/IGST + Total GST summary, auto-computed from this PO's taxes. Display-only — also shown on the BBPL Purchase Order PDF.",
-		"no_copy": 1,
-		"print_hide": 1,
-		"translatable": 0,
-	}).insert(ignore_permissions=True)
+	COND = "eval:!doc.ts_payment_amount_includes_gst"
+
+	# 1) Editable GST Due Date (date picker), shown only when "Including GST" is unticked
+	if not frappe.db.exists("Custom Field", {"dt": "Purchase Order", "fieldname": "ts_gst_due_date"}):
+		frappe.get_doc({
+			"doctype": "Custom Field",
+			"dt": "Purchase Order",
+			"fieldname": "ts_gst_due_date",
+			"label": "GST Due Date",
+			"fieldtype": "Date",
+			"insert_after": "ts_payment_amount_includes_gst",
+			"depends_on": COND,
+			"description": "Editable GST due date. Shown with the GST Breakdown only when 'Including GST' is unticked; printed on the BBPL Purchase Order PDF.",
+			"no_copy": 0,
+			"print_hide": 1,
+			"translatable": 0,
+		}).insert(ignore_permissions=True)
+	else:
+		frappe.db.set_value("Custom Field", "Purchase Order-ts_gst_due_date",
+			{"depends_on": COND, "insert_after": "ts_payment_amount_includes_gst"})
+
+	# 2) Read-only GST Breakdown table, positioned after the date, same visibility condition
+	if not frappe.db.exists("Custom Field", {"dt": "Purchase Order", "fieldname": "ts_gst_breakdown_html"}):
+		frappe.get_doc({
+			"doctype": "Custom Field",
+			"dt": "Purchase Order",
+			"fieldname": "ts_gst_breakdown_html",
+			"label": "GST Breakdown",
+			"fieldtype": "HTML",
+			"insert_after": "ts_gst_due_date",
+			"depends_on": COND,
+			"description": "Read-only CGST/SGST/IGST + Total GST summary, auto-computed from this PO's taxes. Display-only — also shown on the BBPL Purchase Order PDF.",
+			"no_copy": 1,
+			"print_hide": 1,
+			"translatable": 0,
+		}).insert(ignore_permissions=True)
+	else:
+		frappe.db.set_value("Custom Field", "Purchase Order-ts_gst_breakdown_html",
+			{"depends_on": COND, "insert_after": "ts_gst_due_date"})
+
+	# 3) Refresh the "Including GST" toggle description (decomposition retired -> net/with-GST swap + breakdown)
+	if frappe.db.exists("Custom Field", "Purchase Order-ts_payment_amount_includes_gst"):
+		frappe.db.set_value(
+			"Custom Field", "Purchase Order-ts_payment_amount_includes_gst", "description",
+			"If unticked, the Payment Schedule shows the NET (ex-GST) amount and the GST Breakdown table "
+			"(CGST/SGST/IGST + Total GST Amount) + editable GST Due Date appear on the PO Terms tab and the "
+			"BBPL Purchase Order PDF. Ticked shows the with-GST amount. Display-only — does not change "
+			"ERPNext's stored payment_amount / tax math.")
+
 	# Lesson 263 — bump tabDocType.modified so cached form metadata invalidates client-side
 	frappe.db.set_value("DocType", "Purchase Order", "modified", frappe.utils.now(), update_modified=False)
 	frappe.db.commit()

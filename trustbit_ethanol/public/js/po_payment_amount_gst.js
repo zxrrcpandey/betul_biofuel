@@ -12,7 +12,19 @@ frappe.ui.form.on("Purchase Order", {
 		setTimeout(() => _ts_apply_gst_decomposition(frm), 200);
 	},
 	ts_payment_amount_includes_gst(frm) {
-		setTimeout(() => _ts_apply_gst_decomposition(frm), 50);
+		// realtime: swap Payment Amount (net <-> with-GST) + show/hide GST Breakdown when the toggle flips
+		const _show = !cint(frm.doc.ts_payment_amount_includes_gst);
+		frm.toggle_display("ts_gst_due_date", _show);
+		frm.toggle_display("ts_gst_breakdown_html", _show);
+		setTimeout(() => { _ts_apply_gst_decomposition(frm); _ts_render_gst_breakdown(frm); }, 50);
+	},
+	taxes_and_charges(frm) {
+		// Tax template selected/changed → ERPNext repopulates doc.taxes asynchronously
+		// (no per-row taxes_add events fire), so re-render both displays once it settles.
+		setTimeout(() => {
+			_ts_apply_gst_decomposition(frm);
+			_ts_render_gst_breakdown(frm);
+		}, 500);
 	},
 });
 
@@ -41,14 +53,10 @@ window._ts_apply_gst_decomposition = function (frm) {
 	const grand = flt(frm.doc.grand_total);
 	const net = flt(frm.doc.net_total);
 	const has_tax = grand && net && grand > net;
-	const decompose = (flag === 0) && has_tax;
+	// "Including GST" unticked + taxed -> Payment Amount shows the NET (ex-GST) portion;
+	// ticked (or untaxed) -> the native with-GST payment_amount. GST detail lives in the Breakdown table.
+	const show_net = (flag === 0) && has_tax;
 	const currency = frm.doc.currency || "INR";
-
-	// Smart label: "+ GST" when an explicit GST tax row exists, else "+ Tax"
-	const has_gst_row = (frm.doc.taxes || []).some(
-		(t) => /\bGST\b/i.test(t.description || "") || /\bGST\b/i.test(t.account_head || "")
-	);
-	const suffix_label = has_gst_row ? "+ GST" : "+ Tax";
 
 	grid.grid_rows.forEach((row) => {
 		if (!row || !row.doc) return;
@@ -59,14 +67,12 @@ window._ts_apply_gst_decomposition = function (frm) {
 		if (!$cell.length) return;
 
 		const portion = flt(row.doc.invoice_portion);
-		if (decompose) {
+		if (show_net) {
 			const row_net = (portion / 100) * net;
-			const row_tax = (portion / 100) * (grand - net);
-			const html = `${format_currency(row_net, currency)} <span style="color:#666;font-size:0.92em;">${suffix_label} ${format_currency(row_tax, currency)}</span>`;
 			if (!$cell.attr("data-ts-gst-original")) {
 				$cell.attr("data-ts-gst-original", $cell.html());
 			}
-			$cell.html(html);
+			$cell.html(format_currency(row_net, currency));
 			$cell.attr("data-ts-gst-applied", "1");
 		} else if ($cell.attr("data-ts-gst-applied") === "1") {
 			const orig = $cell.attr("data-ts-gst-original");
@@ -90,6 +96,9 @@ frappe.ui.form.on("Purchase Order", {
 	refresh(frm) {
 		setTimeout(() => _ts_render_gst_breakdown(frm), 220);
 		setTimeout(() => _ts_render_gst_breakdown(frm), 800);
+	},
+	ts_gst_due_date(frm) {
+		setTimeout(() => _ts_render_gst_breakdown(frm), 50);
 	},
 });
 
@@ -132,6 +141,11 @@ window._ts_render_gst_breakdown = function (frm) {
 		const tr = (label, amt, bold) =>
 			`<tr>${td(label, bold, false)}${td(format_currency(amt, currency), bold, true)}</tr>`;
 		let body = "";
+		if (frm.doc.ts_gst_due_date) {
+			let _due = frm.doc.ts_gst_due_date;
+			try { _due = frappe.datetime.str_to_user(_due) || _due; } catch (e) {}
+			body += `<tr>${td("GST Due Date", false, false)}${td(_due, false, true)}</tr>`;
+		}
 		if (classified > 0) {
 			if (cgst > 0) body += tr("CGST", cgst, false);
 			if (sgst > 0) body += tr("SGST", sgst, false);
