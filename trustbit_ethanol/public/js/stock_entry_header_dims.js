@@ -24,6 +24,15 @@ frappe.ui.form.on("Stock Entry", {
 		// "Get Items From → Material Request" (which doesn't re-fire `refresh`), the
 		// header CC/Project are filled from the rows before the mandatory check.
 		_ts_backfill_header_from_rows(frm);
+		// Material Issue: the header CC is the authoritative MAIN cost center.
+		// Re-assert it onto every row at save so the value the user submits matches
+		// the server before_validate force-overwrite (a per-row CC edited after the
+		// header was picked is reset back to the main CC, instead of silently
+		// reverting only on the server). Gated to Material Issue so other purposes
+		// (e.g. Manufacture finished/scrap rows) are never force-clobbered.
+		if (frm.doc.purpose === "Material Issue" && frm.doc.ts_set_cost_center) {
+			_ts_apply_to_rows(frm, "ts_set_cost_center", "cost_center");
+		}
 	},
 	ts_set_cost_center(frm) {
 		_ts_apply_to_rows(frm, "ts_set_cost_center", "cost_center");

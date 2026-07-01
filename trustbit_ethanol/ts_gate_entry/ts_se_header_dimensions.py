@@ -126,9 +126,17 @@ def _autofetch_header_dims_from_mr(doc):
 
 
 def cascade_se_header_dimensions(doc, method=None):
-    """Stock Entry before_validate — fill BLANK item-row cost_center/project from
-    the header fields. Fill-only (never overwrites an existing row value), so a
-    programmatic SE with blank headers no-ops and per-row overrides are respected.
+    """Stock Entry before_validate — push the header fields onto the item rows.
+
+    For a **Material Issue**, the header "Cost Center (all items)" (ts_set_cost_center)
+    is the AUTHORITATIVE MAIN cost center: it is FORCE-APPLIED to every row,
+    overwriting any per-row value, so the whole issue books to one cost center and
+    the Material Issue Ledger (which reads the per-row sed.cost_center) attributes it
+    there. For every OTHER purpose — and for Project on all purposes — the header is
+    a FILL-BLANK default only: it never clobbers a cost_center that ERPNext or the
+    user set per row (e.g. the finished-goods / scrap cost centers on a Manufacture
+    entry). Header blank => no-op, so the programmatic Stores MR-Transfer/Issue draft
+    (blank header) is left exactly as ERPNext's mapper built it.
 
     The header fields themselves are first auto-fetched from the source Material
     Request (when blank) so an MR-sourced issue inherits the MR's Cost Center +
@@ -137,12 +145,15 @@ def cascade_se_header_dimensions(doc, method=None):
     if not doc.get("items"):
         return
     _autofetch_header_dims_from_mr(doc)
+    is_material_issue = doc.get("purpose") == "Material Issue"
     for header_field, row_field in _HEADER_MAP:
         header_val = doc.get(header_field)
         if not header_val:
             continue
+        # Material Issue cost_center => force-overwrite (main CC); else fill-blank.
+        force = is_material_issue and row_field == "cost_center"
         for row in doc.items:
-            if not row.get(row_field):
+            if force or not row.get(row_field):
                 row.set(row_field, header_val)
     _set_filter_cost_center(doc)
 
