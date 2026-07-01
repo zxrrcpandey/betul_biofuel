@@ -88,6 +88,20 @@ def require_issue_fields_on_submit(doc, method=None):
 	if not doc.items:
 		return
 
+	# The header "Cost Center (all items)" (ts_set_cost_center) is the authoritative
+	# main cost center for a Material Issue — before_validate force-applies it to every
+	# row. Require it at SUBMIT so an issue can never be finalized with a blank header
+	# and silently default each row to the company-default cost center ("Main"), which
+	# mis-attributes the whole issue in the cost-center reports. before_submit runs
+	# AFTER before_validate (which auto-fetches the header from a source Material
+	# Request), so MR-sourced issues are unaffected; only truly-blank issues are blocked.
+	if not str(doc.get("ts_set_cost_center") or "").strip():
+		frappe.throw(
+			"Please set <b>Cost Center (all items)</b> in the header before submitting "
+			"this Material Issue — it is the cost centre the entire issue is charged to.",
+			title="Material Issue — Cost Center Required",
+		)
+
 	problems = []
 	for row in doc.items:
 		missing = [
