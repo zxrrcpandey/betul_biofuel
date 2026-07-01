@@ -128,9 +128,21 @@ def _doc(doctype, name, status_field=None):
 	if not name:
 		return None
 	if not frappe.has_permission(doctype, "read", doc=name, throw=False):
+		# Confidentiality leak-plug: the "no permission" stub normally shows the
+		# real doc name. For a maize-confidential PO/PR/PI that this user is not
+		# allowed to see, anonymize the name so the identifier itself doesn't leak.
+		display_name = name
+		try:
+			from trustbit_ethanol.ts_gate_entry.ts_confidential_po import user_sees_confidential
+			if doctype in ("Purchase Order", "Purchase Receipt", "Purchase Invoice", "Material Request"):
+				if (int(frappe.db.get_value(doctype, name, "ts_confidential") or 0)
+						and not user_sees_confidential(doctype)):
+					display_name = "🔒 Confidential"
+		except Exception:
+			pass
 		return {
 			"doctype": doctype,
-			"name": name,
+			"name": display_name,
 			"status": "🔒 No permission",
 			"docstatus": -1,
 			"url": None,

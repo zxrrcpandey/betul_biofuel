@@ -196,10 +196,14 @@ def get_top_suppliers(year=None, limit=5, no_cache=0):
 	key = _cache_key("top_suppliers", year, str(limit))
 
 	def build():
+		from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 		fy_from, fy_to = _fy_bounds(year)
+		# Confidentiality leak-plug: hide maize-confidential POs (and thus their
+		# suppliers) from non-allowed roles (e.g. Grain Manager).
+		conf_po = confidential_sql_clause("po")
 		# JOIN QI -> Purchase Order -> supplier; if PO missing, fallback to GE.
 		rows = frappe.db.sql(
-			"""
+			f"""
 			SELECT
 			    po.supplier AS supplier,
 			    s.supplier_name AS supplier_name,
@@ -212,6 +216,7 @@ def get_top_suppliers(year=None, limit=5, no_cache=0):
 			WHERE qi.docstatus = 1
 			  AND qi.inspection_date BETWEEN %s AND %s
 			  AND po.supplier IS NOT NULL
+			  {conf_po}
 			GROUP BY po.supplier, s.supplier_name
 			ORDER BY total_kg DESC
 			LIMIT %s

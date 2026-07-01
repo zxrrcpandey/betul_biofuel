@@ -41,7 +41,12 @@ def get_flow_v28_flag():
 
 @frappe.whitelist()
 def get_purchase_orders(po_id=None, po_date=None, **kwargs):
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import user_sees_confidential
 	filters = {"docstatus": 1, "status": ["not in", ["Closed", "Cancelled", "Completed"]], "per_received": ["<", 100]}
+
+	# Confidentiality leak-plug: exclude maize-confidential POs for non-allowed users.
+	if not user_sees_confidential("Purchase Order"):
+		filters["ts_confidential"] = 0
 
 	if po_id:
 		filters["name"] = ["like", f"%{po_id}%"]
@@ -169,6 +174,11 @@ def get_po_lifecycle(po_name):
 	"""Return complete lifecycle data for all deliveries against a Purchase Order."""
 	if not po_name or not frappe.db.exists("Purchase Order", po_name):
 		return {"deliveries": [], "total": 0}
+
+	# Confidentiality leak-plug: gate the per-PO read through the has_permission
+	# hook (passing doc= runs has_permission_purchase_order, which denies a
+	# confidential PO the caller may not see). Throws PermissionError if denied.
+	frappe.has_permission("Purchase Order", "read", doc=po_name, throw=True)
 
 	# Find gate entries linked to this PO
 	# 1. Via po_list child table (multi-PO support)

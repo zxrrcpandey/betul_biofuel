@@ -165,7 +165,11 @@ doc_events = {
 			"trustbit_ethanol.ts_gate_entry.ts_budget_override.cancel_linked_override_on_source_cancel",
 		],
 		"before_insert": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_amend",
-		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_before_save",
+		"before_save": [
+			"trustbit_ethanol.ts_gate_entry.ts_po_approval.po_before_save",
+			# Maize confidentiality: auto-set + tamper-guard ts_confidential (append AFTER approval handler)
+			"trustbit_ethanol.ts_gate_entry.ts_confidential_po.set_confidential_flag",
+		],
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_update",
 	},
 	"Material Request": {
@@ -179,7 +183,11 @@ doc_events = {
 		# ERPNext's validate_from_warehouse() doesn't block save when row's
 		# invisible from_warehouse collides with warehouse (amend carry-over).
 		"before_validate": "trustbit_ethanol.ts_gate_entry.ts_mr_warehouse_guard.mr_clear_invisible_from_warehouse",
-		"before_save": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
+		"before_save": [
+			"trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_save",
+			# Maize confidentiality: auto-set + tamper-guard ts_confidential on MR
+			"trustbit_ethanol.ts_gate_entry.ts_confidential_po.set_confidential_flag",
+		],
 		# v2.9.17.9 — server-side guard blocking direct submit bypass (Stock User loophole)
 		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_before_submit_block_direct",
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_update",
@@ -199,7 +207,11 @@ doc_events = {
 		],
 		"validate": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.validate_unique_supplier_bill",
 		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.require_supplier_bill_on_submit",
-		"before_save": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_before_save_audit_guard",
+		"before_save": [
+			"trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_before_save_audit_guard",
+			# Maize confidentiality: propagate ts_confidential from any linked confidential PO
+			"trustbit_ethanol.ts_gate_entry.ts_confidential_po.propagate_confidential_to_child",
+		],
 		"on_submit": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_on_submit_update_token",
 		"on_cancel": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_on_cancel_clear_token",
 		"after_delete": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_after_delete_clear_token",
@@ -212,7 +224,11 @@ doc_events = {
 			"trustbit_ethanol.ts_gate_entry.setup_pi_po_ref.populate_ts_po_reference",
 			"trustbit_ethanol.ts_gate_entry.ts_vehicle_origin_propagation.propagate_to_pi",
 		],
-		"before_save": "trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate._block_pi_qc_override_tampering",
+		"before_save": [
+			"trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate._block_pi_qc_override_tampering",
+			# Maize confidentiality: propagate ts_confidential from any linked confidential PO
+			"trustbit_ethanol.ts_gate_entry.ts_confidential_po.propagate_confidential_to_child",
+		],
 		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_pi_supplier_invoice_validator.validate_supplier_invoice_match",
 	},
 	"TS Gate Entry": {
@@ -238,6 +254,21 @@ doc_events = {
 	"User": {
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_user_management.on_user_update",
 	},
+}
+
+# Maize PO confidentiality — row-level visibility (hide confidential docs from non-allowed users)
+permission_query_conditions = {
+	"Purchase Order": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.get_pqc_purchase_order",
+	"Purchase Receipt": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.get_pqc_purchase_receipt",
+	"Purchase Invoice": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.get_pqc_purchase_invoice",
+	"Material Request": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.get_pqc_material_request",
+}
+
+has_permission = {
+	"Purchase Order": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.has_permission_purchase_order",
+	"Purchase Receipt": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.has_permission_purchase_receipt",
+	"Purchase Invoice": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.has_permission_purchase_invoice",
+	"Material Request": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.has_permission_material_request",
 }
 
 # Setup custom fields on Purchase Receipt, Purchase Order, Material Request, Company, Item Group, Brand
@@ -309,6 +340,10 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_dashboard_workspaces.seed_dashboard_workspaces",
 	# GST Breakdown summary field on Purchase Order (display-only; CGST/SGST/IGST + Total)
 	"trustbit_ethanol.ts_gate_entry.setup.seed_gst_breakdown_field",
+	# Quality Reports access policy — restrict TS Quality Inspection to AVP/CEO/MD/Purchase(x4)/Accounts + creators; revoke G1/G2/WB/Quality Manager (admin roles preserved)
+	"trustbit_ethanol.ts_gate_entry.ts_quality_inspection_perms.seed_quality_inspection_permissions",
+	# Maize PO confidentiality — ts_confidential Check field on PO/PR/PI/MR
+	"trustbit_ethanol.ts_gate_entry.setup_confidential_po.seed_confidential_fields",
 ]
 
 # Scheduled Tasks

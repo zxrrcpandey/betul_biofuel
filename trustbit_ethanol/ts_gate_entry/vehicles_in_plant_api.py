@@ -64,6 +64,12 @@ def get_vehicles_in_plant():
 	if not (roles & ALLOWED_ROLES):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
+	# Confidentiality leak-plug: G1/G2/Stores roles are NOT on the PO
+	# confidentiality allow-list — blank the PO name + supplier for any
+	# maize-confidential PO so the gate dashboard doesn't expose it.
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import user_sees_confidential
+	_sees_conf_po = user_sees_confidential("Purchase Order")
+
 	# Pull only real columns on tabTS Token. driver_name IS a real column;
 	# supplier_name is NOT — it comes from Purchase Order via TS Gate Entry.
 	tokens = frappe.db.sql(
@@ -107,7 +113,13 @@ def get_vehicles_in_plant():
 		po_name = (ge and ge.get("purchase_order")) or ""
 		supplier_name = ""
 		if po_name:
-			supplier_name = frappe.db.get_value("Purchase Order", po_name, "supplier_name") or ""
+			# Hide a confidential PO (name + supplier) from non-allowed gate roles.
+			if not _sees_conf_po and int(
+				frappe.db.get_value("Purchase Order", po_name, "ts_confidential") or 0
+			):
+				po_name = ""
+			else:
+				supplier_name = frappe.db.get_value("Purchase Order", po_name, "supplier_name") or ""
 
 		out.append({
 			"name": t["name"],

@@ -305,14 +305,20 @@ def get_mr_routes():
 @frappe.whitelist()
 def get_traceable_docs(email=None, limit=30):
 	"""List of recent PO/MR docs for the tracer dropdown."""
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 	_check_access()
 	limit = min(cint(limit) or 30, 100)
 
-	po_docs = frappe.db.sql("""
+	# Confidentiality leak-plug: hide maize-confidential POs (name + amount) from
+	# non-allowed roles (GM / HR Manager / AVP). No alias on this query → use the
+	# backticked table name as the alias.
+	conf_po = confidential_sql_clause("tabPurchase Order")
+	po_docs = frappe.db.sql(f"""
 		SELECT name, supplier_name, grand_total, ts_approval_status, ts_purchase_category
 		FROM `tabPurchase Order`
 		WHERE docstatus = 0
 		  AND (ts_approval_status LIKE 'Pending%%' OR ts_approval_status LIKE 'Awaiting%%' OR ts_approval_status = 'Revised')
+		  {conf_po}
 		ORDER BY modified DESC
 		LIMIT %s
 	""", (limit,), as_dict=True)
@@ -339,6 +345,11 @@ def trace_doc(doctype, name):
 		frappe.throw(_("Invalid doctype: {0}").format(doctype))
 	if not frappe.db.exists(doctype, name):
 		frappe.throw(_("Document not found: {0}").format(name))
+
+	# Confidentiality leak-plug: _trace_po/_trace_mr expose the doc's amount +
+	# supplier + cost center. Gate the per-doc read through has_permission (doc=)
+	# so a maize-confidential PO/MR can't be traced by a non-allowed role.
+	frappe.has_permission(doctype, "read", doc=name, throw=True)
 
 	doc = frappe.get_doc(doctype, name)
 

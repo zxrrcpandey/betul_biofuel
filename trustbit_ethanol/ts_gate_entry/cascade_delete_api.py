@@ -647,6 +647,7 @@ def get_pending_review_detail(log_name: str) -> dict:
 		frappe.throw(_("Cascade Delete Log {0} not found.").format(escape_html(log_name)))
 
 	from trustbit_ethanol.ts_gate_entry.cascade_delete_engine import build_chain_snapshot
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import user_sees_confidential
 	chain = build_chain_snapshot(log.target_token)
 	token_record = chain.get("token_record") or {}
 
@@ -689,6 +690,25 @@ def get_pending_review_detail(log_name: str) -> dict:
 	po_total = 0.0
 	for po in po_names:
 		po_total += flt(frappe.db.get_value("Purchase Order", po, "grand_total"))
+
+	# Confidentiality leak-plug: the cascade review exposes PO/PR/PI supplier +
+	# grand_total + per-item qty to Stock User/Manager (in _READ_ROLES but NOT on
+	# the PO/PR/PI confidentiality allow-list). When ANY doc in the chain is a
+	# maize-confidential PR/PI/PO and the viewer is not allowed to see it, redact
+	# the financial detail — keep COUNTS intact so the delete-preview still works.
+	_confidential_chain = (
+		any(int(frappe.db.get_value("Purchase Receipt", r["name"], "ts_confidential") or 0) for r in prs)
+		or any(int(frappe.db.get_value("Purchase Invoice", r["name"], "ts_confidential") or 0) for r in pis)
+		or any(int(frappe.db.get_value("Purchase Order", po, "ts_confidential") or 0) for po in po_names)
+	)
+	_redact_financials = _confidential_chain and not user_sees_confidential("Purchase Order")
+	if _redact_financials:
+		supplier = "🔒 Confidential"
+		pr_total = pi_total = po_total = 0.0
+		po_names = set()
+		for it in items:
+			it["ordered_qty"] = None
+			it["received_qty"] = None
 
 	return _escape_dict_strings({
 		"token": log.target_token,

@@ -568,6 +568,10 @@ def _fetch_section_c_direct_po():
 
 	placeholders = ", ".join(["%s"] * len(direct_ccs))
 	params = [*direct_ccs]
+	# Maize confidentiality (defense-in-depth): hide confidential POs from non-allowed
+	# Stores-dashboard viewers even if a maize cost center is ever flagged Direct-PO.
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
+	conf = confidential_sql_clause("po")
 	pos = frappe.db.sql(f"""
 		SELECT po.name, po.supplier, po.supplier_name, po.cost_center,
 		       po.grand_total, po.currency, po.transaction_date,
@@ -577,7 +581,7 @@ def _fetch_section_c_direct_po():
 		  AND IFNULL(po.ts_approval_status, '') = 'Approved'
 		  AND po.cost_center IN ({placeholders})
 		  AND IFNULL(po.per_received, 0) < 100
-		  AND po.status NOT IN ('Closed', 'Completed')
+		  AND po.status NOT IN ('Closed', 'Completed'){conf}
 		ORDER BY po.transaction_date ASC
 		LIMIT 500
 	""", params, as_dict=True)

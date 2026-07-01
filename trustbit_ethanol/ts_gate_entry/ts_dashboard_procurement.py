@@ -62,7 +62,9 @@ def get_procurement_dashboard(date_range="This Month", company=None, category=No
 
 def _get_po_pipeline(start_date, end_date, filters, cat_filter):
 	"""PO counts grouped by category and approval status."""
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 	company_filter = f"AND po.company = {frappe.db.escape(filters['company'])}" if filters.get("company") else ""
+	conf_filter = confidential_sql_clause("po")
 
 	rows = frappe.db.sql(f"""
 		SELECT
@@ -82,6 +84,7 @@ def _get_po_pipeline(start_date, end_date, filters, cat_filter):
 		AND po.transaction_date BETWEEN %s AND %s
 		{company_filter}
 		{cat_filter}
+		{conf_filter}
 		GROUP BY category, status_group
 		ORDER BY category, status_group
 	""", (start_date, end_date), as_dict=True)
@@ -99,7 +102,9 @@ def _get_po_pipeline(start_date, end_date, filters, cat_filter):
 
 def _get_pending_steps(filters, cat_filter):
 	"""POs currently pending at each approval step."""
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 	company_filter = f"AND po.company = {frappe.db.escape(filters['company'])}" if filters.get("company") else ""
+	conf_filter = confidential_sql_clause("po")
 
 	rows = frappe.db.sql(f"""
 		SELECT
@@ -113,6 +118,7 @@ def _get_pending_steps(filters, cat_filter):
 		AND po.ts_approval_status LIKE 'Pending%%'
 		{company_filter}
 		{cat_filter}
+		{conf_filter}
 		GROUP BY po.ts_approval_status, po.ts_current_step, po.ts_total_steps
 		ORDER BY cnt DESC
 	""", as_dict=True)
@@ -122,7 +128,9 @@ def _get_pending_steps(filters, cat_filter):
 
 def _get_avg_cycle_time(start_date, end_date, filters, cat_filter):
 	"""Average approval cycle time in hours for approved POs."""
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 	company_filter = f"AND po.company = {frappe.db.escape(filters['company'])}" if filters.get("company") else ""
+	conf_filter = confidential_sql_clause("po")
 
 	rows = frappe.db.sql(f"""
 		SELECT
@@ -135,6 +143,7 @@ def _get_avg_cycle_time(start_date, end_date, filters, cat_filter):
 		AND po.ts_approved_date BETWEEN %s AND %s
 		{company_filter}
 		{cat_filter}
+		{conf_filter}
 		GROUP BY category
 	""", (start_date, end_date), as_dict=True)
 
@@ -146,6 +155,7 @@ def _get_avg_cycle_time(start_date, end_date, filters, cat_filter):
 		AND po.ts_approved_date BETWEEN %s AND %s
 		{company_filter}
 		{cat_filter}
+		{conf_filter}
 	""", (start_date, end_date), as_dict=True)
 
 	return {
@@ -186,7 +196,9 @@ def _get_mr_pipeline(start_date, end_date, filters):
 
 def _get_top_suppliers(start_date, end_date, filters, cat_filter):
 	"""Top 10 suppliers by PO value."""
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 	company_filter = f"AND po.company = {frappe.db.escape(filters['company'])}" if filters.get("company") else ""
+	conf_filter = confidential_sql_clause("po")
 
 	return frappe.db.sql(f"""
 		SELECT
@@ -199,6 +211,7 @@ def _get_top_suppliers(start_date, end_date, filters, cat_filter):
 		AND po.transaction_date BETWEEN %s AND %s
 		{company_filter}
 		{cat_filter}
+		{conf_filter}
 		GROUP BY po.supplier, po.supplier_name
 		ORDER BY total_value DESC
 		LIMIT 10
@@ -207,7 +220,9 @@ def _get_top_suppliers(start_date, end_date, filters, cat_filter):
 
 def _get_monthly_trend(filters, cat_filter):
 	"""PO value by month for last 6 months."""
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 	company_filter = f"AND po.company = {frappe.db.escape(filters['company'])}" if filters.get("company") else ""
+	conf_filter = confidential_sql_clause("po")
 
 	return frappe.db.sql(f"""
 		SELECT
@@ -219,6 +234,7 @@ def _get_monthly_trend(filters, cat_filter):
 		AND po.transaction_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
 		{company_filter}
 		{cat_filter}
+		{conf_filter}
 		GROUP BY month
 		ORDER BY month
 	""", as_dict=True)
@@ -226,7 +242,9 @@ def _get_monthly_trend(filters, cat_filter):
 
 def _get_summary(start_date, end_date, filters, cat_filter):
 	"""Top-line summary KPIs."""
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 	company_filter = f"AND po.company = {frappe.db.escape(filters['company'])}" if filters.get("company") else ""
+	conf_filter = confidential_sql_clause("po")
 
 	totals = frappe.db.sql(f"""
 		SELECT
@@ -240,6 +258,7 @@ def _get_summary(start_date, end_date, filters, cat_filter):
 		AND po.transaction_date BETWEEN %s AND %s
 		{company_filter}
 		{cat_filter}
+		{conf_filter}
 	""", (start_date, end_date), as_dict=True)
 
 	t = totals[0] if totals else {}

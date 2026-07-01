@@ -71,14 +71,24 @@ def _age_days(posting_date):
 
 def _fetch_po_lists(pr_names):
 	"""For each PR name, return distinct PO names referenced by its items."""
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 	if not pr_names:
 		return {}
+	# Confidentiality leak-plug: drop PO names the user is not allowed to see
+	# (maize-confidential POs) via an EXISTS guard on the parent Purchase Order.
+	conf_po = confidential_sql_clause("po", doctype="Purchase Order")
+	conf_exists = (
+		f""" AND EXISTS (SELECT 1 FROM `tabPurchase Order` po
+		     WHERE po.name = pri.purchase_order {conf_po})"""
+		if conf_po else ""
+	)
 	rows = frappe.db.sql(
-		"""
-		SELECT parent, purchase_order
-		FROM `tabPurchase Receipt Item`
-		WHERE parent IN %(pr_names)s
-		  AND IFNULL(purchase_order, '') != ''
+		f"""
+		SELECT pri.parent AS parent, pri.purchase_order AS purchase_order
+		FROM `tabPurchase Receipt Item` pri
+		WHERE pri.parent IN %(pr_names)s
+		  AND IFNULL(pri.purchase_order, '') != ''
+		  {conf_exists}
 		""",
 		{"pr_names": tuple(pr_names)},
 		as_dict=True,
@@ -120,15 +130,20 @@ def _fetch_items_for_pills(pr_names, limit_per_pr=8):
 
 def _fetch_draft_pi_refs(pr_names):
 	"""Map PR name → name of any Draft Purchase Invoice that already references it."""
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 	if not pr_names:
 		return {}
+	# Confidentiality leak-plug: hide confidential (maize-derived) draft PIs
+	# from non-allowed users.
+	conf_pi = confidential_sql_clause("pi", doctype="Purchase Invoice")
 	rows = frappe.db.sql(
-		"""
+		f"""
 		SELECT pii.purchase_receipt AS pr, pii.parent AS pi_name
 		FROM `tabPurchase Invoice Item` pii
 		JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
 		WHERE pi.docstatus = 0
 		  AND pii.purchase_receipt IN %(pr_names)s
+		  {conf_pi}
 		""",
 		{"pr_names": tuple(pr_names)},
 		as_dict=True,
@@ -147,10 +162,15 @@ def _fetch_draft_pi_refs(pr_names):
 @frappe.whitelist()
 def get_dashboard_data():
 	"""Return all rows + counts + flags for the dashboard."""
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
 	_check_read()
 
+	# Confidentiality leak-plug: hide confidential (maize-derived) Purchase
+	# Receipts from non-allowed users (e.g. Auditor).
+	conf_pr = confidential_sql_clause("pr", doctype="Purchase Receipt")
+
 	base = frappe.db.sql(
-		"""
+		f"""
 		SELECT
 			pr.name, pr.posting_date, pr.supplier, pr.supplier_name,
 			pr.grand_total, pr.per_billed, pr.currency, pr.company,
@@ -160,6 +180,7 @@ def get_dashboard_data():
 		  AND IFNULL(pr.per_billed, 0) < 100
 		  AND IFNULL(pr.status, '') != 'Closed'
 		  AND IFNULL(pr.is_return, 0) = 0
+		  {conf_pr}
 		ORDER BY pr.posting_date ASC, pr.creation ASC
 		LIMIT %s
 		""",
