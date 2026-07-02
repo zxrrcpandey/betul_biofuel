@@ -151,9 +151,39 @@ def _seed_production_settings_fields():
 	return True
 
 
+# Phase B (Multi-BOM plan) — one Custom Field on BOM tagging its production category.
+# Optional (BOM is ERPNext-native and heavily used — never reqd). Lesson 227: no default.
+_BOM_CATEGORY_FIELD = {
+	"fieldname": "ts_production_category",
+	"label": "Production Category",
+	"fieldtype": "Link",
+	"options": "TS Production BOM Category",
+	"insert_after": "with_operations",
+	"description": ("Optional: the TS Production BOM Category this BOM belongs to "
+					"(RS Main / WTP / Electricity ...). Used to auto-suggest categories "
+					"when building a TS BOM Connector and to route notifications."),
+}
+
+
+def _seed_bom_category_field():
+	"""Create the BOM.ts_production_category Custom Field, only if absent. Idempotent;
+	skip-if-absent when the category DocType isn't migrated yet (fresh install order)."""
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+	if not frappe.db.exists("DocType", "TS Production BOM Category"):
+		return False
+	meta = frappe.get_meta("BOM")
+	if meta.has_field(_BOM_CATEGORY_FIELD["fieldname"]):
+		return False
+	create_custom_fields({"BOM": [_BOM_CATEGORY_FIELD]}, ignore_validate=True)
+	frappe.clear_cache(doctype="BOM")
+	return True
+
+
 def after_migrate_production_logging():
 	"""after_migrate entry point (register in hooks.py under unlock). Idempotent."""
 	_seed_production_settings_fields()
+	_seed_bom_category_field()
 	ps_changed = _apply_variance_status_options()
 	perm_changed = _upsert_stores_manager_docperm()
 	_seed_page_roles()

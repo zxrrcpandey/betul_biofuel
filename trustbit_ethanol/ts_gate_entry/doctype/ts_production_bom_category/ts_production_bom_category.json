@@ -1,0 +1,117 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:category_name",
+ "creation": "2026-07-02 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "category_name",
+  "department",
+  "column_break_cat1",
+  "is_production",
+  "active",
+  "description",
+  "notify_section",
+  "notification_recipients"
+ ],
+ "fields": [
+  {
+   "fieldname": "category_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Category Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Department",
+   "options": "Department",
+   "description": "The ERPNext Department this category belongs to (single source of truth — connector lines and department entries fetch it from here)."
+  },
+  {
+   "fieldname": "column_break_cat1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_production",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Is Production (stock-impacting)",
+   "description": "1 = a stock-impacting production category (e.g. the main RS BOM). 0 = a reporting-only department category (WTP, Electricity...) whose consumption is logged for reporting and never moves stock."
+  },
+  {
+   "default": "1",
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "label": "Active",
+   "description": "Inactive categories are hidden from pickers and skipped by notifications."
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "notify_section",
+   "fieldtype": "Section Break",
+   "label": "Notification Recipients"
+  },
+  {
+   "fieldname": "notification_recipients",
+   "fieldtype": "Table",
+   "label": "Recipients",
+   "options": "TS Production Notify Recipient",
+   "description": "Who gets notified for this category (production events, department consumption requests). In-App always works; Email/WhatsApp are best-effort until server credentials are configured."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-07-02 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Production BOM Category",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1, "delete": 1, "email": 1, "export": 1, "print": 1,
+   "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1
+  },
+  {
+   "create": 1, "delete": 1, "email": 1, "export": 1, "print": 1,
+   "read": 1, "report": 1, "role": "Manufacturing Manager", "share": 1, "write": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Manufacturing User", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Stores Manager", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "PM", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Grain PM", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "IT Head", "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

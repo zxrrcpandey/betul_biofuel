@@ -507,7 +507,7 @@ class ProductionLogging {
 			{ n: 3, kind: "input", ico: "✎", name: "Edit RM lines", desc: "PM may edit qty / remove a line (release only)." },
 			{ n: 4, kind: "auto", ico: "⚙️", name: "Work Order", desc: "System creates + submits the Work Order." },
 			{ n: 5, kind: "auto", ico: "⚙️", name: "Draft Release SE", desc: "Builds DRAFT Material Transfer (Stores → WIP)." },
-			{ n: 6, kind: "gate", ico: "🚦", name: "Store Mgr Approves", desc: "The ONE human gate — release the raw material." },
+			{ n: 6, kind: "gate", ico: "🚦", name: "Store Mgr Releases", desc: "The ONE human gate — release the raw material." },
 			{ n: 7, kind: "auto", ico: "⚙️", name: "Job Cards", desc: "Auto-completes Job Cards (operations BOMs)." },
 			{ n: 8, kind: "auto", ico: "⚙️", name: "Manufacture SE", desc: "Posts produced qty + by-products (BOM-scaled)." },
 			{ n: 9, kind: "auto", ico: "⚙️", name: "WO Completed", desc: "Work Order completes + closes." },
@@ -676,10 +676,10 @@ class ProductionLogging {
 							`<div class="rm"><div class="k">Release SE</div><div class="v mono">${this.esc(r.release_stock_entry || "—")}</div></div>` +
 							`</div>` +
 							`<div class="release-note"><span style="font-size:15px;line-height:1">ℹ️</span>` +
-							`<span>On <b>Approve</b>, the system auto-completes the rest: submits the Material Transfer (${this.esc(src)} &rarr; ${this.esc(wip)}), runs Job Cards if it's an operations BOM, posts the Manufacture Stock Entry, and closes the Work Order &mdash; <b>no further clicks</b>.</span></div>` +
+							`<span>On <b>Release</b>, the system auto-completes the rest: submits the Material Transfer (${this.esc(src)} &rarr; ${this.esc(wip)}), runs Job Cards if it's an operations BOM, posts the Manufacture Stock Entry, and closes the Work Order &mdash; <b>no further clicks</b>.</span></div>` +
 							`<div class="release-actions">` +
 							`<button class="btn btn-approve pl-approve-btn" data-name="${this.esc(r.name)}">` +
-							`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Approve &amp; Release</button>` +
+							`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Release</button>` +
 							`<button class="btn btn-reject pl-reject-btn" data-name="${this.esc(r.name)}">` +
 							`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg> Reject</button>` +
 							`</div></div></div>`

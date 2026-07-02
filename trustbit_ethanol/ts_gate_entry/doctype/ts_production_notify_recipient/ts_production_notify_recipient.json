@@ -1,0 +1,80 @@
+{
+ "actions": [],
+ "creation": "2026-07-02 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "channel",
+  "user",
+  "role",
+  "email",
+  "mobile",
+  "active"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "default": "In-App",
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Channel",
+   "options": "In-App\nEmail\nWhatsApp",
+   "reqd": 1,
+   "description": "In-App (bell) always delivers. Email/WhatsApp are best-effort until server credentials are configured."
+  },
+  {
+   "columns": 3,
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "User",
+   "options": "User",
+   "description": "Preferred — email/mobile resolve from the User."
+  },
+  {
+   "columns": 2,
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Role (fan-out)",
+   "options": "Role",
+   "description": "Notify ALL active holders of this role (data-driven)."
+  },
+  {
+   "columns": 2,
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email (fallback)",
+   "options": "Email"
+  },
+  {
+   "columns": 2,
+   "fieldname": "mobile",
+   "fieldtype": "Data",
+   "label": "Mobile (WhatsApp fallback)"
+  },
+  {
+   "columns": 1,
+   "default": "1",
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Active"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-02 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Production Notify Recipient",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

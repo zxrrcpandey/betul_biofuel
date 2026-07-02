@@ -1,0 +1,125 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:connector_name",
+ "creation": "2026-07-02 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "connector_name",
+  "main_bom",
+  "main_bom_item",
+  "column_break_conn1",
+  "main_category",
+  "active",
+  "description",
+  "boms_section",
+  "department_boms"
+ ],
+ "fields": [
+  {
+   "fieldname": "connector_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Connector Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "main_bom",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Main BOM (RS — stock-impacting)",
+   "options": "BOM",
+   "reqd": 1,
+   "description": "The production BOM that actually consumes stock and produces the finished item (e.g. Rectified Spirit). Must be active + submitted."
+  },
+  {
+   "fetch_from": "main_bom.item_name",
+   "fieldname": "main_bom_item",
+   "fieldtype": "Data",
+   "label": "Finished Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_conn1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "main_category",
+   "fieldtype": "Link",
+   "label": "Main Category",
+   "options": "TS Production BOM Category",
+   "description": "The production category of the main BOM (must have 'Is Production' = 1)."
+  },
+  {
+   "default": "1",
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Active"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "boms_section",
+   "fieldtype": "Section Break",
+   "label": "Department BOMs (Reporting Only)"
+  },
+  {
+   "fieldname": "department_boms",
+   "fieldtype": "Table",
+   "label": "Department BOMs",
+   "options": "TS BOM Connector Line",
+   "description": "Supporting department BOMs (WTP, Electricity...). Their departments are NOTIFIED on a production run and log their own consumption for REPORTING ONLY — these lines never move stock and never roll into the main BOM's cost."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-07-02 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS BOM Connector",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1, "delete": 1, "email": 1, "export": 1, "print": 1,
+   "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1
+  },
+  {
+   "create": 1, "delete": 1, "email": 1, "export": 1, "print": 1,
+   "read": 1, "report": 1, "role": "Manufacturing Manager", "share": 1, "write": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Manufacturing User", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Stores Manager", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "PM", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Grain PM", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "IT Head", "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
