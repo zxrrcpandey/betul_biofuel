@@ -54,6 +54,11 @@ WORKSPACES = [
 			{"type": "DocType", "link_to": "Work Order", "label": "Work Order", "color": "Orange"},
 			{"type": "DocType", "link_to": "Job Card", "label": "Job Card", "color": "Yellow"},
 			{"type": "DocType", "link_to": "Stock Entry", "label": "Stock Entry", "color": "Grey"},
+			# Multi-BOM flow (v2.20.x Phases B-D)
+			{"type": "DocType", "link_to": "TS BOM Connector", "label": "BOM Connector", "color": "Purple"},
+			{"type": "DocType", "link_to": "TS Production BOM Category", "label": "BOM Categories", "color": "Cyan"},
+			{"type": "DocType", "link_to": "TS Production Department Entry", "label": "Dept Consumption", "color": "Purple"},
+			{"type": "DocType", "link_to": "Material Request", "label": "Material Requests", "color": "Orange"},
 		],
 	},
 	{
@@ -120,7 +125,43 @@ def _seed_workspaces():
 		ws.insert(ignore_permissions=True)
 
 
+def _ensure_workspace_shortcuts():
+	"""Append any shortcut from WORKSPACES that an EXISTING workspace is missing
+	(child row + content block; matched by label OR link_to so nothing duplicates).
+	Needed because _seed_workspaces only builds MISSING workspaces, and migrate
+	never syncs shortcuts on existing ones (Lesson 173). Idempotent."""
+	for w in WORKSPACES:
+		if not frappe.db.exists("Workspace", w["name"]):
+			continue
+		ws = frappe.get_doc("Workspace", w["name"])
+		have = {(s.label or "") for s in ws.shortcuts} | {(s.link_to or "") for s in ws.shortcuts}
+		try:
+			content = json.loads(ws.content or "[]")
+		except Exception:
+			content = []
+		block_names = {b.get("data", {}).get("shortcut_name") for b in content
+					   if b.get("type") == "shortcut"}
+		changed = False
+		for s in w["shortcuts"]:
+			if s["label"] in have or s["link_to"] in have:
+				continue
+			if s["type"] == "DocType" and not frappe.db.exists("DocType", s["link_to"]):
+				continue  # doctype not on this site yet — skip (cross-site safety)
+			ws.append("shortcuts", {"type": s["type"], "link_to": s["link_to"],
+									"label": s["label"], "color": s.get("color", "")})
+			if s["label"] not in block_names:
+				content.append({"id": "sc_" + s["link_to"].replace(" ", "_"),
+								"type": "shortcut",
+								"data": {"shortcut_name": s["label"], "col": 4}})
+			changed = True
+		if changed:
+			ws.content = json.dumps(content)
+			ws.flags.ignore_permissions = True
+			ws.save()  # ORM save — migrate would NOT sync this (Lesson 173)
+
+
 def seed_dashboard_workspaces():
 	"""after_migrate entry point (register in hooks.py under unlock). Idempotent."""
 	_seed_number_cards()
 	_seed_workspaces()
+	_ensure_workspace_shortcuts()
