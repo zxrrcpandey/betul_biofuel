@@ -134,6 +134,17 @@ _PRODUCTION_SETTINGS_FIELDS = [
 						"the reconciliation note is flagged (informational only, NOT a gate). No JSON "
 						"default so a configured value is never clobbered on migrate (Lesson 227)."),
 	},
+	# Phase C (Multi-BOM plan) — kill switch for department consumption entries.
+	# NO JSON default (Lesson 227): ships OFF; flip manually when the team is ready.
+	{
+		"fieldname": "ts_production_dept_entry_enabled",
+		"label": "Enable Department Consumption Entries",
+		"fieldtype": "Check",
+		"insert_after": "ts_production_wip_recon_tolerance_pct",
+		"description": ("Kill switch for TS Production Department Entry (reporting-only "
+						"department consumption logs + the Log Consumption card on the "
+						"Production Logging page). Ships OFF; no JSON default (Lesson 227)."),
+	},
 ]
 
 

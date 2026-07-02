@@ -1,0 +1,207 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-07-02 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "production_entry",
+  "bom_connector",
+  "bom",
+  "column_break_de1",
+  "category",
+  "department",
+  "company",
+  "posting_date",
+  "shift",
+  "status_section",
+  "status",
+  "column_break_de2",
+  "submitted_by",
+  "logged_at",
+  "materials_section",
+  "materials",
+  "remark"
+ ],
+ "fields": [
+  {
+   "default": "PRODDEPT-.YYYY.-",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Naming Series",
+   "no_copy": 1,
+   "options": "PRODDEPT-.YYYY.-",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "production_entry",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Production Entry",
+   "options": "TS Production Entry",
+   "reqd": 1,
+   "description": "The production run this department consumption reports against."
+  },
+  {
+   "fieldname": "bom_connector",
+   "fieldtype": "Link",
+   "label": "BOM Connector",
+   "options": "TS BOM Connector",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "bom",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Department BOM",
+   "options": "BOM",
+   "reqd": 1,
+   "description": "The department's own BOM (reporting only — validated against the run's connector when one exists)."
+  },
+  {
+   "fieldname": "column_break_de1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Category",
+   "options": "TS Production BOM Category",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "category.department",
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Department",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Posting Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "shift",
+   "fieldtype": "Data",
+   "label": "Shift"
+  },
+  {
+   "fieldname": "status_section",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Draft\nLogged\nCancelled",
+   "read_only": 1,
+   "description": "Reporting-only record — NEVER moves stock. Control-plane field (tamper-guarded); flipped only by the whitelisted endpoints."
+  },
+  {
+   "fieldname": "column_break_de2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "submitted_by",
+   "fieldtype": "Link",
+   "label": "Logged By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "logged_at",
+   "fieldtype": "Datetime",
+   "label": "Logged At",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "materials_section",
+   "fieldtype": "Section Break",
+   "label": "Materials Consumed (Reporting Only)"
+  },
+  {
+   "fieldname": "materials",
+   "fieldtype": "Table",
+   "label": "Materials",
+   "options": "TS Production Department Material",
+   "reqd": 1
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-07-02 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Production Department Entry",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1, "delete": 1, "email": 1, "export": 1, "print": 1,
+   "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1
+  },
+  {
+   "create": 1, "delete": 1, "email": 1, "export": 1, "print": 1,
+   "read": 1, "report": 1, "role": "Manufacturing Manager", "share": 1, "write": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Manufacturing User", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Stores Manager", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "PM", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Grain PM", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "IT Head", "share": 1
+  },
+  {
+   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
+   "role": "Employee", "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

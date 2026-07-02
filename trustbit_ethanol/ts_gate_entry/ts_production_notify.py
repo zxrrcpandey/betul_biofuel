@@ -97,11 +97,13 @@ def _resolve_targets(row):
 def _send_one(channel, target, subject, message, ref_doctype, ref_name,
               event_key, variables, summary):
 	"""One recipient x one channel — isolated fail-soft send (Lessons 238/276)."""
+	# Counters record ATTEMPTS (incremented before the send), so a failed send —
+	# e.g. email with SMTP unconfigured — is still visible in the summary.
 	if channel == "In-App":
 		try:
 			if target.get("user"):
-				_notification_log(target["user"], subject, message, ref_doctype, ref_name)
 				summary["in_app"] += 1
+				_notification_log(target["user"], subject, message, ref_doctype, ref_name)
 			else:
 				summary["skipped"] += 1  # in-app needs a User account
 		except Exception:
@@ -109,9 +111,9 @@ def _send_one(channel, target, subject, message, ref_doctype, ref_name,
 	elif channel == "Email":
 		try:
 			if target.get("email"):
+				summary["email"] += 1
 				frappe.sendmail(recipients=[target["email"]], subject=subject,
 				                message=message, delayed=True)
-				summary["email"] += 1
 			else:
 				summary["skipped"] += 1
 		except Exception:
@@ -122,10 +124,10 @@ def _send_one(channel, target, subject, message, ref_doctype, ref_name,
 		try:
 			mobile = target.get("mobile")
 			if mobile:
+				summary["whatsapp"] += 1
 				from trustbit_ethanol.ts_gate_entry.ts_whatsapp import send_template
 				send_template(mobile, event_key, variables or {"1": subject},
 				              ref_doctype, ref_name)
-				summary["whatsapp"] += 1
 			else:
 				summary["skipped"] += 1
 		except Exception:

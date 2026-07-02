@@ -643,3 +643,25 @@
     animation: none !important; transition: none !important;
   }
 }
+
+/* ── Phase C — Department Consumption (reporting only; purple = reporting, not a gate) ── */
+.prodlog .dept-banner {
+  background: linear-gradient(90deg, rgba(139, 92, 246, .16), rgba(139, 92, 246, .05));
+  border-bottom: 1px solid rgba(139, 92, 246, .28);
+}
+.prodlog .dept-note { border-color: rgba(139, 92, 246, .45); }
+.prodlog .badge.b-distrib {
+  background: rgba(139, 92, 246, .14); color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, .35);
+}
+.prodlog[data-prodlog-theme="light"] .badge.b-distrib {
+  background: #f3e8ff; color: #7c3aed; border-color: #ddd6fe;
+}
+.prodlog .dept-log-btn { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+.prodlog .btn.dept-view-btn {
+  background: transparent; color: var(--muted, #94a3b8);
+  border: 1px solid var(--line, rgba(148, 163, 184, .3));
+  text-decoration: none; display: inline-flex; align-items: center;
+}
+.prodlog .btn.dept-view-btn:hover { color: var(--text, inherit); }
+.prodlog .dept-empty { padding: 18px; font-size: 13px; color: var(--muted, #94a3b8); }

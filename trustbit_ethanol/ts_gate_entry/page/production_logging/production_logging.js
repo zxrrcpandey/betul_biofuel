@@ -84,6 +84,7 @@ class ProductionLogging {
 
 		this.busy = false;
 		this.boms = [];               // active BOM list for the picker
+		this.dept_ctx = null;         // Phase C: department consumption context (server-resolved)
 	}
 
 	esc(v) {
@@ -212,6 +213,8 @@ class ProductionLogging {
 			</div>
 			<div id="pl-release-zone"></div>
 			` : ``}
+
+			<div id="pl-dept-wrap"></div>
 
 			<div class="sec-title">
 				<span class="bar" style="background:var(--purple)"></span> Production Log &mdash; Recent Runs
@@ -379,6 +382,11 @@ class ProductionLogging {
 			self.reject_release($(this).data("name"));
 		});
 
+		// Department consumption (Phase C — reporting only)
+		this.$root.on("click", ".pl-deptlog-btn", function () {
+			self.open_dept_dialog(parseInt($(this).data("idx"), 10));
+		});
+
 		this.$root.on("click", "#pl-prog-close", () => self.close_progress());
 
 		$(document).on("keydown.prodlog", (e) => {
@@ -418,6 +426,7 @@ class ProductionLogging {
 	reload_data() {
 		this.load_log();
 		if (this.is_store_mgr) this.load_pending_releases();
+		this.load_dept_context(); // Phase C — server decides visibility (kill switch + recipients)
 	}
 
 	load_log() {
@@ -461,6 +470,134 @@ class ProductionLogging {
 			},
 			callback: (r) => this.render_release_zone(r.message || []),
 			error: () => this.render_release_zone([]),
+		});
+	}
+
+	// ── Phase C — Department consumption (REPORTING ONLY, no stock) ─────
+	load_dept_context() {
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.ts_production_dept.get_department_context",
+			callback: (r) => {
+				this.dept_ctx = r.message || { enabled: false, categories: [], pending: [] };
+				this.render_dept_zone();
+			},
+			error: () => {
+				this.dept_ctx = { enabled: false, categories: [], pending: [] };
+				this.render_dept_zone();
+			},
+		});
+	}
+
+	render_dept_zone() {
+		const $wrap = this.$root.find("#pl-dept-wrap");
+		if (!$wrap.length) return;
+		const ctx = this.dept_ctx || {};
+		if (!ctx.enabled || !(ctx.categories || []).length) { $wrap.empty(); return; }
+		const pending = ctx.pending || [];
+		let inner;
+		if (!pending.length) {
+			inner = `<div class="panel glass dept-empty">&#9989; No production runs awaiting your department's consumption log &mdash; when a run using your category's connector completes, it appears here.</div>`;
+		} else {
+			inner = pending.map((p, i) => `
+				<div class="release-card glass dept-card">
+					<div class="release-banner dept-banner">
+						<div class="rb-ico">&#128203;</div>
+						<div class="rb-tt">
+							<div class="rb-t">Log consumption &middot; ${this.esc(p.production_entry)}</div>
+							<div class="rb-s">${this.esc(p.category)} &middot; ${this.esc(p.department || "—")} &middot; dept BOM ${this.esc(p.dept_bom)}</div>
+						</div>
+						<span class="badge b-distrib"><span class="bdot"></span>Awaiting Dept Log</span>
+					</div>
+					<div class="release-body">
+						<div class="rel-meta">
+							<div class="rm"><div class="k">Main Item</div><div class="v">${this.esc(p.item_name || "—")}</div></div>
+							<div class="rm"><div class="k">Produced</div><div class="v">${this.fmt1(p.produced_qty)} ${this.esc(p.uom || "")}</div></div>
+							<div class="rm"><div class="k">Run Status</div><div class="v">${this.esc(p.status)}</div></div>
+							<div class="rm"><div class="k">Date</div><div class="v">${this.esc(p.posting_date || "—")}</div></div>
+						</div>
+						<div class="release-note dept-note"><span style="font-size:15px;line-height:1">&#8505;&#65039;</span>
+							<span><b>REPORTING ONLY</b> &mdash; logging your department's material use will <b>not move any stock</b>.</span></div>
+						<div class="release-actions">
+							<button class="btn btn-approve pl-deptlog-btn dept-log-btn" data-idx="${i}">&#128203; Log Consumption</button>
+							<a class="btn dept-view-btn" href="/app/ts-production-entry/${encodeURIComponent(p.production_entry)}" target="_blank" rel="noopener">View Run</a>
+						</div>
+					</div>
+				</div>`).join("");
+		}
+		$wrap.html(`
+			<div class="sec-title">
+				<span class="bar" style="background:var(--purple)"></span> Department Consumption &mdash; Reporting Only
+				<span class="feas-tag tag-auto">&#128203; No stock impact</span>
+			</div>
+			${inner}`);
+	}
+
+	open_dept_dialog(idx) {
+		const p = ((this.dept_ctx || {}).pending || [])[idx];
+		if (!p) return;
+		const rows = (p.materials || []).map((m, i) => `
+			<tr>
+				<td style="padding:6px 8px;">${frappe.utils.escape_html(m.item_name || m.item_code)}<br>
+					<span style="font-size:11px;opacity:.6;font-family:monospace">${frappe.utils.escape_html(m.item_code)}</span></td>
+				<td style="padding:6px 8px;text-align:right;opacity:.7">${flt(m.std_qty).toLocaleString("en-IN")}</td>
+				<td style="padding:6px 8px;"><input type="number" min="0" step="any" class="form-control pl-dd-qty" data-i="${i}" value="${flt(m.std_qty)}" style="text-align:right"></td>
+				<td style="padding:6px 8px;">${frappe.utils.escape_html(m.uom || "")}</td>
+				<td style="padding:6px 8px;"><input type="text" class="form-control pl-dd-remark" data-i="${i}" maxlength="140"></td>
+			</tr>`).join("");
+		// Fresh Dialog per click — never an inline page sibling (Lesson 296).
+		const d = new frappe.ui.Dialog({
+			title: __("Log Consumption — {0}", [p.production_entry]),
+			size: "large",
+			fields: [
+				{ fieldtype: "Date", fieldname: "posting_date", label: __("Posting Date"),
+				  default: frappe.datetime.now_date(), reqd: 1 },
+				{ fieldtype: "Data", fieldname: "remark", label: __("Remark") },
+				{ fieldtype: "HTML", fieldname: "mat_html" },
+			],
+			primary_action_label: __("Log Consumption (reporting only)"),
+			primary_action: (values) => this.submit_dept_entry(d, p, values),
+		});
+		d.fields_dict.mat_html.$wrapper.html(`
+			<div style="margin:4px 0 6px;font-size:12px;"><b>${frappe.utils.escape_html(p.category)}</b> &middot; dept BOM <span style="font-family:monospace">${frappe.utils.escape_html(p.dept_bom)}</span>
+			&middot; <span style="color:#7c3aed;font-weight:600">REPORTING ONLY — no stock will move</span></div>
+			<table style="width:100%;border-collapse:collapse;font-size:12.5px">
+				<thead><tr style="opacity:.65;text-align:left">
+					<th style="padding:6px 8px;">Material</th><th style="padding:6px 8px;text-align:right">Std Qty</th>
+					<th style="padding:6px 8px;">Actual Qty</th><th style="padding:6px 8px;">UOM</th><th style="padding:6px 8px;">Remark</th>
+				</tr></thead>
+				<tbody>${rows}</tbody>
+			</table>`);
+		d.show();
+	}
+
+	submit_dept_entry(d, p, values) {
+		const mats = (p.materials || []).map((m, i) => ({
+			item_code: m.item_code, std_qty: m.std_qty, uom: m.uom,
+			qty: flt(d.$wrapper.find(`.pl-dd-qty[data-i="${i}"]`).val()),
+			remark: (d.$wrapper.find(`.pl-dd-remark[data-i="${i}"]`).val() || ""),
+		})).filter((m) => m.qty > 0);
+		if (!mats.length) {
+			frappe.show_alert({ message: __("Enter a quantity for at least one material."), indicator: "orange" });
+			return;
+		}
+		d.get_primary_btn().prop("disabled", true);
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.ts_production_dept.submit_department_entry",
+			args: {
+				production_entry: p.production_entry, bom: p.dept_bom, category: p.category,
+				materials: mats, posting_date: values.posting_date, remark: values.remark || "",
+			},
+			callback: (r) => {
+				d.hide();
+				if (r.message && r.message.ok) {
+					frappe.show_alert({
+						message: __("Consumption logged — {0} (reporting only)", [r.message.name]),
+						indicator: "green",
+					});
+					this.load_dept_context();
+				}
+			},
+			error: () => d.get_primary_btn().prop("disabled", false),
 		});
 	}
 
