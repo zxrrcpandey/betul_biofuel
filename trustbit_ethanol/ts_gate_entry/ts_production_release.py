@@ -266,16 +266,21 @@ def approve_release(name):
 
 @frappe.whitelist(methods=["POST"])
 def reject_release(name, reason):
-	"""Store Manager rejects the release. Cancels the draft release SE + the WO (and
-	its auto-created Job Cards). State: Pending Stores Release -> Rejected."""
+	"""Reject the release: cancels the draft release SE + the WO (and its
+	auto-created Job Cards). State: Pending Stores Release -> Rejected.
+
+	Business rule (client, 3 Jul): a Store Manager may ONLY Release — never reject.
+	Reject is retained as an ADMIN-ONLY recovery escape-hatch (Lesson 142: enforce
+	the role restriction server-side, not just by hiding the button)."""
 	api._require_enabled()
 	reason = (reason or "").strip()
 	if len(reason) < 10:
 		frappe.throw(_("Rejection reason must be at least 10 characters."))
 
 	doc = frappe.get_doc(DOCTYPE, name)
-	if not (_is_store_manager() or _is_admin()):
-		frappe.throw(_("Only a Stores Manager can reject the raw-material release."),
+	if not _is_admin():
+		frappe.throw(_("The raw-material release cannot be rejected by a Store Manager. "
+					   "Store Managers release only."),
 					 exc=frappe.PermissionError)
 	frappe.has_permission(DOCTYPE, "write", doc=doc, throw=True)
 

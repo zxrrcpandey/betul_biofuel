@@ -1152,8 +1152,6 @@ class ProductionLogging {
 							`<div class="release-actions">` +
 							`<button class="btn btn-approve pl-approve-btn" data-name="${this.esc(r.name)}">` +
 							`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Release</button>` +
-							`<button class="btn btn-reject pl-reject-btn" data-name="${this.esc(r.name)}">` +
-							`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg> Reject</button>` +
 							`</div></div></div>`
 						);
 					})
