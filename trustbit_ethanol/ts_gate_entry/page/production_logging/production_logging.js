@@ -85,6 +85,10 @@ class ProductionLogging {
 		this.busy = false;
 		this.boms = [];               // active BOM list for the picker
 		this.dept_ctx = null;         // Phase C: department consumption context (server-resolved)
+		this.multi_ctx = null;        // Phase D: Multiple-flow context (kill switch + connectors)
+		this.flow_mode = "single";    // Phase D: chooser state ("single" | "multiple")
+		this.connector = null;        // Phase D: the selected TS BOM Connector row
+		this.warehouses = null;       // Phase D: non-group warehouses (distribution dialog)
 	}
 
 	esc(v) {
@@ -214,6 +218,8 @@ class ProductionLogging {
 			<div id="pl-release-zone"></div>
 			` : ``}
 
+			<div id="pl-dist-wrap"></div>
+
 			<div id="pl-dept-wrap"></div>
 
 			<div class="sec-title">
@@ -271,12 +277,31 @@ class ProductionLogging {
 				<button class="so-close" id="pl-so-close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
 			</div>
 			<div class="so-body">
+				<div class="form-sec" id="pl-flow-chooser" style="display:none">
+					<div class="form-sec-h"><span class="step-pill">Flow</span> Single or Multiple BOM</div>
+					<div class="flow-seg" role="tablist">
+						<button class="flow-seg-btn active" data-mode="single" role="tab">Single BOM</button>
+						<button class="flow-seg-btn seg-multi" data-mode="multiple" role="tab">Multiple (Connector)</button>
+					</div>
+					<div class="scale-note" id="pl-flow-note" style="display:none">
+						<span style="font-size:14px;line-height:1">&#128279;</span>
+						<span><b>Multiple flow:</b> raw material is released via an auto <b>Material Request</b>
+						(Store Manager releases it), then you distribute the produced output across
+						<b>multiple warehouses</b>. Department BOMs below are <b>notified for reporting only</b>.</span>
+					</div>
+				</div>
+
 				<div class="form-sec">
-					<div class="form-sec-h"><span class="step-pill">Step 1</span> Select BOM</div>
-					<div class="fld">
+					<div class="form-sec-h"><span class="step-pill">Step 1</span> <span id="pl-step1-label">Select BOM</span></div>
+					<div class="fld" id="pl-bom-fld">
 						<label>Bill of Materials <span class="req">*</span></label>
 						<select class="inp" id="pl-bom-select"><option value="">Loading BOMs&hellip;</option></select>
 					</div>
+					<div class="fld" id="pl-conn-fld" style="display:none">
+						<label>BOM Connector <span class="req">*</span></label>
+						<select class="inp" id="pl-conn-select"><option value="">Select a connector&hellip;</option></select>
+					</div>
+					<div id="pl-conn-depts" style="display:none"></div>
 					<div class="fetched hidden" id="pl-fetched-box"></div>
 				</div>
 
@@ -363,6 +388,14 @@ class ProductionLogging {
 			this.$root.on("click", "#pl-add-btn", () => self.open_form());
 			this.$root.on("click", "#pl-so-close, #pl-cancel-btn, #pl-form-scrim", () => self.close_form());
 			this.$root.on("change", "#pl-bom-select", (e) => self.on_bom_change(e.target.value));
+			// Phase D — flow chooser + connector picker + distribution action
+			this.$root.on("click", ".flow-seg-btn", function () {
+				self.on_flow_change($(this).data("mode"));
+			});
+			this.$root.on("change", "#pl-conn-select", (e) => self.on_connector_change(e.target.value));
+			this.$root.on("click", ".pl-dist-btn", function () {
+				self.open_distribution_dialog($(this).data("name"));
+			});
 			this.$root.on("input", "#pl-produced-qty", () => self.on_produced_change());
 			this.$root.on("input", "#pl-rm-body input.qty", function () {
 				self.edit_rm(parseInt($(this).data("idx"), 10), this.value);
@@ -426,7 +459,87 @@ class ProductionLogging {
 	reload_data() {
 		this.load_log();
 		if (this.is_store_mgr) this.load_pending_releases();
-		this.load_dept_context(); // Phase C — server decides visibility (kill switch + recipients)
+		this.load_dept_context();  // Phase C — server decides visibility (kill switch + recipients)
+		this.load_multi_context(); // Phase D — chooser + pending distributions
+	}
+
+	// ── Phase D — Multiple (BOM Connector) flow ─────────────────────────
+	load_multi_context() {
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.ts_production_multi.get_multi_context",
+			callback: (r) => {
+				this.multi_ctx = r.message || { enabled: false, connectors: [] };
+				this.render_multi_ui();
+				if (this.multi_ctx.enabled && this.is_pm) this.load_pending_distributions();
+				else this.$root.find("#pl-dist-wrap").empty();
+			},
+			error: () => {
+				this.multi_ctx = { enabled: false, connectors: [] };
+				this.render_multi_ui();
+			},
+		});
+	}
+
+	render_multi_ui() {
+		const on = !!(this.multi_ctx && this.multi_ctx.enabled &&
+			(this.multi_ctx.connectors || []).length);
+		this.$root.find("#pl-flow-chooser").toggle(on && this.is_pm);
+		const $sel = this.$root.find("#pl-conn-select");
+		if (on && $sel.length) {
+			$sel.html('<option value="">Select a connector…</option>' +
+				(this.multi_ctx.connectors || []).map((c) =>
+					`<option value="${this.esc(c.name)}">${this.esc(c.name)} — ${this.esc(c.main_bom_item || c.main_bom)} (${(c.department_boms || []).length} dept)</option>`
+				).join(""));
+		}
+	}
+
+	on_flow_change(mode) {
+		if (this.busy) return;
+		this.flow_mode = mode === "multiple" ? "multiple" : "single";
+		const multi = this.flow_mode === "multiple";
+		this.$root.find(".flow-seg-btn").removeClass("active")
+			.filter(`[data-mode="${this.flow_mode}"]`).addClass("active");
+		this.$root.find("#pl-flow-note").toggle(multi);
+		this.$root.find("#pl-bom-fld").toggle(!multi);
+		this.$root.find("#pl-conn-fld").toggle(multi);
+		this.$root.find("#pl-conn-depts").toggle(multi).empty();
+		this.$root.find("#pl-step1-label").text(multi ? "Select BOM Connector" : "Select BOM");
+		this.$root.find("#pl-submit-btn").html(multi
+			? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Submit — auto Material Request'
+			: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Submit for Store Release');
+		// reset the working state — the two flows must never share a half-built form
+		this.bom = null; this.bom_std = null; this.connector = null;
+		this.rm_state = []; this.bp_state = [];
+		this.$root.find("#pl-bom-select").val("");
+		this.$root.find("#pl-conn-select").val("");
+		this.$root.find("#pl-fetched-box").addClass("hidden").empty();
+		this.$root.find("#pl-step2, #pl-step3").hide();
+		this.recompute_submit_enabled();
+	}
+
+	on_connector_change(name) {
+		this.connector = (this.multi_ctx && (this.multi_ctx.connectors || [])
+			.find((c) => c.name === name)) || null;
+		const $depts = this.$root.find("#pl-conn-depts");
+		if (!this.connector) {
+			$depts.hide().empty();
+			this.bom = null; this.bom_std = null;
+			this.$root.find("#pl-step2, #pl-step3").hide();
+			this.recompute_submit_enabled();
+			return;
+		}
+		const lines = this.connector.department_boms || [];
+		$depts.show().html(
+			`<div class="conn-dept-list">` +
+			`<div class="cdl-h">Department BOMs — <b>notified, reporting only</b></div>` +
+			(lines.length ? lines.map((l) =>
+				`<div class="cdl-row"><span class="mono">${this.esc(l.bom)}</span>` +
+				`<span>${this.esc(l.category)}</span>` +
+				`<span class="cdl-tag">will be notified</span></div>`).join("")
+				: `<div class="cdl-row" style="opacity:.6">No department BOMs on this connector.</div>`) +
+			`</div>`);
+		// the connector's MAIN BOM drives materials/by-products exactly like Single
+		this.on_bom_change(this.connector.main_bom);
 	}
 
 	load_log() {
@@ -601,6 +714,226 @@ class ProductionLogging {
 		});
 	}
 
+	// ── Phase D — pending distributions (PM posts the multi-warehouse split) ──
+	load_pending_distributions() {
+		frappe.call({
+			method: "frappe.client.get_list",
+			args: {
+				doctype: PL_DOCTYPE,
+				filters: { ts_variance_status: "Awaiting Distribution", flow_type: "Multiple" },
+				fields: ["name", "bom", "production_item", "production_item_name",
+					"actual_produced_qty", "production_uom", "work_order",
+					"material_request", "release_stock_entry", "modified"],
+				order_by: "modified desc",
+				limit_page_length: 20,
+			},
+			callback: (r) => this.render_dist_zone(r.message || []),
+			error: () => this.render_dist_zone([]),
+		});
+	}
+
+	render_dist_zone(rows) {
+		const $wrap = this.$root.find("#pl-dist-wrap");
+		if (!$wrap.length) return;
+		if (!rows.length) { $wrap.empty(); return; }
+		const cards = rows.map((r) => `
+			<div class="release-card glass dept-card">
+				<div class="release-banner dept-banner">
+					<div class="rb-ico">&#127981;</div>
+					<div class="rb-tt">
+						<div class="rb-t">Awaiting distribution &middot; ${this.esc(r.name)}</div>
+						<div class="rb-s">${this.esc(r.production_item_name || r.production_item)} &middot; produced ${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</div>
+					</div>
+					<span class="badge b-distrib"><span class="bdot"></span>Awaiting Distribution</span>
+				</div>
+				<div class="release-body">
+					<div class="rel-meta">
+						<div class="rm"><div class="k">Work Order</div><div class="v mono">${this.esc(r.work_order || "—")}</div></div>
+						<div class="rm"><div class="k">Material Request</div><div class="v mono">${this.esc(r.material_request || "—")}</div></div>
+						<div class="rm"><div class="k">Release SE</div><div class="v mono">${this.esc(r.release_stock_entry || "—")}</div></div>
+						<div class="rm"><div class="k">Produced</div><div class="v">${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</div></div>
+					</div>
+					<div class="release-note dept-note"><span style="font-size:15px;line-height:1">&#8505;&#65039;</span>
+						<span>Split the produced output (and any by-products) across warehouses — the totals must <b>exactly match</b> the produced quantities. Posting creates ONE Manufacture Stock Entry.</span></div>
+					<div class="release-actions">
+						<button class="btn btn-approve dept-log-btn pl-dist-btn" data-name="${this.esc(r.name)}">&#127981; Post Distribution</button>
+					</div>
+				</div>
+			</div>`).join("");
+		$wrap.html(`
+			<div class="sec-title">
+				<span class="bar" style="background:var(--purple)"></span> Multiple Flow &mdash; Post Multi-Warehouse Distribution
+				<span class="feas-tag tag-auto">&#127981; PM action</span>
+			</div>
+			${cards}`);
+	}
+
+	open_distribution_dialog(name) {
+		if (this.busy) return;
+		Promise.all([
+			new Promise((res) => frappe.call({
+				method: "frappe.client.get",
+				args: { doctype: PL_DOCTYPE, name },
+				callback: (r) => res(r.message || null), error: () => res(null),
+			})),
+			this.load_warehouses(),
+		]).then(([doc, warehouses]) => {
+			if (!doc) return;
+			const targets = [{
+				item_code: doc.production_item,
+				item_name: doc.production_item_name || doc.production_item,
+				line_type: "Finished",
+				target: flt(doc.actual_produced_qty),
+				uom: doc.production_uom || "",
+			}].concat((doc.byproducts || [])
+				.filter((b) => flt(b.actual_qty) > 0)
+				.map((b) => ({
+					item_code: b.item_code,
+					item_name: b.item_name || b.item_code,
+					line_type: "By-Product",
+					target: flt(b.actual_qty),
+					uom: b.uom || "",
+					rate: flt(b.rate),
+				})));
+			const wh_opts = warehouses.map((w) =>
+				`<option value="${frappe.utils.escape_html(w)}">${frappe.utils.escape_html(w)}</option>`).join("");
+			const blocks = targets.map((t, ti) => `
+				<div class="pl-dist-block" data-ti="${ti}" style="border:1px solid ${t.line_type === "Finished" ? "#86efac" : "#93c5fd"};border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+					<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+						<b>${frappe.utils.escape_html(t.item_name)}</b>
+						<span style="font-size:10.5px;padding:1px 8px;border-radius:8px;background:${t.line_type === "Finished" ? "#dcfce7;color:#15803d" : "#dbeafe;color:#1d4ed8"};font-weight:600">${t.line_type}</span>
+						<span style="margin-left:auto;font-size:12px;" class="pl-dist-total" data-ti="${ti}">0 of ${t.target} ${frappe.utils.escape_html(t.uom)}</span>
+					</div>
+					<div class="pl-dist-rows" data-ti="${ti}">
+						<div class="pl-dist-row" style="display:flex;gap:8px;margin-bottom:6px;">
+							<select class="form-control pl-dist-wh" style="flex:2">${wh_opts}</select>
+							<input type="number" min="0" step="any" class="form-control pl-dist-qty" placeholder="Qty" style="flex:1;text-align:right">
+							<button type="button" class="btn btn-xs pl-dist-del" style="flex:0">&times;</button>
+						</div>
+					</div>
+					<button type="button" class="btn btn-xs btn-default pl-dist-add" data-ti="${ti}" style="border:1px dashed #94a3b8;">+ Add warehouse</button>
+				</div>`).join("");
+
+			const d = new frappe.ui.Dialog({
+				title: __("Post Distribution — {0}", [doc.name]),
+				size: "large",
+				fields: [{ fieldtype: "HTML", fieldname: "dist_html" }],
+				primary_action_label: __("Post Distribution"),
+				primary_action: () => this.submit_distribution(d, doc, targets),
+			});
+			d.fields_dict.dist_html.$wrapper.html(
+				`<div style="font-size:12px;margin-bottom:8px;">Each item's split must total <b>exactly</b> its produced quantity — the button unlocks when everything balances.</div>` + blocks +
+				`<div id="pl-dist-summary" style="font-size:12px;font-weight:600;margin-top:4px;color:#b45309;">0 of ${targets.length} item(s) balanced</div>`);
+			const $w = d.fields_dict.dist_html.$wrapper;
+			const recompute = () => {
+				let balanced = 0;
+				targets.forEach((t, ti) => {
+					let sum = 0;
+					$w.find(`.pl-dist-rows[data-ti="${ti}"] .pl-dist-qty`).each(function () {
+						sum += flt($(this).val());
+					});
+					const ok = Math.abs(sum - t.target) < 1e-6 && sum > 0;
+					if (ok) balanced += 1;
+					$w.find(`.pl-dist-total[data-ti="${ti}"]`)
+						.text(`${sum} of ${t.target} ${t.uom}`)
+						.css("color", ok ? "#15803d" : (sum > t.target ? "#b91c1c" : ""));
+				});
+				$w.find("#pl-dist-summary")
+					.text(`${balanced} of ${targets.length} item(s) balanced`)
+					.css("color", balanced === targets.length ? "#15803d" : "#b45309");
+				d.get_primary_btn().prop("disabled", balanced !== targets.length);
+			};
+			$w.on("input change", ".pl-dist-qty, .pl-dist-wh", recompute);
+			$w.on("click", ".pl-dist-add", function () {
+				const ti = $(this).data("ti");
+				const $rows = $w.find(`.pl-dist-rows[data-ti="${ti}"]`);
+				$rows.append($rows.find(".pl-dist-row").first().clone().find("input").val("").end());
+				recompute();
+			});
+			$w.on("click", ".pl-dist-del", function () {
+				const $rows = $(this).closest(".pl-dist-rows");
+				if ($rows.find(".pl-dist-row").length > 1) $(this).closest(".pl-dist-row").remove();
+				else $(this).closest(".pl-dist-row").find("input").val("");
+				recompute();
+			});
+			d.show();
+			recompute();
+		});
+	}
+
+	load_warehouses() {
+		if (this.warehouses) return Promise.resolve(this.warehouses);
+		return new Promise((res) => frappe.call({
+			method: "frappe.client.get_list",
+			args: {
+				doctype: "Warehouse",
+				filters: { is_group: 0, disabled: 0 },
+				fields: ["name"], limit_page_length: 100, order_by: "name",
+			},
+			callback: (r) => {
+				this.warehouses = (r.message || []).map((w) => w.name);
+				res(this.warehouses);
+			},
+			error: () => res([]),
+		}));
+	}
+
+	submit_distribution(d, doc, targets) {
+		const $w = d.fields_dict.dist_html.$wrapper;
+		const rows = [];
+		targets.forEach((t, ti) => {
+			$w.find(`.pl-dist-rows[data-ti="${ti}"] .pl-dist-row`).each(function () {
+				const qty = flt($(this).find(".pl-dist-qty").val());
+				const wh = $(this).find(".pl-dist-wh").val();
+				if (qty > 0 && wh) {
+					rows.push({ item_code: t.item_code, warehouse: wh, qty: qty,
+						uom: t.uom, rate: t.rate || 0 });
+				}
+			});
+		});
+		if (!rows.length) return;
+		d.get_primary_btn().prop("disabled", true);
+		d.hide();
+		this.busy = true;
+		this.start_progress({
+			title: "Posting distribution…",
+			subtitle: `${doc.name} · Awaiting Distribution → Completed`,
+			steps: [
+				{ label: "Validating the split (sum = produced)…", kind: "auto" },
+				{ label: "Completing Job Cards (if any)…", kind: "auto" },
+				{ label: "Posting the multi-warehouse Manufacture entry…", kind: "auto" },
+				{ label: "Closing the Work Order + reconciling WIP…", kind: "auto" },
+			],
+		});
+		this.advance_progress(0);
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.ts_production_multi.complete_distribution",
+			type: "POST",
+			args: { name: doc.name, distribution: rows },
+			callback: (r) => {
+				const m = r.message || {};
+				this.advance_progress(3);
+				this.finish_progress({
+					doneStatus: "Done ✓ — output distributed & Work Order closed",
+					onDone: () => {
+						frappe.show_alert({
+							message: __("Distribution posted — {0} completed via {1}.",
+								[doc.name, m.stock_entry || ""]),
+							indicator: "green",
+						});
+						this.reload_data();
+					},
+				});
+				this.busy = false;
+			},
+			error: (err) => {
+				this.fail_progress(this.err_text(err) ||
+					__("The distribution could not be posted."));
+				this.busy = false;
+			},
+		});
+	}
+
 	load_boms() {
 		frappe.call({
 			method: "frappe.client.get_list",
@@ -731,6 +1064,8 @@ class ProductionLogging {
 			"Draft": "b-draft",
 			"Pending Stores Release": "b-pending",
 			"Released": "b-released",
+			"Pending Material Request": "b-matreq",
+			"Awaiting Distribution": "b-distrib",
 			"Completed": "b-completed",
 			"Rejected": "b-rejected",
 			"Cancelled": "b-cancelled",
@@ -1014,7 +1349,12 @@ class ProductionLogging {
 	// ── TRIGGER 1: CREATE the production log (PM: insert -> submit_for_release)
 	submit_for_release() {
 		if (this.busy) return;
+		const multi = this.flow_mode === "multiple";
 		const produced = flt(this.$root.find("#pl-produced-qty").val());
+		if (multi && !this.connector) {
+			frappe.show_alert({ message: __("Pick a BOM Connector first."), indicator: "orange" });
+			return;
+		}
 		if (!this.bom || produced <= 0) {
 			frappe.show_alert({ message: __("Pick a BOM and enter a produced qty."), indicator: "orange" });
 			return;
@@ -1048,8 +1388,14 @@ class ProductionLogging {
 		// jumps to 100% on success (or flips to an error state on failure).
 		this.start_progress({
 			title: "Creating production log…",
-			subtitle: "Draft → Pending Stores Release",
-			steps: [
+			subtitle: multi ? "Draft → Pending Material Request" : "Draft → Pending Stores Release",
+			steps: multi ? [
+				{ label: "Creating the production entry…", kind: "auto" },
+				{ label: "Validating + creating Work Order…", kind: "auto" },
+				{ label: "Creating the auto Material Request…", kind: "auto" },
+				{ label: "Notifying departments (reporting)…", kind: "auto" },
+				{ label: "Routing the MR to Store Manager…", kind: "gate" },
+			] : [
 				{ label: "Creating the production entry…", kind: "auto" },
 				{ label: "Validating + creating Work Order…", kind: "auto" },
 				{ label: "Scaling raw material from BOM…", kind: "auto" },
@@ -1060,18 +1406,21 @@ class ProductionLogging {
 
 		// Step 1 — insert the draft TS Production Entry.
 		this.advance_progress(0);
+		const doc_payload = {
+			doctype: PL_DOCTYPE,
+			bom: this.bom,
+			actual_produced_qty: produced,
+			standard_batches: 1,
+			materials: materials,
+			byproducts: byproducts,
+		};
+		if (multi) {
+			doc_payload.flow_type = "Multiple";
+			doc_payload.bom_connector = this.connector.name;
+		}
 		frappe.call({
 			method: "frappe.client.insert",
-			args: {
-				doc: {
-					doctype: PL_DOCTYPE,
-					bom: this.bom,
-					actual_produced_qty: produced,
-					standard_batches: 1,
-					materials: materials,
-					byproducts: byproducts,
-				},
-			},
+			args: { doc: doc_payload },
 			callback: (r) => {
 				const doc = r.message;
 				if (!doc || !doc.name) {
@@ -1081,19 +1430,26 @@ class ProductionLogging {
 				}
 				// advance through the "creating" steps while the release call runs
 				this.advance_progress(1);
-				// Step 2 — submit_for_release (creates WO + draft release SE, flips status).
+				// Step 2 — Single: submit_for_release (WO + draft release SE).
+				//          Multiple: submit_multi_for_release (WO + auto Material Request).
 				frappe.call({
-					method: `${PL_REL}.submit_for_release`,
+					method: multi
+						? "trustbit_ethanol.ts_gate_entry.ts_production_multi.submit_multi_for_release"
+						: `${PL_REL}.submit_for_release`,
 					type: "POST",
 					args: { name: doc.name },
 					callback: (rr) => {
 						const m = rr.message || {};
 						this.advance_progress(4);
 						this.finish_progress({
-							doneStatus: "Submitted ✓ — Pending Store Manager release",
+							doneStatus: multi
+								? "Submitted ✓ — Material Request routed to Store Manager"
+								: "Submitted ✓ — Pending Store Manager release",
 							onDone: () => {
 								frappe.show_alert({
-									message: __("Submitted {0} — pending Store Manager release.", [doc.name]),
+									message: multi
+										? __("Submitted {0} — Material Request {1} awaits Store Manager release.", [doc.name, m.material_request || ""])
+										: __("Submitted {0} — pending Store Manager release.", [doc.name]),
 									indicator: "green",
 								});
 								this.reset_after_submit();

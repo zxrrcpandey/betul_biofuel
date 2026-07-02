@@ -56,6 +56,12 @@ CONTROL_FIELDS = [
 	"wip_reconcile_variance_pct",
 	"wip_returned_stock_entry",
 	"wip_reconcile_note",
+	# Multiple flow (Phase D) — written ONLY by ts_production_multi endpoints (db_set).
+	"flow_type",
+	"bom_connector",
+	"material_request",
+	"distribution_stock_entry",
+	"distribution_done",
 ]
 
 # Settings keys on TS Settings (Single). ts_settings.JSON only — ts_settings.py untouched.
@@ -669,6 +675,31 @@ def production_on_stock_entry_cancel(doc, method=None):
 				frappe.get_doc("TS Production Entry", name).add_comment(
 					"Comment",
 					_("Release Stock Entry {0} cancelled — reverted to Pending Stores Release.").format(doc.name),
+				)
+			except Exception:
+				frappe.clear_messages()
+		return
+
+	if purpose == "Material Transfer":
+		# Multiple flow (Phase D): the MR-released transfer SE was cancelled while
+		# the run awaited its distribution -> revert to Pending Material Request so
+		# the Store Manager can re-release via the Material Request.
+		entries = frappe.get_all(
+			"TS Production Entry",
+			filters={
+				"release_stock_entry": doc.name,
+				"flow_type": "Multiple",
+				"ts_variance_status": "Awaiting Distribution",
+			},
+			pluck="name",
+		)
+		for name in entries:
+			frappe.db.set_value("TS Production Entry", name, "ts_variance_status",
+								"Pending Material Request", update_modified=False)
+			try:
+				frappe.get_doc("TS Production Entry", name).add_comment(
+					"Comment",
+					_("Released transfer {0} cancelled — reverted to Pending Material Request.").format(doc.name),
 				)
 			except Exception:
 				frappe.clear_messages()

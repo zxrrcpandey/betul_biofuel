@@ -1,0 +1,626 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:BBPL-PCD-{YYYY}-{#####}",
+ "creation": "2026-06-26 00:00:00",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-06-26 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Production Cascade Log",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "track_views": 0,
+ "field_order": [
+  "section_target",
+  "target_production",
+  "target_work_order",
+  "approval_status",
+  "rate_limit_position",
+  "col_target_right",
+  "target_chain_json",
+  "section_hazard",
+  "hazard_c_blocked",
+  "col_hazard_right",
+  "hazard_c_findings_json",
+  "section_two_person",
+  "initiated_by",
+  "initiated_at",
+  "col_two_person_right",
+  "approved_by",
+  "approved_at",
+  "rejection_reason",
+  "section_confirms",
+  "confirm_production_name_typed",
+  "col_confirms_right",
+  "force_manufacture_override",
+  "force_manufacture_confirmation_typed",
+  "force_dispatched_override",
+  "force_dispatched_confirmation_typed",
+  "section_hash_chain",
+  "prev_row_hash",
+  "col_hash_right",
+  "this_row_hash",
+  "section_backup",
+  "backup_filename",
+  "col_backup_right",
+  "backup_sha256",
+  "section_forensic",
+  "forensic_block_json",
+  "section_webhook",
+  "webhook_delivered",
+  "webhook_response_code",
+  "col_webhook_right",
+  "webhook_attempted_at",
+  "webhook_response_body_excerpt",
+  "section_execution",
+  "executed_at",
+  "executed_as",
+  "col_execution_right",
+  "execution_result_json",
+  "section_revert",
+  "revert_window_expires_at",
+  "reverted_at",
+  "col_revert_right",
+  "reverted_by",
+  "revert_result_json",
+  "section_integrity",
+  "integrity_scan_run_at",
+  "integrity_scan_clean",
+  "col_integrity_right",
+  "integrity_scan_orphans_json",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_target",
+   "fieldtype": "Section Break",
+   "label": "Cascade Target"
+  },
+  {
+   "fieldname": "target_production",
+   "fieldtype": "Link",
+   "options": "TS Production Entry",
+   "label": "Target Production Entry",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only_on_submit": 1,
+   "set_only_once": 1,
+   "permlevel": 0,
+   "description": "The TS Production Entry whose full chain (Quality Inspections -> surplus-return SE -> Manufacture SE -> Release SE -> Job Cards -> Work Order -> TS Production Entry) will be cascade-deleted and physically removed."
+  },
+  {
+   "fieldname": "target_work_order",
+   "fieldtype": "Link",
+   "options": "Work Order",
+   "label": "Target Work Order",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "permlevel": 0,
+   "description": "Snapshot of pe.work_order at initiate time. Retained for forensics after the PE is deleted."
+  },
+  {
+   "fieldname": "approval_status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending CEO Approval\nApproved\nRejected\nCancelled\nExecuted\nReverted\nFailed",
+   "default": "Pending CEO Approval",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "permlevel": 1,
+   "reqd": 1,
+   "description": "State machine. Mutated only by API endpoints (controlled via production_cascade_api_caller flag)."
+  },
+  {
+   "fieldname": "rate_limit_position",
+   "fieldtype": "Int",
+   "label": "Rate Limit Position (Nth in window)",
+   "read_only": 1,
+   "permlevel": 0,
+   "description": "Nth cascade in the initiator's rolling rate-limit window."
+  },
+  {
+   "fieldname": "col_target_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_chain_json",
+   "fieldtype": "Long Text",
+   "label": "Target Chain Snapshot (JSON)",
+   "read_only_on_submit": 1,
+   "permlevel": 1,
+   "description": "Full JSON snapshot of WO/JC/Release-SE/Manufacture-SE/surplus-SE/QI names + produced rows + posting dates captured at initiate time. Source of truth for scan_orphans after the PE is gone."
+  },
+  {
+   "fieldname": "section_hazard",
+   "fieldtype": "Section Break",
+   "label": "HAZARD-C (Downstream Consumption)"
+  },
+  {
+   "fieldname": "hazard_c_blocked",
+   "fieldtype": "Check",
+   "label": "HAZARD-C Detected (FG Dispatched/Consumed)",
+   "default": "0",
+   "read_only": 1,
+   "permlevel": 0,
+   "description": "1 if the pre-flight found a downstream consumer (Delivery Note / downstream Stock Entry / Sales Invoice with update_stock) of the FG or by-products this run produced. Surfaced so the CEO/MD sees the blast radius before approving."
+  },
+  {
+   "fieldname": "col_hazard_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "hazard_c_findings_json",
+   "fieldtype": "Long Text",
+   "label": "HAZARD-C Findings (JSON)",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "The exact downstream voucher(s) (Delivery Note / Stock Entry / Sales Invoice) that consumed produced FG/by-products, with item, warehouse and qty_out."
+  },
+  {
+   "fieldname": "section_two_person",
+   "fieldtype": "Section Break",
+   "label": "Two-Person Rule"
+  },
+  {
+   "fieldname": "initiated_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Initiated By",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only_on_submit": 1,
+   "set_only_once": 1,
+   "permlevel": 0,
+   "description": "Manufacturing Manager who initiated the cascade. Cannot be the same as Approved By."
+  },
+  {
+   "fieldname": "initiated_at",
+   "fieldtype": "Datetime",
+   "label": "Initiated At",
+   "reqd": 1,
+   "read_only_on_submit": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "col_two_person_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Approved By (CEO/MD)",
+   "in_list_view": 1,
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "CEO or MD who approved. Set by approve_production_cascade endpoint only; must differ from initiated_by."
+  },
+  {
+   "fieldname": "approved_at",
+   "fieldtype": "Datetime",
+   "label": "Approved At",
+   "read_only": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Rejection Reason",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "Required when CEO/MD rejects (>=10 chars)."
+  },
+  {
+   "fieldname": "section_confirms",
+   "fieldtype": "Section Break",
+   "label": "Type-to-Confirm Gates"
+  },
+  {
+   "fieldname": "confirm_production_name_typed",
+   "fieldtype": "Data",
+   "label": "Confirm: Production Entry Name",
+   "reqd": 1,
+   "read_only_on_submit": 1,
+   "permlevel": 0,
+   "description": "User must type the target Production Entry name literally."
+  },
+  {
+   "fieldname": "col_confirms_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "force_manufacture_override",
+   "fieldtype": "Check",
+   "label": "Force-Delete Manufacture SE",
+   "default": "0",
+   "read_only_on_submit": 1,
+   "permlevel": 1,
+   "description": "Allow the cascade to cancel + delete a submitted Manufacture Stock Entry (and surplus / release SEs + submitted QIs). Requires the FORCE-DELETE-MANUFACTURE confirmation."
+  },
+  {
+   "fieldname": "force_manufacture_confirmation_typed",
+   "fieldtype": "Data",
+   "label": "Force Manufacture Confirmation",
+   "read_only_on_submit": 1,
+   "permlevel": 1,
+   "description": "Must equal FORCE-DELETE-MANUFACTURE (case-sensitive) when force_manufacture_override = 1."
+  },
+  {
+   "fieldname": "force_dispatched_override",
+   "fieldtype": "Check",
+   "label": "Force-Delete With Dispatched FG (HAZARD-C)",
+   "default": "0",
+   "read_only_on_submit": 1,
+   "permlevel": 1,
+   "description": "HAZARD-C override: allow the cascade even though produced FG/by-products were already dispatched / consumed downstream. Cancelling the Manufacture SE corrupts that downstream stock. Requires the FORCE-DELETE-DISPATCHED confirmation."
+  },
+  {
+   "fieldname": "force_dispatched_confirmation_typed",
+   "fieldtype": "Data",
+   "label": "Force Dispatched Confirmation",
+   "read_only_on_submit": 1,
+   "permlevel": 1,
+   "description": "Must equal FORCE-DELETE-DISPATCHED (typed by the Manufacturing Manager) when force_dispatched_override = 1."
+  },
+  {
+   "fieldname": "section_hash_chain",
+   "fieldtype": "Section Break",
+   "label": "Hash Chain",
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:doc.docstatus===1"
+  },
+  {
+   "fieldname": "prev_row_hash",
+   "fieldtype": "Data",
+   "length": 64,
+   "label": "Previous Row Hash",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "SHA-256 of the immediately-prior submitted log row's this_row_hash. Empty for genesis row."
+  },
+  {
+   "fieldname": "col_hash_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "this_row_hash",
+   "fieldtype": "Data",
+   "length": 64,
+   "label": "This Row Hash",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "SHA-256 over canonical-serialized field tuple. Computed in validate()."
+  },
+  {
+   "fieldname": "section_backup",
+   "fieldtype": "Section Break",
+   "label": "Backup",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "backup_filename",
+   "fieldtype": "Data",
+   "label": "Backup Filename",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "Relative path under sites/<site>/private/files/cascade_backups/"
+  },
+  {
+   "fieldname": "col_backup_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "backup_sha256",
+   "fieldtype": "Data",
+   "length": 64,
+   "label": "Backup SHA-256",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "Crypto signature of backup file at write time. Verified before revert."
+  },
+  {
+   "fieldname": "section_forensic",
+   "fieldtype": "Section Break",
+   "label": "Forensic Block",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "forensic_block_json",
+   "fieldtype": "Long Text",
+   "label": "Forensic Block (JSON)",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "IP, OS, device, browser, GeoIP city/country, session_id, server_timezone, request_ts, screen, language, UA."
+  },
+  {
+   "fieldname": "section_webhook",
+   "fieldtype": "Section Break",
+   "label": "Webhook",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "webhook_delivered",
+   "fieldtype": "Check",
+   "label": "Webhook Delivered",
+   "default": "0",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "webhook_response_code",
+   "fieldtype": "Int",
+   "label": "Webhook HTTP Response Code",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "col_webhook_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "webhook_attempted_at",
+   "fieldtype": "Datetime",
+   "label": "Webhook Last Attempted At",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "webhook_response_body_excerpt",
+   "fieldtype": "Small Text",
+   "label": "Webhook Response Body (first 500 chars)",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "section_execution",
+   "fieldtype": "Section Break",
+   "label": "Execution Result"
+  },
+  {
+   "fieldname": "executed_at",
+   "fieldtype": "Datetime",
+   "label": "Executed At",
+   "read_only": 1,
+   "permlevel": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "executed_as",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Executed As",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "The user the engine ran AS (a Super-Admin-roled user holding the WO/JC/SE/QI cancel+delete grants). EXCLUDED from _HASH_FIELDS; captured here for audit attribution."
+  },
+  {
+   "fieldname": "col_execution_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "execution_result_json",
+   "fieldtype": "Long Text",
+   "label": "Execution Result (JSON)",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "Per-step success/fail/skipped JSON array, the pre-flight findings, and the net-zero ledger sweep result."
+  },
+  {
+   "fieldname": "section_revert",
+   "fieldtype": "Section Break",
+   "label": "Revert (Forensic Escape Hatch)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "revert_window_expires_at",
+   "fieldtype": "Datetime",
+   "label": "Revert Window Expires At",
+   "read_only": 1,
+   "permlevel": 1,
+   "description": "executed_at + N minutes (ts_prod_cascade_revert_window_minutes, default 5)."
+  },
+  {
+   "fieldname": "reverted_at",
+   "fieldtype": "Datetime",
+   "label": "Reverted At",
+   "read_only": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "col_revert_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reverted_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Reverted By",
+   "read_only": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "revert_result_json",
+   "fieldtype": "Long Text",
+   "label": "Revert Result (JSON)",
+   "read_only": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "section_integrity",
+   "fieldtype": "Section Break",
+   "label": "Integrity Scanner",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "integrity_scan_run_at",
+   "fieldtype": "Datetime",
+   "label": "Integrity Scan Run At",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "integrity_scan_clean",
+   "fieldtype": "Check",
+   "label": "Integrity Scan Clean",
+   "default": "0",
+   "read_only": 1,
+   "permlevel": 0,
+   "description": "1 = zero orphaned SLE/GL/WO/JC/SE/QI/PE rows found for the chain vouchers post-delete."
+  },
+  {
+   "fieldname": "col_integrity_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "integrity_scan_orphans_json",
+   "fieldtype": "Long Text",
+   "label": "Orphans Found (JSON)",
+   "read_only": 1,
+   "permlevel": 0
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "options": "TS Production Cascade Log",
+   "label": "Amended From",
+   "read_only": 1,
+   "no_copy": 1,
+   "print_hide": 1,
+   "permlevel": 0
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "submit": 1,
+   "print": 1,
+   "email": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "permlevel": 0,
+   "delete": 0,
+   "cancel": 0,
+   "amend": 0
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "permlevel": 1
+  },
+  {
+   "role": "Super Admin",
+   "read": 1,
+   "create": 1,
+   "write": 1,
+   "submit": 1,
+   "print": 1,
+   "email": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "permlevel": 0,
+   "delete": 0,
+   "cancel": 0,
+   "amend": 0
+  },
+  {
+   "role": "Super Admin",
+   "read": 1,
+   "permlevel": 1
+  },
+  {
+   "role": "Manufacturing Manager",
+   "read": 1,
+   "create": 1,
+   "write": 1,
+   "submit": 1,
+   "print": 1,
+   "email": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "permlevel": 0,
+   "delete": 0,
+   "cancel": 0,
+   "amend": 0,
+   "description": "Manufacturing Manager initiates a cascade (creates + submits a Pending log row). Cannot approve."
+  },
+  {
+   "role": "Manufacturing Manager",
+   "read": 1,
+   "permlevel": 1
+  },
+  {
+   "role": "CEO",
+   "read": 1,
+   "write": 1,
+   "permlevel": 1,
+   "description": "CEO writes to permlevel=1 fields (approval_status, approved_by, approved_at, rejection_reason, executed_at, execution_result_json, revert_*)"
+  },
+  {
+   "role": "CEO",
+   "read": 1,
+   "permlevel": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "MD",
+   "read": 1,
+   "write": 1,
+   "permlevel": 1,
+   "description": "MD writes to permlevel=1 fields (2-person approver alongside CEO)."
+  },
+  {
+   "role": "MD",
+   "read": 1,
+   "permlevel": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "Auditor",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "permlevel": 0
+  },
+  {
+   "role": "Auditor",
+   "read": 1,
+   "permlevel": 1
+  },
+  {
+   "role": "IT Head",
+   "read": 1,
+   "permlevel": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1
+  }
+ ],
+ "states": []
+}

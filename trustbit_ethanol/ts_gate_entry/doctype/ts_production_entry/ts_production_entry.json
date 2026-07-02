@@ -7,6 +7,8 @@
  "field_order": [
   "production_section",
   "naming_series",
+  "flow_type",
+  "bom_connector",
   "bom",
   "production_item",
   "production_item_name",
@@ -49,6 +51,12 @@
   "wip_reconcile_variance_pct",
   "wip_returned_stock_entry",
   "wip_reconcile_note",
+  "multi_flow_section",
+  "material_request",
+  "distribution_stock_entry",
+  "column_break_multi",
+  "distribution_done",
+  "fg_distribution",
   "materials_section",
   "materials",
   "byproducts_section",
@@ -69,6 +77,28 @@
    "no_copy": 1,
    "options": "PROD-.YYYY.-",
    "print_hide": 1
+  },
+  {
+   "default": "Single",
+   "fieldname": "flow_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Flow",
+   "no_copy": 1,
+   "options": "Single\nMultiple",
+   "read_only": 1,
+   "description": "Single = one BOM, direct Stores release (classic). Multiple = BOM Connector flow: auto Material Request release + manual multi-warehouse distribution. Control-plane: set at creation by the Production Logging page; tamper-guarded."
+  },
+  {
+   "depends_on": "eval:doc.flow_type=='Multiple'",
+   "fieldname": "bom_connector",
+   "fieldtype": "Link",
+   "label": "BOM Connector",
+   "no_copy": 1,
+   "options": "TS BOM Connector",
+   "read_only": 1,
+   "description": "The Multiple-flow connector (main RS BOM + reporting-only department BOMs)."
   },
   {
    "bold": 1,
@@ -220,7 +250,7 @@
    "in_standard_filter": 1,
    "label": "Status",
    "no_copy": 1,
-   "options": "Draft\nPending Stores Release\nReleased\nCompleted\nRejected\nCancelled",
+   "options": "Draft\nPending Stores Release\nReleased\nPending Material Request\nAwaiting Distribution\nCompleted\nRejected\nCancelled",
    "read_only": 1
   },
   {
@@ -378,6 +408,52 @@
    "label": "WIP Reconciliation Note",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.flow_type=='Multiple'",
+   "fieldname": "multi_flow_section",
+   "fieldtype": "Section Break",
+   "label": "Multiple Flow (Material Request + Distribution)"
+  },
+  {
+   "fieldname": "material_request",
+   "fieldtype": "Link",
+   "label": "Material Request (auto)",
+   "no_copy": 1,
+   "options": "Material Request",
+   "read_only": 1,
+   "description": "Auto-created Material Transfer MR the Store Manager releases (Multiple flow). Control-plane."
+  },
+  {
+   "fieldname": "distribution_stock_entry",
+   "fieldtype": "Link",
+   "label": "Distribution Stock Entry",
+   "no_copy": 1,
+   "options": "Stock Entry",
+   "read_only": 1,
+   "description": "The multi-warehouse Manufacture Stock Entry posted from the PM's distribution. Control-plane."
+  },
+  {
+   "fieldname": "column_break_multi",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "distribution_done",
+   "fieldtype": "Check",
+   "label": "Distribution Posted",
+   "no_copy": 1,
+   "read_only": 1,
+   "description": "Control-plane: set once the multi-warehouse distribution has been posted."
+  },
+  {
+   "fieldname": "fg_distribution",
+   "fieldtype": "Table",
+   "label": "FG / By-Product Distribution",
+   "no_copy": 1,
+   "options": "TS Production FG Distribution",
+   "read_only": 1,
+   "description": "Multi-warehouse split of the produced item + by-products (Multiple flow). Written by the distribution endpoint; per item, qty across warehouses must equal the actual quantity."
   },
   {
    "fieldname": "materials_section",

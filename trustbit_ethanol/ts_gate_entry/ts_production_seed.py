@@ -25,7 +25,9 @@ DOCTYPE = "TS Production Entry"
 PERMLEVEL = 0
 
 # The full enum the release flow uses (must match ts_production_entry.json options).
-VARIANCE_STATUS_OPTIONS = "Draft\nPending Stores Release\nReleased\nCompleted\nRejected\nCancelled"
+# Phase D adds the two Multiple-flow states (Lesson 239: re-applied via Property Setter).
+VARIANCE_STATUS_OPTIONS = ("Draft\nPending Stores Release\nReleased\nPending Material Request"
+                           "\nAwaiting Distribution\nCompleted\nRejected\nCancelled")
 
 # Stores Manager — the single release-gate role (read/report + write to flip status).
 _STORES_MANAGER_PERMS = {
@@ -145,7 +147,55 @@ _PRODUCTION_SETTINGS_FIELDS = [
 						"department consumption logs + the Log Consumption card on the "
 						"Production Logging page). Ships OFF; no JSON default (Lesson 227)."),
 	},
+	# Phase D (Multi-BOM plan) — kill switch for the Multiple (BOM Connector) flow.
+	{
+		"fieldname": "ts_production_multi_flow_enabled",
+		"label": "Enable Multiple (BOM Connector) Production Flow",
+		"fieldtype": "Check",
+		"insert_after": "ts_production_dept_entry_enabled",
+		"description": ("Kill switch for the Multiple flow (auto Material Request release + "
+						"multi-warehouse distribution). Ships OFF; no JSON default (Lesson 227). "
+						"Independent of the Single flow and dept entries."),
+	},
+	# Phase D — optional cost centre for the auto-created Material Requests (the MR
+	# naming series requires a cost centre). Falls back to the company default.
+	{
+		"fieldname": "ts_production_mr_cost_center",
+		"label": "Production MR Cost Center",
+		"fieldtype": "Link", "options": "Cost Center",
+		"insert_after": "ts_production_multi_flow_enabled",
+		"description": ("Cost centre stamped on the Multiple-flow auto Material Requests "
+						"(drives MR naming). Blank = the company's default cost centre."),
+	},
 ]
+
+# Phase D — tag field on Material Request identifying the Multiple-flow auto-MRs
+# (user decision 2 Jul: tag + filterable so they don't clutter the procurement list).
+_MR_TAG_FIELD = {
+	"fieldname": "ts_production_run",
+	"label": "Production Run (auto)",
+	"fieldtype": "Link",
+	"options": "TS Production Entry",
+	"insert_after": "material_request_type",
+	"read_only": 1,
+	"no_copy": 1,
+	"in_standard_filter": 1,
+	"description": "Set when this Material Request was auto-created by a Multiple-flow production run.",
+}
+
+
+def _seed_mr_tag_field():
+	"""Create Material Request.ts_production_run, only if absent. Idempotent."""
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+	if not frappe.db.exists("DocType", "TS Production Entry"):
+		return False
+	meta = frappe.get_meta("Material Request")
+	if meta.has_field(_MR_TAG_FIELD["fieldname"]):
+		return False
+	create_custom_fields({"Material Request": [_MR_TAG_FIELD]}, ignore_validate=True)
+	frappe.clear_cache(doctype="Material Request")
+	return True
 
 
 def _seed_production_settings_fields():
@@ -195,6 +245,7 @@ def after_migrate_production_logging():
 	"""after_migrate entry point (register in hooks.py under unlock). Idempotent."""
 	_seed_production_settings_fields()
 	_seed_bom_category_field()
+	_seed_mr_tag_field()
 	ps_changed = _apply_variance_status_options()
 	perm_changed = _upsert_stores_manager_docperm()
 	_seed_page_roles()

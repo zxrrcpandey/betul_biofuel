@@ -1,13 +1,24 @@
 """Pre-cascade backup writer + revert restore (v2.11.0 Hardening B + F + M).
 
+GENERALIZED: this is the SINGLE backup writer for BOTH the Token cascade and the
+Production cascade (one writer, two callers — avoids "two of everything"). The
+optional `doc_map` parameter (default None) selects the behavior:
+  - `doc_map=None`  -> the Token cascade path is BYTE-IDENTICAL to the original
+    (uses cascade_delete_engine.build_chain_snapshot + the hardcoded PI/PR/DS/QI/WB/GE
+    docs map). Existing Token backups + restores are unchanged.
+  - `doc_map` given -> a generic {label: (doctype, [names])} map drives both the
+    backup tree AND the restore order (the Production cascade caller passes
+    production_entry / work_order / job_cards / stock_entries / quality_inspections).
+
 Workflow:
-- `create_pre_cascade_backup(token_name, log_name)` — gathers full chain
-  (PI / PR / DS / QI / WB / GE / Token) as a JSON tree, computes SHA-256,
-  writes to `sites/<site>/private/files/cascade_backups/<log_name>.json`
-  plus `<log_name>.sha256` sidecar. Returns dict with filename + hash.
+- `create_pre_cascade_backup(token_name, log_name, doc_map=None)` — gathers the full
+  chain as a JSON tree, computes SHA-256, writes to
+  `sites/<site>/private/files/cascade_backups/<log_name>.json` plus `<log_name>.sha256`
+  sidecar. Returns dict with filename + hash.
 - `verify_backup_sha256(log_doc)` — re-hashes file and asserts match.
-- `restore_from_backup(log_doc)` — idempotent restore for the 5-min revert
-  grace window (Hardening M). Verifies SHA-256 BEFORE write.
+- `restore_from_backup(log_doc)` — idempotent restore for the revert grace window
+  (Hardening M). Verifies SHA-256 BEFORE write. Restore order is driven by the
+  backup file's own `restore_order` (generic) or the legacy Token order (default).
 
 Lesson references: 222 (idempotent), 237 (log_error kwargs), 238 (best-effort).
 """
@@ -28,10 +39,11 @@ def _backup_dir() -> str:
 	return target
 
 
-# A cascade backup file is always named "<TS Cascade Delete Log name>.json",
-# i.e. "BBPL-CDL-YYYY-NNNNN.json" (digits only after the year). Anything else
-# must be rejected before it touches a filesystem path.
-_BACKUP_NAME_RE = re.compile(r"^BBPL-CDL-[0-9]{4}-[0-9]+\.json$")
+# A cascade backup file is always named "<cascade log name>.json", i.e.
+# "BBPL-CDL-YYYY-NNNNN.json" (Token cascade) OR "BBPL-PCD-YYYY-NNNNN.json"
+# (Production cascade) — digits only after the year. Anything else must be
+# rejected before it touches a filesystem path.
+_BACKUP_NAME_RE = re.compile(r"^BBPL-(?:CDL|PCD)-[0-9]{4}-[0-9]+\.json$")
 
 
 def _safe_backup_name(name: str) -> str:
@@ -65,33 +77,57 @@ def _row_dict(doctype: str, name: str) -> dict | None:
 	return doc.as_dict()
 
 
-def create_pre_cascade_backup(token_name: str, log_name: str) -> dict:
+def create_pre_cascade_backup(token_name: str, log_name: str, doc_map: dict | None = None) -> dict:
 	"""Snapshot the full chain to JSON + write SHA256 sidecar.
+
+	`doc_map` (default None) — when None, the Token cascade path runs unchanged
+	(byte-identical). When a dict {label: (doctype, [names])} is supplied, the backup
+	tree + a `restore_order` are built generically from it (the Production cascade
+	caller passes the WO/JC/SE/QI/PE map).
 
 	Returns:
 	  {"filename": "<log_name>.json", "sha256": "...", "size_bytes": N}
 	"""
-	from trustbit_ethanol.ts_gate_entry.cascade_delete_engine import build_chain_snapshot
+	if doc_map is None:
+		# ── Token cascade path (UNCHANGED — byte-identical behavior) ─────────
+		from trustbit_ethanol.ts_gate_entry.cascade_delete_engine import build_chain_snapshot
 
-	chain = build_chain_snapshot(token_name)
-	full = {
-		"meta": {
-			"backup_format_version": 1,
-			"token_name": token_name,
-			"log_name": log_name,
-			"taken_at": datetime.utcnow().isoformat() + "Z",
-		},
-		"chain_summary": chain,
-		"docs": {
-			"ts_token": _row_dict("TS Token", token_name),
-			"gate_entries": [_row_dict("TS Gate Entry", r["name"]) for r in chain["gate_entries"]],
-			"weighbridge_logs": [_row_dict("TS Weighbridge Log", r["name"]) for r in chain["weighbridge_logs"]],
-			"quality_inspections": [_row_dict("TS Quality Inspection", r["name"]) for r in chain["quality_inspections"]],
-			"deduction_sheets": [_row_dict("TS Deduction Sheet", r["name"]) for r in chain["deduction_sheets"]],
-			"purchase_receipts": [_row_dict("Purchase Receipt", r["name"]) for r in chain["purchase_receipts"]],
-			"purchase_invoices": [_row_dict("Purchase Invoice", r["name"]) for r in chain["purchase_invoices"]],
-		},
-	}
+		chain = build_chain_snapshot(token_name)
+		full = {
+			"meta": {
+				"backup_format_version": 1,
+				"token_name": token_name,
+				"log_name": log_name,
+				"taken_at": datetime.utcnow().isoformat() + "Z",
+			},
+			"chain_summary": chain,
+			"docs": {
+				"ts_token": _row_dict("TS Token", token_name),
+				"gate_entries": [_row_dict("TS Gate Entry", r["name"]) for r in chain["gate_entries"]],
+				"weighbridge_logs": [_row_dict("TS Weighbridge Log", r["name"]) for r in chain["weighbridge_logs"]],
+				"quality_inspections": [_row_dict("TS Quality Inspection", r["name"]) for r in chain["quality_inspections"]],
+				"deduction_sheets": [_row_dict("TS Deduction Sheet", r["name"]) for r in chain["deduction_sheets"]],
+				"purchase_receipts": [_row_dict("Purchase Receipt", r["name"]) for r in chain["purchase_receipts"]],
+				"purchase_invoices": [_row_dict("Purchase Invoice", r["name"]) for r in chain["purchase_invoices"]],
+			},
+		}
+	else:
+		# ── Generic path (Production cascade) — build the tree from doc_map ───
+		docs = {}
+		restore_order = []
+		for label, (doctype, names) in doc_map.items():
+			docs[label] = [_row_dict(doctype, n) for n in (names or []) if n]
+			restore_order.append([label, doctype])
+		full = {
+			"meta": {
+				"backup_format_version": 2,
+				"target_name": token_name,
+				"log_name": log_name,
+				"taken_at": datetime.utcnow().isoformat() + "Z",
+			},
+			"restore_order": restore_order,
+			"docs": docs,
+		}
 
 	# Serialize with deterministic key order so SHA-256 is reproducible.
 	body = json.dumps(full, indent=2, sort_keys=True, default=str)
@@ -141,6 +177,11 @@ def restore_from_backup(log_doc) -> dict:
 	full_path = os.path.join(_backup_dir(), _safe_backup_name(log_doc.backup_filename))
 	with open(full_path, "r", encoding="utf-8") as f:
 		data = json.load(f)
+
+	# Generic backup (format_version 2 — e.g. Production cascade): restore from the
+	# stored restore_order. The Token path below is untouched.
+	if (data.get("meta") or {}).get("backup_format_version") == 2:
+		return _restore_generic(data)
 
 	restored = {"ts_token": 0, "ge": 0, "wb": 0, "qi": 0, "ds": 0, "pr": 0, "pi": 0}
 	token_status_restored = False
@@ -234,3 +275,56 @@ def restore_from_backup(log_doc) -> dict:
 		"restored": restored,
 		"token_status_restored": token_status_restored,
 	}
+
+
+def _restore_generic(data: dict) -> dict:
+	"""Restore a format_version 2 backup (e.g. Production cascade).
+
+	Re-inserts each backed-up document via db_insert (bypasses lifecycle hooks — we
+	want the EXACT pre-cascade row state, NOT re-run validations / SLE / GL posting).
+	Restore order = the stored `restore_order` list. Idempotent: skips a doc that
+	already exists. Like the Token revert, this restores DOCUMENTS ONLY — Stock Ledger
+	/ GL entries and bin balances are NOT recreated (the API surfaces this loudly).
+
+	Returns: {"success": bool, "restored": {label: count}, "ledger_restored": False}.
+	"""
+	docs = data.get("docs", {})
+	restore_order = data.get("restore_order") or [[k, None] for k in docs.keys()]
+	restored = {}
+	for label, _dt in restore_order:
+		recs = docs.get(label)
+		if not recs:
+			continue
+		if isinstance(recs, dict):
+			recs = [recs]
+		count = 0
+		for rec in recs:
+			if not rec:
+				continue
+			dt = rec.get("doctype") or _dt
+			if not dt or frappe.db.exists(dt, rec.get("name")):
+				continue  # idempotent skip
+			try:
+				new_doc = frappe.get_doc(rec)
+				new_doc.flags.ignore_permissions = True
+				new_doc.flags.ignore_links = True
+				new_doc.flags.ignore_validate = True
+				new_doc.flags.ignore_mandatory = True
+				new_doc.db_insert()
+				for child_field, child_rows in [(k, v) for k, v in rec.items() if isinstance(v, list)]:
+					for child_row in child_rows:
+						if isinstance(child_row, dict) and "doctype" in child_row:
+							cdoc = frappe.get_doc(child_row)
+							cdoc.flags.ignore_permissions = True
+							cdoc.flags.ignore_validate = True
+							cdoc.db_insert()
+				count += 1
+			except Exception as e:
+				frappe.log_error(
+					title=f"Production cascade revert restore failed: {dt} {rec.get('name')}",
+					message=f"{type(e).__name__}: {e}",
+				)
+		restored[label] = count
+
+	frappe.db.commit()
+	return {"success": True, "restored": restored, "ledger_restored": False}

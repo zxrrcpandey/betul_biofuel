@@ -665,3 +665,42 @@
 }
 .prodlog .btn.dept-view-btn:hover { color: var(--text, inherit); }
 .prodlog .dept-empty { padding: 18px; font-size: 13px; color: var(--muted, #94a3b8); }
+
+/* ── Phase D — Multiple (BOM Connector) flow ─────────────────────────── */
+.prodlog .badge.b-matreq {
+  background: rgba(245, 158, 11, .14); color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, .35);
+}
+.prodlog[data-prodlog-theme="light"] .badge.b-matreq {
+  background: #fef3c7; color: #b45309; border-color: #fde68a;
+}
+.prodlog .badge.b-matreq .bdot { animation: pl-pulse 1.6s ease-in-out infinite; }
+
+.prodlog .flow-seg {
+  display: flex; gap: 6px; padding: 4px;
+  border: 1px solid var(--line, rgba(148, 163, 184, .3)); border-radius: 10px;
+  margin-bottom: 8px;
+}
+.prodlog .flow-seg-btn {
+  flex: 1; padding: 8px 10px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--muted, #94a3b8);
+  font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.prodlog .flow-seg-btn.active { background: linear-gradient(135deg, #16a34a, #15803d); color: #fff; }
+.prodlog .flow-seg-btn.seg-multi.active { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+
+.prodlog .conn-dept-list {
+  border: 1px dashed rgba(139, 92, 246, .45); border-radius: 8px;
+  padding: 8px 10px; margin: 8px 0 4px; font-size: 12px;
+}
+.prodlog .conn-dept-list .cdl-h { font-size: 11px; opacity: .75; margin-bottom: 5px; }
+.prodlog .conn-dept-list .cdl-row {
+  display: flex; gap: 10px; align-items: center; padding: 3px 0;
+}
+.prodlog .conn-dept-list .cdl-row .mono { font-family: "Courier New", monospace; font-size: 11px; }
+.prodlog .conn-dept-list .cdl-tag {
+  margin-left: auto; font-size: 10px; font-weight: 700;
+  background: rgba(139, 92, 246, .14); color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, .3); border-radius: 8px; padding: 1px 7px;
+}
+.prodlog[data-prodlog-theme="light"] .conn-dept-list .cdl-tag { background: #f3e8ff; color: #7c3aed; }

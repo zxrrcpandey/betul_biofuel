@@ -59,11 +59,16 @@ def read_bom_attrs(bom_name):
 #  STEP 3-4 — CREATE + SUBMIT WORK ORDER
 # ─────────────────────────────────────────────────────────────────────────
 
-def create_and_submit_work_order(pe, settings):
+def create_and_submit_work_order(pe, settings, skip_transfer=0):
 	"""Build + submit a Work Order for a TS Production Entry. Returns the WO name.
 
 	pe       : the TS Production Entry document
 	settings : dict from ts_production_api._get_settings()
+	skip_transfer: 1 for the Multiple flow (Phase D) — its raw material reaches WIP
+	    via the auto-Material-Request's plain Material Transfer SE, which does NOT
+	    count toward WO.material_transferred_for_manufacture; skip_transfer lets the
+	    Manufacture SE post without transfer records (consumption is forced from WIP
+	    by the distribution builder). Single flow stays 0 (unchanged).
 
 	CRITICAL: company = BOM.company (verified blocker #1); per-item source_warehouse
 	is assigned from the PE material row, else the release-source default, else WIP
@@ -95,7 +100,7 @@ def create_and_submit_work_order(pe, settings):
 	if scrap:
 		wo.scrap_warehouse = scrap
 	wo.use_multi_level_bom = 0
-	wo.skip_transfer = 0
+	wo.skip_transfer = cint(skip_transfer)
 	wo.planned_start_date = now_datetime()  # verified prerequisite
 
 	# Pull the operation/required-item structure from the BOM.

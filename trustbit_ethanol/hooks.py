@@ -196,6 +196,8 @@ doc_events = {
 		"on_cancel": [
 			"trustbit_ethanol.ts_gate_entry.ts_mr_transfer.cleanup_draft_se_on_mr_cancel",
 			"trustbit_ethanol.ts_gate_entry.ts_budget_override.cancel_linked_override_on_source_cancel",
+			# v2.20.x Phase D — a cancelled Multiple-flow auto-MR rejects its production run
+			"trustbit_ethanol.ts_gate_entry.ts_production_multi.production_multi_on_mr_cancel",
 		],
 		# v2.9.14.5 — refresh items.actual_qty from live Bin on form open (in-memory only, safe on docstatus=1)
 		"onload": "trustbit_ethanol.ts_gate_entry.ts_mr_available_refresh.refresh_actual_qty_onload",
@@ -250,6 +252,9 @@ doc_events = {
 			"trustbit_ethanol.ts_gate_entry.ts_mr_transfer.revert_on_stock_entry_cancel",
 			"trustbit_ethanol.ts_gate_entry.ts_production_api.production_on_stock_entry_cancel",
 		],
+		# v2.20.x Phase D — the tagged Multiple-flow MR's transfer SE advances the run
+		# to Awaiting Distribution (early-returns on non-Material-Transfer purposes)
+		"on_submit": "trustbit_ethanol.ts_gate_entry.ts_production_multi.production_multi_on_stock_entry_submit",
 	},
 	"User": {
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_user_management.on_user_update",
@@ -338,6 +343,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.ts_production_seed.after_migrate_production_logging",
 	# v2.19.0 — TS Production + OMC Supply workspaces + KPI number cards (idempotent, create-if-missing)
 	"trustbit_ethanol.ts_gate_entry.setup_dashboard_workspaces.seed_dashboard_workspaces",
+	# v2.19.x — Production Cascade Delete tool: kill-switch + config fields + page roles (ships INERT)
+	"trustbit_ethanol.ts_gate_entry.setup_production_cascade.seed_production_cascade",
 	# GST Breakdown summary field on Purchase Order (display-only; CGST/SGST/IGST + Total)
 	"trustbit_ethanol.ts_gate_entry.setup.seed_gst_breakdown_field",
 	# Quality Reports access policy — restrict TS Quality Inspection to AVP/CEO/MD/Purchase(x4)/Accounts + creators; revoke G1/G2/WB/Quality Manager (admin roles preserved)
@@ -356,10 +363,14 @@ scheduler_events = {
 			"trustbit_ethanol.ts_gate_entry.ts_post_dated.expire_post_dated_requests",
 			# v2.11.0 — cascade delete revert window expiry (observability)
 			"trustbit_ethanol.ts_gate_entry.cascade_delete_api.scheduled_expire_revert_windows",
+			# v2.19.x — production cascade delete revert window expiry (observability)
+			"trustbit_ethanol.ts_gate_entry.production_cascade_api.scheduled_expire_production_revert_windows",
 		],
 		"0 3 * * *": [
 			# v2.11.0 — nightly cascade orphan-trail + hash chain audit
 			"trustbit_ethanol.ts_gate_entry.cascade_delete_api.scheduled_nightly_integrity_scan",
+			# v2.19.x — nightly production cascade orphan + hash chain audit
+			"trustbit_ethanol.ts_gate_entry.production_cascade_api.scheduled_nightly_production_integrity_scan",
 		],
 		"*/30 * * * *": [
 			"trustbit_ethanol.ts_gate_entry.ts_po_approval.check_approval_sla",

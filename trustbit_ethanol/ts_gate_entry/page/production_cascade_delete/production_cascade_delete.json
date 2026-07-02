@@ -1,0 +1,25 @@
+{
+ "creation": "2026-06-26 00:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-06-26 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "production-cascade-delete",
+ "owner": "Administrator",
+ "page_name": "production-cascade-delete",
+ "roles": [
+  {"role": "Super Admin"},
+  {"role": "CEO"},
+  {"role": "MD"},
+  {"role": "System Manager"},
+  {"role": "Administrator"},
+  {"role": "Auditor"},
+  {"role": "IT Head"},
+  {"role": "Manufacturing Manager"}
+ ],
+ "standard": "Yes",
+ "system_page": 0,
+ "title": "Production Cascade Delete (BBPL)"
+}

@@ -1,0 +1,233 @@
+"""TS Production Cascade Log controller (Production Cascade Delete).
+
+Append-only audit doctype for the Production Cascade Delete tool — the manufacturing
+sibling of the Token Cascade Delete System (TS Cascade Delete Log). Every production
+cascade produces ONE log row; the row is hash-chained to the prior row and locked
+against modification post-submit. Mirrors the Token log's hardened model exactly;
+the field set differs (target_production / target_work_order instead of target_token,
+HAZARD-C findings, force_manufacture / force_dispatched overrides).
+
+This is a SEPARATE doctype (not a chain_type discriminator on TS Cascade Delete Log)
+because the Token log's _HASH_FIELDS tuple is append-only/frozen — adding production
+fields would re-hash every existing prod log row. Separate, independently-verifiable
+hash chain; mirrors the project precedent (Production Entry got its OWN doctype).
+
+Lesson references:
+- 162 (permlevel=1 tamper protection for approval/exec/control fields)
+- 175 (POST CSRF — but here only the API mutates this doc; no whitelist on this controller)
+- 176 (try/finally flag-bypass for API-driven mutations)
+- 224 (dual-gate: doctype perms + API has_permission check)
+- 237 (frappe.log_error kwargs)
+- 238 (best-effort side-effects)
+"""
+
+import hashlib
+import frappe
+from frappe import _
+from frappe.model.document import Document
+from frappe.utils import now_datetime
+
+
+# Fields that contribute to the hash chain (deterministic order).
+# Append-only — never reorder, never remove. Adding a new field requires a
+# migration that re-hashes the entire chain. `executed_as`, the force/confirm
+# fields and HAZARD-C fields are DELIBERATELY EXCLUDED (same precedent as the
+# Token log's `cut_point`) so the chain stays verifiable on every existing row.
+_HASH_FIELDS = (
+	"target_production",
+	"target_work_order",
+	"initiated_by",
+	"initiated_at",
+	"approved_by",
+	"approved_at",
+	"force_manufacture_override",
+	"force_dispatched_override",
+	"backup_filename",
+	"backup_sha256",
+	"executed_at",
+	"prev_row_hash",
+)
+
+# Fields the API is allowed to mutate on a SUBMITTED log row.
+# Anything else triggers the append-only guard in on_update_after_submit().
+_API_MUTABLE_FIELDS = {
+	"approval_status",
+	"approved_by",
+	"approved_at",
+	"rejection_reason",
+	"executed_at",
+	"executed_as",
+	"execution_result_json",
+	"hazard_c_blocked",
+	"hazard_c_findings_json",
+	"target_chain_json",
+	"webhook_delivered",
+	"webhook_response_code",
+	"webhook_attempted_at",
+	"webhook_response_body_excerpt",
+	"revert_window_expires_at",
+	"reverted_at",
+	"reverted_by",
+	"revert_result_json",
+	"integrity_scan_run_at",
+	"integrity_scan_orphans_json",
+	"integrity_scan_clean",
+}
+
+_FORCE_MANUFACTURE_LITERAL = "FORCE-DELETE-MANUFACTURE"
+_FORCE_DISPATCHED_LITERAL = "FORCE-DELETE-DISPATCHED"
+
+
+class TSProductionCascadeLog(Document):
+	# ------------------------------------------------------------------ validate
+	def validate(self):
+		self._validate_state_machine()
+		self._validate_two_person_rule()
+		self._validate_force_overrides()
+		self._compute_hash_chain()
+
+	def _validate_state_machine(self):
+		"""Allowed transitions: Pending CEO Approval -> {Approved, Rejected, Cancelled}
+		-> Executed -> {Reverted, Failed}.
+		"""
+		if self.is_new():
+			if self.approval_status not in (None, "", "Pending CEO Approval"):
+				frappe.throw(_("New production cascade logs must start at 'Pending CEO Approval'."))
+			self.approval_status = "Pending CEO Approval"
+			if not self.initiated_at:
+				self.initiated_at = now_datetime()
+			return
+
+		old = self.get_doc_before_save()
+		if not old:
+			return
+		old_st, new_st = old.approval_status, self.approval_status
+		if old_st == new_st:
+			return
+
+		allowed = {
+			"Pending CEO Approval": {"Approved", "Rejected", "Cancelled"},
+			"Approved": {"Executed", "Failed", "Cancelled"},
+			"Executed": {"Reverted"},
+			"Failed": set(),
+			"Rejected": set(),
+			"Cancelled": set(),
+			"Reverted": set(),
+		}
+		if new_st not in allowed.get(old_st, set()):
+			frappe.throw(_("Invalid status transition: {0} -> {1}").format(old_st, new_st))
+
+	def _validate_two_person_rule(self):
+		"""Approver MUST differ from initiator (CEO or MD approves; never the initiator)."""
+		if self.approved_by and self.initiated_by and self.approved_by == self.initiated_by:
+			frappe.throw(_("Two-person rule violated: approver ({0}) must differ from initiator ({1}).")
+			             .format(self.approved_by, self.initiated_by))
+
+	def _validate_force_overrides(self):
+		"""Type-to-confirm gates — must match exact strings server-side (defence in depth)."""
+		if (self.confirm_production_name_typed or "").strip() != (self.target_production or "").strip():
+			# Only enforce on first save (when the user typed it). On subsequent API
+			# saves (state transitions) the field is read_only_on_submit so this
+			# comparison passes vacuously.
+			if self.is_new():
+				frappe.throw(_("Confirm Production Name must exactly match the Target Production Entry."))
+		if self.force_manufacture_override:
+			if (self.force_manufacture_confirmation_typed or "") != _FORCE_MANUFACTURE_LITERAL:
+				if self.is_new():
+					frappe.throw(_("Force-Manufacture confirmation must equal: {0}").format(_FORCE_MANUFACTURE_LITERAL))
+		if self.force_dispatched_override:
+			if (self.force_dispatched_confirmation_typed or "") != _FORCE_DISPATCHED_LITERAL:
+				if self.is_new():
+					frappe.throw(_("Force-Dispatched confirmation must equal: {0}").format(_FORCE_DISPATCHED_LITERAL))
+
+	def _compute_hash_chain(self):
+		"""Compute this_row_hash deterministically over _HASH_FIELDS.
+
+		prev_row_hash is set by the API at insert time (it pulls the latest submitted
+		row's this_row_hash). This method recomputes this_row_hash every save so that
+		any field-tamper attempt invalidates the chain.
+		"""
+		if not self.prev_row_hash:
+			prev = frappe.db.sql(
+				"""SELECT this_row_hash FROM `tabTS Production Cascade Log`
+				   WHERE docstatus = 1 AND name != %s
+				   ORDER BY creation DESC LIMIT 1""",
+				(self.name or "",), as_dict=True,
+			)
+			self.prev_row_hash = (prev[0].this_row_hash if prev else "") or ""
+
+		canonical = "|".join(
+			str(self.get(f) or "") for f in _HASH_FIELDS
+		)
+		self.this_row_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+	# ------------------------------------------------------------------ append-only guards
+	def on_update_after_submit(self):
+		"""Block any modification after submit UNLESS the api caller flag is set.
+
+		Lesson 176 — API endpoints set frappe.flags.production_cascade_api_caller = True
+		inside try/finally before saving the log. Direct UI/console edits raise.
+
+		We whitelist exactly the API-mutable fields; anything else changed -> throw.
+		"""
+		if getattr(frappe.flags, "production_cascade_api_caller", False):
+			return
+
+		old = self.get_doc_before_save()
+		if not old:
+			return
+
+		tampered = []
+		for fname in self.meta.get_valid_columns():
+			if fname in ("modified", "modified_by", "docstatus", "_user_tags",
+			             "_comments", "_assign", "_liked_by"):
+				continue
+			if fname in _API_MUTABLE_FIELDS:
+				continue
+			if (old.get(fname) or "") != (self.get(fname) or ""):
+				tampered.append(fname)
+
+		if tampered:
+			frappe.throw(_(
+				"TS Production Cascade Log is append-only after submit. "
+				"Tampering detected on fields: {0}. "
+				"To change approval state, use the Production Cascade Delete API endpoints."
+			).format(", ".join(tampered)))
+
+	def on_cancel(self):
+		"""Audit log is append-only — block cancel entirely."""
+		frappe.throw(_("TS Production Cascade Log cannot be cancelled. Audit log is append-only."))
+
+	def on_trash(self):
+		"""Audit log is append-only — block delete entirely (defense-in-depth)."""
+		if not getattr(frappe.flags, "in_install", False):
+			frappe.throw(_("TS Production Cascade Log cannot be deleted. Audit log is append-only."))
+
+
+# ---------------------------------------------------------------- standalone helpers
+
+
+def verify_chain_integrity(starting_log_name: str | None = None) -> dict:
+	"""Walk the hash chain forward and verify every link.
+
+	Returns a dict with `total_rows`, `broken_links` (list of names), and `clean` flag.
+	Read-only; no side effects.
+	"""
+	rows = frappe.db.sql(
+		"""SELECT name, prev_row_hash, this_row_hash
+		   FROM `tabTS Production Cascade Log`
+		   WHERE docstatus = 1
+		   ORDER BY creation ASC""",
+		as_dict=True,
+	)
+	broken = []
+	expected_prev = ""
+	for r in rows:
+		if (r.prev_row_hash or "") != expected_prev:
+			broken.append(r.name)
+		expected_prev = r.this_row_hash or ""
+	return {
+		"total_rows": len(rows),
+		"broken_links": broken,
+		"clean": len(broken) == 0,
+	}
