@@ -202,6 +202,17 @@ def initiate_production_cascade(
 	if not frappe.db.exists("TS Production Entry", production_name):
 		frappe.throw(_("Production Entry {0} not found.").format(escape_html(production_name)))
 
+	# Multiple-flow runs carry an auto Material Request + department consumption
+	# entries that this cascade does NOT yet chain/backup/sweep (audit HIGH, 3 Jul)
+	# — deleting one would leave a live re-releasable MR + orphaned dept entries.
+	# Hard-block until the engine supports them.
+	if frappe.db.get_value("TS Production Entry", production_name, "flow_type") == "Multiple":
+		frappe.throw(_(
+			"Production {0} is a MULTIPLE-flow run (auto Material Request + department "
+			"entries). Cascade delete does not support Multiple-flow runs yet — cancel "
+			"its documents manually or contact IT."
+		).format(escape_html(production_name)))
+
 	# In-flight duplicate guard.
 	in_flight = frappe.db.get_value(
 		"TS Production Cascade Log",

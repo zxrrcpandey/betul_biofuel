@@ -125,13 +125,18 @@ function _ts_prod_buttons(frm) {
 			);
 		}, __("Release")).addClass("btn-primary");
 
-		frm.add_custom_button(__("Reject"), () => {
-			frappe.prompt(
-				[{ fieldname: "reason", fieldtype: "Small Text", label: __("Rejection Reason (min 10 chars)"), reqd: 1 }],
-				(v) => _ts_prod_call("reject_release", { name: frm.doc.name, reason: v.reason }, frm),
-				__("Reject Raw-Material Release"), __("Reject")
-			);
-		}, __("Release"));
+		// Business rule (3 Jul): Store Managers RELEASE ONLY — Reject is an
+		// ADMIN-ONLY recovery action (server enforces this in reject_release).
+		const _roles = frappe.user_roles || [];
+		if (_roles.includes("System Manager") || _roles.includes("IT Head")) {
+			frm.add_custom_button(__("Reject (admin)"), () => {
+				frappe.prompt(
+					[{ fieldname: "reason", fieldtype: "Small Text", label: __("Rejection Reason (min 10 chars)"), reqd: 1 }],
+					(v) => _ts_prod_call("reject_release", { name: frm.doc.name, reason: v.reason }, frm),
+					__("Reject Raw-Material Release"), __("Reject")
+				);
+			}, __("Release"));
+		}
 	}
 
 	if (s === "Released" && _ts_prod_is_store_manager(frm)) {

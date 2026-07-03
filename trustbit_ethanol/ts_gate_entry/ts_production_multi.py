@@ -182,12 +182,17 @@ def _create_and_submit_release_mr(doc, settings):
 	for row in doc.materials:
 		if flt(row.actual_qty) <= 0:
 			continue
+		# from_warehouse = where the RM comes FROM (Stores). The PE row's
+		# source_warehouse is a fetch_bom_standard artifact that DEFAULTS TO WIP —
+		# honoring it blindly would ask the Store Manager to transfer WIP -> WIP
+		# (audit HIGH, 3 Jul). Use it only when it's a real non-WIP override.
+		row_src = row.source_warehouse if (row.source_warehouse and row.source_warehouse != wip) else None
 		mr.append("items", {
 			"item_code": row.item_code,
 			"qty": flt(row.actual_qty),
 			"schedule_date": nowdate(),
 			"warehouse": wip,
-			"from_warehouse": row.source_warehouse or src_default,
+			"from_warehouse": row_src or src_default,
 			"ts_delivery_location": _("Production run {0}").format(doc.name),
 			"ts_item_remark": _("Multiple-flow raw material release"),
 		})

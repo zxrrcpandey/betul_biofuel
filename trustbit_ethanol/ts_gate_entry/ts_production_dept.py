@@ -123,7 +123,11 @@ def _pending_runs(categories):
 	runs = frappe.get_all(
 		"TS Production Entry",
 		filters={"bom": ["in", list(by_main)],
-		         "ts_variance_status": ["in", ["Released", "Completed"]]},
+		         # Multiple-flow runs go Pending Material Request -> AWAITING
+		         # DISTRIBUTION -> Completed and never pass through 'Released' —
+		         # dept users are notified at Awaiting Distribution, so the pending
+		         # list must include it (audit MEDIUM, 3 Jul).
+		         "ts_variance_status": ["in", ["Released", "Awaiting Distribution", "Completed"]]},
 		fields=["name", "bom", "production_item_name", "actual_produced_qty",
 		        "production_uom", "posting_date", "ts_variance_status"],
 		order_by="modified desc", limit=30)
