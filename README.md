@@ -2,7 +2,7 @@
 
 **Version:** 2.17.0 | **ERPNext:** V15 | **Module:** TS Gate Entry
 
-Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufacturing plant. Handles the complete vehicle gate-to-exit lifecycle, multi-level PO/MR approval with CC-based routing, budget management, item creation, quality inspection, and interactive dashboards with a **blind token-based system** designed to prevent manipulation.
+Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufacturing plant. Handles the complete vehicle gate-to-exit lifecycle, multi-level PO/MR approval with CC-based routing, budget management, item creation, quality inspection, and interactive dashboards, using a **sealed (weight-blind) gate-pass system** designed to prevent data manipulation.
 
 ## Recent ships (May–Jun 2026)
 
@@ -76,7 +76,7 @@ Custom ERPNext v15 app for **Betul Bio Fuel Pvt. Ltd.** — an ethanol manufactu
 
 | # | Feature | Version |
 |---|---------|---------|
-| 1 | **Token Lifecycle** — Stock IN (9-step) + Stock OUT (5-step) + Gate Pass | v1.0+ |
+| 1 | **Gate-Pass Workflow (Token)** — Stock IN (9-step) + Stock OUT (5-step) + Gate Pass | v1.0+ |
 | 2 | **Category-Based PO Approval** — Store/Chemical/Grain/Coal routing | v2.0 |
 | 3 | **Cost-Center MR Approval** — CC-based routing with Hold/Resume | v2.0+ |
 | 4 | **CC Approval Config** — Per-CC indent/approval/notification with data isolation | v2.5 |
