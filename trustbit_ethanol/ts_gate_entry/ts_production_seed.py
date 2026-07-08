@@ -25,9 +25,16 @@ DOCTYPE = "TS Production Entry"
 PERMLEVEL = 0
 
 # The full enum the release flow uses (must match ts_production_entry.json options).
-# Phase D adds the two Multiple-flow states (Lesson 239: re-applied via Property Setter).
-VARIANCE_STATUS_OPTIONS = ("Draft\nPending Stores Release\nReleased\nPending Material Request"
+# Phase D adds the two Multiple-flow states; v2.21 adds 'Awaiting Department
+# Production' (dept-gate re-sequencing). Lesson 239: re-applied via Property Setter.
+VARIANCE_STATUS_OPTIONS = ("Draft\nPending Stores Release\nReleased"
+                           "\nAwaiting Department Production\nPending Material Request"
                            "\nAwaiting Distribution\nCompleted\nRejected\nCancelled")
+
+# v2.21 dept-gate: the department entry's own enum (must match
+# ts_production_department_entry.json options). Lesson 239 applies here too.
+DEPT_DOCTYPE = "TS Production Department Entry"
+DEPT_STATUS_OPTIONS = "Draft\nPending\nLogged\nSkipped\nCancelled"
 
 # Stores Manager — the single release-gate role (read/report + write to flip status).
 _STORES_MANAGER_PERMS = {
@@ -36,25 +43,49 @@ _STORES_MANAGER_PERMS = {
 }
 
 PAGE_NAME = "production-logging"
-PAGE_ROLES = ["Manufacturing Manager", "Manufacturing User", "Stores Manager", "System Manager"]
+# v2.21: CEO + MD added — the R3 status-board viewers (L290 ORM append).
+PAGE_ROLES = ["Manufacturing Manager", "Manufacturing User", "Stores Manager",
+              "System Manager", "CEO", "MD"]
+
+# v2.21: CEO/MD read-only access to department entries (the board's row data).
+# UPSERT via add_permission + update_permission_property (L292/L299 — preserves
+# every existing row; a raw INSERT would drop Standard DocPerm, L169).
+_DEPT_READONLY_ROLES = ("CEO", "MD")
+_DEPT_READONLY_PERMS = {
+	"read": 1, "report": 1, "export": 1, "print": 1, "email": 1, "share": 1,
+	"write": 0, "create": 0, "delete": 0,
+}
 
 
-def _apply_variance_status_options():
-	"""Re-assert the ts_variance_status Select options via Property Setter (Lesson 239)."""
+def _apply_status_options(doctype, fieldname, options):
+	"""Compare-then-apply a Select enum via Property Setter (Lesson 239 —
+	migrate does NOT re-apply option strings). Idempotent."""
 	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 
 	current = frappe.db.get_value(
 		"Property Setter",
-		{"doc_type": DOCTYPE, "field_name": "ts_variance_status", "property": "options"},
+		{"doc_type": doctype, "field_name": fieldname, "property": "options"},
 		"value",
 	)
-	if current == VARIANCE_STATUS_OPTIONS:
+	if current == options:
 		return False
 	make_property_setter(
-		DOCTYPE, "ts_variance_status", "options", VARIANCE_STATUS_OPTIONS, "Text",
+		doctype, fieldname, "options", options, "Text",
 		validate_fields_for_doctype=False,
 	)
 	return True
+
+
+def _apply_variance_status_options():
+	return _apply_status_options(DOCTYPE, "ts_variance_status", VARIANCE_STATUS_OPTIONS)
+
+
+def _apply_dept_status_options():
+	"""v2.21: the dept-entry enum (+Pending/+Skipped). Skip-if-absent for fresh
+	installs where the dept doctype migrates after this seeder's first run."""
+	if not frappe.db.exists("DocType", DEPT_DOCTYPE):
+		return False
+	return _apply_status_options(DEPT_DOCTYPE, "status", DEPT_STATUS_OPTIONS)
 
 
 def _row_filter(role):
@@ -75,6 +106,28 @@ def _upsert_stores_manager_docperm():
 		if int(current or 0) != value:
 			update_permission_property(DOCTYPE, "Stores Manager", PERMLEVEL, ptype, value, validate=False)
 			changed = True
+	return changed
+
+
+def _upsert_dept_readonly_docperms():
+	"""v2.21: CEO/MD read-only Custom DocPerm on the dept entry (board row data).
+	UPSERT preserving existing rows (L292/L299). Skip-if-absent per role/doctype."""
+	if not frappe.db.exists("DocType", DEPT_DOCTYPE):
+		return False
+	changed = False
+	for role in _DEPT_READONLY_ROLES:
+		if not frappe.db.exists("Role", role):
+			continue  # cross-server role gap
+		row_filter = {"parent": DEPT_DOCTYPE, "role": role, "permlevel": 0, "if_owner": 0}
+		if not frappe.db.exists("Custom DocPerm", row_filter):
+			# add_permission() runs setup_custom_perms() first (Lesson 169 guard).
+			add_permission(DEPT_DOCTYPE, role, 0)
+			changed = True
+		for ptype, value in _DEPT_READONLY_PERMS.items():
+			current = frappe.db.get_value("Custom DocPerm", row_filter, ptype)
+			if int(current or 0) != value:
+				update_permission_property(DEPT_DOCTYPE, role, 0, ptype, value, validate=False)
+				changed = True
 	return changed
 
 
@@ -247,11 +300,17 @@ def after_migrate_production_logging():
 	_seed_bom_category_field()
 	_seed_mr_tag_field()
 	ps_changed = _apply_variance_status_options()
+	dept_ps_changed = _apply_dept_status_options()
 	perm_changed = _upsert_stores_manager_docperm()
+	dept_perm_changed = _upsert_dept_readonly_docperms()
 	_seed_page_roles()
 
+	from frappe.core.doctype.doctype.doctype import validate_permissions_for_doctype
 	if perm_changed:
-		from frappe.core.doctype.doctype.doctype import validate_permissions_for_doctype
 		validate_permissions_for_doctype(DOCTYPE)
+	if dept_perm_changed:
+		validate_permissions_for_doctype(DEPT_DOCTYPE)
 	if ps_changed or perm_changed:
 		frappe.clear_cache(doctype=DOCTYPE)
+	if dept_ps_changed or dept_perm_changed:
+		frappe.clear_cache(doctype=DEPT_DOCTYPE)

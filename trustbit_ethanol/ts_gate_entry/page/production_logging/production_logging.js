@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.0.0";
+const PL_VERSION = "v1.2.0"; // v2.21 premium de-clutter (My-Actions strip, compact rows, role-first order)
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -71,10 +71,17 @@ class ProductionLogging {
 
 		// role flags (from frappe.user_roles)
 		const roles = frappe.user_roles || [];
+		this.is_administrator = frappe.session.user === "Administrator"; // U3: ONLY this user may Skip
 		this.is_admin = roles.includes("System Manager") || roles.includes("IT Head") ||
-			frappe.session.user === "Administrator";
+			this.is_administrator;
 		this.is_store_mgr = roles.includes("Stores Manager") || this.is_admin;
-		this.is_pm = roles.includes("PM") || roles.includes("Grain PM") || this.is_admin;
+		this.is_pm = roles.includes("PM") || roles.includes("Grain PM") ||
+			roles.includes("Manufacturing Manager") || roles.includes("Manufacturing User") ||
+			this.is_admin;
+		// R3 board viewers — mirrors the server allow-list in ts_production_dept._BOARD_ROLES
+		// (server is authoritative; this only decides whether to render the zone).
+		this.is_board = this.is_pm || this.is_store_mgr ||
+			roles.includes("CEO") || roles.includes("MD");
 
 		// Add-Production form working state
 		this.bom = null;
@@ -177,15 +184,16 @@ class ProductionLogging {
 
 		<div class="wrap">
 
-			<div class="sec-title">
-				<span class="bar"></span> Production Automation Pipeline &mdash; One Click, One Human Gate
-				<span class="feas-tag tag-auto">&#9881; Auto</span>
-				<span class="feas-tag tag-gate">&#128682; Store-Manager gate</span>
-			</div>
-			<div class="flow-panel glass">
+			<div id="pl-actions-wrap"></div>
+
+			<details class="pl-how glass" id="pl-how"${localStorage.getItem("pl_how_open") === "1" ? " open" : ""}>
+				<summary><span class="pl-how-chev">&#9656;</span> How a production run flows
+					<span class="pl-how-dim">&mdash; PM logs it, the system does the rest &middot; tap to open</span>
+					<span class="feas-tag tag-auto" style="margin-left:auto">&#9881; Auto</span>
+					<span class="feas-tag tag-gate">&#128682; Store-Manager gate</span>
+				</summary>
 				<div class="flow-head">
-					<div class="flow-title">How a production run flows &mdash; PM logs it, the system does the rest</div>
-					<div class="flow-legend">
+					<div class="flow-legend" style="margin-left:2px">
 						<span><i class="lg-dot lg-input">&#9998;</i> PM input</span>
 						<span><i class="lg-dot lg-auto">&#9881;</i> Automated</span>
 						<span><i class="lg-dot lg-gate">&#128682;</i> Store-Mgr gate</span>
@@ -202,25 +210,15 @@ class ProductionLogging {
 					<span class="sf-arrow">&rarr;</span>
 					<span class="sf-chip b-completed"><span class="bdot"></span>Completed</span>
 				</div>
-			</div>
+			</details>
+
+			${this.zones_html()}
 
 			<div class="sec-title">
 				<span class="bar" style="background:var(--green)"></span> At a glance
 				<span class="feas-tag tag-auto">Live &middot; ${this.esc(PL_DOCTYPE)}</span>
 			</div>
 			<div class="kpi-grid" id="pl-kpi-grid"></div>
-
-			${this.is_store_mgr ? `
-			<div class="sec-title">
-				<span class="bar" style="background:var(--amber)"></span> The One Human Gate &mdash; Store Manager Raw-Material Release
-				<span class="feas-tag tag-gate">&#128682; Awaiting approval</span>
-			</div>
-			<div id="pl-release-zone"></div>
-			` : ``}
-
-			<div id="pl-dist-wrap"></div>
-
-			<div id="pl-dept-wrap"></div>
 
 			<div class="sec-title">
 				<span class="bar" style="background:var(--purple)"></span> Production Log &mdash; Recent Runs
@@ -260,6 +258,66 @@ class ProductionLogging {
 		this.$root.html(html);
 		this.render_theme_ico();
 		this.render_flow();
+		// "How it works" open/closed persistence — the HTML `toggle` event does
+		// NOT bubble, so jQuery delegation can't catch it; bind directly on the
+		// static element (shell renders exactly once).
+		const how = this.$root.find("#pl-how")[0];
+		if (how) how.addEventListener("toggle", function () {
+			try { localStorage.setItem("pl_how_open", this.open ? "1" : "0"); } catch (e) { /* private mode */ }
+		});
+	}
+
+	// v2.21 premium de-clutter — zones in ROLE-FIRST order: your actionable
+	// queue renders highest. (Release zone exists only for Store Managers,
+	// exactly as before — only the ORDER changes.)
+	zones_html() {
+		const release = this.is_store_mgr ? `
+			<div class="sec-title" id="pl-sec-release">
+				<span class="bar" style="background:var(--amber)"></span> The One Human Gate &mdash; Store Manager Raw-Material Release
+				<span class="feas-tag tag-gate">&#128682; Awaiting approval</span>
+			</div>
+			<div id="pl-release-zone"></div>` : ``;
+		const board = `<div id="pl-board-wrap"></div>`;
+		const dist = `<div id="pl-dist-wrap"></div>`;
+		const dept = `<div id="pl-dept-wrap"></div>`;
+		// dept-only users (no PM/SM hats): their Add-Production tasks first
+		if (!this.is_pm && !this.is_store_mgr) return dept + board + dist + release;
+		// SM (and PM+SM): the human gate first; pure PM: dist/board first
+		return this.is_store_mgr ? release + dist + board + dept
+		                         : dist + board + dept + release;
+	}
+
+	// v2.21 premium de-clutter — "My Actions" strip: one glance = what waits for
+	// YOU. Counts update as each zone's data loads; chips scroll to the section.
+	update_actions() {
+		const $w = this.$root.find("#pl-actions-wrap");
+		if (!$w.length) return;
+		const acts = [];
+		if ((this._n_dept || 0) > 0) acts.push({
+			n: this._n_dept, cls: "amber", target: "#pl-dept-wrap",
+			l: "Add Production", s: "department" + (this._n_dept > 1 ? "s" : "") + " waiting on you" });
+		if (this.is_store_mgr && (this._n_rel || 0) > 0) acts.push({
+			n: this._n_rel, cls: "green", target: "#pl-sec-release",
+			l: "Release", s: "material release" + (this._n_rel > 1 ? "s" : "") + " awaiting Store Manager" });
+		if ((this._n_dist || 0) > 0) acts.push({
+			n: this._n_dist, cls: "violet", target: "#pl-dist-wrap",
+			l: "Post Distribution", s: "run" + (this._n_dist > 1 ? "s" : "") + " to split across warehouses" });
+		if (!acts.length) { $w.empty(); return; }
+		$w.html(`<div class="pl-acts">` + acts.map((a) => `
+			<div class="pl-act ${a.cls} glass" data-target="${a.target}" role="button" tabindex="0">
+				<span class="pl-act-num">${a.n}</span>
+				<span class="pl-act-lbl">${this.esc(a.l)}<small>${this.esc(a.s)}</small></span>
+				<span class="pl-act-arr">&rarr;</span>
+			</div>`).join("") + `</div>`);
+	}
+
+	// shared "waiting for Xh" age pill text (used by tiles, rows, strip)
+	age_of(ts) {
+		if (!ts) return "";
+		const ms = Date.now() - new Date(String(ts).replace(" ", "T")).getTime();
+		if (!(ms > 0)) return "";
+		const h = Math.floor(ms / 3600000);
+		return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h >= 1 ? `${h}h` : `${Math.max(1, Math.floor(ms / 60000))}m`;
 	}
 
 	slideover_html() {
@@ -285,9 +343,11 @@ class ProductionLogging {
 					</div>
 					<div class="scale-note" id="pl-flow-note" style="display:none">
 						<span style="font-size:14px;line-height:1">&#128279;</span>
-						<span><b>Multiple flow:</b> raw material is released via an auto <b>Material Request</b>
-						(Store Manager releases it), then you distribute the produced output across
-						<b>multiple warehouses</b>. Department BOMs below are <b>notified for reporting only</b>.</span>
+						<span><b>Multiple flow:</b> every department on the connector must first <b>run its BOM
+						and Add Production</b> (they are notified + shown on the status board). Once ALL
+						departments are done, the auto <b>Material Request</b> is created and the Store
+						Manager releases it — then you distribute the produced output across
+						<b>multiple warehouses</b>.</span>
 					</div>
 				</div>
 
@@ -415,9 +475,44 @@ class ProductionLogging {
 			self.reject_release($(this).data("name"));
 		});
 
-		// Department consumption (Phase C — reporting only)
+		// Department production (v2.21 — Add Production gate)
 		this.$root.on("click", ".pl-deptlog-btn", function () {
 			self.open_dept_dialog(parseInt($(this).data("idx"), 10));
+		});
+		// v2.21 — Administrator-only skip valve on the status board (U3)
+		this.$root.on("click", ".pl-skip-btn", function () {
+			self.open_skip_dialog($(this).data("name"), $(this).data("cat"));
+		});
+		// v2.21 premium — My-Actions chips scroll to their section
+		this.$root.on("click keydown", ".pl-act", function (e) {
+			if (e.type === "keydown") {
+				if (e.key !== "Enter" && e.key !== " ") return;
+				e.preventDefault();
+			}
+			const t = self.$root.find($(this).data("target"));
+			if (t.length) t[0].scrollIntoView({ behavior: "smooth", block: "start" });
+		});
+		// v2.21 premium — row "details" expand-on-demand
+		this.$root.on("click", ".pl-more", function () {
+			const $x = $(this).closest(".pl-row").next(".pl-xpand");
+			$x.toggle();
+			$(this).html($x.is(":visible") ? "details &#9662;" : "details &#9656;");
+		});
+		// v2.21 premium — "Older (N)" queue folds
+		this.$root.on("click", ".pl-fold", function () {
+			const $b = $(this).next(".pl-fold-body");
+			$b.toggle();
+			$(this).find(".pl-fold-chev").html($b.is(":visible") ? "&#9662;" : "&#9656;");
+		});
+		// v2.21 — department tile click = toggle the board's department filter
+		this.$root.on("click keydown", ".pl-dept-tile", function (e) {
+			if (e.type === "keydown") {
+				if (e.key !== "Enter" && e.key !== " ") return;
+				e.preventDefault(); // Space must not scroll the page (a11y)
+			}
+			const cat = $(this).data("cat");
+			self._board_cat_filter = self._board_cat_filter === cat ? null : cat;
+			if (self._board_data) self.render_board(self._board_data);
 		});
 
 		this.$root.on("click", "#pl-prog-close", () => self.close_progress());
@@ -461,6 +556,7 @@ class ProductionLogging {
 		if (this.is_store_mgr) this.load_pending_releases();
 		this.load_dept_context();  // Phase C — server decides visibility (kill switch + recipients)
 		this.load_multi_context(); // Phase D — chooser + pending distributions
+		this.load_multi_board();   // v2.21 — dept status board (R3)
 	}
 
 	// ── Phase D — Multiple (BOM Connector) flow ─────────────────────────
@@ -505,7 +601,7 @@ class ProductionLogging {
 		this.$root.find("#pl-conn-depts").toggle(multi).empty();
 		this.$root.find("#pl-step1-label").text(multi ? "Select BOM Connector" : "Select BOM");
 		this.$root.find("#pl-submit-btn").html(multi
-			? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Submit — auto Material Request'
+			? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Submit — notify departments'
 			: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Submit for Store Release');
 		// reset the working state — the two flows must never share a half-built form
 		this.bom = null; this.bom_std = null; this.connector = null;
@@ -531,12 +627,12 @@ class ProductionLogging {
 		const lines = this.connector.department_boms || [];
 		$depts.show().html(
 			`<div class="conn-dept-list">` +
-			`<div class="cdl-h">Department BOMs — <b>notified, reporting only</b></div>` +
+			`<div class="cdl-h">Department BOMs — <b>must Add Production (gates the release)</b></div>` +
 			(lines.length ? lines.map((l) =>
 				`<div class="cdl-row"><span class="mono">${this.esc(l.bom)}</span>` +
 				`<span>${this.esc(l.category)}</span>` +
-				`<span class="cdl-tag">will be notified</span></div>`).join("")
-				: `<div class="cdl-row" style="opacity:.6">No department BOMs on this connector.</div>`) +
+				`<span class="cdl-tag">notified &middot; must add production</span></div>`).join("")
+				: `<div class="cdl-row" style="opacity:.6">No department BOMs on this connector — release Material Request is created immediately.</div>`) +
 			`</div>`);
 		// the connector's MAIN BOM drives materials/by-products exactly like Single
 		this.on_bom_change(this.connector.main_bom);
@@ -550,7 +646,7 @@ class ProductionLogging {
 				fields: [
 					"name", "bom", "production_item", "production_item_name",
 					"actual_produced_qty", "production_uom", "ts_variance_status",
-					"material_variance_pct", "produced_variance_pct",
+					"material_variance_pct", "produced_variance_pct", "variance_breach",
 					"work_order", "linked_stock_entry", "release_stock_entry", "modified",
 				],
 				order_by: "modified desc",
@@ -605,42 +701,40 @@ class ProductionLogging {
 		const $wrap = this.$root.find("#pl-dept-wrap");
 		if (!$wrap.length) return;
 		const ctx = this.dept_ctx || {};
-		if (!ctx.enabled || !(ctx.categories || []).length) { $wrap.empty(); return; }
+		if (!ctx.enabled || !(ctx.categories || []).length) {
+			this._n_dept = 0;
+			this.update_actions();
+			$wrap.empty();
+			return;
+		}
 		const pending = ctx.pending || [];
+		this._n_dept = pending.length;
+		this.update_actions();
 		let inner;
 		if (!pending.length) {
-			inner = `<div class="panel glass dept-empty">&#9989; No production runs awaiting your department's consumption log &mdash; when a run using your category's connector completes, it appears here.</div>`;
+			inner = `<div class="panel glass dept-empty">&#9989; No production runs are waiting for your department &mdash; when a Production Manager submits a Multiple run using your category, your Add Production task appears here.</div>`;
 		} else {
-			inner = pending.map((p, i) => `
-				<div class="release-card glass dept-card">
-					<div class="release-banner dept-banner">
-						<div class="rb-ico">&#128203;</div>
-						<div class="rb-tt">
-							<div class="rb-t">Log consumption &middot; ${this.esc(p.production_entry)}</div>
-							<div class="rb-s">${this.esc(p.category)} &middot; ${this.esc(p.department || "—")} &middot; dept BOM ${this.esc(p.dept_bom)}</div>
-						</div>
-						<span class="badge b-distrib"><span class="bdot"></span>Awaiting Dept Log</span>
-					</div>
-					<div class="release-body">
-						<div class="rel-meta">
-							<div class="rm"><div class="k">Main Item</div><div class="v">${this.esc(p.item_name || "—")}</div></div>
-							<div class="rm"><div class="k">Produced</div><div class="v">${this.fmt1(p.produced_qty)} ${this.esc(p.uom || "")}</div></div>
-							<div class="rm"><div class="k">Run Status</div><div class="v">${this.esc(p.status)}</div></div>
-							<div class="rm"><div class="k">Date</div><div class="v">${this.esc(p.posting_date || "—")}</div></div>
-						</div>
-						<div class="release-note dept-note"><span style="font-size:15px;line-height:1">&#8505;&#65039;</span>
-							<span><b>REPORTING ONLY</b> &mdash; logging your department's material use will <b>not move any stock</b>.</span></div>
-						<div class="release-actions">
-							<button class="btn btn-approve pl-deptlog-btn dept-log-btn" data-idx="${i}">&#128203; Log Consumption</button>
-							<a class="btn dept-view-btn" href="/app/ts-production-entry/${encodeURIComponent(p.production_entry)}" target="_blank" rel="noopener">View Run</a>
-						</div>
-					</div>
-				</div>`).join("");
+			inner = `<div class="glass pl-rows">` + pending.map((p, i) => `
+				<div class="pl-row green">
+					<span class="pl-rid">${this.esc(p.production_entry)}</span>
+					<span class="pl-rwhat"><b>${this.esc(p.category)}</b>
+						<span class="dim">· dept BOM ${this.esc(p.dept_bom)} · main: ${this.esc(p.item_name || "—")} ${this.fmt1(p.produced_qty)} ${this.esc(p.uom || "")}</span></span>
+					<span class="pl-pill age">notified ${this.age_of(p.notified_at) || "—"} ago</span>
+					<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>
+					<button class="btn btn-approve btn-sm pl-deptlog-btn" data-idx="${i}">&#127981; Add Production</button>
+				</div>
+				<div class="pl-xpand" style="display:none">
+					<span><b>Department</b> ${this.esc(p.department || "—")}</span>
+					<span><b>Notified</b> ${this.esc((p.notified_at || "").slice(0, 16) || "—")}</span>
+					<span><b>Date</b> ${this.esc(p.posting_date || "—")}</span>
+					<span><b>Note</b> the Store-Manager release waits for this · actuals-only, no stock moves</span>
+					<a href="/app/ts-production-entry/${encodeURIComponent(p.production_entry)}" target="_blank" rel="noopener">View Run &rarr;</a>
+				</div>`).join("") + `</div>`;
 		}
 		$wrap.html(`
 			<div class="sec-title">
-				<span class="bar" style="background:var(--purple)"></span> Department Consumption &mdash; Reporting Only
-				<span class="feas-tag tag-auto">&#128203; No stock impact</span>
+				<span class="bar" style="background:var(--green)"></span> Add Production &mdash; Your Departments
+				<span class="feas-tag tag-gate">&#127981; Gates the Store-Manager release</span>
 			</div>
 			${inner}`);
 	}
@@ -659,7 +753,7 @@ class ProductionLogging {
 			</tr>`).join("");
 		// Fresh Dialog per click — never an inline page sibling (Lesson 296).
 		const d = new frappe.ui.Dialog({
-			title: __("Log Consumption — {0}", [p.production_entry]),
+			title: __("Add Production — {0}", [p.production_entry]),
 			size: "large",
 			fields: [
 				{ fieldtype: "Date", fieldname: "posting_date", label: __("Posting Date"),
@@ -667,12 +761,12 @@ class ProductionLogging {
 				{ fieldtype: "Data", fieldname: "remark", label: __("Remark") },
 				{ fieldtype: "HTML", fieldname: "mat_html" },
 			],
-			primary_action_label: __("Log Consumption (reporting only)"),
+			primary_action_label: __("Add Production"),
 			primary_action: (values) => this.submit_dept_entry(d, p, values),
 		});
 		d.fields_dict.mat_html.$wrapper.html(`
 			<div style="margin:4px 0 6px;font-size:12px;"><b>${frappe.utils.escape_html(p.category)}</b> &middot; dept BOM <span style="font-family:monospace">${frappe.utils.escape_html(p.dept_bom)}</span>
-			&middot; <span style="color:#7c3aed;font-weight:600">REPORTING ONLY — no stock will move</span></div>
+			&middot; <span style="font-weight:600">&#9432; Actuals-only — no stock will move; the release waits for this</span></div>
 			<table style="width:100%;border-collapse:collapse;font-size:12.5px">
 				<thead><tr style="opacity:.65;text-align:left">
 					<th style="padding:6px 8px;">Material</th><th style="padding:6px 8px;text-align:right">Std Qty</th>
@@ -695,23 +789,181 @@ class ProductionLogging {
 		}
 		d.get_primary_btn().prop("disabled", true);
 		frappe.call({
-			method: "trustbit_ethanol.ts_gate_entry.ts_production_dept.submit_department_entry",
+			method: "trustbit_ethanol.ts_gate_entry.ts_production_dept.submit_department_production",
+			type: "POST",
 			args: {
-				production_entry: p.production_entry, bom: p.dept_bom, category: p.category,
+				name: p.dept_entry,
 				materials: mats, posting_date: values.posting_date, remark: values.remark || "",
 			},
 			callback: (r) => {
 				d.hide();
 				if (r.message && r.message.ok) {
 					frappe.show_alert({
-						message: __("Consumption logged — {0} (reporting only)", [r.message.name]),
+						message: r.message.mr_created
+							? __("Production added — all departments done! Material Request {0} routed to the Store Manager.", [r.message.material_request || ""])
+							: __("Production added — {0}. Waiting for the other departments.", [r.message.name]),
 						indicator: "green",
 					});
 					this.load_dept_context();
+					this.load_multi_board();
 				}
 			},
 			error: () => d.get_primary_btn().prop("disabled", false),
 		});
+	}
+
+	// ── v2.21 — Department Production Status board (R3: PM/Grain PM/CEO/MD/SM) ──
+	load_multi_board() {
+		if (!this.is_board) return;
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.ts_production_dept.get_multi_run_board",
+			callback: (r) => this.render_board(r.message || { enabled: false, runs: [] }),
+			error: () => {
+				// distinguish a failed call from "feature disabled" (ui-designer LOW-2)
+				const $wrap = this.$root.find("#pl-board-wrap");
+				if ($wrap.length) $wrap.html(`
+					<div class="sec-title"><span class="bar" style="background:var(--amber)"></span> Department Production Status</div>
+					<div class="panel glass dept-empty">&#9888;&#65039; Couldn't load the status board — reload the page to retry.</div>`);
+			},
+		});
+	}
+
+	render_board(data) {
+		const $wrap = this.$root.find("#pl-board-wrap");
+		if (!$wrap.length) return;
+		if (!data.enabled) { $wrap.empty(); return; }
+		this._board_data = data; // kept for tile-filter re-renders
+		const runs = data.runs || [];
+		let waiting = runs.filter((r) => r.ts_variance_status === "Awaiting Department Production");
+		const dept_tiles = this.dept_tiles_html(waiting);
+		if (this._board_cat_filter) {
+			waiting = waiting.filter((r) => (r.departments || [])
+				.some((s) => s.category === this._board_cat_filter && s.status === "Pending"));
+		}
+		const rest = runs.filter((r) => r.ts_variance_status !== "Awaiting Department Production").slice(0, 5);
+		const pillOf = (s) => {
+			if (s.status === "Logged")
+				return `<span class="pl-pill ok" title="${this.esc(s.submitted_by || "")} · ${this.esc((s.logged_at || "").slice(0, 16))}">&#10003; ${this.esc(s.category)}</span>`;
+			if (s.status === "Skipped")
+				return `<span class="pl-pill skip" title="by Administrator · ${this.esc((s.logged_at || "").slice(0, 16))}">&#10539; ${this.esc(s.category)}</span>`;
+			const skipBtn = this.is_administrator
+				? ` <button class="pl-skip-btn" data-name="${this.esc(s.name)}" data-cat="${this.esc(s.category)}" title="Administrator only">Skip</button>`
+				: "";
+			return `<span class="pl-pill age">&#8987; ${this.esc(s.category)} · ${this.age_of(s.notified_at) || "—"}</span>${skipBtn}`;
+		};
+		const card = (r) => {
+			const total = (r.departments || []).length;
+			const done = total - (r.pending_count || 0);
+			const pct = total ? Math.round((done / total) * 100) : 0;
+			return `
+				<div class="pl-row amber">
+					<span class="pl-rid">${this.esc(r.name)}</span>
+					<span class="pl-rwhat">${(r.departments || []).map(pillOf).join(" ") || '<span class="dim">No department entries.</span>'}</span>
+					<span class="pl-sp"></span>
+					<span class="pl-prog"><span class="pl-pbar"><i style="width:${pct}%"></i></span><span class="pl-ptxt">${done} of ${total}</span></span>
+					<span class="pl-more">details &#9656;</span>
+				</div>
+				<div class="pl-xpand" style="display:none">
+					<span><b>Item</b> ${this.esc(r.production_item_name || "")} · ${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</span>
+					<span><b>Connector</b> ${this.esc(r.bom_connector || "—")}</span>
+					<span><b>Status</b> ${this.esc(r.ts_variance_status)}</span>
+					<span>${r.material_request ? `<b>MR</b> <span class="mono">${this.esc(r.material_request)}</span>` : "<b>Note</b> the Store-Manager release fires automatically when all departments complete"}</span>
+					${(r.departments || []).filter((s) => s.status !== "Pending").map((s) =>
+						`<span><b>${this.esc(s.category)}</b> ${s.status === "Skipped" ? "skipped" : "by " + this.esc(s.submitted_by || "—")} · ${this.esc((s.logged_at || "").slice(0, 16))}</span>`).join("")}
+				</div>`;
+		};
+		if (!waiting.length && !rest.length && !this._board_cat_filter) {
+			$wrap.html(`
+				<div class="sec-title"><span class="bar" style="background:var(--amber)"></span> Department Production Status
+					<span class="feas-tag tag-auto">&#128202; PM · CEO · MD · Store Manager</span></div>
+				<div class="panel glass dept-empty">&#127881; No Multiple-flow runs are waiting on departments right now.</div>`);
+			return;
+		}
+		$wrap.html(`
+			<div class="sec-title"><span class="bar" style="background:var(--amber)"></span> Department Production Status
+				<span class="feas-tag tag-auto">&#128202; PM · CEO · MD · Store Manager</span></div>
+			${dept_tiles}
+			${waiting.length ? `<div class="glass pl-rows">${waiting.map(card).join("")}</div>`
+				: (this._board_cat_filter
+					? '<div class="panel glass dept-empty">No runs are waiting on this department. &#9989;</div>' : "")}
+			${rest.length ? `<details style="margin:8px 0 12px"><summary style="cursor:pointer;font-size:12px;opacity:.7;padding:2px 4px">Recently completed department gates (${rest.length})</summary><div class="glass pl-rows" style="margin-top:6px">${rest.map(card).join("")}</div></details>` : ""}`);
+	}
+
+	// v2.21 — department-wise rollup of the board data (pure regroup, no extra calls)
+	dept_tiles_html(waiting) {
+		const agg = {}; // category -> {pending, oldest}
+		(waiting || []).forEach((r) => (r.departments || []).forEach((s) => {
+			if (!agg[s.category]) agg[s.category] = { pending: 0, oldest: null };
+			if (s.status === "Pending") {
+				agg[s.category].pending += 1;
+				const t = s.notified_at || "";
+				if (t && (!agg[s.category].oldest || t < agg[s.category].oldest)) {
+					agg[s.category].oldest = t;
+				}
+			}
+		}));
+		const cats = Object.keys(agg).sort();
+		// stuck-filter guard: if the filtered category vanished from the board,
+		// clear the filter so the user isn't stranded with no tile to un-click
+		if (this._board_cat_filter && !cats.includes(this._board_cat_filter)) {
+			this._board_cat_filter = null;
+		}
+		if (!cats.length) return "";
+		const mine = new Set(((this.dept_ctx || {}).categories) || []);
+		const age = (ts) => this.age_of(ts);
+		return `<div class="pl-dept-tiles">` + cats.map((c) => {
+			const a = agg[c];
+			const active = this._board_cat_filter === c;
+			const cls = a.pending ? "tile-pending" : "tile-clear";
+			return `<div class="pl-dept-tile ${cls}${active ? " tile-active" : ""}${mine.has(c) ? " tile-mine" : ""}" data-cat="${this.esc(c)}" role="button" tabindex="0" aria-pressed="${active ? "true" : "false"}">
+				<div class="tile-name">${this.esc(c)}${mine.has(c) ? ' <span class="tile-you">your action</span>' : ""}</div>
+				<div class="tile-count">${a.pending ? a.pending + " pending" : "&#10003; all clear"}</div>
+				${a.pending && a.oldest ? `<div class="tile-age">oldest waiting ${age(a.oldest)}</div>` : ""}
+			</div>`;
+		}).join("") + `</div>`;
+	}
+
+	open_skip_dialog(name, category) {
+		// Fresh Dialog (L296); server re-verifies Administrator (L142/U3).
+		const d = new frappe.ui.Dialog({
+			title: __("Skip department — {0}", [category]),
+			fields: [
+				{ fieldtype: "HTML", fieldname: "warn_html" },
+				{ fieldtype: "Small Text", fieldname: "reason", label: __("Skip Reason"), reqd: 1,
+				  description: __("At least 10 characters — recorded on the entry.") },
+			],
+			primary_action_label: __("Skip (Administrator)"),
+			primary_action: (v) => {
+				if (!v.reason || v.reason.trim().length < 10) {
+					frappe.show_alert({ message: __("Reason must be at least 10 characters."), indicator: "orange" });
+					return;
+				}
+				d.get_primary_btn().prop("disabled", true);
+				frappe.call({
+					method: "trustbit_ethanol.ts_gate_entry.ts_production_dept.admin_skip_department",
+					type: "POST",
+					args: { name: name, reason: v.reason },
+					callback: (r) => {
+						d.hide();
+						if (r.message && r.message.ok) {
+							frappe.show_alert({
+								message: r.message.mr_created
+									? __("Skipped — all departments resolved; Material Request {0} routed to the Store Manager.", [r.message.material_request || ""])
+									: __("Skipped — waiting for the remaining departments."),
+								indicator: "green",
+							});
+							this.load_multi_board();
+							this.load_dept_context();
+						}
+					},
+					error: () => d.get_primary_btn().prop("disabled", false),
+				});
+			},
+		});
+		d.fields_dict.warn_html.$wrapper.html(
+			`<div style="font-size:12.5px;margin-bottom:6px"><b>&#9888;&#65039; Administrator-only bypass.</b> ` +
+			`Skipping counts this department as resolved — the release Material Request is created as soon as no department is left Pending.</div>`);
+		d.show();
 	}
 
 	// ── Phase D — pending distributions (PM posts the multi-warehouse split) ──
@@ -735,37 +987,29 @@ class ProductionLogging {
 	render_dist_zone(rows) {
 		const $wrap = this.$root.find("#pl-dist-wrap");
 		if (!$wrap.length) return;
+		this._n_dist = rows.length;
+		this.update_actions();
 		if (!rows.length) { $wrap.empty(); return; }
-		const cards = rows.map((r) => `
-			<div class="release-card glass dept-card">
-				<div class="release-banner dept-banner">
-					<div class="rb-ico">&#127981;</div>
-					<div class="rb-tt">
-						<div class="rb-t">Awaiting distribution &middot; ${this.esc(r.name)}</div>
-						<div class="rb-s">${this.esc(r.production_item_name || r.production_item)} &middot; produced ${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</div>
-					</div>
-					<span class="badge b-distrib"><span class="bdot"></span>Awaiting Distribution</span>
-				</div>
-				<div class="release-body">
-					<div class="rel-meta">
-						<div class="rm"><div class="k">Work Order</div><div class="v mono">${this.esc(r.work_order || "—")}</div></div>
-						<div class="rm"><div class="k">Material Request</div><div class="v mono">${this.esc(r.material_request || "—")}</div></div>
-						<div class="rm"><div class="k">Release SE</div><div class="v mono">${this.esc(r.release_stock_entry || "—")}</div></div>
-						<div class="rm"><div class="k">Produced</div><div class="v">${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</div></div>
-					</div>
-					<div class="release-note dept-note"><span style="font-size:15px;line-height:1">&#8505;&#65039;</span>
-						<span>Split the produced output (and any by-products) across warehouses — the totals must <b>exactly match</b> the produced quantities. Posting creates ONE Manufacture Stock Entry.</span></div>
-					<div class="release-actions">
-						<button class="btn btn-approve dept-log-btn pl-dist-btn" data-name="${this.esc(r.name)}">&#127981; Post Distribution</button>
-					</div>
-				</div>
-			</div>`).join("");
+		const row = (r) => `
+			<div class="pl-row violet">
+				<span class="pl-rid">${this.esc(r.name)}</span>
+				<span class="pl-rwhat">${this.esc(r.production_item_name || r.production_item)} · <b>${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</b>
+					<span class="dim">· MR ${this.esc(r.material_request || "—")}</span></span>
+				<span class="pl-pill age">waiting ${this.age_of(r.modified) || "—"}</span>
+				<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>
+				<button class="btn btn-approve btn-sm btn-violet pl-dist-btn" data-name="${this.esc(r.name)}">&#127981; Post Distribution</button>
+			</div>
+			<div class="pl-xpand" style="display:none">
+				<span><b>Work Order</b> <span class="mono">${this.esc(r.work_order || "—")}</span></span>
+				<span><b>Release SE</b> <span class="mono">${this.esc(r.release_stock_entry || "—")}</span></span>
+				<span><b>Note</b> split the produced output (and by-products) across warehouses — totals must exactly match; posting creates ONE Manufacture Stock Entry.</span>
+			</div>`;
 		$wrap.html(`
 			<div class="sec-title">
-				<span class="bar" style="background:var(--purple)"></span> Multiple Flow &mdash; Post Multi-Warehouse Distribution
+				<span class="bar" style="background:var(--purple)"></span> Post Distribution
 				<span class="feas-tag tag-auto">&#127981; PM action</span>
 			</div>
-			${cards}`);
+			<div class="glass pl-rows">${rows.map(row).join("")}</div>`);
 	}
 
 	open_distribution_dialog(name) {
@@ -1019,7 +1263,6 @@ class ProductionLogging {
 			pending = 0,
 			released = 0,
 			completed = 0,
-			varSum = 0,
 			varN = 0;
 		rows.forEach((r) => {
 			const st = norm(r.ts_variance_status);
@@ -1027,10 +1270,7 @@ class ProductionLogging {
 			if (st === "released") released++;
 			if (st === "completed") {
 				completed++;
-				if (r.material_variance_pct != null) {
-					varSum += Math.abs(flt(r.material_variance_pct));
-					varN++;
-				}
+				if (cint(r.variance_breach)) varN++;
 			}
 			const md = (r.modified || "").slice(0, 10);
 			if (md === today && (st === "completed" || st === "released")) {
@@ -1038,13 +1278,12 @@ class ProductionLogging {
 				runsToday++;
 			}
 		});
-		const avgVar = varN ? (varSum / varN).toFixed(1) : "0.0";
 		const KPIS = [
 			{ ico: "🛢️", cls: "ki-green", lbl: "Produced Today", val: this.fmt(producedToday), unit: "", sub: `${runsToday} run(s) released/posted today` },
 			{ ico: "🚦", cls: "ki-amber", lbl: "Pending Releases", val: String(pending), unit: "", sub: "awaiting Store Manager" },
 			{ ico: "⚙️", cls: "ki-blue", lbl: "Released (in process)", val: String(released), unit: "", sub: "auto-chain recoverable" },
 			{ ico: "✓", cls: "ki-purple", lbl: "Completed (recent)", val: String(completed), unit: "", sub: "in the last 30 runs" },
-			{ ico: "📊", cls: "ki-slate", lbl: "Avg Material Variance", val: avgVar, unit: "%", sub: "completed runs" },
+			{ ico: "⚠️", cls: "ki-slate", lbl: "Variance Breaches", val: String(varN), unit: "", sub: "completed runs over tolerance" },
 		];
 		this.$root.find("#pl-kpi-grid").html(
 			KPIS.map(
@@ -1064,6 +1303,7 @@ class ProductionLogging {
 			"Draft": "b-draft",
 			"Pending Stores Release": "b-pending",
 			"Released": "b-released",
+			"Awaiting Department Production": "b-pending",
 			"Pending Material Request": "b-matreq",
 			"Awaiting Distribution": "b-distrib",
 			"Completed": "b-completed",
@@ -1117,6 +1357,8 @@ class ProductionLogging {
 	render_release_zone(rows) {
 		const $z = this.$root.find("#pl-release-zone");
 		if (!$z.length) return;
+		this._n_rel = rows.length;
+		this.update_actions();
 		if (!rows.length) {
 			$z.html(
 				`<div class="glass empty-card"><div class="ec-ico">✅</div>` +
@@ -1127,36 +1369,37 @@ class ProductionLogging {
 		}
 		const wip = this.settings && this.settings.wip_warehouse ? this.settings.wip_warehouse : "WIP";
 		const src = this.settings && this.settings.release_source_warehouse ? this.settings.release_source_warehouse : "Stores";
-		$z.html(
-			`<div class="release-stack">` +
-				rows
-					.map((r) => {
-						const itemName = r.production_item_name || r.production_item || "—";
-						return (
-							`<div class="release-card glass">` +
-							`<div class="release-banner">` +
-							`<div class="rb-ico">🚦</div>` +
-							`<div><div class="rb-t">Release request &middot; ${this.esc(r.name)}</div>` +
-							`<div class="rb-s">From ${this.esc(r.submitted_by || r.owner || "—")} &middot; updated ${this.esc(frappe.datetime.str_to_user(r.modified))}</div></div>` +
-							`<span class="rb-badge badge b-pending"><span class="bdot"></span>Pending Stores Release</span>` +
-							`</div>` +
-							`<div class="release-body">` +
-							`<div class="rel-meta">` +
-							`<div class="rm"><div class="k">BOM</div><div class="v mono">${this.esc(r.bom || "—")}</div></div>` +
-							`<div class="rm"><div class="k">Produced Qty</div><div class="v">${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")} ${this.esc(itemName)}</div></div>` +
-							`<div class="rm"><div class="k">Work Order</div><div class="v mono">${this.esc(r.work_order || "—")}</div></div>` +
-							`<div class="rm"><div class="k">Release SE</div><div class="v mono">${this.esc(r.release_stock_entry || "—")}</div></div>` +
-							`</div>` +
-							`<div class="release-note"><span style="font-size:15px;line-height:1">ℹ️</span>` +
-							`<span>On <b>Release</b>, the system auto-completes the rest: submits the Material Transfer (${this.esc(src)} &rarr; ${this.esc(wip)}), runs Job Cards if it's an operations BOM, posts the Manufacture Stock Entry, and closes the Work Order &mdash; <b>no further clicks</b>.</span></div>` +
-							`<div class="release-actions">` +
-							`<button class="btn btn-approve pl-approve-btn" data-name="${this.esc(r.name)}">` +
-							`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Release</button>` +
-							`</div></div></div>`
-						);
-					})
-					.join("") +
+		const week_ago = frappe.datetime.add_days(frappe.datetime.now_date(), -7);
+		const row = (r) => {
+			const itemName = r.production_item_name || r.production_item || "—";
+			return (
+				`<div class="pl-row green">` +
+				`<span class="pl-rid">${this.esc(r.name)}</span>` +
+				`<span class="pl-rwhat">${this.esc(itemName)} · <b>${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</b>` +
+				` <span class="dim">· ${this.esc(r.bom || "—")} · from ${this.esc(r.submitted_by || r.owner || "—")}</span></span>` +
+				`<span class="pl-pill age">waiting ${this.age_of(r.modified) || "—"}</span>` +
+				`<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>` +
+				`<button class="btn btn-approve btn-sm pl-approve-btn" data-name="${this.esc(r.name)}">` +
+				`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Release</button>` +
+				`</div>` +
+				`<div class="pl-xpand" style="display:none">` +
+				`<span><b>Work Order</b> <span class="mono">${this.esc(r.work_order || "—")}</span></span>` +
+				`<span><b>Release SE</b> <span class="mono">${this.esc(r.release_stock_entry || "—")}</span></span>` +
+				`<span><b>Updated</b> ${this.esc(frappe.datetime.str_to_user(r.modified))}</span>` +
+				`<span><b>On Release</b> the system submits the Material Transfer (${this.esc(src)} &rarr; ${this.esc(wip)}), runs Job Cards, posts the Manufacture Stock Entry and closes the Work Order — no further clicks.</span>` +
 				`</div>`
+			);
+		};
+		const fresh = rows.filter((r) => (r.modified || "").slice(0, 10) >= week_ago);
+		const older = rows.filter((r) => (r.modified || "").slice(0, 10) < week_ago);
+		$z.html(
+			`<div class="glass pl-rows">` +
+				fresh.map(row).join("") +
+				(older.length
+					? `<div class="pl-fold"><span class="pl-fold-chev">&#9656;</span> Older release requests (${older.length})</div>` +
+					  `<div class="pl-fold-body" style="display:none">${older.map(row).join("")}</div>`
+					: "") +
+			`</div>`
 		);
 	}
 
@@ -1386,13 +1629,13 @@ class ProductionLogging {
 		// jumps to 100% on success (or flips to an error state on failure).
 		this.start_progress({
 			title: "Creating production log…",
-			subtitle: multi ? "Draft → Pending Material Request" : "Draft → Pending Stores Release",
+			subtitle: multi ? "Draft → Awaiting Department Production" : "Draft → Pending Stores Release",
 			steps: multi ? [
 				{ label: "Creating the production entry…", kind: "auto" },
 				{ label: "Validating + creating Work Order…", kind: "auto" },
-				{ label: "Creating the auto Material Request…", kind: "auto" },
-				{ label: "Notifying departments (reporting)…", kind: "auto" },
-				{ label: "Routing the MR to Store Manager…", kind: "gate" },
+				{ label: "Creating department production entries…", kind: "auto" },
+				{ label: "Notifying departments — Add Production…", kind: "auto" },
+				{ label: "Waiting for departments → then MR to Store Manager…", kind: "gate" },
 			] : [
 				{ label: "Creating the production entry…", kind: "auto" },
 				{ label: "Validating + creating Work Order…", kind: "auto" },
@@ -1439,14 +1682,19 @@ class ProductionLogging {
 					callback: (rr) => {
 						const m = rr.message || {};
 						this.advance_progress(4);
+						const awaiting_depts = m.ts_variance_status === "Awaiting Department Production";
 						this.finish_progress({
 							doneStatus: multi
-								? "Submitted ✓ — Material Request routed to Store Manager"
+								? (awaiting_depts
+									? "Submitted ✓ — departments notified to Add Production"
+									: "Submitted ✓ — Material Request routed to Store Manager")
 								: "Submitted ✓ — Pending Store Manager release",
 							onDone: () => {
 								frappe.show_alert({
 									message: multi
-										? __("Submitted {0} — Material Request {1} awaits Store Manager release.", [doc.name, m.material_request || ""])
+										? (awaiting_depts
+											? __("Submitted {0} — {1} department(s) notified. The Store-Manager release fires automatically when all add their production.", [doc.name, (m.department_entries || []).length])
+											: __("Submitted {0} — Material Request {1} awaits Store Manager release.", [doc.name, m.material_request || ""]))
 										: __("Submitted {0} — pending Store Manager release.", [doc.name]),
 									indicator: "green",
 								});

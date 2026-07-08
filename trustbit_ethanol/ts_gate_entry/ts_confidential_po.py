@@ -178,12 +178,36 @@ def _doc_has_maize(doc):
     )
 
 
+def _is_production_transfer_mr(doc):
+    """True for a Multiple-flow production transfer MR (tagged ts_production_run).
+
+    D3 exemption (v2.21 dept-production rework, U6-approved 4 Jul 2026): these are
+    Stores-release WORKFLOW documents, not procurement — the Store Manager MUST see
+    them to release raw material, so the maize auto-flag must never hide them
+    (auto-flagging one would silently stall the run: Stores Manager is deliberately
+    NOT in the MR allow-list). NARROW by design — the rejected alternative (adding
+    Stores Manager to the allow-list) would leak every confidential procurement MR.
+
+    Defensive getattr: the ts_production_run tag field is seeded only where the
+    production stack is migrated (ABSENT on prod's 2.18.x line), so this returns
+    False there and maize MRs stay confidential — provable no-op on prod.
+    The tamper-guard below stays fully active for these MRs (only the AUTO-SET is
+    skipped): a manual flag flip still requires an allow-listed role."""
+    return (
+        doc.doctype == "Material Request"
+        and getattr(doc, "material_request_type", "") == "Material Transfer"
+        and bool(getattr(doc, "ts_production_run", None))
+    )
+
+
 def set_confidential_flag(doc, method=None):
     """PO / MR before_save: force-confidential for the maize cost center
     (fill-only, never auto-clears) and block unauthorized manual changes."""
     user = frappe.session.user
     old = _stored_flag(doc)
-    is_maize = _doc_has_maize(doc)
+    # D3 (v2.21): production transfer MRs are never auto-flagged (see
+    # _is_production_transfer_mr) — the tamper-guard below still applies to them.
+    is_maize = _doc_has_maize(doc) and not _is_production_transfer_mr(doc)
 
     # 1) Auto-set: maize cost center forces confidential = 1 (never auto-clears).
     if is_maize and not int(getattr(doc, _FLAG, 0) or 0):

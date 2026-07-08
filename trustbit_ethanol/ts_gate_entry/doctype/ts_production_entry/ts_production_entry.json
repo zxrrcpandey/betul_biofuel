@@ -250,7 +250,7 @@
    "in_standard_filter": 1,
    "label": "Status",
    "no_copy": 1,
-   "options": "Draft\nPending Stores Release\nReleased\nPending Material Request\nAwaiting Distribution\nCompleted\nRejected\nCancelled",
+   "options": "Draft\nPending Stores Release\nReleased\nAwaiting Department Production\nPending Material Request\nAwaiting Distribution\nCompleted\nRejected\nCancelled",
    "read_only": 1
   },
   {
@@ -482,7 +482,7 @@
  "index_web_pages_for_search": 0,
  "is_submittable": 0,
  "links": [],
- "modified": "2026-06-01 00:00:00",
+ "modified": "2026-07-04 00:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Production Entry",

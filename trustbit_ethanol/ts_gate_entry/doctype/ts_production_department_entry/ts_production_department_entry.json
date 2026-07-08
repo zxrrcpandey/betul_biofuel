@@ -21,6 +21,7 @@
   "column_break_de2",
   "submitted_by",
   "logged_at",
+  "notified_at",
   "materials_section",
   "materials",
   "remark"
@@ -117,9 +118,9 @@
    "in_standard_filter": 1,
    "label": "Status",
    "no_copy": 1,
-   "options": "Draft\nLogged\nCancelled",
+   "options": "Draft\nPending\nLogged\nSkipped\nCancelled",
    "read_only": 1,
-   "description": "Reporting-only record — NEVER moves stock. Control-plane field (tamper-guarded); flipped only by the whitelisted endpoints."
+   "description": "Reporting-only record — NEVER moves stock. Control-plane field (tamper-guarded); flipped only by the whitelisted endpoints. Pending = system-created at Multiple-flow submit, awaiting the department's Add Production; Skipped = Administrator bypass (reason recorded)."
   },
   {
    "fieldname": "column_break_de2",
@@ -141,6 +142,14 @@
    "no_copy": 1
   },
   {
+   "fieldname": "notified_at",
+   "fieldtype": "Datetime",
+   "label": "Department Notified At",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Stamped when the department was notified to Add Production (Multiple-flow gate). Anchor for the P2 reminder engine."
+  },
+  {
    "fieldname": "materials_section",
    "fieldtype": "Section Break",
    "label": "Materials Consumed (Reporting Only)"
@@ -150,7 +159,7 @@
    "fieldtype": "Table",
    "label": "Materials",
    "options": "TS Production Department Material",
-   "reqd": 1
+   "description": "Required to LOG (enforced server-side at Logged) — a system-created Pending gate entry starts empty until the department adds its actuals."
   },
   {
    "fieldname": "remark",
@@ -160,7 +169,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-07-02 12:00:00.000000",
+ "modified": "2026-07-04 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Production Department Entry",

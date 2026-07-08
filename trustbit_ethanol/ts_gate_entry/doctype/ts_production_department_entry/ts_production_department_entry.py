@@ -13,7 +13,7 @@ from frappe.model.document import Document
 from frappe.utils import flt
 
 # Control-plane fields — writable only via the endpoints' db_set (Lesson 162).
-CONTROL_FIELDS = ["status", "submitted_by", "logged_at", "bom_connector"]
+CONTROL_FIELDS = ["status", "submitted_by", "logged_at", "bom_connector", "notified_at"]
 
 
 class TSProductionDepartmentEntry(Document):
@@ -70,10 +70,17 @@ class TSProductionDepartmentEntry(Document):
 			self.bom_connector = connectors[0]
 
 	def _validate_materials(self):
+		# A system-created gate entry (Multiple-flow submit) starts EMPTY in
+		# Draft/Pending — the department fills actuals when it logs. Materials
+		# become mandatory the moment the entry is (being) Logged; the endpoint
+		# additionally enforces qty > 0 per used row.
 		if not (self.materials or []):
+			if (self.status or "Draft") in ("Draft", "Pending"):
+				return
 			frappe.throw(_("Add at least one material row."))
 		for row in self.materials:
 			if flt(row.qty) < 0:
 				frappe.throw(_("Row #{0}: quantity cannot be negative.").format(row.idx))
-		if not any(flt(r.qty) > 0 for r in self.materials):
+		if (self.status or "Draft") not in ("Draft", "Pending") and \
+				not any(flt(r.qty) > 0 for r in self.materials):
 			frappe.throw(_("At least one material row must have a quantity > 0."))

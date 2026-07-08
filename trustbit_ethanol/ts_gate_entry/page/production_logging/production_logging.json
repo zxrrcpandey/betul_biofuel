@@ -5,7 +5,7 @@
  "doctype": "Page",
  "icon": "tool",
  "idx": 0,
- "modified": "2026-06-25 00:00:00",
+ "modified": "2026-07-04 00:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "production-logging",
@@ -16,7 +16,11 @@
   {"role": "IT Head"},
   {"role": "PM"},
   {"role": "Grain PM"},
-  {"role": "Stores Manager"}
+  {"role": "Stores Manager"},
+  {"role": "Manufacturing Manager"},
+  {"role": "Manufacturing User"},
+  {"role": "CEO"},
+  {"role": "MD"}
  ],
  "script": null,
  "standard": "Yes",

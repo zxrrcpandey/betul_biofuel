@@ -1,16 +1,25 @@
-"""Multiple (BOM Connector) production flow — Phase D of the Multi-BOM plan
-(memory/project_production_multi_flow.md; mockup_production_multi_phaseD.html).
+"""Multiple (BOM Connector) production flow — Phase D of the Multi-BOM plan,
+re-sequenced by the Department Actual Production rework (4 Jul 2026 —
+PLAN_dept_production_rework.md, user decisions U1-U7).
 
-Flow (feasibility-proven T1/T2/T3, 2 Jul 2026):
+Flow (v2.21 dept-gate re-sequencing):
 
-  Draft ──submit_multi_for_release──▶ Pending Material Request
+  Draft ──submit_multi_for_release──▶ Awaiting Department Production
         (validate + valuation block; Work Order [skip_transfer=1] created;
-         auto MATERIAL REQUEST [Material Transfer, tagged ts_production_run]
-         created + submitted — rides the v2.9.9 stores-flow bypass)
-  ── Store Manager releases via the EXISTING MR stores flow; when the MR's
-     Material Transfer SE is SUBMITTED (on_submit hook below) ──▶ Awaiting
-     Distribution (release fields stamped; Job Cards auto-complete best-effort;
-     department categories notified)
+         ONE 'Pending' TS Production Department Entry auto-created per connector
+         department line; departments notified to ADD PRODUCTION [E1].
+         The auto-MR is DEFERRED — R5. Zero-dept-line connectors fall through
+         directly to the old immediate-MR path so a run never waits on nothing.)
+  ── each department logs its actuals (submit_department_production) or an
+     Administrator skips it (admin_skip_department, U3) ──▶ when the LAST
+     gating entry leaves 'Pending', the ATOMIC all-complete trigger
+     (check_all_departments_complete: FOR-UPDATE re-select + material_request-
+     null idempotency, L288) creates + submits the auto MATERIAL REQUEST
+     [Material Transfer, tagged ts_production_run] and notifies the Store
+     Managers ──▶ Pending Material Request
+  ── Store Manager releases via the EXISTING MR stores flow; when the MR is
+     FULLY transferred (on_submit hook below — D1 fix: partial releases no
+     longer advance the run) ──▶ Awaiting Distribution
   ──complete_distribution──▶ Completed
         (PM's manual multi-warehouse split; ONE Manufacture SE with multiple
          finished/by-product rows [T1/T2]; sum-must-equal-produced enforced
@@ -41,6 +50,7 @@ from trustbit_ethanol.ts_gate_entry.ts_production_release import (
 )
 
 DOCTYPE = "TS Production Entry"
+DEPT_DOCTYPE = "TS Production Department Entry"
 SETTING_MULTI_ENABLED = "ts_production_multi_flow_enabled"
 SETTING_MR_COST_CENTER = "ts_production_mr_cost_center"
 _EPS = 1e-6
@@ -94,8 +104,11 @@ def get_multi_context():
 
 @frappe.whitelist(methods=["POST"])
 def submit_multi_for_release(name):
-	"""Multiple-flow submit: validate -> Work Order (skip_transfer) -> auto
-	Material Request (tagged) -> status 'Pending Material Request'."""
+	"""Multiple-flow submit (v2.21 re-sequenced): validate -> Work Order
+	(skip_transfer) -> ONE 'Pending' department entry per connector dept line +
+	department notifications -> status 'Awaiting Department Production'.
+	The auto-MR is DEFERRED to check_all_departments_complete() (R5).
+	Zero-dept-line connectors fall through to the old immediate-MR path."""
 	_require_enabled()
 	doc = frappe.get_doc(DOCTYPE, name)
 	frappe.has_permission(DOCTYPE, "write", doc=doc, throw=True)
@@ -118,15 +131,25 @@ def submit_multi_for_release(name):
 		frappe.throw(_("The entry's BOM ({0}) must be the connector's MAIN BOM ({1})."
 		               ).format(doc.bom, conn.main_bom))
 
+	dept_lines = frappe.get_all(
+		"TS BOM Connector Line", filters={"parent": doc.bom_connector},
+		fields=["bom", "category"], order_by="idx", limit=0)
+
 	settings = api._get_settings()
 	api.compute_and_set_variance(doc)                 # informational (decision 3)
 	api._block_if_missing_valuation(doc, settings)    # fail-closed, BEFORE any mutation
 	user = frappe.session.user
 	wo_name = mr_name = None
+	dept_entries = []
 	try:
 		with wo_engine.system_session():
 			wo_name = wo_engine.create_and_submit_work_order(doc, settings, skip_transfer=1)
-			mr_name = _create_and_submit_release_mr(doc, settings)
+			if dept_lines:
+				dept_entries = _create_pending_dept_entries(doc, dept_lines)
+			else:
+				# Fall-through: nothing to wait for — old immediate-MR path so a
+				# run can never stall in 'Awaiting Department Production'.
+				mr_name = _create_and_submit_release_mr(doc, settings)
 	except Exception:
 		if wo_name:
 			try:
@@ -141,17 +164,36 @@ def submit_multi_for_release(name):
 	           update_modified=False)
 	doc.db_set("submitted_by", user, update_modified=False)
 	doc.db_set("work_order", wo_name, update_modified=False)
-	doc.db_set("material_request", mr_name, update_modified=False)
 	doc.db_set("bom_with_operations", cint(attrs.get("with_operations")), update_modified=False)
 	doc.db_set("material_variance_pct", flt(doc.material_variance_pct), update_modified=False)
 	doc.db_set("produced_variance_pct", flt(doc.produced_variance_pct), update_modified=False)
 	doc.db_set("variance_breach", cint(doc.variance_breach), update_modified=False)
+
+	if dept_lines:
+		# status LAST (L288), then best-effort notifications
+		doc.db_set("ts_variance_status", "Awaiting Department Production",
+		           update_modified=False)
+		doc.add_comment("Comment", _(
+			"Submitted (Multiple flow) by {0}. Work Order {1} created; {2} department "
+			"production entr{3} pending — the release Material Request will be created "
+			"automatically when every department has added its production."
+		).format(user, wo_name, len(dept_entries),
+		         "y is" if len(dept_entries) == 1 else "ies are"))
+		try:
+			_notify_departments_add_production(doc, dept_lines)
+		except Exception:
+			frappe.clear_messages()
+		_warn_zero_recipient_categories(dept_lines)   # DEC-15, msgprint only
+		frappe.db.commit()
+		return {"ok": True, "ts_variance_status": "Awaiting Department Production",
+		        "work_order": wo_name, "department_entries": dept_entries}
+
+	doc.db_set("material_request", mr_name, update_modified=False)
 	doc.db_set("ts_variance_status", "Pending Material Request", update_modified=False)
 	doc.add_comment("Comment", _(
 		"Submitted (Multiple flow) by {0}. Work Order {1} + auto Material Request {2} "
-		"created — awaiting Store Manager release."
+		"created — awaiting Store Manager release (connector has no department lines)."
 	).format(user, wo_name, mr_name))
-
 	try:
 		_notify_stores_managers(doc, mr_name)
 	except Exception:
@@ -159,6 +201,88 @@ def submit_multi_for_release(name):
 	frappe.db.commit()
 	return {"ok": True, "ts_variance_status": "Pending Material Request",
 	        "work_order": wo_name, "material_request": mr_name}
+
+
+def _create_pending_dept_entries(doc, dept_lines):
+	"""One 'Pending' department entry per connector dept line (runs elevated —
+	the entries are system gate artifacts; departments only FILL them). Insert
+	as Draft (materials may be empty pre-log), then db_set Pending + notified_at."""
+	created = []
+	for ln in dept_lines:
+		entry = frappe.get_doc({
+			"doctype": DEPT_DOCTYPE,
+			"production_entry": doc.name,
+			"bom": ln.bom,
+			"category": ln.category,
+			"posting_date": nowdate(),
+		})
+		entry.insert(ignore_permissions=True)
+		entry.db_set("notified_at", now_datetime(), update_modified=False)
+		entry.db_set("status", "Pending", update_modified=False)
+		created.append(entry.name)
+	return created
+
+
+def _warn_zero_recipient_categories(dept_lines):
+	"""DEC-15: a gating category with no active recipients means nobody is told
+	to Add Production — warn the PM loudly at submit (run proceeds; the board
+	shows the stall and an Administrator can Skip)."""
+	for cat in sorted({ln.category for ln in dept_lines}):
+		has_recipient = frappe.db.exists(
+			"TS Production Notify Recipient",
+			{"parenttype": "TS Production BOM Category", "parent": cat, "active": 1})
+		if not has_recipient:
+			frappe.msgprint(_(
+				"⚠ Category {0} has NO active notification recipients — nobody will "
+				"be notified to Add Production for it. Configure recipients on the "
+				"category, or an Administrator will have to Skip it."
+			).format(frappe.utils.escape_html(cat)), indicator="orange")
+
+
+def check_all_departments_complete(run_name):
+	"""ATOMIC all-departments-complete trigger (called after a dept entry leaves
+	'Pending' via Logged or Skipped). Creates + submits the release MR exactly
+	once and advances the run — the single most concurrency-sensitive transition
+	of the rework:
+	  - FOR-UPDATE re-select serializes simultaneous last-dept submissions;
+	  - run-status check FIRST so legacy/grandfathered runs can never misfire;
+	  - material_request-null is the idempotency key;
+	  - status flipped LAST after the MR exists (L288).
+	Runs inside the caller's transaction — if MR creation throws, the caller's
+	whole request (including the dept entry's Logged flip) rolls back."""
+	row = frappe.db.sql(
+		"""SELECT name, ts_variance_status, material_request
+		   FROM `tabTS Production Entry` WHERE name = %s FOR UPDATE""",
+		run_name, as_dict=True)
+	if not row:
+		return {"mr_created": False, "reason": "run not found"}
+	row = row[0]
+	if row.ts_variance_status != "Awaiting Department Production":
+		return {"mr_created": False, "reason": "run not awaiting departments"}
+	if row.material_request:
+		return {"mr_created": False, "reason": "material request already exists"}
+	pending = frappe.db.count(DEPT_DOCTYPE,
+	                          {"production_entry": run_name, "status": "Pending"})
+	if pending:
+		return {"mr_created": False, "reason": "{0} department(s) still pending".format(pending)}
+
+	doc = frappe.get_doc(DOCTYPE, run_name)
+	settings = api._get_settings()
+	with wo_engine.system_session():
+		mr_name = _create_and_submit_release_mr(doc, settings)
+	doc.db_set("material_request", mr_name, update_modified=False)
+	doc.db_set("ts_variance_status", "Pending Material Request", update_modified=False)
+	try:
+		doc.add_comment("Comment", _(
+			"All departments completed — auto Material Request {0} created; "
+			"Store Managers notified to release.").format(mr_name))
+	except Exception:
+		frappe.clear_messages()
+	try:
+		_notify_stores_managers(doc, mr_name)
+	except Exception:
+		frappe.clear_messages()
+	return {"mr_created": True, "material_request": mr_name}
 
 
 def _create_and_submit_release_mr(doc, settings):
@@ -208,7 +332,10 @@ def _create_and_submit_release_mr(doc, settings):
 
 def production_multi_on_stock_entry_submit(doc, method=None):
 	"""Stock Entry on_submit (hooks.py): when the tagged MR's Material Transfer SE
-	is submitted by the Store Manager, advance the run to 'Awaiting Distribution'.
+	is submitted by the Store Manager, advance the run to 'Awaiting Distribution' —
+	but ONLY once the MR is FULLY transferred (D1 fix, 4 Jul: the old code fired
+	on the FIRST SE regardless of quantity, so a partial release advanced the run
+	and complete_distribution could consume WIP stock that never arrived).
 	Best-effort beyond the status flip — a Job-Card automation failure must never
 	block the Store Manager's SE submit (complete_distribution re-runs it)."""
 	if getattr(doc, "purpose", "") != "Material Transfer":
@@ -224,14 +351,26 @@ def production_multi_on_stock_entry_submit(doc, method=None):
 		pluck="name")
 	for name in entries:
 		pe = frappe.get_doc(DOCTYPE, name)
+		# Recomputed from DB (docstatus=1 SEs only) so partial→partial→full and
+		# cancel-then-resubmit sequences all converge to the right totals.
+		released_val, se_names = _mr_release_state_value(pe.material_request)
+		try:
+			pe.db_set("wip_released_qty", released_val, update_modified=False)
+		except Exception:
+			frappe.clear_messages()
+		if not _mr_fully_transferred(pe.material_request):
+			# D1: partial release — stay at 'Pending Material Request'.
+			try:
+				pe.add_comment("Comment", _(
+					"Partial raw-material release via {0} (MR {1} not yet fully "
+					"transferred) — run stays pending until the remaining quantity "
+					"is released.").format(doc.name, pe.material_request))
+			except Exception:
+				frappe.clear_messages()
+			continue
 		pe.db_set("release_stock_entry", doc.name, update_modified=False)
 		pe.db_set("released_by", frappe.session.user, update_modified=False)
 		pe.db_set("released_at", now_datetime(), update_modified=False)
-		try:
-			pe.db_set("wip_released_qty", wo_engine.released_value(doc.name),
-			          update_modified=False)
-		except Exception:
-			frappe.clear_messages()
 		if cint(pe.bom_with_operations):
 			try:
 				with wo_engine.system_session():
@@ -241,14 +380,48 @@ def production_multi_on_stock_entry_submit(doc, method=None):
 		pe.db_set("ts_variance_status", "Awaiting Distribution", update_modified=False)
 		try:
 			pe.add_comment("Comment", _(
-				"Raw material released via {0} (from MR {1}) — awaiting the PM's "
-				"multi-warehouse distribution.").format(doc.name, pe.material_request))
+				"Raw material fully released via {0} (MR {1}, {2} stock entr{3}) — "
+				"awaiting the PM's multi-warehouse distribution."
+			).format(doc.name, pe.material_request, len(se_names),
+			         "y" if len(se_names) == 1 else "ies"))
 		except Exception:
 			frappe.clear_messages()
+
+
+def _mr_fully_transferred(mr_name):
+	"""True when every MR item's transferred stock qty (across ALL submitted
+	Material Transfer SEs referencing the MR) covers the requested stock qty."""
+	requested = dict(frappe.db.sql(
+		"""SELECT item_code, SUM(stock_qty) FROM `tabMaterial Request Item`
+		   WHERE parent = %s GROUP BY item_code""", mr_name))
+	transferred = dict(frappe.db.sql(
+		"""SELECT sed.item_code, SUM(sed.transfer_qty)
+		   FROM `tabStock Entry Detail` sed
+		   JOIN `tabStock Entry` se ON se.name = sed.parent
+		   WHERE sed.material_request = %s AND se.docstatus = 1
+		     AND se.purpose = 'Material Transfer'
+		   GROUP BY sed.item_code""", mr_name))
+	for item, req_qty in requested.items():
+		if flt(transferred.get(item)) + _EPS < flt(req_qty):
+			return False
+	return True
+
+
+def _mr_release_state_value(mr_name):
+	"""(total released value across all submitted transfer SEs, [se names])."""
+	se_names = frappe.db.sql_list(
+		"""SELECT DISTINCT se.name
+		   FROM `tabStock Entry` se
+		   JOIN `tabStock Entry Detail` sed ON sed.parent = se.name
+		   WHERE sed.material_request = %s AND se.docstatus = 1
+		     AND se.purpose = 'Material Transfer'""", mr_name)
+	total = 0.0
+	for se in se_names:
 		try:
-			_notify_departments(pe)
+			total += flt(wo_engine.released_value(se))
 		except Exception:
 			frappe.clear_messages()
+	return total, se_names
 
 
 # ---------------------------------------------------------------- MR on_cancel hook
@@ -532,18 +705,20 @@ def _notify_stores_managers(doc, mr_name):
 			frappe.clear_messages()
 
 
-def _notify_departments(pe):
-	"""Notify each connector department category (best-effort; escaped values)."""
+def _notify_departments_add_production(pe, dept_lines):
+	"""E1 'Add Production' notification to each connector department category at
+	PM submit (v2.21 — departments now GATE the release; best-effort; escaped)."""
 	from trustbit_ethanol.ts_gate_entry.ts_production_notify import notify_category
 
-	cats = frappe.get_all("TS BOM Connector Line",
-	                      filters={"parent": pe.bom_connector}, pluck="category", limit=0)
 	safe_run = frappe.utils.escape_html(pe.name)
-	for cat in set(cats):
+	safe_item = frappe.utils.escape_html(pe.production_item_name or pe.production_item or "")
+	for cat in sorted({ln.category for ln in dept_lines}):
 		notify_category(
 			cat,
-			_("Log department consumption — {0}").format(safe_run),
-			_("Production run {0} has been released. Please log your department's "
-			  "material consumption (reporting only).").format(safe_run),
+			_("Add Production required — {0}").format(safe_run),
+			_("Production run {0} ({1}) has been submitted. Please run your "
+			  "department's BOM and ADD YOUR PRODUCTION details now — the Store "
+			  "Manager release waits until every department has done this."
+			  ).format(safe_run, safe_item),
 			ref_doctype=DOCTYPE, ref_name=pe.name,
 		)

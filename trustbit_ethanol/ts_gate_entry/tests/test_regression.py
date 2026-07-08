@@ -330,6 +330,102 @@ test("Active PO approval rules exist", test_po_approval_rules)
 
 
 # ═══════════════════════════════════════════════════════════
+#  11. PRODUCTION STACK SMOKE (v2.21 dept-production gate)
+#  Environment-aware: each test PASSES-with-skip when the
+#  v2.20/v2.21 production stack is not deployed on this server
+#  (prod runs the inert v2.15.0 line until the stack ships) —
+#  so a selective prod deploy never hard-fails the gate.
+# ═══════════════════════════════════════════════════════════
+
+print("\n[11/11] Production Stack Smoke (v2.21)")
+
+_DEPT_DT = "TS Production Department Entry"
+_prod_stack = bool(frappe.db.exists("DocType", _DEPT_DT))
+
+
+def test_pe_status_enum():
+    """PE enum carries all 9 states incl. Awaiting Department Production (L239)"""
+    if not _prod_stack:
+        return  # stack absent (prod pre-deploy) — skip-pass
+    opts = frappe.get_meta("TS Production Entry").get_field("ts_variance_status").options or ""
+    for want in ("Awaiting Department Production", "Pending Material Request",
+                 "Awaiting Distribution", "Pending Stores Release"):
+        assert want in opts, f"PE status enum missing '{want}' (Property Setter not applied?)"
+
+test("PE status enum (v2.21)", test_pe_status_enum)
+
+
+def test_dept_entry_meta():
+    """Dept entry has Pending/Skipped states + notified_at (v2.21 gate schema)"""
+    if not _prod_stack:
+        return
+    meta = frappe.get_meta(_DEPT_DT)
+    opts = meta.get_field("status").options or ""
+    assert "Pending" in opts and "Skipped" in opts, f"dept status enum incomplete: {opts!r}"
+    assert meta.has_field("notified_at"), "dept entry missing notified_at"
+
+test("Dept entry gate schema", test_dept_entry_meta)
+
+
+def test_production_seeder_artifacts():
+    """Seeder artifacts: MR tag field + CEO/MD dept DocPerms + page roles (L290/292)"""
+    if not _prod_stack:
+        return
+    assert frappe.get_meta("Material Request").has_field("ts_production_run"), \
+        "Material Request.ts_production_run tag field missing"
+    for role in ("CEO", "MD"):
+        if frappe.db.exists("Role", role):
+            assert frappe.db.exists("Custom DocPerm",
+                {"parent": _DEPT_DT, "role": role, "permlevel": 0}), \
+                f"{role} dept-entry DocPerm missing"
+    if frappe.db.exists("Page", "production-logging"):
+        roles = {r.role for r in frappe.get_doc("Page", "production-logging").roles}
+        assert {"CEO", "MD"} <= roles, f"page roles missing CEO/MD: {roles}"
+
+test("Production seeder artifacts", test_production_seeder_artifacts)
+
+
+def test_production_endpoints():
+    """v2.21 endpoints importable + whitelisted; skip valve + D3 helper present"""
+    if not _prod_stack:
+        return
+    from trustbit_ethanol.ts_gate_entry import ts_production_dept as _dept
+    from trustbit_ethanol.ts_gate_entry import ts_production_multi as _multi
+    from trustbit_ethanol.ts_gate_entry import ts_confidential_po as _conf
+    # Frappe v15 registers whitelisted fns in frappe.whitelisted (no attribute)
+    for fn in (_dept.submit_department_production, _dept.admin_skip_department,
+               _dept.get_multi_run_board, _multi.submit_multi_for_release):
+        assert fn in frappe.whitelisted, f"{fn.__name__} not whitelisted"
+    # the atomic trigger must NOT be whitelisted (internal only)
+    assert _multi.check_all_departments_complete not in frappe.whitelisted, \
+        "check_all_departments_complete must not be whitelisted"
+    assert callable(getattr(_conf, "_is_production_transfer_mr", None)), \
+        "D3 exemption helper missing from ts_confidential_po"
+
+test("Production endpoints wired", test_production_endpoints)
+
+
+def test_dept_gate_invariants():
+    """Data invariants: no orphan Pending gate entries; legacy Logged untouched"""
+    if not _prod_stack:
+        return
+    orphans = frappe.db.sql("""
+        SELECT COUNT(*) FROM `tabTS Production Department Entry` d
+        JOIN `tabTS Production Entry` r ON r.name = d.production_entry
+        WHERE d.status = 'Pending'
+          AND r.ts_variance_status NOT IN ('Awaiting Department Production')
+    """)[0][0]
+    assert orphans == 0, f"{orphans} Pending gate entr(ies) on runs that moved on"
+    # a run holding an MR must not still be Awaiting Department Production
+    stuck = frappe.db.count("TS Production Entry", {
+        "ts_variance_status": "Awaiting Department Production",
+        "material_request": ["is", "set"]})
+    assert stuck == 0, f"{stuck} run(s) have an MR but still await departments"
+
+test("Dept gate data invariants", test_dept_gate_invariants)
+
+
+# ═══════════════════════════════════════════════════════════
 #  CLEANUP + RESULTS
 # ═══════════════════════════════════════════════════════════
 

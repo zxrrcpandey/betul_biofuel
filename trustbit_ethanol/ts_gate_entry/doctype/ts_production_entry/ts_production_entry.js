@@ -127,8 +127,11 @@ function _ts_prod_buttons(frm) {
 
 		// Business rule (3 Jul): Store Managers RELEASE ONLY — Reject is an
 		// ADMIN-ONLY recovery action (server enforces this in reject_release).
+		// D2 fix (4 Jul, U4): the server's _is_admin admits only System Manager /
+		// Administrator — IT Head was shown a button that always PermissionErrored.
+		// User decided NOT to widen authority, so the button now matches the server.
 		const _roles = frappe.user_roles || [];
-		if (_roles.includes("System Manager") || _roles.includes("IT Head")) {
+		if (_roles.includes("System Manager") || frappe.session.user === "Administrator") {
 			frm.add_custom_button(__("Reject (admin)"), () => {
 				frappe.prompt(
 					[{ fieldname: "reason", fieldtype: "Small Text", label: __("Rejection Reason (min 10 chars)"), reqd: 1 }],

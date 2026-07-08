@@ -160,8 +160,108 @@ def _ensure_workspace_shortcuts():
 			ws.save()  # ORM save — migrate would NOT sync this (Lesson 173)
 
 
+_DEPT_CARD_PREFIX = "Dept Pending — "
+
+
+def _seed_dept_pending_cards():
+	"""v2.21 dept-production gate: one 'Dept Pending — <category>' Number Card per
+	ACTIVE reporting-only TS Production BOM Category (data-driven, L221 — a new
+	department picks up its card on the next migrate). Counts the department's
+	system-created 'Pending' gate entries. Cards for vanished/inactive categories
+	are removed. Then the cards are appended to the EXISTING TS Production
+	workspace (child row + content block — migrate never syncs these, L173).
+	Idempotent."""
+	if not frappe.db.exists("DocType", "TS Production Department Entry"):
+		return
+	if not frappe.db.exists("DocType", "TS Production BOM Category"):
+		return
+	cats = frappe.get_all("TS Production BOM Category",
+	                      filters={"active": 1, "is_production": 0},
+	                      pluck="name", order_by="name", limit=0)
+	wanted = {_DEPT_CARD_PREFIX + c: c for c in cats}
+
+	# create missing cards
+	for card_name, cat in wanted.items():
+		if frappe.db.exists("Number Card", card_name):
+			continue
+		doc = frappe.get_doc({
+			"doctype": "Number Card",
+			"label": card_name,  # autoname field:label -> name == match key
+			"document_type": "TS Production Department Entry",
+			"type": "Document Type", "function": "Count",
+			"is_public": 1, "show_percentage_stats": 0,
+			"module": MODULE, "color": "#f59e0b", "background_color": "#fef3c7",
+			"filters_json": json.dumps([
+				["TS Production Department Entry", "status", "=", "Pending"],
+				["TS Production Department Entry", "category", "=", cat],
+			]),
+		})
+		doc.flags.ignore_permissions = True
+		doc.insert(ignore_permissions=True)
+		frappe.db.set_value("Number Card", card_name, "label",
+		                    cat + " — Pending", update_modified=False)
+
+	# drop cards whose category vanished or went inactive/production
+	stale = frappe.get_all("Number Card",
+	                       filters={"name": ["like", _DEPT_CARD_PREFIX + "%"]},
+	                       pluck="name", limit=0)
+	for card_name in stale:
+		if card_name not in wanted:
+			try:
+				frappe.delete_doc("Number Card", card_name,
+				                  force=1, ignore_permissions=True)
+			except Exception:
+				frappe.clear_messages()
+
+	# attach to the existing TS Production workspace (create path is covered by
+	# _seed_workspaces only for brand-new sites; existing ones need ORM append)
+	if not frappe.db.exists("Workspace", "TS Production"):
+		return
+	ws = frappe.get_doc("Workspace", "TS Production")
+	have = {(r.number_card_name or "") for r in (ws.number_cards or [])}
+	try:
+		content = json.loads(ws.content or "[]")
+	except Exception:
+		content = []
+	block_names = {b.get("data", {}).get("number_card_name") for b in content
+	               if b.get("type") == "number_card"}
+	changed = False
+	for card_name in wanted:
+		if card_name not in have:
+			# child row label == card NAME (the renderer's match key)
+			ws.append("number_cards", {"number_card_name": card_name, "label": card_name})
+			changed = True
+		if card_name not in block_names:
+			# insert dept cards right after the last number_card block so they
+			# render with the existing KPI row, not below the shortcuts
+			idx = max((i for i, b in enumerate(content)
+			           if b.get("type") == "number_card"), default=-1)
+			content.insert(idx + 1, {"id": "nc_" + card_name.replace(" ", "_"),
+			                         "type": "number_card",
+			                         "data": {"number_card_name": card_name, "col": 4}})
+			changed = True
+	# detach stale dept-card rows/blocks
+	for r in list(ws.number_cards or []):
+		nm = r.number_card_name or ""
+		if nm.startswith(_DEPT_CARD_PREFIX) and nm not in wanted:
+			ws.remove(r)
+			changed = True
+	new_content = [b for b in content
+	               if not (b.get("type") == "number_card"
+	                       and (b.get("data", {}).get("number_card_name") or "").startswith(_DEPT_CARD_PREFIX)
+	                       and b.get("data", {}).get("number_card_name") not in wanted)]
+	if len(new_content) != len(content):
+		content = new_content
+		changed = True
+	if changed:
+		ws.content = json.dumps(content)
+		ws.flags.ignore_permissions = True
+		ws.save()  # ORM save — migrate would NOT sync this (Lesson 173)
+
+
 def seed_dashboard_workspaces():
 	"""after_migrate entry point (register in hooks.py under unlock). Idempotent."""
 	_seed_number_cards()
 	_seed_workspaces()
 	_ensure_workspace_shortcuts()
+	_seed_dept_pending_cards()
