@@ -459,24 +459,19 @@ class TSItemCreator(Document):
 		if self.standard_rate:
 			data["standard_rate"] = self.standard_rate
 
-		# If custom posting_date is set, skip ERPNext's set_opening_stock()
-		# (it hardcodes today's date). We'll create Stock Entry manually after insert.
-		if self._has_custom_posting_date():
-			# Don't pass opening_stock — we handle it in _create_backdated_opening_stock()
-			if self.maintain_stock and self.opening_warehouse:
-				data["opening_warehouse"] = self.opening_warehouse
-		else:
-			if self.maintain_stock and self.opening_stock:
-				data["opening_stock"] = self.opening_stock
-			if self.maintain_stock and self.opening_warehouse:
-				data["opening_warehouse"] = self.opening_warehouse
+		# NEVER pass opening_stock to the Item: core set_opening_stock() ignores
+		# the selected warehouse/company (Item has no opening_warehouse field) and
+		# books the Stock Entry under the GLOBAL default company. Opening stock is
+		# always posted after insert via _create_backdated_opening_stock().
 
 		if self.item_tax_template:
 			data["taxes"] = [{"item_tax_template": self.item_tax_template}]
 		return data
 
 	def _create_backdated_opening_stock(self, item_code, qty, rate, warehouse=None, company=None):
-		"""Create a Stock Entry (Material Receipt) with a custom posting_date for opening stock."""
+		"""Create the opening-stock Stock Entry (Material Receipt) honoring the
+		selected warehouse + company. posting_date defaults to today when blank —
+		this is the ONLY opening-stock path (core set_opening_stock never runs)."""
 		from erpnext.stock.doctype.stock_entry.stock_entry_utils import make_stock_entry
 
 		if not qty or flt(qty) <= 0:
@@ -496,7 +491,7 @@ class TSItemCreator(Document):
 		if not warehouse:
 			frappe.throw(f"Opening Warehouse is required for backdated opening stock of {item_code}")
 
-		posting_date = getdate(self.posting_date)
+		posting_date = getdate(self.posting_date) if self.posting_date else getdate()
 
 		stock_entry = make_stock_entry(
 			item_code=item_code,
@@ -554,9 +549,9 @@ class TSItemCreator(Document):
 		item = frappe.get_doc(item_data)
 		item.insert(ignore_permissions=True)
 
-		# Handle backdated opening stock
+		# Post opening stock (all posting dates) honoring warehouse + company
 		msg_extra = ""
-		if self._has_custom_posting_date() and self.maintain_stock and flt(self.opening_stock) > 0:
+		if self.maintain_stock and flt(self.opening_stock) > 0:
 			self._create_backdated_opening_stock(
 				item_code=item.name,
 				qty=self.opening_stock,
@@ -564,7 +559,7 @@ class TSItemCreator(Document):
 				warehouse=self.opening_warehouse,
 				company=self.company,
 			)
-			msg_extra = f"<br>Opening Stock: {self.opening_stock} posted on <b>{self.posting_date}</b>"
+			msg_extra = f"<br>Opening Stock: {self.opening_stock} posted on <b>{self.posting_date or getdate()}</b>"
 
 		return {
 			"item_code": item.name,
@@ -594,9 +589,6 @@ class TSItemCreator(Document):
 		# Step 1: Create or reuse template item
 		if not frappe.db.exists("Item", template_code):
 			template_data = self._get_common_item_fields(template_code)
-			# Template items don't hold stock directly; remove opening stock
-			template_data.pop("opening_stock", None)
-			template_data.pop("opening_warehouse", None)
 			template_data.update({
 				"has_variants": 1,
 				"variant_based_on": "Item Attribute",
@@ -645,9 +637,9 @@ class TSItemCreator(Document):
 
 		variant_item.insert(ignore_permissions=True)
 
-		# Handle backdated opening stock for variant
+		# Post opening stock for variant (all posting dates)
 		msg_extra = ""
-		if self._has_custom_posting_date() and self.maintain_stock and flt(self.opening_stock) > 0:
+		if self.maintain_stock and flt(self.opening_stock) > 0:
 			self._create_backdated_opening_stock(
 				item_code=variant_item.name,
 				qty=self.opening_stock,
@@ -655,7 +647,7 @@ class TSItemCreator(Document):
 				warehouse=self.opening_warehouse,
 				company=self.company,
 			)
-			msg_extra = f"<br>Opening Stock: {self.opening_stock} posted on <b>{self.posting_date}</b>"
+			msg_extra = f"<br>Opening Stock: {self.opening_stock} posted on <b>{self.posting_date or getdate()}</b>"
 
 		return {
 			"item_code": variant_item.name,
@@ -760,16 +752,8 @@ class TSItemCreator(Document):
 			if row.standard_rate:
 				variant_data["standard_rate"] = row.standard_rate
 
-			# If backdated, skip ERPNext's set_opening_stock (uses today)
-			if self._has_custom_posting_date():
-				# Don't pass opening_stock — we handle it manually below
-				pass
-			else:
-				if self.maintain_stock and row.opening_stock:
-					variant_data["opening_stock"] = row.opening_stock
-
-			if self.maintain_stock and self.opening_warehouse:
-				variant_data["opening_warehouse"] = self.opening_warehouse
+			# opening_stock deliberately NOT passed to the Item (see
+			# _get_common_item_fields) — posted manually below per variant
 			if self.item_tax_template:
 				variant_data["taxes"] = [{"item_tax_template": self.item_tax_template}]
 
@@ -781,8 +765,8 @@ class TSItemCreator(Document):
 
 			variant_item.insert(ignore_permissions=True)
 
-			# Handle backdated opening stock per variant
-			if self._has_custom_posting_date() and self.maintain_stock and flt(row.opening_stock) > 0:
+			# Post opening stock per variant (all posting dates)
+			if self.maintain_stock and flt(row.opening_stock) > 0:
 				self._create_backdated_opening_stock(
 					item_code=variant_item.name,
 					qty=row.opening_stock,
@@ -790,7 +774,7 @@ class TSItemCreator(Document):
 					warehouse=self.opening_warehouse,
 					company=self.company,
 				)
-				template_msg += f"Variant <b>{variant_item_code}</b> created (stock posted on {self.posting_date}).<br>"
+				template_msg += f"Variant <b>{variant_item_code}</b> created (stock posted on {self.posting_date or getdate()}).<br>"
 			else:
 				template_msg += f"Variant <b>{variant_item_code}</b> created.<br>"
 
