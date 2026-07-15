@@ -15,6 +15,8 @@
   "released_by",
   "released_at",
   "notified_at",
+  "reminder_stage",
+  "last_reminded_at",
   "company",
   "items_section",
   "items"
@@ -89,6 +91,22 @@
    "no_copy": 1
   },
   {
+   "fieldname": "reminder_stage",
+   "fieldtype": "Int",
+   "label": "Reminder Stage",
+   "read_only": 1,
+   "no_copy": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "last_reminded_at",
+   "fieldtype": "Datetime",
+   "label": "Last Reminded At",
+   "read_only": 1,
+   "no_copy": 1,
+   "hidden": 1
+  },
+  {
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "Company",
@@ -108,7 +126,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-13 15:00:00.000000",
+ "modified": "2026-07-15 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Production Release Slot",

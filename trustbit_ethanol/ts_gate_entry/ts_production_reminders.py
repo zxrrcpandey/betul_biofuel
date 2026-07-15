@@ -60,7 +60,16 @@ def _hours(field):
 
 
 def run_department_production_reminders():
-	"""Scheduler entry point (*/30 cron). Inert unless the Multiple flow is live."""
+	"""Scheduler entry point (*/30 cron). Drives BOTH reminder ladders:
+	the Single-flow release-slot reminders (own gating) and, when the Multiple
+	flow is live, the Add-Production reminders. Wired here (not a 2nd hooks.py
+	scheduler line) because hooks.py is a permission-locked shared file."""
+	try:
+		run_release_slot_reminders()  # Phase 2 — independent switch check inside
+	except Exception:
+		frappe.clear_messages()
+		frappe.log_error(title="Release slot reminders failed",
+		                 message=frappe.get_traceback())
 	if not (_switch_on("ts_production_entry_enabled")
 			and _switch_on("ts_production_multi_flow_enabled")):
 		return
@@ -184,3 +193,111 @@ def _send_pm_escalation(d, waited_h):
 		}).insert(ignore_permissions=True)
 	except Exception:
 		frappe.clear_messages()
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  Phase 2 (15 Jul) — Single-flow DEPARTMENT RELEASE reminder ladder.
+#  Same ladder + L1/L2/L3 settings as Add-Production reminders, but for
+#  departments slow to RELEASE their slot (Pending slot on a Pending-Stores-
+#  Release run). State lives on the SLOT (reminder_stage / last_reminded_at).
+# ─────────────────────────────────────────────────────────────────────────
+
+SLOT_DOCTYPE = "TS Production Release Slot"
+
+
+def run_release_slot_reminders():
+	"""Scheduler entry point (*/30 cron). Inert unless production is live."""
+	if not _switch_on("ts_production_entry_enabled"):
+		return
+	l1, l2, l3 = _hours(SETTING_L1), _hours(SETTING_L2), _hours(SETTING_L3)
+	try:
+		rmax = cint(frappe.db.get_single_value("TS Settings", SETTING_MAX))
+	except Exception:
+		rmax = 0
+	rows = frappe.db.sql("""
+		SELECT s.name, s.category, s.production_entry, s.notified_at,
+		       s.reminder_stage, s.last_reminded_at,
+		       r.owner AS run_owner, r.production_item_name AS item_name
+		FROM `tabTS Production Release Slot` s
+		JOIN `tabTS Production Entry` r ON r.name = s.production_entry
+		JOIN `tabTS Production BOM Category` c ON c.name = s.category
+		WHERE s.status = 'Pending'
+		  AND r.ts_variance_status = 'Pending Stores Release'
+		  AND c.active = 1 AND s.notified_at IS NOT NULL
+	""", as_dict=True)
+	if not rows:
+		return
+	now = now_datetime()
+	sent = 0
+	for s2 in rows:
+		try:
+			sent += 1 if _process_slot(s2, now, l1, l2, l3, rmax) else 0
+		except Exception:
+			frappe.clear_messages()
+			frappe.log_error(title="Release slot reminder failed",
+			                 message="{0}: {1}".format(s2.name, frappe.get_traceback()))
+	if sent:
+		frappe.db.commit()
+
+
+def _process_slot(s, now, l1, l2, l3, rmax):
+	"""One slot's reminder ladder, ONE step (mirrors _process_entry)."""
+	stage = cint(s.reminder_stage)
+	waited_h = time_diff_in_hours(now, get_datetime(s.notified_at))
+	if stage < 3:
+		if waited_h < (l1, l2, l3)[stage]:
+			return False
+		_send_slot_reminder(s, stage + 1, waited_h)
+		_stamp_slot(s.name, stage + 1, now)
+		return True
+	since_last = time_diff_in_hours(now, get_datetime(s.last_reminded_at or s.notified_at))
+	if since_last < l3:
+		return False
+	if stage == 3:
+		_send_slot_pm_escalation(s, waited_h)
+		_stamp_slot(s.name, 4, now)
+		return True
+	if rmax and (stage - 1) >= rmax:
+		return False
+	_send_slot_reminder(s, stage + 1, waited_h, repeat=True)
+	_stamp_slot(s.name, stage + 1, now)
+	return True
+
+
+def _stamp_slot(name, stage, now):
+	frappe.db.set_value(SLOT_DOCTYPE, name,
+	                    {"reminder_stage": stage, "last_reminded_at": now},
+	                    update_modified=False)
+
+
+def _send_slot_reminder(s, stage_no, waited_h, repeat=False):
+	from trustbit_ethanol.ts_gate_entry.ts_production_notify import notify_category
+	run = frappe.utils.escape_html(s.production_entry)
+	item = frappe.utils.escape_html(s.item_name or "")
+	nth = stage_no if stage_no <= 3 else stage_no - 1
+	tag = _("Reminder L{0}").format(stage_no) if not repeat \
+		else _("OVERDUE — release reminder #{0}").format(nth)
+	notify_category(
+		s.category,
+		_("{0}: Release your material — {1}").format(tag, run),
+		_("Production run {0} ({1}) is waiting for your department to RELEASE its "
+		  "material (actual used qty) — waiting {2} hour(s). The Store Manager "
+		  "release cannot run until your department releases."
+		  ).format(run, item, int(waited_h)),
+		ref_doctype=SLOT_DOCTYPE, ref_name=s.name)
+
+
+def _send_slot_pm_escalation(s, waited_h):
+	if not s.run_owner or s.run_owner in ("Administrator", "Guest"):
+		return
+	run = frappe.utils.escape_html(s.production_entry)
+	frappe.get_doc({
+		"doctype": "Notification Log", "for_user": s.run_owner,
+		"type": "Alert", "document_type": SLOT_DOCTYPE, "document_name": s.name,
+		"subject": _("Release stalled: {0} — {1}").format(
+			frappe.utils.escape_html(s.category), run),
+		"email_content": _("Department {0} has not released its material for run {1} "
+		                   "after {2} hour(s). The Store Manager release is blocked "
+		                   "until it does.").format(
+			frappe.utils.escape_html(s.category), run, int(waited_h)),
+	}).insert(ignore_permissions=True)

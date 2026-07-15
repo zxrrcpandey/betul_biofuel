@@ -11,7 +11,7 @@ from frappe.model.document import Document
 
 # Control-plane fields — writable only via the endpoints' db_set (Lesson 162).
 CONTROL_FIELDS = ["status", "released_by", "released_at", "notified_at",
-                  "production_entry", "category"]
+                  "production_entry", "category", "reminder_stage", "last_reminded_at"]
 
 
 class TSProductionReleaseSlot(Document):
