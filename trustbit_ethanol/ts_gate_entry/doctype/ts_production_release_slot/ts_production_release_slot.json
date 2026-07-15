@@ -1,0 +1,160 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-07-13 15:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "production_entry",
+  "category",
+  "department",
+  "column_break_rs1",
+  "status",
+  "released_by",
+  "released_at",
+  "notified_at",
+  "company",
+  "items_section",
+  "items"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Series",
+   "options": "PRODREL-.YYYY.-",
+   "default": "PRODREL-.YYYY.-"
+  },
+  {
+   "fieldname": "production_entry",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Production Run",
+   "options": "TS Production Entry",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Category",
+   "options": "TS Production BOM Category",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Data",
+   "label": "Department",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_rs1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Pending\nReleased\nCancelled",
+   "default": "Pending",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "released_by",
+   "fieldtype": "Link",
+   "label": "Released By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "released_at",
+   "fieldtype": "Datetime",
+   "label": "Released At",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "notified_at",
+   "fieldtype": "Datetime",
+   "label": "Notified At",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "TS Production Release Slot Item"
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-13 15:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Production Release Slot",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "naming_series:",
+ "istable": 0,
+ "is_submittable": 0,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Manufacturing Manager",
+   "read": 1
+  },
+  {
+   "role": "Manufacturing User",
+   "read": 1
+  },
+  {
+   "role": "Stores Manager",
+   "read": 1
+  },
+  {
+   "role": "CEO",
+   "read": 1
+  },
+  {
+   "role": "MD",
+   "read": 1
+  },
+  {
+   "role": "IT Head",
+   "read": 1
+  },
+  {
+   "role": "Employee",
+   "read": 1
+  }
+ ],
+ "track_changes": 1
+}

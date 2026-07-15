@@ -72,8 +72,39 @@ def _require_enabled():
 		               "disabled (kill switch in TS Settings)."))
 
 
+# v2.21 UAT ④ — configurable production access. These roles ALWAYS pass (they are
+# also who may edit the list on TS Settings); an EMPTY list = legacy role behavior.
+_PROD_AUTH_ROLES = {"Super Admin", "CEO", "MD", "System Manager"}
+
+
+def _authorized_production_users():
+	rows = frappe.db.sql("""
+		SELECT `user` FROM `tabTS Production Authorized User`
+		WHERE parenttype = 'TS Settings' AND parent = 'TS Settings'
+	""")
+	return {r[0] for r in rows}
+
+
+def _is_production_authorized(user=None):
+	"""True when the user may run production (create Multiple runs / distribute).
+	Fail-open while the TS Settings list is EMPTY (unconfigured = today's behavior);
+	once configured, only listed users + _PROD_AUTH_ROLES/Administrator pass."""
+	user = user or frappe.session.user
+	if user == "Administrator" or _PROD_AUTH_ROLES & set(frappe.get_roles(user)):
+		return True
+	try:
+		allowed = _authorized_production_users()
+	except Exception:
+		return True  # table not migrated yet — behave as unconfigured
+	return (user in allowed) if allowed else True
+
+
 def _gate_creator(doc):
 	user = frappe.session.user
+	if not _is_production_authorized(user):
+		frappe.throw(_("You are not authorized to run production. Ask an administrator "
+		               "to add you under TS Settings → Production Authorized Users."),
+		             frappe.PermissionError)
 	if user == doc.owner or _is_production_manager(user) or _is_admin(user):
 		return
 	frappe.throw(_("Only the entry's creator or a Production Manager may do this."),
@@ -97,7 +128,8 @@ def get_multi_context():
 			lines = frappe.get_all("TS BOM Connector Line", filters={"parent": c.name},
 			                       fields=["bom", "category", "department"], limit=0)
 			connectors.append({**c, "department_boms": lines})
-	return {"enabled": enabled, "connectors": connectors}
+	return {"enabled": enabled, "connectors": connectors,
+	        "authorized": _is_production_authorized()}
 
 
 # ---------------------------------------------------------------- submit (auto-MR)
@@ -291,11 +323,13 @@ def _create_and_submit_release_mr(doc, settings):
 	stores-flow independence — feasibility T3)."""
 	wip = settings.get("wip_warehouse")
 	src_default = settings.get("release_source_warehouse") or wip
-	cc = (frappe.db.get_single_value("TS Settings", SETTING_MR_COST_CENTER)
-	      or frappe.get_cached_value("Company", doc.company, "cost_center"))
+	# v2.21 ② department-wise: prefer the run's category cost centre, else the MR
+	# setting, else the company default (resolver handles the full chain).
+	cc = wo_engine.resolve_production_cost_center(doc)
 	if not cc:
-		frappe.throw(_("Set 'Production MR Cost Center' in TS Settings (or a default "
-		               "cost centre on the company) — the Material Request naming needs it."))
+		frappe.throw(_("No cost centre resolved — set a Cost Center on the run's "
+		               "TS Production BOM Category, or 'Production MR Cost Center' in "
+		               "TS Settings, or a company default. The Material Request naming needs it."))
 
 	mr = frappe.new_doc("Material Request")
 	mr.material_request_type = "Material Transfer"
@@ -303,6 +337,15 @@ def _create_and_submit_release_mr(doc, settings):
 	mr.cost_center = cc
 	mr.schedule_date = nowdate()
 	mr.ts_production_run = doc.name  # tag (user decision: filterable, not hidden)
+
+	# CONSOLIDATE by item_code — a real client BOM can list the same item on two
+	# rows (e.g. Formaldehyde 10-25-0020 twice on the RS BOM). ERPNext buying's
+	# validate_for_items rejects a Material Request that repeats an item_code
+	# (uniqueness key is item_code ONLY, not item+warehouse), which would roll
+	# back the whole department submit. Summing per item is the correct transfer
+	# semantics anyway: one line per raw material.
+	agg = {}
+	order = []
 	for row in doc.materials:
 		if flt(row.actual_qty) <= 0:
 			continue
@@ -311,12 +354,24 @@ def _create_and_submit_release_mr(doc, settings):
 		# honoring it blindly would ask the Store Manager to transfer WIP -> WIP
 		# (audit HIGH, 3 Jul). Use it only when it's a real non-WIP override.
 		row_src = row.source_warehouse if (row.source_warehouse and row.source_warehouse != wip) else None
+		src = row_src or src_default
+		if row.item_code not in agg:
+			agg[row.item_code] = {"qty": 0.0, "from_warehouse": src}
+			order.append(row.item_code)
+		agg[row.item_code]["qty"] += flt(row.actual_qty)
+		# same item from two different sources — fall back to the default Stores
+		# source so the item still resolves to a single MR row (item-code-unique).
+		if agg[row.item_code]["from_warehouse"] != src:
+			agg[row.item_code]["from_warehouse"] = src_default
+
+	for item_code in order:
 		mr.append("items", {
-			"item_code": row.item_code,
-			"qty": flt(row.actual_qty),
+			"item_code": item_code,
+			"qty": agg[item_code]["qty"],
 			"schedule_date": nowdate(),
 			"warehouse": wip,
-			"from_warehouse": row_src or src_default,
+			"from_warehouse": agg[item_code]["from_warehouse"],
+			"cost_center": cc,  # v2.21 ② carries to the release SE rows
 			"ts_delivery_location": _("Production run {0}").format(doc.name),
 			"ts_item_remark": _("Multiple-flow raw material release"),
 		})
@@ -390,7 +445,10 @@ def production_multi_on_stock_entry_submit(doc, method=None):
 
 def _mr_fully_transferred(mr_name):
 	"""True when every MR item's transferred stock qty (across ALL submitted
-	Material Transfer SEs referencing the MR) covers the requested stock qty."""
+	Material Transfer SEs referencing the MR) covers the requested stock qty.
+	v2.21 ①-hardening: only NON-transit legs count as arrival — a native
+	in-transit release (Stores -> Goods In Transit) must never be treated as
+	'the material reached WIP', or the run would advance prematurely."""
 	requested = dict(frappe.db.sql(
 		"""SELECT item_code, SUM(stock_qty) FROM `tabMaterial Request Item`
 		   WHERE parent = %s GROUP BY item_code""", mr_name))
@@ -400,6 +458,7 @@ def _mr_fully_transferred(mr_name):
 		   JOIN `tabStock Entry` se ON se.name = sed.parent
 		   WHERE sed.material_request = %s AND se.docstatus = 1
 		     AND se.purpose = 'Material Transfer'
+		     AND IFNULL(se.add_to_transit, 0) = 0
 		   GROUP BY sed.item_code""", mr_name))
 	for item, req_qty in requested.items():
 		if flt(transferred.get(item)) + _EPS < flt(req_qty):
@@ -414,7 +473,8 @@ def _mr_release_state_value(mr_name):
 		   FROM `tabStock Entry` se
 		   JOIN `tabStock Entry Detail` sed ON sed.parent = se.name
 		   WHERE sed.material_request = %s AND se.docstatus = 1
-		     AND se.purpose = 'Material Transfer'""", mr_name)
+		     AND se.purpose = 'Material Transfer'
+		     AND IFNULL(se.add_to_transit, 0) = 0""", mr_name)
 	total = 0.0
 	for se in se_names:
 		try:
@@ -422,6 +482,70 @@ def _mr_release_state_value(mr_name):
 		except Exception:
 			frappe.clear_messages()
 	return total, se_names
+
+
+# ---------------------------------------------------------------- Store-Manager release (direct, no transit)
+
+@frappe.whitelist(methods=["POST"])
+def release_multi_run(name):
+	"""One-click Store-Manager release for a Multiple-flow run (v2.21 ①).
+
+	Builds ONE DIRECT Material-Transfer Stock Entry from the run's tagged MR —
+	Stores -> WIP, NO in-transit warehouse — and submits it. Replaces the SM
+	having to use ERPNext's native 'Transfer (In Transit)' button, which routed
+	through a Goods-In-Transit warehouse and forced a manual second leg (and
+	could advance the run while material was still in transit).
+
+	Gate: Stores Manager or admin (mirrors ts_production_release.approve_release),
+	server-enforced (L142/175). Idempotent: if the run already released, returns."""
+	from trustbit_ethanol.ts_gate_entry.ts_production_release import _is_admin, _is_store_manager
+
+	api._require_enabled()  # kill-switch parity with approve_release
+	doc = frappe.get_doc(DOCTYPE, name)
+	frappe.has_permission(DOCTYPE, "read", doc=doc, throw=True)
+	if not (_is_store_manager() or _is_admin()):
+		frappe.throw(_("Only a Stores Manager can release the raw material."),
+		             frappe.PermissionError)
+	if doc.flow_type != "Multiple":
+		frappe.throw(_("{0} is not a Multiple-flow run.").format(name))
+	if doc.ts_variance_status != "Pending Material Request":
+		frappe.throw(_("This run is not awaiting release (current: {0})."
+		               ).format(doc.ts_variance_status))
+	if not doc.material_request:
+		frappe.throw(_("No release Material Request exists for this run yet."))
+	mr = frappe.get_doc("Material Request", doc.material_request)
+	if mr.docstatus != 1:
+		frappe.throw(_("The release Material Request {0} is not submitted."
+		               ).format(doc.material_request))
+	# idempotency — a fully-transferred MR means the release already happened
+	if _mr_fully_transferred(doc.material_request):
+		return {"ok": True, "already_released": True,
+		        "ts_variance_status": doc.ts_variance_status}
+
+	settings = api._get_settings()
+	wip = settings.get("wip_warehouse")
+	src_default = settings.get("release_source_warehouse") or wip
+	from erpnext.stock.doctype.material_request.material_request import make_stock_entry as mr_make_se
+
+	with wo_engine.system_session():
+		se = frappe.get_doc(mr_make_se(doc.material_request))
+		se.purpose = "Material Transfer"
+		se.stock_entry_type = "Material Transfer"
+		se.add_to_transit = 0                    # DIRECT — never in-transit
+		se.company = doc.company
+		mr_rows = {r.item_code: r for r in mr.items}
+		for row in se.items:
+			src = mr_rows.get(row.item_code)
+			row.s_warehouse = (src.from_warehouse if src else None) or src_default
+			row.t_warehouse = (src.warehouse if src else None) or wip
+		wo_engine.apply_cost_center_to_se(se, wo_engine.resolve_production_cost_center(doc))
+		se.flags.ignore_permissions = True
+		se.insert(ignore_permissions=True)
+		se.submit()  # on_submit hook advances the run (D1 full-transfer guard)
+	frappe.db.commit()
+	doc.reload()
+	return {"ok": True, "stock_entry": se.name,
+	        "ts_variance_status": doc.ts_variance_status}
 
 
 # ---------------------------------------------------------------- MR on_cancel hook
@@ -670,6 +794,8 @@ def _submit_distribution_manufacture_se(doc, rows, settings):
 			if not flt(r.basic_rate):
 				r.allow_zero_valuation_rate = 1
 
+	# v2.21 ② department-wise cost centre on every Manufacture SE row (consume + FG)
+	wo_engine.apply_cost_center_to_se(se, wo_engine.resolve_production_cost_center(doc))
 	se.flags.ignore_permissions = True
 	se.insert(ignore_permissions=True)
 	wo_engine._auto_qi_for_se(se)           # BOM inspection_required auto-QI (reloads)

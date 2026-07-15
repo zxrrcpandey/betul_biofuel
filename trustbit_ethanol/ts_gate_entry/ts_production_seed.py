@@ -189,13 +189,24 @@ _PRODUCTION_SETTINGS_FIELDS = [
 						"the reconciliation note is flagged (informational only, NOT a gate). No JSON "
 						"default so a configured value is never clobbered on migrate (Lesson 227)."),
 	},
+	# v2.21 layout — own section for the dept/Multiple-flow block. Without it these
+	# fields chained after the cascade fields and rendered INSIDE the collapsible
+	# "Production Cascade Delete" section (user finding, 8 Jul). Anchored after the
+	# LAST cascade field so the block starts a fresh section below it.
+	{
+		"fieldname": "ts_dept_production_section",
+		"label": "Department Production — Multiple (Connector) Flow",
+		"fieldtype": "Section Break",
+		"insert_after": "ts_prod_cascade_executor_user",
+		"collapsible": 0,
+	},
 	# Phase C (Multi-BOM plan) — kill switch for department consumption entries.
 	# NO JSON default (Lesson 227): ships OFF; flip manually when the team is ready.
 	{
 		"fieldname": "ts_production_dept_entry_enabled",
 		"label": "Enable Department Consumption Entries",
 		"fieldtype": "Check",
-		"insert_after": "ts_production_wip_recon_tolerance_pct",
+		"insert_after": "ts_dept_production_section",
 		"description": ("Kill switch for TS Production Department Entry (reporting-only "
 						"department consumption logs + the Log Consumption card on the "
 						"Production Logging page). Ships OFF; no JSON default (Lesson 227)."),
@@ -219,6 +230,65 @@ _PRODUCTION_SETTINGS_FIELDS = [
 		"insert_after": "ts_production_multi_flow_enabled",
 		"description": ("Cost centre stamped on the Multiple-flow auto Material Requests "
 						"(drives MR naming). Blank = the company's default cost centre."),
+	},
+	# v2.21 layout — reminders in a right-hand column beside the kill switches.
+	{
+		"fieldname": "ts_dept_production_col",
+		"fieldtype": "Column Break",
+		"insert_after": "ts_production_mr_cost_center",
+	},
+	# v2.21 P2 — dept Add-Production reminder thresholds + U7 cap. NO JSON
+	# defaults (Lesson 227); code fallbacks are 4/12/24h and 0 = unlimited.
+	{
+		"fieldname": "ts_production_reminder_l1_hours",
+		"label": "Dept Reminder L1 (hours)",
+		"fieldtype": "Float",
+		"insert_after": "ts_dept_production_col",
+		"description": "Hours after department notification before the FIRST reminder. Blank/0 = 4h fallback.",
+	},
+	{
+		"fieldname": "ts_production_reminder_l2_hours",
+		"label": "Dept Reminder L2 (hours)",
+		"fieldtype": "Float",
+		"insert_after": "ts_production_reminder_l1_hours",
+		"description": "Hours after notification before the SECOND reminder. Blank/0 = 12h fallback.",
+	},
+	{
+		"fieldname": "ts_production_reminder_l3_hours",
+		"label": "Dept Reminder L3 (hours)",
+		"fieldtype": "Float",
+		"insert_after": "ts_production_reminder_l2_hours",
+		"description": "Hours before the THIRD reminder; also the repeat cadence after the PM escalation. Blank/0 = 24h fallback.",
+	},
+	{
+		"fieldname": "ts_production_reminder_max",
+		"label": "Dept Reminder Max (0 = keep reminding)",
+		"fieldtype": "Int",
+		"insert_after": "ts_production_reminder_l3_hours",
+		"description": ("Total department reminders before going silent. 0/blank = UNLIMITED — reminders repeat "
+						"at the L3 cadence until the department acts (user decision U7, 4 Jul 2026)."),
+	},
+	# v2.21 layout — the access list gets its own full-width section.
+	{
+		"fieldname": "ts_production_access_section",
+		"label": "Production Access Control",
+		"fieldtype": "Section Break",
+		"insert_after": "ts_production_reminder_max",
+		"collapsible": 0,
+	},
+	# v2.21 UAT ④ — configurable production access (user decision 8 Jul: "Need Setting
+	# in TS Production ... Super Admin/CEO/MD or Admin can configure user wise").
+	# EMPTY table = current role-based behavior (nothing breaks until configured).
+	{
+		"fieldname": "ts_production_authorized_users",
+		"label": "Production Authorized Users",
+		"fieldtype": "Table",
+		"options": "TS Production Authorized User",
+		"insert_after": "ts_production_access_section",
+		"description": ("Who may create Multiple-flow production runs and post the distribution. "
+						"EMPTY = current behavior (any Production/Manufacturing role). Once users are "
+						"listed, ONLY they (plus Super Admin / CEO / MD / System Manager / Administrator) "
+						"can run production."),
 	},
 ]
 
@@ -259,10 +329,27 @@ def _seed_production_settings_fields():
 
 	meta = frappe.get_meta(SETTINGS_DOCTYPE)
 	to_add = [f for f in _PRODUCTION_SETTINGS_FIELDS if not meta.has_field(f["fieldname"])]
-	if not to_add:
-		return False
-	create_custom_fields({SETTINGS_DOCTYPE: to_add}, ignore_validate=True)
-	return True
+	# a Table field needs its child DocType migrated first (fresh-install order)
+	to_add = [f for f in to_add
+	          if f["fieldtype"] != "Table" or frappe.db.exists("DocType", f["options"])]
+	changed = False
+	if to_add:
+		create_custom_fields({SETTINGS_DOCTYPE: to_add}, ignore_validate=True)
+		changed = True
+	# Layout reconcile (v2.21, 8 Jul): the spec is the source of truth for WHERE each
+	# field sits — re-anchor any existing Custom Field whose insert_after drifted
+	# (fixes the dept/multi block rendering inside "Production Cascade Delete").
+	for spec in _PRODUCTION_SETTINGS_FIELDS:
+		cf = frappe.db.get_value(
+			"Custom Field", {"dt": SETTINGS_DOCTYPE, "fieldname": spec["fieldname"]},
+			["name", "insert_after"], as_dict=True)
+		if cf and spec.get("insert_after") and cf.insert_after != spec["insert_after"]:
+			frappe.db.set_value("Custom Field", cf.name,
+			                    "insert_after", spec["insert_after"])
+			changed = True
+	if changed:
+		frappe.clear_cache(doctype=SETTINGS_DOCTYPE)
+	return changed
 
 
 # Phase B (Multi-BOM plan) — one Custom Field on BOM tagging its production category.

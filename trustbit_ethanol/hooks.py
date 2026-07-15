@@ -379,6 +379,8 @@ scheduler_events = {
 			"trustbit_ethanol.ts_gate_entry.ts_qc_sla_scheduler.scan_overdue_qc_30min",
 			# v2.18.x — WhatsApp Phase 1b: escalation reminders L1/L2/L3 (inert behind kill-switch)
 			"trustbit_ethanol.ts_gate_entry.ts_whatsapp_reminders.run_whatsapp_escalations",
+			# v2.21 P2 — dept Add-Production reminders (fail-closed on both kill switches; inert on prod)
+			"trustbit_ethanol.ts_gate_entry.ts_production_reminders.run_department_production_reminders",
 		],
 		"0 9 * * 1": [
 			"trustbit_ethanol.ts_gate_entry.ts_qc_sla_scheduler.weekly_qc_email",

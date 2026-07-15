@@ -9,6 +9,14 @@
  "field_order": [
   "category_name",
   "department",
+  "cost_center",
+  "create_stock_entry_on_log",
+  "se_style",
+  "source_warehouse",
+  "project",
+  "output_warehouse",
+  "release_section",
+  "release_warehouses",
   "column_break_cat1",
   "is_production",
   "active",
@@ -34,6 +42,68 @@
    "label": "Department",
    "options": "Department",
    "description": "The ERPNext Department this category belongs to (single source of truth — connector lines and department entries fetch it from here)."
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "options": "Cost Center",
+   "label": "Cost Center",
+   "description": "Department-wise cost centre stamped on this category's production Stock Entries (release + manufacture + surplus return). Blank = falls back to the MR cost-centre setting, then the company default."
+  },
+  {
+   "default": "0",
+   "fieldname": "create_stock_entry_on_log",
+   "fieldtype": "Check",
+   "label": "Create Stock Entry on Add Production",
+   "description": "When ON, each department Add Production also creates+submits a Material Issue Stock Entry consuming the entered materials from the Source Warehouse (rows carry this category's Cost Center). Turn on only when the department enters REAL quantities."
+  },
+  {
+   "default": "Consumption Only",
+   "depends_on": "eval:doc.create_stock_entry_on_log",
+   "fieldname": "se_style",
+   "fieldtype": "Select",
+   "label": "Stock Entry Style",
+   "options": "Consumption Only\nConsume + Produce Output",
+   "description": "Consumption Only = a Material Issue: materials leave stock and the cost is booked to this Cost Center as an expense (like your manual entries). Consume + Produce Output = a full production entry like the RS BOM: materials are consumed AND this BOM's output item is received into the Output Warehouse — the cost becomes the OUTPUT's stock value (no expense until that output is used)."
+  },
+  {
+   "depends_on": "eval:doc.create_stock_entry_on_log",
+   "mandatory_depends_on": "eval:doc.create_stock_entry_on_log",
+   "fieldname": "source_warehouse",
+   "fieldtype": "Link",
+   "label": "Source Warehouse",
+   "options": "Warehouse",
+   "description": "Materials are issued FROM this warehouse when the switch above is ON."
+  },
+  {
+   "depends_on": "eval:doc.create_stock_entry_on_log",
+   "mandatory_depends_on": "eval:doc.create_stock_entry_on_log",
+   "fieldname": "project",
+   "fieldtype": "Link",
+   "label": "Project (for Stock Entries)",
+   "options": "Project",
+   "description": "Stamped on every row of the department's Material Issue (Project is mandatory on Material Issues)."
+  },
+  {
+   "depends_on": "eval:doc.create_stock_entry_on_log && doc.se_style == 'Consume + Produce Output'",
+   "mandatory_depends_on": "eval:doc.create_stock_entry_on_log && doc.se_style == 'Consume + Produce Output'",
+   "fieldname": "output_warehouse",
+   "fieldtype": "Link",
+   "label": "Output Warehouse",
+   "options": "Warehouse",
+   "description": "Where the department's produced output (e.g. Treated Water) is received."
+  },
+  {
+   "fieldname": "release_section",
+   "fieldtype": "Section Break",
+   "label": "Single-Flow Department Release"
+  },
+  {
+   "fieldname": "release_warehouses",
+   "fieldtype": "Table",
+   "label": "Release Warehouses",
+   "options": "TS Production Release Warehouse",
+   "description": "This department RELEASES any Single-flow run item sourced from these warehouses (its configured recipients enter the ACTUAL released qty). Run items from warehouses no category claims stay with the Store Manager. EMPTY on every category = Store Manager releases everything, as before."
   },
   {
    "fieldname": "column_break_cat1",
@@ -74,7 +144,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-07-02 12:00:00.000000",
+ "modified": "2026-07-13 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Production BOM Category",
@@ -82,32 +152,73 @@
  "owner": "Administrator",
  "permissions": [
   {
-   "create": 1, "delete": 1, "email": 1, "export": 1, "print": 1,
-   "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
   },
   {
-   "create": 1, "delete": 1, "email": 1, "export": 1, "print": 1,
-   "read": 1, "report": 1, "role": "Manufacturing Manager", "share": 1, "write": 1
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1,
+   "write": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "Manufacturing User", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing User",
+   "share": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "Stores Manager", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stores Manager",
+   "share": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "PM", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "PM",
+   "share": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "Grain PM", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Grain PM",
+   "share": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "IT Head", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IT Head",
+   "share": 1
   }
  ],
  "sort_field": "modified",

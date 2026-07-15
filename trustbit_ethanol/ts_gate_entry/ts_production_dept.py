@@ -8,9 +8,16 @@ last entry leaves 'Pending' (Logged or Administrator-Skipped), the run's release
 Material Request is created and the Store Managers are notified
 (ts_production_multi.check_all_departments_complete).
 
-Still ACTUALS-ONLY (U2): a department user (a configured recipient of a TS
+Default ACTUALS-ONLY (U2): a department user (a configured recipient of a TS
 Production BOM Category) logs the raw material their department consumed.
-NO stock is ever moved — there is structurally no Stock Entry code path here.
+v2.21 (9 Jul, client request): a category may OPT IN via
+'Create Stock Entry on Add Production' — then the log ALSO creates+submits ONE
+Stock Entry, style chosen per category (client request 9 Jul): 'Consumption Only'
+= Material Issue (expense to the dept cost centre); 'Consume + Produce Output' =
+an independent Manufacture entry (official v15 no-WO path) that also receives
+the dept BOM's output item into the Output Warehouse (cost rolls into the
+output's stock value). Correct/Reopen cancels either. Categories without the
+switch stay reports-only.
 
 Authorization model: the recipient configuration on the category IS the auth
 boundary (data-driven — Lesson 221): the session user must be a direct `user`
@@ -67,8 +74,13 @@ def _is_admin(user=None):
 
 
 def _user_categories(user=None):
-	"""All ACTIVE reporting-only categories the user is a recipient of —
-	direct user match OR holds a recipient role (data-driven, Lesson 221)."""
+	"""All ACTIVE reporting-only categories the user is a recipient of.
+
+	v2.21 UAT ⑤ (9 Jul): SAME semantics as the notify resolver — a row that names
+	a USER matches only that user; role fan-out applies ONLY to rows with no user.
+	(The team fills user+role on one row as 'person + their title'; treating that
+	as an OR made every 'Department Head' holder a Boiler recipient, so WTP could
+	log Boiler's production.)"""
 	user = user or frappe.session.user
 	roles = set(frappe.get_roles(user))
 	rows = frappe.db.sql("""
@@ -77,22 +89,28 @@ def _user_categories(user=None):
 		JOIN `tabTS Production BOM Category` c ON c.name = r.parent
 		WHERE r.parenttype = 'TS Production BOM Category'
 		  AND r.active = 1 AND c.active = 1 AND IFNULL(c.is_production, 0) = 0
-		  AND (r.user = %(user)s OR (IFNULL(r.role, '') != '' AND r.role IN %(roles)s))
+		  AND (r.user = %(user)s
+		       OR (IFNULL(r.user, '') = ''
+		           AND IFNULL(r.role, '') != '' AND r.role IN %(roles)s))
 	""", {"user": user, "roles": tuple(roles) or ("",)})
 	return [r[0] for r in rows]
 
 
 def _recipient_gate(category):
-	"""The session user must be a recipient of `category`, or PM/MM/admin."""
+	"""The session user must be a configured recipient of `category`, or an admin.
+
+	v2.21 UAT ⑤ (9 Jul): the blanket _PM_ROLES pass is GONE — Manufacturing
+	Manager/User are held by most desk users, so WTP could log Boiler's production
+	and vice-versa. Departments are isolated: only that category's recipients
+	(user- or role-configured on the category master) may log it."""
 	user = frappe.session.user
 	if _is_admin(user):
-		return
-	if _PM_ROLES & set(frappe.get_roles(user)):
 		return
 	if category in _user_categories(user):
 		return
 	frappe.throw(
-		_("You are not a configured recipient of category {0}.").format(category),
+		_("Only {0}'s configured recipients may add its production. Ask an "
+		  "administrator to add you on the TS Production BOM Category.").format(category),
 		frappe.PermissionError)
 
 
@@ -105,14 +123,43 @@ def get_department_context():
 	Pending-entry-driven; the old run-scan predicate is gone)."""
 	enabled = _is_enabled()
 	cats = _user_categories() if enabled else []
-	pm_like = _is_admin() or bool(_PM_ROLES & set(frappe.get_roles()))
-	if enabled and not cats and pm_like:
-		# PMs/admins see all reporting-only categories (oversight view).
+	# v2.21 UAT ⑤ (9 Jul): all-category Add-Production cards are ADMIN-only now.
+	# PM-like users track departments on the status board instead — giving them
+	# the cards let any Manufacturing-role holder log other departments' entries.
+	if enabled and not cats and _is_admin():
 		cats = frappe.get_all(
 			"TS Production BOM Category",
 			filters={"active": 1, "is_production": 0}, pluck="name", limit=0)
 	pending = _pending_entries(cats) if cats else []
-	return {"enabled": enabled, "categories": cats, "pending": pending}
+	# v2.21 UAT ③ — the user's own still-correctable Logged gate entries (run still
+	# waiting, no MR yet) so the dashboard can offer Correct/Reopen (training pt 5).
+	reopenable = _reopenable_entries() if enabled else []
+	return {"enabled": enabled, "categories": cats, "pending": pending,
+	        "reopenable": reopenable}
+
+
+def _reopenable_entries():
+	"""Logged GATE entries the session user submitted that can still be reopened —
+	same predicate cancel_department_entry enforces (run Awaiting Department
+	Production + no MR + notified_at set)."""
+	user = frappe.session.user
+	rows = frappe.db.sql("""
+		SELECT d.name AS dept_entry, d.production_entry, d.category, d.department,
+		       d.logged_at, d.bom AS dept_bom,
+		       r.production_item_name AS item_name, r.actual_produced_qty AS produced_qty,
+		       r.production_uom AS uom
+		FROM `tabTS Production Department Entry` d
+		JOIN `tabTS Production Entry` r ON r.name = d.production_entry
+		WHERE d.status = 'Logged' AND d.notified_at IS NOT NULL
+		  AND d.submitted_by = %(user)s
+		  AND r.ts_variance_status = 'Awaiting Department Production'
+		  AND IFNULL(r.material_request, '') = ''
+		ORDER BY d.logged_at DESC
+		LIMIT 20
+	""", {"user": user}, as_dict=True)
+	for row in rows:
+		row["logged_at"] = str(row.logged_at or "")
+	return rows
 
 
 def _pending_entries(categories):
@@ -129,11 +176,42 @@ def _pending_entries(categories):
 		ORDER BY d.notified_at ASC
 		LIMIT 50
 	""", {"cats": tuple(categories)}, as_dict=True)
+	cfg_cache = {}
 	for row in rows:
 		row["posting_date"] = str(row.posting_date or "")
 		row["notified_at"] = str(row.notified_at or "")
 		row["materials"] = _dept_bom_materials(row.dept_bom, row.production_entry)
+		# v2.21 SE Style — tell the dialog whether this dept also enters an output qty
+		cfg = cfg_cache.get(row.category)
+		if cfg is None:
+			cfg = frappe.db.get_value(
+				"TS Production BOM Category", row.category,
+				["create_stock_entry_on_log", "se_style"], as_dict=True) or frappe._dict()
+			cfg_cache[row.category] = cfg
+		style = ((cfg.get("se_style") or "Consumption Only")
+		         if cint(cfg.get("create_stock_entry_on_log")) else "")
+		row["se_style"] = style
+		if style == "Consume + Produce Output":
+			row["output"] = _dept_output_info(row.dept_bom, row.production_entry)
 	return rows
+
+
+def _dept_output_info(dept_bom, production_entry):
+	"""Prefill for the dialog's 'Output produced' field: the dept BOM's output item
+	+ its standard qty (scaled by the run ONLY when the BOM shares the run's output
+	basis — same rule as _dept_bom_materials)."""
+	bom = frappe.db.get_value("BOM", dept_bom, ["item", "quantity"], as_dict=True)
+	if not bom:
+		return None
+	item = frappe.db.get_value("Item", bom.item, ["item_name", "stock_uom"],
+	                           as_dict=True) or frappe._dict()
+	run = frappe.db.get_value("TS Production Entry", production_entry,
+	                          ["actual_produced_qty", "production_item"], as_dict=True) or {}
+	same_basis = bom.item == run.get("production_item")
+	scale = ((flt(run.get("actual_produced_qty")) / flt(bom.quantity))
+	         if (same_basis and flt(bom.quantity)) else 1.0)
+	return {"item_code": bom.item, "item_name": item.get("item_name") or bom.item,
+	        "uom": item.get("stock_uom"), "std_qty": round(flt(bom.quantity) * scale, 3)}
 
 
 def _dept_bom_materials(dept_bom, production_entry):
@@ -180,9 +258,136 @@ def _parse_material_rows(materials):
 	} for m in rows]
 
 
+def _create_dept_material_issue(doc, output_qty=None):
+	"""v2.21 dept Stock Entries (client request, 9 Jul): when the category opts in,
+	the Logged actuals ALSO consume stock — ONE submitted Stock Entry.
+	Style 'Consumption Only' (default): a Material Issue from the category's Source
+	Warehouse, every row carrying the department's cost centre.
+	Style 'Consume + Produce Output': an independent Manufacture entry — same
+	consumed rows PLUS the dept BOM's output item received into Output Warehouse
+	(cost rolls INTO the output's stock value; no expense — like the RS BOM).
+	Returns the SE name, or None when the category hasn't opted in. Runs in the
+	SAME transaction as the Logged flip: an SE failure (insufficient stock, UOM
+	without conversion) aborts the whole submit and the entry stays Pending."""
+	cfg = frappe.db.get_value(
+		"TS Production BOM Category", doc.category,
+		["create_stock_entry_on_log", "source_warehouse", "cost_center", "project",
+		 "se_style", "output_warehouse"],
+		as_dict=True) or frappe._dict()
+	if not cint(cfg.get("create_stock_entry_on_log")):
+		return (None, None)
+	src = cfg.get("source_warehouse")
+	if not src or not cfg.get("project"):
+		frappe.throw(_("Category {0} is set to create Stock Entries but is missing "
+		               "its Source Warehouse or Project — set them on the "
+		               "TS Production BOM Category.").format(doc.category))
+	# v2.21 SE Style (client request, 9 Jul): Consumption Only (default) = Material
+	# Issue; Consume + Produce Output = an INDEPENDENT Manufacture entry (official
+	# v15 no-Work-Order path) that also receives the dept BOM's output item.
+	# Security hardening (13 Jul scan): the STOCK path only issues items that are
+	# actually in this department's BOM — fail-closed against a crafted payload
+	# issuing arbitrary in-stock items from the category's warehouse. (The
+	# reporting-only path stays free-form, as it always was.)
+	bom_items = set(frappe.get_all("BOM Item", filters={"parent": doc.bom},
+	                               pluck="item_code", limit=0))
+	foreign = sorted({m.item_code for m in (doc.materials or [])
+	                  if flt(m.qty) > 0 and m.item_code not in bom_items})
+	if foreign:
+		frappe.throw(_("These items are not in {0}'s BOM ({1}) and cannot be issued: "
+		               "{2}. Only the department BOM's materials move stock."
+		               ).format(doc.category, doc.bom, ", ".join(foreign)))
+	produce = (cfg.get("se_style") or "Consumption Only") == "Consume + Produce Output"
+	out_item = out_wh = None
+	if produce:
+		out_wh = cfg.get("output_warehouse")
+		out_item = frappe.db.get_value("BOM", doc.bom, "item")
+		if not out_wh:
+			frappe.throw(_("Category {0} uses 'Consume + Produce Output' but has no "
+			               "Output Warehouse — set it on the TS Production BOM Category."
+			               ).format(doc.category))
+		if flt(output_qty) <= 0:
+			frappe.throw(_("Enter the produced output quantity ({0}) — this department's "
+			               "style is 'Consume + Produce Output'.").format(
+			               frappe.db.get_value("Item", out_item, "item_name") or out_item))
+
+	from trustbit_ethanol.ts_gate_entry import ts_production_wo as wo_engine
+	from erpnext.stock.get_item_details import get_conversion_factor
+	cc = cfg.get("cost_center") or wo_engine.resolve_production_cost_center(frappe._dict(
+		bom_connector=doc.bom_connector, production_item=None, company=doc.company))
+
+	se = frappe.new_doc("Stock Entry")
+	se.purpose = "Manufacture" if produce else "Material Issue"
+	se.stock_entry_type = se.purpose
+	se.ts_set_cost_center = cc  # v2.18.18 requires the header on Material Issue; its hook force-applies to rows (L301/302)
+	se.ts_set_project = cfg.get("project")  # Project is row-mandatory on Material Issue (v2.17.1)
+	se.company = doc.company
+	if produce:
+		se.fg_completed_qty = flt(output_qty)
+	se.posting_date = doc.posting_date or nowdate()
+	se.remarks = _("Department consumption — {0} for production run {1} ({2})"
+	               ).format(doc.category, doc.production_entry, doc.name)
+	for m in (doc.materials or []):
+		if flt(m.qty) <= 0:
+			continue
+		cf = 1.0
+		try:
+			cf = flt((get_conversion_factor(m.item_code, m.uom) or {}).get(
+				"conversion_factor")) or 1.0
+		except Exception:
+			cf = 1.0
+		se.append("items", {
+			"item_code": m.item_code,
+			"qty": flt(m.qty),
+			"uom": m.uom,
+			"conversion_factor": cf,
+			"s_warehouse": src,
+			"cost_center": cc,
+			"project": cfg.get("project"),
+			# v2.17.1 requires these on every Material Issue row at submit
+			"ts_delivery_location": (doc.department or doc.category or "")[:140],
+			"ts_item_remark": ((m.remark or "").strip()
+			                   or _("Dept consumption — {0} / {1}").format(
+			                       doc.category, doc.production_entry))[:140],
+		})
+	if not se.items:
+		return (None, None)
+	if produce:
+		se.append("items", {
+			"item_code": out_item,
+			"qty": flt(output_qty),
+			"t_warehouse": out_wh,
+			"is_finished_item": 1,
+			"cost_center": cc,
+			"project": cfg.get("project"),
+			"ts_delivery_location": (doc.department or doc.category or "")[:140],
+			"ts_item_remark": _("Dept output — {0} / {1}").format(
+				doc.category, doc.production_entry)[:140],
+		})
+	with wo_engine.system_session():
+		se.flags.ignore_permissions = True
+		se.insert(ignore_permissions=True)
+		se.submit()
+	return (se.name, out_item if produce else None)
+
+
+def _cancel_dept_material_issue(doc):
+	"""Reopen/cancel path: undo the entry's Material Issue (if any) so a correction
+	never leaves phantom consumption. Runs BEFORE the status flip — a failed SE
+	cancel aborts the reopen."""
+	if not doc.get("stock_entry"):
+		return
+	from trustbit_ethanol.ts_gate_entry import ts_production_wo as wo_engine
+	se = frappe.get_doc("Stock Entry", doc.stock_entry)
+	if se.docstatus == 1:
+		with wo_engine.system_session():
+			se.flags.ignore_permissions = True
+			se.cancel()
+	doc.db_set("stock_entry", None, update_modified=False)
+
+
 @frappe.whitelist(methods=["POST"])
 def submit_department_production(name, materials, posting_date=None, shift=None,
-                                 remark=None):
+                                 remark=None, output_qty=None):
 	"""v2.21 'Add Production': the department fills its ACTUAL BOM quantities on
 	its system-created 'Pending' gate entry -> Logged. When this was the last
 	Pending entry of the run, the release MR is created + Store Managers notified
@@ -205,13 +410,23 @@ def submit_department_production(name, materials, posting_date=None, shift=None,
 	doc.flags.ignore_permissions = True  # recipient gate above IS the authorization (L224 pairing)
 	doc.save()
 
+	# v2.21 dept Stock Entries — BEFORE the status flip (L288): an SE failure
+	# (insufficient stock / UOM) rolls everything back and the entry stays Pending.
+	se_name, out_item = _create_dept_material_issue(doc, output_qty)
+
 	user = frappe.session.user
+	if se_name:
+		doc.db_set("stock_entry", se_name, update_modified=False)
+	if out_item:
+		doc.db_set("output_item", out_item, update_modified=False)
+		doc.db_set("output_qty", flt(output_qty), update_modified=False)
 	doc.db_set("submitted_by", user, update_modified=False)
 	doc.db_set("logged_at", now_datetime(), update_modified=False)
 	doc.db_set("status", "Logged", update_modified=False)  # status LAST (L288)
 	doc.add_comment("Comment", _(
-		"Department production added by {0} for category {1} (actuals-only)."
-	).format(user, doc.category))
+		"Department production added by {0} for category {1}{2}."
+	).format(user, doc.category,
+	         _(" — stock issued via {0}").format(se_name) if se_name else _(" (actuals-only)")))
 
 	from trustbit_ethanol.ts_gate_entry.ts_production_multi import (
 		check_all_departments_complete,
@@ -325,10 +540,15 @@ def cancel_department_entry(name, reason):
 	if doc.notified_at:
 		if (run and run.ts_variance_status == "Awaiting Department Production"
 				and not run.material_request):
+			# undo the Material Issue FIRST (if any) — a failed cancel aborts the reopen
+			_cancel_dept_material_issue(doc)
 			doc.db_set("status", "Pending", update_modified=False)
 			doc.db_set("submitted_by", None, update_modified=False)
 			doc.db_set("logged_at", None, update_modified=False)
 			doc.db_set("notified_at", now_datetime(), update_modified=False)
+			# fresh gate = fresh reminder ladder (v2.21 P2)
+			doc.db_set("reminder_stage", 0, update_modified=False)
+			doc.db_set("last_reminded_at", None, update_modified=False)
 			doc.add_comment("Comment", _(
 				"Reopened (Logged -> Pending) by {0}. Reason: {1}"
 			).format(user, frappe.utils.escape_html(reason)))
@@ -338,6 +558,7 @@ def cancel_department_entry(name, reason):
 		               "has moved on) — this gate entry can no longer be reopened "
 		               "or cancelled."))
 
+	_cancel_dept_material_issue(doc)
 	doc.db_set("status", "Cancelled", update_modified=False)
 	doc.add_comment("Comment", _(
 		"Cancelled by {0}. Reason: {1}").format(user, frappe.utils.escape_html(reason)))
@@ -380,7 +601,8 @@ def get_multi_run_board(production_entry=None):
 		DOCTYPE,
 		filters={"production_entry": ["in", [r.name for r in runs]]},
 		fields=["name", "production_entry", "category", "department", "bom",
-		        "status", "submitted_by", "logged_at", "notified_at"],
+		        "status", "submitted_by", "logged_at", "notified_at",
+		        "reminder_stage", "last_reminded_at"],
 		order_by="creation asc", limit=0)
 	by_run = {}
 	for s in slots:

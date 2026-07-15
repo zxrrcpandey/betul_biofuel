@@ -100,6 +100,10 @@ def submit_for_release(name):
 
 	# Pre-flight valuation hard-block BEFORE creating any backing doc (Lesson 288).
 	api._block_if_missing_valuation(doc, settings)
+	# Pre-flight (14 Jul audit): a department-claimed material MUST be in the BOM,
+	# else it would be released into WIP and stranded (Manufacture consumes BOM only).
+	from trustbit_ethanol.ts_gate_entry import ts_production_dept_release as dept_rel
+	dept_rel.preflight_bom_membership(doc)
 
 	# Capture BOM branch attributes for the release/automation steps.
 	attrs = wo_engine.read_bom_attrs(doc.bom)
@@ -156,6 +160,19 @@ def submit_for_release(name):
 		_("Submitted for release by {0}. Work Order {1} + draft Release SE {2} created.").format(
 			user, wo_name, release_se),
 	)
+	# v2.21 (client request 13 Jul) — split the release: any run item sourced from a
+	# department-claimed warehouse becomes that department's release slot (they enter
+	# the ACTUAL qty). No-op when no category claims a warehouse (today's behavior).
+	dept_categories = []
+	try:
+		from trustbit_ethanol.ts_gate_entry import ts_production_dept_release as dept_rel
+		created = dept_rel.build_release_slots(doc, release_se) or []
+		dept_categories = [frappe.db.get_value("TS Production Release Slot", c, "category")
+		                   for c in created]
+	except Exception:
+		frappe.log_error(title="TS dept release slot build failed",
+		                 message=f"{name}: {frappe.get_traceback()}")
+		frappe.clear_messages()
 	try:
 		api._notify_stores_managers_release(doc)
 	except Exception:
@@ -166,6 +183,7 @@ def submit_for_release(name):
 		"ts_variance_status": "Pending Stores Release",
 		"work_order": wo_name,
 		"release_stock_entry": release_se,
+		"department_categories": [c for c in dept_categories if c],
 		"message": _("Submitted to the Stores Manager for raw-material release."),
 	}
 
@@ -203,6 +221,11 @@ def approve_release(name):
 			_("You submitted this run, so you cannot approve its release (separation of duties)."),
 			exc=frappe.PermissionError,
 		)
+
+	# v2.21 (client request 13 Jul) — the Store Manager is the FINAL gate: every
+	# department must release its own material first. No-op when no slots exist.
+	from trustbit_ethanol.ts_gate_entry import ts_production_dept_release as dept_rel
+	dept_rel.assert_all_slots_released(doc.name)
 
 	if not doc.release_stock_entry or not doc.work_order:
 		frappe.throw(_("This entry has no Work Order / release Stock Entry — re-submit it for release."))

@@ -330,6 +330,17 @@ def _block_if_missing_valuation(doc, settings):
 		# then transferred into WIP, so its valuation lives at the release source at
 		# pre-flight time (WIP may be empty pre-release). Check the release source first.
 		s_wh = settings.get("release_source_warehouse") or row.source_warehouse or wip
+		# v2.21 dept release (13 Jul): a row the PM sourced from a department-CLAIMED
+		# warehouse is released FROM that warehouse (build_release_slots re-points it),
+		# so check valuation THERE — dept-produced items (steam, treated water) often
+		# exist ONLY in their department warehouse, never in Stores.
+		if row.source_warehouse and row.source_warehouse != s_wh:
+			try:
+				from trustbit_ethanol.ts_gate_entry import ts_production_dept_release as dept_rel
+				if row.source_warehouse in dept_rel._warehouse_to_category():
+					s_wh = row.source_warehouse
+			except Exception:
+				pass  # claim map unavailable -> keep the default check
 		key = ("M", row.item_code, s_wh)
 		if key in seen:
 			continue

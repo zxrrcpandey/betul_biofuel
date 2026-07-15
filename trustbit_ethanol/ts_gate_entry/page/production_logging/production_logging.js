@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.2.0"; // v2.21 premium de-clutter (My-Actions strip, compact rows, role-first order)
+const PL_VERSION = "v1.4.2"; // SM release zone shows "Waiting: <depts>" until departments release // v2.21 Single-flow department release (slots + actuals dialog)
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -204,6 +204,8 @@ class ProductionLogging {
 					<span class="sf-lbl">Status flow</span>
 					<span class="sf-chip b-draft"><span class="bdot"></span>Draft</span>
 					<span class="sf-arrow">&rarr;</span>
+					<span class="sf-chip b-pending"><span class="bdot"></span>Pending Department Release</span>
+					<span class="sf-arrow">&rarr;</span>
 					<span class="sf-chip b-pending"><span class="bdot"></span>Pending Stores Release</span>
 					<span class="sf-arrow">&rarr;</span>
 					<span class="sf-chip b-released"><span class="bdot"></span>Released</span>
@@ -277,14 +279,18 @@ class ProductionLogging {
 				<span class="feas-tag tag-gate">&#128682; Awaiting approval</span>
 			</div>
 			<div id="pl-release-zone"></div>` : ``;
+		// v2.21 ① Multiple-flow direct-release zone (SM only)
+		const mrelease = this.is_store_mgr ? `<div id="pl-multi-release-wrap"></div>` : ``;
+		// v2.21 (13 Jul) Single-flow department release zone (any user; server filters)
+		const deptrel = `<div id="pl-deptrel-wrap"></div>`;
 		const board = `<div id="pl-board-wrap"></div>`;
 		const dist = `<div id="pl-dist-wrap"></div>`;
 		const dept = `<div id="pl-dept-wrap"></div>`;
-		// dept-only users (no PM/SM hats): their Add-Production tasks first
-		if (!this.is_pm && !this.is_store_mgr) return dept + board + dist + release;
-		// SM (and PM+SM): the human gate first; pure PM: dist/board first
-		return this.is_store_mgr ? release + dist + board + dept
-		                         : dist + board + dept + release;
+		// dept-only users (no PM/SM hats): their Add-Production + release tasks first
+		if (!this.is_pm && !this.is_store_mgr) return dept + deptrel + board + dist + release + mrelease;
+		// SM (and PM+SM): the human gates first; pure PM: dist/board first
+		return this.is_store_mgr ? mrelease + release + deptrel + dist + board + dept
+		                         : deptrel + dist + board + dept + release + mrelease;
 	}
 
 	// v2.21 premium de-clutter — "My Actions" strip: one glance = what waits for
@@ -299,6 +305,12 @@ class ProductionLogging {
 		if (this.is_store_mgr && (this._n_rel || 0) > 0) acts.push({
 			n: this._n_rel, cls: "green", target: "#pl-sec-release",
 			l: "Release", s: "material release" + (this._n_rel > 1 ? "s" : "") + " awaiting Store Manager" });
+		if ((this._n_deptrel || 0) > 0) acts.push({
+			n: this._n_deptrel, cls: "amber", target: "#pl-sec-deptrel",
+			l: "Release (Dept)", s: "department release" + (this._n_deptrel > 1 ? "s" : "") + " awaiting your actual qty" });
+		if (this.is_store_mgr && (this._n_mrel || 0) > 0) acts.push({
+			n: this._n_mrel, cls: "green", target: "#pl-sec-mrelease",
+			l: "Release (Connector)", s: "connector-flow release" + (this._n_mrel > 1 ? "s" : "") + " — direct Stores→WIP" });
 		if ((this._n_dist || 0) > 0) acts.push({
 			n: this._n_dist, cls: "violet", target: "#pl-dist-wrap",
 			l: "Post Distribution", s: "run" + (this._n_dist > 1 ? "s" : "") + " to split across warehouses" });
@@ -468,6 +480,60 @@ class ProductionLogging {
 		}
 
 		// Store-Manager actions (delegated on the release zone)
+		// v2.21 (13 Jul) — department release with actuals
+		this.$root.on("click", ".pl-deptrel-btn", function () {
+			self.open_release_dialog($(this).data("i"));
+		});
+		// v2.21 UAT ③ — dept user corrects their own Logged entry (reopen for re-entry)
+		this.$root.on("click", ".pl-reopen-btn", function () {
+			const name = $(this).data("name");
+			frappe.prompt({
+				fieldname: "reason", fieldtype: "Small Text", reqd: 1,
+				label: __("Why are you correcting this entry? (min 10 characters)"),
+			}, (v) => {
+				if ((v.reason || "").trim().length < 10) {
+					frappe.msgprint(__("Please give a reason of at least 10 characters."));
+					return;
+				}
+				frappe.call({
+					method: "trustbit_ethanol.ts_gate_entry.ts_production_dept.cancel_department_entry",
+					type: "POST", args: { name: name, reason: v.reason },
+					callback: (r) => {
+						if (r.message && r.message.ok) {
+							frappe.show_alert({ message: __("Reopened — it is back in your Add Production list."), indicator: "orange" });
+							self.reload_data();
+						}
+					},
+				});
+			}, __("Correct / Reopen"), __("Reopen"));
+		});
+		// v2.21 ① one-click Multiple-flow direct release
+		this.$root.on("click", ".pl-mrelease-btn", function () {
+			const name = $(this).data("name");
+			const $btn = $(this);
+			frappe.confirm(
+				__("Release raw material for {0}? This transfers directly Stores → Work In Progress (no in-transit step) and moves the run to Post Distribution.", [name]),
+				() => {
+					$btn.prop("disabled", true);
+					frappe.call({
+						method: "trustbit_ethanol.ts_gate_entry.ts_production_multi.release_multi_run",
+						type: "POST", args: { name: name },
+						callback: (r) => {
+							if (r.message && r.message.ok) {
+								frappe.show_alert({
+									message: r.message.already_released
+										? __("Already released — {0}.", [name])
+										: __("Released {0} — material moved Stores → WIP; ready for distribution.", [name]),
+									indicator: "green" });
+								self.reload_data();
+							} else {
+								$btn.prop("disabled", false);
+							}
+						},
+						error: () => $btn.prop("disabled", false),
+					});
+				});
+		});
 		this.$root.on("click", ".pl-approve-btn", function () {
 			self.approve_release($(this).data("name"));
 		});
@@ -552,11 +618,102 @@ class ProductionLogging {
 	}
 
 	reload_data() {
+		if (this.is_store_mgr) this.load_multi_releases();
 		this.load_log();
 		if (this.is_store_mgr) this.load_pending_releases();
 		this.load_dept_context();  // Phase C — server decides visibility (kill switch + recipients)
+		this.load_my_release_slots(); // v2.21 (13 Jul) — Single-flow department release
 		this.load_multi_context(); // Phase D — chooser + pending distributions
 		this.load_multi_board();   // v2.21 — dept status board (R3)
+	}
+
+	// ── v2.21 (13 Jul) — Single-flow DEPARTMENT RELEASE ─────────────────
+	load_my_release_slots() {
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.ts_production_dept_release.get_my_release_slots",
+			callback: (r) => this.render_release_slots(r.message || []),
+			error: () => this.render_release_slots([]),
+		});
+	}
+
+	render_release_slots(slots) {
+		const $wrap = this.$root.find("#pl-deptrel-wrap");
+		if (!$wrap.length) return;
+		this._n_deptrel = slots.length;
+		this.update_actions();
+		this.release_slots = slots;
+		if (!slots.length) { $wrap.empty(); return; }
+		const row = (s, i) => `
+			<div class="pl-row amber">
+				<span class="pl-rid">${this.esc(s.production_entry)}</span>
+				<span class="pl-rwhat"><b>${this.esc(s.category)}</b>
+					<span class="dim">· ${(s.items || []).length} item(s) to release · dept ${this.esc(s.department || "—")}</span></span>
+				<span class="pl-pill age">notified ${this.age_of(s.notified_at) || "—"} ago</span>
+				<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>
+				<button class="btn btn-approve btn-sm pl-deptrel-btn" data-i="${i}">&#128666; Release with Actuals</button>
+			</div>
+			<div class="pl-xpand" style="display:none">
+				${(s.items || []).map((it) => `<span><b>${this.esc(it.item_name || it.item_code)}</b> — planned ${this.fmt1(it.planned_qty)} ${this.esc(it.uom || "")} from ${this.esc(it.warehouse || "—")}</span>`).join("")}
+				<span><b>Note</b> enter the ACTUAL quantity your department used; production consumes your actuals, and the Store Manager release runs after all departments release.</span>
+			</div>`;
+		$wrap.html(`
+			<div class="sec-title" id="pl-sec-deptrel">
+				<span class="bar" style="background:var(--amber)"></span> Release &mdash; Your Department (Single Flow)
+				<span class="feas-tag tag-gate">&#128666; Enter actual used qty</span>
+			</div>
+			<div class="glass pl-rows">${slots.map(row).join("")}</div>`);
+	}
+
+	open_release_dialog(i) {
+		const s = (this.release_slots || [])[i];
+		if (!s) return;
+		const rows = (s.items || []).map((it, j) => `
+			<tr>
+				<td style="padding:6px 8px;">${frappe.utils.escape_html(it.item_name || it.item_code)}<br>
+					<span style="font-size:11px;opacity:.6;font-family:monospace">${frappe.utils.escape_html(it.item_code)} · ${frappe.utils.escape_html(it.warehouse || "")}</span></td>
+				<td style="padding:6px 8px;text-align:right;opacity:.7">${flt(it.planned_qty).toLocaleString("en-IN")}</td>
+				<td style="padding:6px 8px;"><input type="number" min="0" step="any" class="form-control pl-rel-qty" data-j="${j}" value="${flt(it.planned_qty)}" style="text-align:right"></td>
+				<td style="padding:6px 8px;">${frappe.utils.escape_html(it.uom || "")}</td>
+			</tr>`).join("");
+		const self = this;
+		const d = new frappe.ui.Dialog({
+			title: __("Release — {0} ({1})", [s.category, s.production_entry]),
+			size: "large",
+			fields: [{ fieldtype: "HTML", fieldname: "rel_html" }],
+			primary_action_label: __("Release with Actuals"),
+			primary_action: () => {
+				const items = (s.items || []).map((it, j) => ({
+					item_code: it.item_code,
+					actual_qty: flt(d.$wrapper.find(`.pl-rel-qty[data-j="${j}"]`).val()),
+				}));
+				d.get_primary_btn().prop("disabled", true);
+				frappe.call({
+					method: "trustbit_ethanol.ts_gate_entry.ts_production_dept_release.release_department_slot",
+					type: "POST", args: { name: s.name, items: items },
+					callback: (r) => {
+						d.hide();
+						if (r.message && r.message.ok) {
+							frappe.show_alert({
+								message: (r.message.remaining && r.message.remaining.length)
+									? __("Released. Waiting for the other departments before the Store Manager can release.")
+									: __("Released — all departments done; the Store Manager can now release."),
+								indicator: "green" });
+							self.reload_data();
+						}
+					},
+					error: () => d.get_primary_btn().prop("disabled", false),
+				});
+			},
+		});
+		d.fields_dict.rel_html.$wrapper.html(`
+			<div style="margin:4px 0 6px;font-size:12px"><b>${frappe.utils.escape_html(s.category)}</b> · enter the ACTUAL quantity your department used (0 = not used). Production consumes your actuals.</div>
+			<table style="width:100%;border-collapse:collapse;font-size:12.5px">
+				<thead><tr style="opacity:.65;text-align:left">
+					<th style="padding:6px 8px;">Item · Warehouse</th><th style="padding:6px 8px;text-align:right">Planned</th>
+					<th style="padding:6px 8px;">Actual Used</th><th style="padding:6px 8px;">UOM</th>
+				</tr></thead><tbody>${rows}</tbody>
+			</table>`);
+		d.show();
 	}
 
 	// ── Phase D — Multiple (BOM Connector) flow ─────────────────────────
@@ -566,7 +723,7 @@ class ProductionLogging {
 			callback: (r) => {
 				this.multi_ctx = r.message || { enabled: false, connectors: [] };
 				this.render_multi_ui();
-				if (this.multi_ctx.enabled && this.is_pm) this.load_pending_distributions();
+				if (this.multi_ctx.enabled && this.is_pm && this.multi_ctx.authorized !== false) this.load_pending_distributions();
 				else this.$root.find("#pl-dist-wrap").empty();
 			},
 			error: () => {
@@ -579,7 +736,7 @@ class ProductionLogging {
 	render_multi_ui() {
 		const on = !!(this.multi_ctx && this.multi_ctx.enabled &&
 			(this.multi_ctx.connectors || []).length);
-		this.$root.find("#pl-flow-chooser").toggle(on && this.is_pm);
+		this.$root.find("#pl-flow-chooser").toggle(on && this.is_pm && this.multi_ctx.authorized !== false);
 		const $sel = this.$root.find("#pl-conn-select");
 		if (on && $sel.length) {
 			$sel.html('<option value="">Select a connector…</option>' +
@@ -653,8 +810,12 @@ class ProductionLogging {
 				limit_page_length: 30,
 			},
 			callback: (r) => {
-				this.render_log(r.message || []);
-				this.render_kpis(r.message || []);
+				const rows = r.message || [];
+				frappe.call({
+					method: "trustbit_ethanol.ts_gate_entry.ts_production_dept_release.pending_department_map",
+					callback: (m) => { this._pendDept = m.message || {}; this.render_log(rows); this.render_kpis(rows); },
+					error: () => { this._pendDept = {}; this.render_log(rows); this.render_kpis(rows); },
+				});
 			},
 			error: () => {
 				this.render_log([]);
@@ -665,21 +826,56 @@ class ProductionLogging {
 
 	load_pending_releases() {
 		frappe.call({
-			method: "frappe.client.get_list",
-			args: {
-				doctype: PL_DOCTYPE,
-				filters: { ts_variance_status: "Pending Stores Release" },
-				fields: [
-					"name", "bom", "production_item", "production_item_name",
-					"actual_produced_qty", "production_uom", "work_order",
-					"release_stock_entry", "submitted_by", "owner", "modified",
-				],
-				order_by: "modified desc",
-				limit_page_length: 20,
-			},
+			method: "trustbit_ethanol.ts_gate_entry.ts_production_dept_release.get_store_release_queue",
 			callback: (r) => this.render_release_zone(r.message || []),
 			error: () => this.render_release_zone([]),
 		});
+	}
+
+	// ── v2.21 ① Multiple-flow release — direct Stores→WIP, one click ────
+	load_multi_releases() {
+		if (!this.is_store_mgr) return;
+		frappe.call({
+			method: "frappe.client.get_list",
+			args: {
+				doctype: PL_DOCTYPE,
+				filters: { ts_variance_status: "Pending Material Request", flow_type: "Multiple" },
+				fields: ["name", "bom", "production_item_name", "actual_produced_qty",
+					"production_uom", "material_request", "work_order", "bom_connector", "modified"],
+				order_by: "modified desc", limit_page_length: 20,
+			},
+			callback: (r) => this.render_multi_release_zone(r.message || []),
+			error: () => this.render_multi_release_zone([]),
+		});
+	}
+
+	render_multi_release_zone(rows) {
+		const $wrap = this.$root.find("#pl-multi-release-wrap");
+		if (!$wrap.length) return;
+		this._n_mrel = rows.length;
+		this.update_actions();
+		if (!rows.length) { $wrap.empty(); return; }
+		const row = (r) => `
+			<div class="pl-row green">
+				<span class="pl-rid">${this.esc(r.name)}</span>
+				<span class="pl-rwhat">${this.esc(r.production_item_name || "")} · <b>${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</b>
+					<span class="dim">· MR ${this.esc(r.material_request || "—")} · ${this.esc(r.bom_connector || "")}</span></span>
+				<span class="pl-pill age">waiting ${this.age_of(r.modified) || "—"}</span>
+				<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>
+				<button class="btn btn-approve btn-sm pl-mrelease-btn" data-name="${this.esc(r.name)}">
+					<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Release</button>
+			</div>
+			<div class="pl-xpand" style="display:none">
+				<span><b>Work Order</b> <span class="mono">${this.esc(r.work_order || "—")}</span></span>
+				<span><b>On Release</b> the raw material transfers <b>directly Stores &rarr; Work In Progress</b> (no in-transit step), then the run moves to Post Distribution.</span>
+			</div>`;
+		$wrap.html(`
+			<div class="sec-title" id="pl-sec-mrelease">
+				<span class="bar" style="background:var(--amber)"></span>
+				Store Manager Release &mdash; Multiple (Connector) Flow
+				<span class="feas-tag tag-gate">&#128682; Direct Stores &rarr; WIP</span>
+			</div>
+			<div class="glass pl-rows">${rows.map(row).join("")}</div>`);
 	}
 
 	// ── Phase C — Department consumption (REPORTING ONLY, no stock) ─────
@@ -731,12 +927,33 @@ class ProductionLogging {
 					<a href="/app/ts-production-entry/${encodeURIComponent(p.production_entry)}" target="_blank" rel="noopener">View Run &rarr;</a>
 				</div>`).join("") + `</div>`;
 		}
+		// v2.21 UAT ③ — your own still-correctable Logged entries (run waiting, no MR yet)
+		const reopen = ctx.reopenable || [];
+		let fixer = "";
+		if (reopen.length) {
+			fixer = `<div class="sec-title" style="margin-top:14px">
+					<span class="bar" style="background:var(--amber)"></span> Logged by You &mdash; Still Correctable
+					<span class="feas-tag tag-gate">&#9998; Reopens for re-entry</span>
+				</div>
+				<div class="glass pl-rows">` + reopen.map((p) => `
+				<div class="pl-row amber">
+					<span class="pl-rid">${this.esc(p.production_entry)}</span>
+					<span class="pl-rwhat"><b>${this.esc(p.category)}</b>
+						<span class="dim">· logged ${this.age_of(p.logged_at) || "—"} ago · main: ${this.esc(p.item_name || "—")} ${this.fmt1(p.produced_qty)} ${this.esc(p.uom || "")}</span></span>
+					<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>
+					<button class="btn btn-reopen btn-sm pl-reopen-btn" data-name="${this.esc(p.dept_entry)}">&#9998; Correct / Reopen</button>
+				</div>
+				<div class="pl-xpand" style="display:none">
+					<span><b>Department</b> ${this.esc(p.department || "—")}</span>
+					<span><b>Reopen</b> puts this back in your Add Production list to re-enter the quantities. Possible only until the Store-Manager release is requested.</span>
+				</div>`).join("") + `</div>`;
+		}
 		$wrap.html(`
 			<div class="sec-title">
 				<span class="bar" style="background:var(--green)"></span> Add Production &mdash; Your Departments
 				<span class="feas-tag tag-gate">&#127981; Gates the Store-Manager release</span>
 			</div>
-			${inner}`);
+			${inner}${fixer}`);
 	}
 
 	open_dept_dialog(idx) {
@@ -764,16 +981,30 @@ class ProductionLogging {
 			primary_action_label: __("Add Production"),
 			primary_action: (values) => this.submit_dept_entry(d, p, values),
 		});
+		// v2.21 SE Style — the note + (for produce-style depts) the output field
+		const produce = p.se_style === "Consume + Produce Output" && p.output;
+		const note = produce
+			? __("&#9432; Stock WILL move: materials are issued AND {0} is received into stock", [frappe.utils.escape_html(p.output.item_name || "")])
+			: p.se_style === "Consumption Only"
+			? __("&#9432; Stock WILL move: these materials are issued from the store to your department")
+			: __("&#9432; Actuals-only — no stock will move; the release waits for this");
+		const outHtml = produce ? `
+			<div style="margin:10px 0 2px;padding:8px;border:1px dashed var(--amber,#d97706);border-radius:8px;font-size:12.5px">
+				<b>&#127981; Output produced — ${frappe.utils.escape_html(p.output.item_name || p.output.item_code)}</b>
+				<span style="opacity:.6;font-family:monospace">(${frappe.utils.escape_html(p.output.item_code)})</span><br>
+				<span style="opacity:.65;font-size:11.5px">Standard: ${flt(p.output.std_qty).toLocaleString("en-IN")} ${frappe.utils.escape_html(p.output.uom || "")} — enter the ACTUAL produced quantity:</span>
+				<input type="number" min="0" step="any" class="form-control pl-dd-output" value="${flt(p.output.std_qty)}" style="text-align:right;max-width:220px;display:inline-block;margin-left:8px"> ${frappe.utils.escape_html(p.output.uom || "")}
+			</div>` : "";
 		d.fields_dict.mat_html.$wrapper.html(`
 			<div style="margin:4px 0 6px;font-size:12px;"><b>${frappe.utils.escape_html(p.category)}</b> &middot; dept BOM <span style="font-family:monospace">${frappe.utils.escape_html(p.dept_bom)}</span>
-			&middot; <span style="font-weight:600">&#9432; Actuals-only — no stock will move; the release waits for this</span></div>
+			&middot; <span style="font-weight:600">${note}</span></div>
 			<table style="width:100%;border-collapse:collapse;font-size:12.5px">
 				<thead><tr style="opacity:.65;text-align:left">
 					<th style="padding:6px 8px;">Material</th><th style="padding:6px 8px;text-align:right">Std Qty</th>
 					<th style="padding:6px 8px;">Actual Qty</th><th style="padding:6px 8px;">UOM</th><th style="padding:6px 8px;">Remark</th>
 				</tr></thead>
 				<tbody>${rows}</tbody>
-			</table>`);
+			</table>${outHtml}`);
 		d.show();
 	}
 
@@ -787,6 +1018,14 @@ class ProductionLogging {
 			frappe.show_alert({ message: __("Enter a quantity for at least one material."), indicator: "orange" });
 			return;
 		}
+		let output_qty = null;
+		if (p.se_style === "Consume + Produce Output" && p.output) {
+			output_qty = flt(d.$wrapper.find(".pl-dd-output").val());
+			if (!(output_qty > 0)) {
+				frappe.show_alert({ message: __("Enter the produced output quantity ({0}).", [p.output.item_name || ""]), indicator: "orange" });
+				return;
+			}
+		}
 		d.get_primary_btn().prop("disabled", true);
 		frappe.call({
 			method: "trustbit_ethanol.ts_gate_entry.ts_production_dept.submit_department_production",
@@ -794,6 +1033,7 @@ class ProductionLogging {
 			args: {
 				name: p.dept_entry,
 				materials: mats, posting_date: values.posting_date, remark: values.remark || "",
+				output_qty: output_qty,
 			},
 			callback: (r) => {
 				d.hide();
@@ -849,7 +1089,9 @@ class ProductionLogging {
 			const skipBtn = this.is_administrator
 				? ` <button class="pl-skip-btn" data-name="${this.esc(s.name)}" data-cat="${this.esc(s.category)}" title="Administrator only">Skip</button>`
 				: "";
-			return `<span class="pl-pill age">&#8987; ${this.esc(s.category)} · ${this.age_of(s.notified_at) || "—"}</span>${skipBtn}`;
+			const stg = cint(s.reminder_stage);
+			const stageTag = !stg ? "" : stg <= 3 ? ` · L${stg}` : stg === 4 ? " · escalated" : ` · #${stg - 1}`;
+			return `<span class="pl-pill age" title="${stg ? this.esc("last reminded " + ((s.last_reminded_at || "").slice(0, 16))) : ""}">&#8987; ${this.esc(s.category)} · ${this.age_of(s.notified_at) || "—"}${stageTag}</span>${skipBtn}`;
 		};
 		const card = (r) => {
 			const total = (r.departments || []).length;
@@ -1313,6 +1555,15 @@ class ProductionLogging {
 		const cls = map[status] || "b-draft";
 		return `<span class="badge ${cls}"><span class="bdot"></span>${this.esc(status || "Draft")}</span>`;
 	}
+	// DISPLAY-ONLY: while a run's department slots are Pending, show "Pending
+	// Department Release" — the stored status stays "Pending Stores Release".
+	_statusCell(r) {
+		const pend = (this._pendDept || {})[r.name] || [];
+		if (r.ts_variance_status === "Pending Stores Release" && pend.length) {
+			return `<span class="badge b-pending" title="Waiting on: ${this.esc(pend.join(", "))}"><span class="bdot"></span>Pending Department Release</span>`;
+		}
+		return this.badge(r.ts_variance_status);
+	}
 	var_cell(v) {
 		if (v == null) return '<span style="color:var(--faint)">—</span>';
 		const a = Math.abs(flt(v));
@@ -1342,7 +1593,7 @@ class ProductionLogging {
 						`<td><div class="bom-cell"><span class="bm mono">${this.esc(r.bom || "—")}</span></div></td>` +
 						`<td>${this.esc(itemName)} <span class="bt mono" style="color:var(--faint)">${this.esc(itemCode)}</span></td>` +
 						`<td class="r mono"><b>${this.fmt1(r.actual_produced_qty)}</b> <span class="uom-cell">${this.esc(r.production_uom || "")}</span></td>` +
-						`<td>${this.badge(r.ts_variance_status)}</td>` +
+						`<td>${this._statusCell(r)}</td>` +
 						`<td class="r">${variance}</td>` +
 						`<td class="mono" style="color:var(--muted)">${this.esc(r.work_order || "—")}</td>` +
 						`<td style="color:var(--faint);white-space:nowrap">${this.esc(frappe.datetime.str_to_user(r.modified))}</td>` +
@@ -1357,7 +1608,9 @@ class ProductionLogging {
 	render_release_zone(rows) {
 		const $z = this.$root.find("#pl-release-zone");
 		if (!$z.length) return;
-		this._n_rel = rows.length;
+		// count only runs whose departments have ALL released (the gated ones are shown
+		// as "waiting", not actionable) — 14 Jul UX fix
+		this._n_rel = rows.filter((r) => !((r.pending_departments || []).length)).length;
 		this.update_actions();
 		if (!rows.length) {
 			$z.html(
@@ -1372,21 +1625,28 @@ class ProductionLogging {
 		const week_ago = frappe.datetime.add_days(frappe.datetime.now_date(), -7);
 		const row = (r) => {
 			const itemName = r.production_item_name || r.production_item || "—";
+			const gatedBy = r.pending_departments || [];
+			const gated = gatedBy.length > 0;
+			const action = gated
+				? `<span class="pl-pill" style="background:var(--amber-bg,rgba(245,158,11,.14));color:var(--amber,#b45309);border:1px solid var(--amber-bd,rgba(245,158,11,.35));white-space:nowrap">&#8987; Waiting: ${this.esc(gatedBy.join(", "))}</span>`
+				: `<button class="btn btn-approve btn-sm pl-approve-btn" data-name="${this.esc(r.name)}">` +
+				  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Release</button>`;
 			return (
-				`<div class="pl-row green">` +
+				`<div class="pl-row ${gated ? "amber" : "green"}">` +
 				`<span class="pl-rid">${this.esc(r.name)}</span>` +
 				`<span class="pl-rwhat">${this.esc(itemName)} · <b>${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</b>` +
 				` <span class="dim">· ${this.esc(r.bom || "—")} · from ${this.esc(r.submitted_by || r.owner || "—")}</span></span>` +
 				`<span class="pl-pill age">waiting ${this.age_of(r.modified) || "—"}</span>` +
 				`<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>` +
-				`<button class="btn btn-approve btn-sm pl-approve-btn" data-name="${this.esc(r.name)}">` +
-				`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Release</button>` +
+				action +
 				`</div>` +
 				`<div class="pl-xpand" style="display:none">` +
 				`<span><b>Work Order</b> <span class="mono">${this.esc(r.work_order || "—")}</span></span>` +
 				`<span><b>Release SE</b> <span class="mono">${this.esc(r.release_stock_entry || "—")}</span></span>` +
 				`<span><b>Updated</b> ${this.esc(frappe.datetime.str_to_user(r.modified))}</span>` +
-				`<span><b>On Release</b> the system submits the Material Transfer (${this.esc(src)} &rarr; ${this.esc(wip)}), runs Job Cards, posts the Manufacture Stock Entry and closes the Work Order — no further clicks.</span>` +
+				(gated
+					? `<span><b>Waiting for departments</b> ${this.esc(gatedBy.join(", "))} must release their own material first — then this run becomes releasable.</span>`
+					: `<span><b>On Release</b> the system submits the Material Transfer (${this.esc(src)} &rarr; ${this.esc(wip)}), runs Job Cards, posts the Manufacture Stock Entry and closes the Work Order — no further clicks.</span>`) +
 				`</div>`
 			);
 		};
@@ -1683,19 +1943,20 @@ class ProductionLogging {
 						const m = rr.message || {};
 						this.advance_progress(4);
 						const awaiting_depts = m.ts_variance_status === "Awaiting Department Production";
+						const sf_depts = (m.department_categories || []);
 						this.finish_progress({
 							doneStatus: multi
 								? (awaiting_depts
 									? "Submitted ✓ — departments notified to Add Production"
 									: "Submitted ✓ — Material Request routed to Store Manager")
-								: "Submitted ✓ — Pending Store Manager release",
+								: (sf_depts.length ? "Submitted ✓ — Pending Department Release (" + sf_depts.join(", ") + ")" : "Submitted ✓ — Pending Store Manager release"),
 							onDone: () => {
 								frappe.show_alert({
 									message: multi
 										? (awaiting_depts
 											? __("Submitted {0} — {1} department(s) notified. The Store-Manager release fires automatically when all add their production.", [doc.name, (m.department_entries || []).length])
 											: __("Submitted {0} — Material Request {1} awaits Store Manager release.", [doc.name, m.material_request || ""]))
-										: __("Submitted {0} — pending Store Manager release.", [doc.name]),
+										: (sf_depts.length ? __("Submitted {0} — {1} department(s) must release first, then the Store Manager releases the rest.", [doc.name, sf_depts.length]) : __("Submitted {0} — pending Store Manager release.", [doc.name])),
 									indicator: "green",
 								});
 								this.reset_after_submit();

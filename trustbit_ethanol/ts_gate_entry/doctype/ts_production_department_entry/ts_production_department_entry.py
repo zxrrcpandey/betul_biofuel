@@ -2,8 +2,11 @@
 # TS Production Department Entry — a REPORTING-ONLY log of the raw material a
 # supporting department (WTP, Electricity...) consumed for a production run.
 #
-# INVARIANT: this doctype NEVER creates a Stock Entry / SLE / GL row — there is
-# structurally no stock-posting code path here or in ts_production_dept.py.
+# DEFAULT: reporting-only — no Stock Entry / SLE / GL row. Since v2.21 (9 Jul,
+# client request) a category may OPT IN via 'Create Stock Entry on Add
+# Production': the endpoint then also creates ONE Stock Entry (Material Issue,
+# or an independent Manufacture when style = 'Consume + Produce Output'),
+# restricted to the dept BOM's own items, cancelled again on Correct/Reopen.
 # Mutations flow through the whitelisted endpoints (recipient-gated); the
 # control-plane fields are tamper-guarded (Lesson 162).
 
@@ -13,7 +16,8 @@ from frappe.model.document import Document
 from frappe.utils import flt
 
 # Control-plane fields — writable only via the endpoints' db_set (Lesson 162).
-CONTROL_FIELDS = ["status", "submitted_by", "logged_at", "bom_connector", "notified_at"]
+CONTROL_FIELDS = ["status", "submitted_by", "logged_at", "bom_connector", "notified_at",
+                  "reminder_stage", "last_reminded_at", "stock_entry", "output_item", "output_qty"]
 
 
 class TSProductionDepartmentEntry(Document):

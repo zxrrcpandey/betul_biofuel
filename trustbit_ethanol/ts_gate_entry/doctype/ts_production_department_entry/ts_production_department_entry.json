@@ -21,7 +21,12 @@
   "column_break_de2",
   "submitted_by",
   "logged_at",
+  "stock_entry",
+  "output_item",
+  "output_qty",
   "notified_at",
+  "reminder_stage",
+  "last_reminded_at",
   "materials_section",
   "materials",
   "remark"
@@ -142,12 +147,54 @@
    "no_copy": 1
   },
   {
+   "fieldname": "stock_entry",
+   "fieldtype": "Link",
+   "label": "Stock Entry (Material Issue)",
+   "options": "Stock Entry",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Set when the category has 'Create Stock Entry on Add Production' enabled — the Material Issue consuming this department's actuals. Cancelled automatically on Correct/Reopen."
+  },
+  {
+   "fieldname": "output_item",
+   "fieldtype": "Link",
+   "label": "Output Item",
+   "options": "Item",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Set when the category style is 'Consume + Produce Output' — the produced item."
+  },
+  {
+   "fieldname": "output_qty",
+   "fieldtype": "Float",
+   "label": "Output Qty (actual)",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
    "fieldname": "notified_at",
    "fieldtype": "Datetime",
    "label": "Department Notified At",
    "read_only": 1,
    "no_copy": 1,
    "description": "Stamped when the department was notified to Add Production (Multiple-flow gate). Anchor for the P2 reminder engine."
+  },
+  {
+   "fieldname": "reminder_stage",
+   "fieldtype": "Int",
+   "label": "Reminder Stage",
+   "read_only": 1,
+   "no_copy": 1,
+   "default": "0",
+   "description": "Monotonic reminder ladder (v2.21 P2): 1-3 = L1/L2/L3 dept reminders, 4 = PM escalation sentinel, 5+ = U7 repeats. Control-plane — written only by the scheduler."
+  },
+  {
+   "fieldname": "last_reminded_at",
+   "fieldtype": "Datetime",
+   "label": "Last Reminded At",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Anchor for post-L3 repeat cadence. Control-plane — written only by the scheduler."
   },
   {
    "fieldname": "materials_section",
@@ -169,7 +216,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-07-04 12:00:00.000000",
+ "modified": "2026-07-09 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Production Department Entry",
@@ -177,36 +224,82 @@
  "owner": "Administrator",
  "permissions": [
   {
-   "create": 1, "delete": 1, "email": 1, "export": 1, "print": 1,
-   "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
   },
   {
-   "create": 1, "delete": 1, "email": 1, "export": 1, "print": 1,
-   "read": 1, "report": 1, "role": "Manufacturing Manager", "share": 1, "write": 1
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1,
+   "write": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "Manufacturing User", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing User",
+   "share": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "Stores Manager", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stores Manager",
+   "share": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "PM", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "PM",
+   "share": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "Grain PM", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Grain PM",
+   "share": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "IT Head", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IT Head",
+   "share": 1
   },
   {
-   "email": 1, "export": 1, "print": 1, "read": 1, "report": 1,
-   "role": "Employee", "share": 1
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Employee",
+   "share": 1
   }
  ],
  "sort_field": "modified",

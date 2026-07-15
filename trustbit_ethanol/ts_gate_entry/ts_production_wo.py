@@ -37,6 +37,55 @@ RELEASE_PURPOSE = "Material Transfer for Manufacture"
 
 
 # ─────────────────────────────────────────────────────────────────────────
+#  COST CENTRE RESOLUTION  (v2.21 UAT fix ② — department-wise via category)
+# ─────────────────────────────────────────────────────────────────────────
+
+def resolve_production_cost_center(pe):
+	"""The authoritative cost centre for a production run's Stock Entries.
+
+	Department-wise (user decision): the run's main TS Production BOM Category
+	carries a `cost_center`. Resolution order:
+	  1. the connector's main (is_production=1) category cost_center;
+	  2. any active category whose BOM output item == the run's production item;
+	  3. TS Settings.ts_production_mr_cost_center (the existing MR fallback);
+	  4. the company's default cost centre.
+	Returns a cost-centre name (may be the company default) or None if even that
+	is unset — callers leave the SE row's own default in that case."""
+	cc = None
+	# 1) connector main category
+	conn = getattr(pe, "bom_connector", None)
+	if conn:
+		main_cat = frappe.db.get_value("TS BOM Connector", conn, "main_category")
+		if main_cat:
+			cc = frappe.db.get_value("TS Production BOM Category", main_cat, "cost_center")
+	# 2) category whose is_production BOM matches the run's item
+	if not cc and getattr(pe, "production_item", None):
+		cats = frappe.get_all("TS Production BOM Category",
+		                      filters={"active": 1, "is_production": 1},
+		                      fields=["name", "cost_center"], limit=0)
+		for c in cats:
+			if c.cost_center:
+				cc = c.cost_center
+				break
+	# 3) the existing MR cost-centre setting
+	if not cc:
+		cc = frappe.db.get_single_value("TS Settings", "ts_production_mr_cost_center")
+	# 4) company default
+	if not cc and getattr(pe, "company", None):
+		cc = frappe.get_cached_value("Company", pe.company, "cost_center")
+	return cc or None
+
+
+def apply_cost_center_to_se(se, cost_center):
+	"""Force the resolved cost centre onto every Stock Entry row (authoritative
+	header->rows, same discipline as the Material Issue fix, L301-304)."""
+	if not cost_center:
+		return
+	for row in (se.items or []):
+		row.cost_center = cost_center
+
+
+# ─────────────────────────────────────────────────────────────────────────
 #  BOM ATTRIBUTES (read up-front — drive the branching)
 # ─────────────────────────────────────────────────────────────────────────
 
@@ -179,6 +228,9 @@ def build_draft_release_se(wo_name, settings, pe=None):
 			kept.append(row)
 		if pm_qty:
 			se.items = kept
+		# v2.21 ② department-wise cost centre on every release row
+		if pe is not None:
+			apply_cost_center_to_se(se, resolve_production_cost_center(pe))
 		se.flags.ignore_permissions = True
 		se.insert()  # DRAFT — docstatus 0
 		return se.name
@@ -215,11 +267,22 @@ def system_session():
 		yield
 		return
 	prev_user = frappe.session.user
+	# frappe.set_user (v15) ALSO overwrites session.sid with the USERNAME and wipes
+	# session.data — in a web request that corrupts the live session record if the
+	# worker dies mid-block (seen 9 Jul: a supervisor restart mid-request left a
+	# session that 417'd every visit, even incognito, until the hourly sweep).
+	# Snapshot and restore the trampled fields so the session survives intact.
+	prev_sid = frappe.session.get("sid")
+	prev_data = frappe.session.get("data")
 	frappe.set_user("Administrator")
 	try:
 		yield
 	finally:
 		frappe.set_user(prev_user)
+		if prev_sid is not None:
+			frappe.session["sid"] = prev_sid
+		if prev_data is not None:
+			frappe.session["data"] = prev_data
 
 
 def _auto_qi_for_se(se):
@@ -481,6 +544,11 @@ def submit_manufacture_se(wo_name, company=None):
 	se = frappe.get_doc(make_stock_entry(wo_name, "Manufacture", remaining))
 	se.company = company or wo.company
 	_cap_byproduct_rates(se)  # keep FG cost >= 0 when by-products out-value the inputs
+	# v2.21 ② department-wise cost centre — resolve from the run linked to this WO
+	_pe = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},
+	                     fields=["name", "bom_connector", "production_item", "company"], limit=1)
+	if _pe:
+		apply_cost_center_to_se(se, resolve_production_cost_center(frappe._dict(_pe[0])))
 	se.flags.ignore_permissions = True
 	se.insert()
 	_auto_qi_for_se(se)  # auto-accept QI per inward row when the BOM requires it
@@ -563,6 +631,11 @@ def auto_return_surplus(wo_name, settings):
 			"s_warehouse": wip,          # surplus sits in WIP
 			"t_warehouse": dest,         # return to the Stores source warehouse
 		})
+	# v2.21 ② department-wise cost centre on the surplus-return rows too
+	_pe = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},
+	                     fields=["name", "bom_connector", "production_item", "company"], limit=1)
+	if _pe:
+		apply_cost_center_to_se(se, resolve_production_cost_center(frappe._dict(_pe[0])))
 	se.flags.ignore_permissions = True
 	se.insert()
 	se.submit()          # caller runs this inside system_session() (Administrator)
