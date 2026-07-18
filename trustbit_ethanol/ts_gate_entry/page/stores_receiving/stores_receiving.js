@@ -6,7 +6,7 @@
      C — Approved Direct PO (new, no token)
    ═══════════════════════════════════════════════════════════════════ */
 
-const SR_VERSION = "v6.2-2026-06-04-token-search";
+const SR_VERSION = "v6.9-2026-07-16-grain-received-qty";
 const SR_API = "trustbit_ethanol.ts_gate_entry.stores_receiving_api";
 console.log("[stores-receiving]", SR_VERSION, "loaded");
 
@@ -37,7 +37,9 @@ frappe.pages["stores-receiving"].refresh = function () {
 	_sr_reload();
 };
 
-let _sr_state = { d: [], a: [], b: [], busy: false };
+let _sr_state = { d: [], a: [], b: [], g: [], busy: false };
+const GRAIN_API = "trustbit_ethanol.ts_gate_entry.ts_grain_defer";
+const GE_PO_API = "trustbit_ethanol.ts_gate_entry.api.get_purchase_orders";
 
 async function _sr_init() {
 	try {
@@ -60,7 +62,8 @@ function _sr_render_shell() {
 				<div class="sr-subtitle">Pending material receipts across all flows <span class="sr-version">${SR_VERSION}</span></div>
 			</div>
 			<div class="sr-summary">
-				<div class="sr-badge sr-b-d" id="sr-badge-d" style="display:none"><div class="sr-badge-num" id="sr-count-d">0</div><div class="sr-badge-lbl">Drafts</div></div>
+				<div class="sr-badge sr-b-g" id="sr-badge-g" style="display:none"><div class="sr-badge-num" id="sr-count-g" style="color:#d97706">0</div><div class="sr-badge-lbl">Grain · PO Pending</div></div>
+					<div class="sr-badge sr-b-d" id="sr-badge-d" style="display:none"><div class="sr-badge-num" id="sr-count-d">0</div><div class="sr-badge-lbl">Drafts</div></div>
 				<div class="sr-badge sr-b-a"><div class="sr-badge-num" id="sr-count-a">—</div><div class="sr-badge-lbl">Weighed</div></div>
 				<div class="sr-badge sr-b-b"><div class="sr-badge-num" id="sr-count-b">—</div><div class="sr-badge-lbl">Non-RM (No Weighing)</div></div>
 			</div>
@@ -74,6 +77,14 @@ function _sr_render_shell() {
 			</div>
 			<div class="sr-search-meta" id="sr-search-meta" style="display:none"><span class="sr-search-count" id="sr-search-count"></span></div>
 			<div class="sr-result" id="sr-result" style="display:none"></div>
+		</div>
+
+		<div class="sr-section sr-section-grain" id="sr-section-g" style="display:none">
+			<div class="sr-section-head sr-grain-head">
+				<div class="sr-section-title">🔒 Grain — Awaiting PO Link</div>
+				<div class="sr-section-hint">Weighed grain vehicles held at G2 Exit until you link the grain PO and create the GRN</div>
+			</div>
+			<div id="sr-g-body" class="sr-body"><div class="sr-empty">Loading…</div></div>
 		</div>
 
 		<div class="sr-section sr-section-draft" id="sr-section-d" style="display:none">
@@ -131,6 +142,201 @@ async function _sr_load_all() {
 		frappe.msgprint({ title: "Error", message: frappe.utils.escape_html(e.message || String(e)), indicator: "red" });
 		console.error(e);
 	}
+	_sr_load_grain();
+}
+
+async function _sr_load_grain() {
+	try {
+		const r = await frappe.call({ method: `${GRAIN_API}.get_section_g` });
+		_sr_state.g = r.message || [];
+		_sr_render_section_g();
+		if (_sr_state.g.length) {
+			$("#sr-badge-g").show();
+			$("#sr-count-g").text(_sr_state.g.length);
+			$("#sr-section-g").show();
+		} else {
+			$("#sr-badge-g").hide();
+			$("#sr-section-g").hide();
+		}
+		_sr_reapply_filter();
+	} catch (e) {
+		// Non-allow-listed users / errors: hide the section silently.
+		$("#sr-badge-g").hide();
+		$("#sr-section-g").hide();
+	}
+}
+
+function _sr_render_section_g() {
+	const rows = _sr_state.g;
+	if (!rows.length) { $("#sr-g-body").html('<div class="sr-empty">No grain vehicles awaiting PO link.</div>'); return; }
+	const html = [
+		'<table class="sr-table"><thead><tr>',
+		'<th>Token</th><th>Vehicle</th><th>Material</th><th>Net Wt (Kg)</th><th>Waiting</th><th>Action</th>',
+		'</tr></thead><tbody>',
+		...rows.map(r => `<tr data-search="${_sr_esc((r.token + " " + r.vehicle + " " + (r.material || "")).toLowerCase())}">
+			<td><strong>${_sr_esc(r.token)}</strong></td>
+			<td>${_sr_esc(r.vehicle)}</td>
+			<td><span class="sr-status sr-warn">${_sr_esc(r.material)}</span></td>
+			<td class="sr-num">${format_number(r.net_weight || 0, null, 0)}</td>
+			<td>${_sr_age(r.age_hours)}</td>
+			<td><button class="btn btn-xs btn-warning sr-link-grain" data-token="${_sr_esc(r.token)}" data-vehicle="${_sr_esc(r.vehicle)}" data-material="${_sr_esc(r.material)}" data-net="${_sr_esc(r.net_weight || 0)}">Link PO</button></td>
+		</tr>`),
+		'</tbody></table>'
+	].join("");
+	$("#sr-g-body").html(html);
+	$("#sr-g-body .sr-link-grain").on("click", function () {
+		const b = $(this);
+		_sr_open_link_grain_dialog(b.data("token"), b.data("vehicle"), b.data("material"), b.data("net"));
+	});
+}
+
+function _sr_open_link_grain_dialog(token, vehicle, material, net) {
+	let selected_po = null;
+	const dlg = new frappe.ui.Dialog({
+		title: __("Link Grain PO — {0}", [token]),
+		size: "extra-large",
+		fields: [{ fieldtype: "HTML", fieldname: "body" }],
+		primary_action_label: __("Link PO & Create GRN"),
+		primary_action: async () => {
+			if (!selected_po) { frappe.show_alert({ message: __("Select a PO first"), indicator: "orange" }); return; }
+			if (!dlg.$wrapper.find("#grain-confirm").is(":checked")) {
+				frappe.show_alert({ message: __("Confirm the supplier match first"), indicator: "orange" }); return;
+			}
+			let received_qty = null;
+			const $qtys = dlg.$wrapper.find(".grain-qty");
+			if ($qtys.length) {
+				received_qty = {};
+				$qtys.each(function () { received_qty[$(this).data("item")] = Number($(this).val()) || 0; });
+				if (!Object.values(received_qty).some(v => v > 0)) {
+					frappe.show_alert({ message: __("Enter a received quantity greater than zero."), indicator: "orange" }); return;
+				}
+			}
+			dlg.disable_primary_action();
+			try {
+				const r = await frappe.call({
+					method: `${GRAIN_API}.link_grain_po_and_create_grn`,
+					args: { token_name: token, po_name: selected_po, received_qty: received_qty ? JSON.stringify(received_qty) : undefined },
+					freeze: true, freeze_message: __("Linking PO and creating GRN…")
+				});
+				frappe.show_alert({ message: __("GRN {0} created — vehicle released.", [r.message.purchase_receipt]), indicator: "green" }, 6);
+				dlg.hide();
+				_sr_reload();
+			} catch (e) {
+				dlg.enable_primary_action();
+				// frappe.call already surfaces the server's own error message
+				// (_server_messages). Only add a fallback for genuine network/script
+				// errors — NEVER String(e), which renders an object as "[object Object]".
+				const has_server_msg = e && (e._server_messages || (e.responseJSON && e.responseJSON._server_messages));
+				if (!has_server_msg) {
+					frappe.msgprint({ title: __("Could not link PO"), message: frappe.utils.escape_html((e && (e.message || e.statusText)) || __("Network or script error — check the browser console.")), indicator: "red" });
+				}
+			}
+		}
+	});
+
+	const $b = $(dlg.fields_dict.body.$wrapper);
+	$b.html(`
+		<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;padding:12px 14px;background:var(--fg-color,#f8fafc);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;margin-bottom:14px">
+			<div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:var(--text-muted);font-weight:600">Truck at exit gate</div>
+			<div style="font-size:19px;font-weight:700;letter-spacing:.03em">${_sr_esc(vehicle)}</div></div>
+			<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text-muted)">
+				<span>Token <b style="color:inherit">${_sr_esc(token)}</b></span>
+				<span>Material <b>${_sr_esc(material)}</b></span>
+				<span>Net <b>${format_number(net || 0, null, 0)} Kg</b></span>
+			</div>
+		</div>
+		<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+			<div><label style="font-size:11px;color:var(--text-muted);font-weight:600">PO Number (optional)</label><br>
+				<input type="text" id="grain-po-id" class="form-control" style="min-width:170px" placeholder="e.g. 00505"></div>
+			<div><label style="font-size:11px;color:var(--text-muted);font-weight:600">PO Date (optional)</label><br>
+				<input type="date" id="grain-po-date" class="form-control" style="min-width:150px"></div>
+			<button class="btn btn-default" id="grain-search-btn">${__("Search grain POs")}</button>
+		</div>
+		<div id="grain-results" style="overflow-x:auto"></div>
+		<div id="grain-confirm-wrap" style="display:none;margin-top:12px;border:1px solid #f59e0b;border-radius:8px;overflow:hidden">
+			<div id="grain-compare" class="grain-compare-panel" style="padding:12px 14px"></div>
+				<div id="grain-qty-area" style="padding:0 14px 12px;border-top:1px solid #f59e0b"></div>
+			<label style="display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #f59e0b;font-size:12.5px;cursor:pointer">
+				<input type="checkbox" id="grain-confirm" style="margin-top:2px">
+				<span id="grain-confirm-label"></span>
+			</label>
+		</div>
+	`);
+	dlg.disable_primary_action();
+
+	async function doSearch() {
+		const po_id = $b.find("#grain-po-id").val();
+		const po_date = $b.find("#grain-po-date").val();
+		$b.find("#grain-results").html('<div class="sr-empty">Searching…</div>');
+		try {
+			const r = await frappe.call({ method: `${GRAIN_API}.get_grain_purchase_orders`, args: { po_id: po_id, po_date: po_date } });
+			const pos = r.message || [];
+			if (!pos.length) { $b.find("#grain-results").html('<div class="sr-empty">No matching grain Purchase Orders found.</div>'); return; }
+			const rows = pos.map(p => {
+				// Never allow a fully-received PO to be selected (the server also blocks
+				// it; this keeps it un-clickable in the list as a safeguard).
+				const fully_received = (Number(p.per_received) || 0) >= 100;
+				const action = fully_received
+					? `<span class="sr-status sr-muted" title="This PO is already 100% received">Fully received</span>`
+					: `<button class="btn btn-xs btn-default grain-pick" data-po="${_sr_esc(p.name)}" data-supplier="${_sr_esc(p.supplier_name || p.supplier)}" data-total="${_sr_esc(p.grand_total || 0)}">Select</button>`;
+				return `<tr>
+					<td class="sr-mono">${_sr_esc(p.name)}</td>
+					<td>${_sr_esc(p.supplier_name || p.supplier)}</td>
+					<td>${_sr_esc(p.transaction_date || "")}</td>
+					<td class="sr-num">${format_number(p.total_qty || 0)}</td>
+					<td class="sr-num">${format_currency(p.grand_total || 0)}</td>
+					<td class="sr-num">${format_number(p.per_received || 0, null, 0)}%</td>
+					<td>${action}</td>
+				</tr>`;
+			}).join("");
+			$b.find("#grain-results").html(`<table class="sr-table" style="font-size:12px"><thead><tr>
+				<th>PO</th><th>Supplier</th><th>Date</th><th>Ordered</th><th>Grand Total</th><th>Recd %</th><th></th></tr></thead><tbody>${rows}</tbody></table>`);
+			$b.find(".grain-pick").on("click", async function () {
+				const el = $(this);
+				selected_po = el.data("po");
+				$b.find(".grain-pick").removeClass("btn-primary").addClass("btn-default").text("Select");
+				el.removeClass("btn-default").addClass("btn-primary").text("Selected");
+				const supplier = el.data("supplier"), total = el.data("total");
+				$b.find("#grain-compare").html(
+					`<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center">
+						<div><div style="font-size:10px;text-transform:uppercase;color:var(--text-muted);font-weight:600">Truck / papers</div>
+							<div style="font-weight:600">${_sr_esc(vehicle)}</div><div style="font-size:12px;color:var(--text-muted)">${_sr_esc(material)} · ${format_number(net || 0, null, 0)} Kg</div></div>
+						<div style="font-weight:700;color:var(--text-color)">MATCH?</div>
+						<div><div style="font-size:10px;text-transform:uppercase;color:var(--text-muted);font-weight:600">Selected PO</div>
+							<div style="font-weight:600">${_sr_esc(supplier)}</div><div style="font-size:12px;color:var(--text-muted)">${_sr_esc(selected_po)} · ${format_currency(total)}</div></div>
+					</div>`);
+				$b.find("#grain-confirm-label").html(
+					__("I confirm PO {0}'s supplier <b>{1}</b> matches the delivery papers for vehicle <b>{2}</b>.", [_sr_esc(selected_po), _sr_esc(supplier), _sr_esc(vehicle)]));
+				$b.find("#grain-confirm").prop("checked", false);
+				$b.find("#grain-confirm-wrap").show();
+				dlg.disable_primary_action();
+
+				// Received qty per item — pre-filled from the weighbridge weight,
+				// editable for a partial delivery.
+				$b.find("#grain-qty-area").html('<div style="font-size:12px;color:var(--text-muted);padding-top:10px">Loading received quantity…</div>');
+				try {
+					const pv = await frappe.call({ method: `${GRAIN_API}.get_grain_po_receipt_preview`, args: { token_name: token, po_name: selected_po } });
+					const items = (pv.message && pv.message.items) || [];
+					const rows = items.map(it => `<div style="display:flex;gap:10px;align-items:center;margin:6px 0">
+							<div style="flex:1;font-size:12.5px">${_sr_esc(it.item_name || it.item_code)} <span style="color:var(--text-muted)">· ordered ${format_number(it.ordered_qty || 0)} ${_sr_esc(it.uom)}</span></div>
+							<input type="number" min="0" step="any" class="form-control grain-qty" data-item="${_sr_esc(it.item_code)}" value="${it.suggested_qty || 0}" style="width:130px;text-align:right">
+							<div style="width:56px;font-size:12px;color:var(--text-muted)">${_sr_esc(it.uom)}</div>
+						</div>`).join("");
+					$b.find("#grain-qty-area").html(`<div style="font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:var(--text-muted);font-weight:600;padding-top:10px;margin-bottom:2px">Received Qty (this truck) — edit for a partial delivery</div>${rows}`);
+				} catch (e) {
+					$b.find("#grain-qty-area").html('<div style="font-size:12px;color:#b7791f;padding-top:10px">Could not load a suggested quantity — you can still link; it will default to the weighbridge weight.</div>');
+				}
+			});
+		} catch (e) {
+			$b.find("#grain-results").html(`<div class="sr-empty">${frappe.utils.escape_html(e.message || String(e))}</div>`);
+		}
+	}
+	$b.find("#grain-search-btn").on("click", doSearch);
+	$b.find("#grain-confirm").on("change", function () {
+		if ($(this).is(":checked") && selected_po) dlg.enable_primary_action(); else dlg.disable_primary_action();
+	});
+	dlg.show();
+	doSearch();
 }
 
 function _sr_render_section_d() {
@@ -794,6 +1000,14 @@ const SR_CSS = `
 .sr-draft-head { background:#fffbeb !important; border-color:#fcd34d !important; }
 [data-theme="dark"] .sr-draft-head { background:#78350f !important; border-color:#92400e !important; }
 [data-theme="dark"] .sr-section-draft { border-color:#92400e !important; }
+/* ── Grain Section G + Link-PO dialog (amber theme, dark-mode aware) ── */
+.sr-section-grain { border-color:#f59e0b !important; box-shadow:0 0 0 1px #f59e0b inset; }
+.sr-grain-head { background:#fffbeb !important; }
+[data-theme="dark"] .sr-section-grain { border-color:#92400e !important; box-shadow:0 0 0 1px #92400e inset; }
+[data-theme="dark"] .sr-grain-head { background:#78350f !important; }
+.grain-compare-panel { background:#fffbeb; }
+[data-theme="dark"] .grain-compare-panel { background:#78350f; }
+@media (max-width: 768px) { .grain-compare-panel > div { grid-template-columns:1fr !important; text-align:center; } }
 .sr-source-pill { display:inline-block; font-size:10px; padding:2px 8px; border-radius:10px; font-weight:500; }
 .sr-source-b { background:#dbeafe; color:#1e40af; }
 .sr-source-c { background:#dcfce7; color:#166534; }
@@ -862,5 +1076,12 @@ const SR_CSS = `
   .sr-result-grid { grid-template-columns:repeat(2,1fr); gap:10px 12px; }
   .sr-result-card-head { align-items:flex-start; }
   .sr-result-actions .btn { flex:1 1 auto; }
+  /* v2.18.0: Section B action cell now holds 3 buttons (Open / Create GRN /
+     Exit Approved). .sr-section is overflow:hidden, so let the inner table
+     scroll horizontally on phones instead of wrapping/cramping the buttons. */
+  .sr-body { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .sr-table { min-width:720px; }
+  .sr-table td:last-child { white-space:nowrap; }
+  .sr-table td:last-child .btn { margin-bottom:2px; }
 }
 `;

@@ -66,6 +66,7 @@
   "wb_tare_time",
   "grn_time",
   "purchase_receipt",
+  "ts_grain_notified_at",
   "delivery_note",
   "g1_exit_time",
   "turnaround_section",
@@ -476,6 +477,14 @@
    "options": "Purchase Receipt",
    "read_only": 1,
    "depends_on": "eval:doc.stock_direction!=='Stock OUT'"
+  },
+  {
+   "fieldname": "ts_grain_notified_at",
+   "fieldtype": "Datetime",
+   "label": "Grain PO-Pending Notified At",
+   "hidden": 1,
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "delivery_note",

@@ -220,6 +220,24 @@ class TSDeductionSheet(Document):
 				f"Linked Quality Inspection {self.quality_inspection} is not submitted "
 				f"(docstatus {qi_docstatus}). Submit the QI first."
 			)
+		self._block_if_grain_po_unlinked()
+
+	def _block_if_grain_po_unlinked(self):
+		"""Fail-closed: a grain-deferred token's Deduction Sheet cannot be submitted
+		while its Purchase Order is still unlinked — the PO-override deduction lines
+		(Dhalta / Unloading / Brokerage) would be silently skipped → under-charge.
+		Heals automatically once Stores links the PO (GE.purchase_order fills)."""
+		ge_name = getattr(self, "gate_entry", None)
+		if not ge_name:
+			return
+		ge = frappe.db.get_value(
+			"TS Gate Entry", ge_name, ["ts_po_deferred", "purchase_order"], as_dict=True
+		)
+		if ge and frappe.utils.cint(ge.ts_po_deferred) and not ge.purchase_order:
+			frappe.throw(_(
+				"Grain Purchase Order is not linked yet. Stores must link the PO for this "
+				"vehicle before its Deduction Sheet can be submitted."
+			))
 
 	def on_submit(self):
 		# Copy actual_deduction_* into linked PI custom fields (best-effort, audit-logged)

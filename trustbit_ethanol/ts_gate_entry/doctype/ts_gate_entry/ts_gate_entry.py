@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import now_datetime, flt, getdate
+from frappe.utils import now_datetime, flt, getdate, cint
 
 
 class TSGateEntry(Document):
@@ -14,11 +14,49 @@ class TSGateEntry(Document):
 		if self.stock_direction == "Stock OUT":
 			self._validate_stock_out()
 		else:
+			self._force_raw_material_for_grain()
 			self._sync_purchase_order_from_po_list()
 			self._validate_same_supplier()
 			self.validate_po_remaining_qty()
+			self._set_grain_deferred_marker()
 		self.set_route()
 		self.validate_token_status()
+
+	def _force_raw_material_for_grain(self):
+		"""Grain (Maize/Rice/DORB) is always Raw Material — auto-set material_flow so
+		the operator only picks the Material Type. Mirrors the form JS and keeps
+		routing + the deferred marker consistent for any entry path (form/API/import)."""
+		from trustbit_ethanol.ts_gate_entry.ts_grain_defer import GRAIN_MATERIAL_TYPES
+		if self.ts_material_type in GRAIN_MATERIAL_TYPES and self.stock_direction != "Stock OUT":
+			self.material_flow = "Raw Material"
+
+	def _set_grain_deferred_marker(self):
+		"""Server-authoritative grain-deferred flag, re-derived every save (so a
+		client tamper is overwritten). Set when a grain Raw-Material Stock-IN has
+		no PO linked yet; cleared otherwise. Drives the G2-exit hold + Section G."""
+		from trustbit_ethanol.ts_gate_entry.ts_grain_defer import is_grain_stock_in
+		has_po = bool(self.po_list) or bool(self.purchase_order)
+		self.ts_po_deferred = 1 if (
+			is_grain_stock_in(self.ts_material_type, self.material_flow, self.stock_direction)
+			and not has_po
+		) else 0
+
+	@staticmethod
+	def _assert_po_not_confidential(po_name):
+		"""Confidentiality back-door plug (Lesson 297 / audit HIGH): block reading
+		a CONFIDENTIAL Purchase Order by exact ID when the user is not on the
+		allow-list. Non-confidential POs pass through, so normal PO linking is
+		unaffected."""
+		if not po_name:
+			return
+		from trustbit_ethanol.ts_gate_entry.ts_confidential_po import user_sees_confidential
+		if user_sees_confidential("Purchase Order"):
+			return
+		if cint(frappe.db.get_value("Purchase Order", po_name, "ts_confidential")):
+			frappe.throw(
+				_("Purchase Order {0} is confidential and cannot be linked here.").format(po_name),
+				frappe.PermissionError,
+			)
 
 	def _sync_purchase_order_from_po_list(self):
 		"""Keep purchase_order field in sync with first PO in po_list for backward compatibility."""
@@ -28,6 +66,7 @@ class TSGateEntry(Document):
 				self.supplier_name = self.po_list[0].supplier_name
 		elif self.purchase_order and (not self.po_list or len(self.po_list) == 0):
 			# Legacy: single PO entered directly — auto-add to po_list
+			self._assert_po_not_confidential(self.purchase_order)
 			po = frappe.get_doc("Purchase Order", self.purchase_order)
 			self.append("po_list", {
 				"purchase_order": self.purchase_order,
@@ -91,17 +130,32 @@ class TSGateEntry(Document):
 		for row in self.po_list:
 			if not row.purchase_order:
 				continue
+			self._assert_po_not_confidential(row.purchase_order)
 			po = frappe.get_doc("Purchase Order", row.purchase_order)
 			if po.per_received >= 100:
 				frappe.throw(f"Purchase Order {row.purchase_order} is already 100% received. Please remove it.")
 
 	def on_submit(self):
+		self._require_po_unless_deferred()
 		self._check_blacklist_on_submit()
 		self._copy_vehicle_driver_to_token()
 		self.update_token_status()
 		self.set_gate_entry_status()
 		if self.stock_direction != "Stock OUT":
 			self._create_material_inspection()
+
+	def _require_po_unless_deferred(self):
+		"""A Raw-Material Stock-IN must carry a Purchase Order at submit UNLESS it
+		is grain-deferred (grain POs are linked later by Stores). Closes the hole
+		where a non-grain vehicle silently skips PO linking → un-receivable truck."""
+		if (self.stock_direction != "Stock OUT"
+				and self.material_flow == "Raw Material"
+				and not (self.po_list or self.purchase_order)
+				and not cint(self.ts_po_deferred)):
+			frappe.throw(_(
+				"Link at least one Purchase Order before submitting this Raw-Material "
+				"gate entry."
+			))
 
 	def _check_blacklist_on_submit(self):
 		"""Re-check blacklist at G2 submit for vehicle and driver."""
@@ -256,6 +310,7 @@ class TSGateEntry(Document):
 			frappe.throw("Please add at least one Purchase Order first")
 
 		for po_name in po_names:
+			self._assert_po_not_confidential(po_name)
 			po = frappe.get_doc("Purchase Order", po_name)
 			for item in po.items:
 				self.append("po_items", {
@@ -280,6 +335,7 @@ class TSGateEntry(Document):
 		if po_name in existing:
 			frappe.throw(f"Purchase Order {po_name} is already added")
 
+		self._assert_po_not_confidential(po_name)
 		po = frappe.get_doc("Purchase Order", po_name)
 
 		# Validate same supplier

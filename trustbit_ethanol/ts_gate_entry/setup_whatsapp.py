@@ -46,6 +46,7 @@ TEMPLATE_EVENT_KEYS = (
 	"reminder_l2",
 	"reminder_l3",
 	"reminder_generic",
+	"grain_po_pending_link",
 )
 
 # Field -> doctype mapping used by the one-time legacy migration.

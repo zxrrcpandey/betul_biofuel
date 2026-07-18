@@ -71,6 +71,45 @@ frappe.ui.form.on("TS Gate Entry", {
 			frm.remove_custom_button(__("Add Purchase Order"));
 		}
 
+		// Grain PO deferred-linking: for grain (Maize/Rice/DORB) Raw-Material
+		// entries, the PO is linked later by Stores — hide the PO section, drop
+		// the Add PO button, and show a banner. Gated on the kill-switch so
+		// turning the feature OFF cleanly reverts to normal PO linking (else the
+		// PO section would stay hidden while submit demands a PO → deadlock).
+		// Operators lack TS Settings read, so use the whitelisted getter (L168).
+		if (frm._grain_defer_enabled === undefined) {
+			frm._grain_defer_enabled = 1; // optimistic default = server default ON
+			frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.ts_grain_defer.grain_defer_enabled",
+				callback(r) {
+					let v = (r && r.message) ? 1 : 0;
+					let changed = v !== frm._grain_defer_enabled;
+					frm._grain_defer_enabled = v;
+					if (changed) { frm.refresh(); }
+				}
+			});
+		}
+		let is_grain_deferred = frm._grain_defer_enabled
+			&& !is_stock_out
+			&& frm.doc.material_flow === "Raw Material"
+			&& ["Maize", "Rice", "DORB"].includes(frm.doc.ts_material_type);
+		$(frm.wrapper).find(".grain-defer-banner").remove();
+		if (is_grain_deferred) {
+			frm.set_df_property("po_section", "hidden", 1);
+			frm.set_df_property("po_list_section", "hidden", 1);
+			frm.set_df_property("items_section", "hidden", 1);
+			frm.remove_custom_button(__("Add Purchase Order"));
+			let $banner = $(
+				'<div class="grain-defer-banner" style="margin:8px 0;padding:10px 14px;' +
+				"border:1px solid #f59e0b;border-left:4px solid #f59e0b;border-radius:8px;" +
+				'background:#fffbeb;color:#92400e;font-size:13px;">' +
+				"<b>🌾 Grain material — Purchase Order will be linked by Stores after weighing.</b><br>" +
+				"This vehicle will be held at G2 Exit until the grain PO is linked and the GRN is created." +
+				"</div>"
+			);
+			frm.dashboard.wrapper.before($banner);
+		}
+
 		// Fetch SI Items button (Stock OUT, before submit)
 		if (!frm.doc.docstatus && frm.doc.stock_direction === "Stock OUT" && frm.doc.sales_invoice) {
 			frm.add_custom_button(__("Fetch SI Items"), function () {
@@ -84,8 +123,8 @@ frappe.ui.form.on("TS Gate Entry", {
 			}).addClass("btn-primary-dark");
 		}
 
-		// Add PO button (before submit, Stock IN only)
-		if (!frm.doc.docstatus && frm.doc.stock_direction !== "Stock OUT") {
+		// Add PO button (before submit, Stock IN only — not for grain-deferred)
+		if (!frm.doc.docstatus && frm.doc.stock_direction !== "Stock OUT" && !is_grain_deferred) {
 			frm.add_custom_button(__("Add Purchase Order"), function () {
 				// Determine supplier filter (must match first PO's supplier)
 				let supplier_filter = {};
@@ -323,6 +362,25 @@ frappe.ui.form.on("TS Gate Entry", {
 		frm.trigger("refresh");
 	},
 
+	ts_material_type(frm) {
+		// Grain (Maize/Rice/DORB) is always Raw Material — auto-set Material Flow so
+		// picking the grain type ALONE triggers the deferred-linking flow (hide PO
+		// section + banner). For any other material just re-evaluate the layout.
+		if (["Maize", "Rice", "DORB"].includes(frm.doc.ts_material_type)
+				&& frm.doc.stock_direction !== "Stock OUT"
+				&& frm.doc.material_flow !== "Raw Material") {
+			let _mt = frm.doc.ts_material_type;
+			frm.set_value("material_flow", "Raw Material").then(() => frm.trigger("refresh"));
+			frappe.show_alert({
+				message: __("{0} is a Raw Material — Material Flow set to Raw Material automatically.", [_mt]) +
+					"<br>" + _mt + " एक Raw Material है — Material Flow अपने आप Raw Material कर दिया गया है।",
+				indicator: "blue"
+			}, 7);
+		} else {
+			frm.trigger("refresh");
+		}
+	},
+
 	sales_invoice(frm) {
 		if (frm.doc.sales_invoice && frm.doc.stock_direction === "Stock OUT") {
 			frm.call("fetch_si_items").then(() => {
@@ -336,12 +394,27 @@ frappe.ui.form.on("TS Gate Entry", {
 			frm.set_value("route_to", "Weighbridge");
 			frm.set_value("requires_weighing", 0);
 		} else if (frm.doc.material_flow === "Non-Raw Material") {
+			// Grain (Maize/Rice/DORB) is Raw-Material only — clear a stale grain type
+			// when switching to Non-RM so the form doesn't keep an invalid combination,
+			// and tell the operator why (English + Hindi).
+			if (["Maize", "Rice", "DORB"].includes(frm.doc.ts_material_type)) {
+				let _mt = frm.doc.ts_material_type;
+				frm.set_value("ts_material_type", "");
+				frappe.show_alert({
+					message: __("{0} is a Raw Material only — Material Type has been cleared. For Non-Raw Material, choose a different Material Type.", [_mt]) +
+						"<br>" + _mt + " सिर्फ Raw Material है — Material Type हटा दिया गया है। Non-Raw Material के लिए दूसरा Material Type चुनें।",
+					indicator: "orange"
+				}, 8);
+			}
 			if (frm.doc.requires_weighing) {
 				frm.set_value("route_to", "Weighbridge");
 			} else {
 				frm.set_value("route_to", "Stores/Department");
 			}
 		}
+		// Re-run the layout so the grain-deferred banner + PO-section visibility
+		// always reflect the current material flow (they live in refresh()).
+		frm.trigger("refresh");
 	},
 
 	requires_weighing(frm) {

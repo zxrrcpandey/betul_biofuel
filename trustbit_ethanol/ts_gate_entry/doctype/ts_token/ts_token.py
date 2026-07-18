@@ -807,6 +807,24 @@ def g2_mat_log_exit(token_name):
 	tok = frappe.get_doc("TS Token", token_name)
 	if tok.entry_type != "Material":
 		frappe.throw(_("G2 material exit is only valid for Material tokens (not Gate Pass)."))
+	# Grain deferred-linking HOLD (Option 2, ts_grain_defer). A grain truck that
+	# skipped PO linking at G2 (its Gate Entry has ts_po_deferred=1) cannot record
+	# G2 Exit until Stores links the PO and the GRN is created — that stamps
+	# token.purchase_receipt, which releases this hold. Keyed strictly on the
+	# marker (via ts_grain_defer.exit_hold_active) so every non-grain / non-deferred
+	# token is byte-unaffected.
+	from trustbit_ethanol.ts_gate_entry.ts_grain_defer import exit_hold_active
+	if exit_hold_active(tok):
+		from frappe.utils import escape_html
+		frappe.throw(
+			_(
+				"Vehicle {0}: the grain Purchase Order is not linked yet. Stores must "
+				"link the PO and create the GRN (Stores Receiving Dashboard → "
+				"Grain — Awaiting PO Link) before this vehicle can record G2 Exit."
+			).format(escape_html(tok.vehicle_number or token_name)),
+			title=_("Awaiting PO Link"),
+		)
+
 	if tok.status not in ("Tare Weighed", "GRN Created"):
 		frappe.throw(_("Token {0} is at '{1}' — cannot record G2 Exit (expected 'Tare Weighed' or 'GRN Created').").format(token_name, tok.status))
 	tok.db_set({

@@ -420,6 +420,12 @@ class TSWeighbridgeLog(Document):
 
 			token.db_set(token_updates)
 
+			# Grain deferred-linking: notify the store team once when a grain
+			# truck reaches Tare Weighed (fail-soft — never blocks weighment).
+			if token_updates.get("status") == "Tare Weighed":
+				from trustbit_ethanol.ts_gate_entry.ts_grain_defer import maybe_notify_grain_pending
+				maybe_notify_grain_pending(self.token_number)
+
 	def on_update(self):
 		if self._is_stock_out():
 			# Stock OUT: gross weight is the second weight
@@ -443,6 +449,11 @@ class TSWeighbridgeLog(Document):
 					"wb_tare_time": now_datetime(),
 					"status": "Tare Weighed"
 				})
+
+				# Grain deferred-linking: notify the store team once when a grain
+				# truck reaches Tare Weighed (fail-soft — never blocks weighment).
+				from trustbit_ethanol.ts_gate_entry.ts_grain_defer import maybe_notify_grain_pending
+				maybe_notify_grain_pending(self.token_number)
 
 		# v2.8.2: mirror rst_number to Token when entered/edited AFTER first
 		# save (after_insert's update_token_gross runs only once). Without
