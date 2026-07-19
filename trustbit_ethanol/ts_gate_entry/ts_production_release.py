@@ -226,6 +226,9 @@ def approve_release(name):
 	# department must release its own material first. No-op when no slots exist.
 	from trustbit_ethanol.ts_gate_entry import ts_production_dept_release as dept_rel
 	dept_rel.assert_all_slots_released(doc.name)
+	# 17 Jul — the SE must still MATCH the departments' released actuals (blocks
+	# any post-release edit of the draft SE, whoever made it).
+	dept_rel.assert_se_matches_slots(doc.name, doc.release_stock_entry)
 
 	if not doc.release_stock_entry or not doc.work_order:
 		frappe.throw(_("This entry has no Work Order / release Stock Entry — re-submit it for release."))
@@ -316,6 +319,12 @@ def reject_release(name, reason):
 	# pointed at the SE, so the delete was silently failing and orphaning the draft).
 	rel_se = doc.release_stock_entry
 	doc.db_set("release_stock_entry", None, update_modified=False)
+	# 17 Jul — void the run's release slots (stale Pending slots would block resubmit)
+	try:
+		from trustbit_ethanol.ts_gate_entry import ts_production_dept_release as dept_rel
+		dept_rel.cancel_run_slots(doc.name)
+	except Exception:
+		frappe.clear_messages()
 	# Elevated: cancelling the WO + its Job Cards (and any nested on_cancel side-effects)
 	# needs perms the Stores Manager doesn't hold; authorized at this gate. Audit writes
 	# (rejected_by / comment) happen OUTSIDE the block, as the real user.

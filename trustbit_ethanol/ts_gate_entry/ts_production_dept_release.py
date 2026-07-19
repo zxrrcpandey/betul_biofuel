@@ -194,6 +194,53 @@ def pending_slots(run_name):
 	                      pluck="name")
 
 
+def assert_se_matches_slots(run_name, se_name):
+	"""Final-gate integrity (17 Jul): every Released slot item must still be
+	EXACTLY what the department released — same qty from the same warehouse in the
+	draft SE (actual 0 = row absent). Any later edit (PM editing the draft SE, a
+	crafted API call) blocks here with the offending rows named. Closes every edit
+	path at the ONE submission gate instead of chasing each editor."""
+	slots = frappe.get_all(SLOT_DOCTYPE,
+		filters={"production_entry": run_name, "status": "Released"}, pluck="name")
+	if not slots:
+		return
+	want = {}
+	for sl in slots:
+		doc = frappe.get_doc(SLOT_DOCTYPE, sl)
+		for it in doc.items:
+			want[(it.item_code, it.warehouse)] = (flt(it.actual_qty), doc.category)
+	if not want:
+		return
+	se = frappe.get_doc("Stock Entry", se_name)
+	have = {}
+	for r in se.items:
+		if (r.item_code, r.s_warehouse) in want:
+			have[(r.item_code, r.s_warehouse)] = flt(r.qty)
+	bad = []
+	for key, (aqty, cat) in want.items():
+		got = have.get(key, 0.0)
+		if abs(got - aqty) > 1e-6:
+			bad.append(_("{0} from {1} ({2}): department released {3}, the Stock Entry now has {4}"
+				).format(frappe.utils.escape_html(key[0]), frappe.utils.escape_html(key[1] or ""),
+				         frappe.utils.escape_html(cat), aqty, got))
+	if bad:
+		frappe.throw(
+			_("The release Stock Entry no longer matches what the departments released "
+			  "— it was changed after their release:")
+			+ "<ul><li>" + "</li><li>".join(bad) + "</li></ul>"
+			+ _("Reject the release and re-submit the run (departments will release again)."),
+			title=_("Release Changed After Department Release"))
+
+
+def cancel_run_slots(run_name):
+	"""reject_release teardown: void the run's slots so stale Pending slots can
+	never block a resubmitted run (resubmit builds fresh slots)."""
+	for sl in frappe.get_all(SLOT_DOCTYPE, filters={
+			"production_entry": run_name, "status": ["in", ["Pending", "Released"]]},
+			pluck="name"):
+		frappe.db.set_value(SLOT_DOCTYPE, sl, "status", "Cancelled", update_modified=False)
+
+
 def assert_all_slots_released(run_name):
 	"""Called at the top of approve_release: the Store Manager cannot release the
 	Stores portion until every department has released its own."""
