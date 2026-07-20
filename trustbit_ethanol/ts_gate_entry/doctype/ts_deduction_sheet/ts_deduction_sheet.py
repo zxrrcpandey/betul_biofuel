@@ -34,7 +34,10 @@ from frappe.model.document import Document
 from frappe.utils import flt, now_datetime, escape_html
 
 
-SUBMIT_ROLES = {"Accounts Manager", "System Manager", "Administrator"}
+# "TS Deduction Approver" is a dedicated single-holder role (Chetan Yadav) — an
+# approved segregation-of-duties exception letting that buyer submit Deduction
+# Sheets. Chetan-only because the role has exactly one holder.
+SUBMIT_ROLES = {"Accounts Manager", "System Manager", "Administrator", "TS Deduction Approver"}
 SYSTEM_FIELD_OVERRIDE_ROLES = {"System Manager", "Administrator"}
 SYSTEM_FIELDS = ("system_deduction_pct", "system_deduction_kg")
 # v2.9.5 — snapshot fields copied from parent QI; never user-editable on DS.
