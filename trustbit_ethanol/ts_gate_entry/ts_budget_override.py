@@ -128,6 +128,10 @@ def _send_budget_override_notification(override_doc, event, recipients, extra=No
         subject = subject_map.get(event, frappe._("Budget Override Update: {0}")).format(
             override_doc.name
         )
+        # Bell channel — email alone is dead (no SMTP). Subject is name+event
+        # only; the amount/cost-center stay in the email body, NOT in the bell.
+        from trustbit_ethanol.ts_gate_entry.ts_notification_coverage import _coverage_bell
+        _coverage_bell(recipients, subject, "TS Budget Override Approval", override_doc.name)
         ref = f"{override_doc.reference_doctype} {override_doc.reference_name}"
         breach_summary = (
             f"Breach Type: {override_doc.breach_type or '—'} · "

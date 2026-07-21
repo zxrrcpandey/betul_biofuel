@@ -28,6 +28,8 @@ app_include_js = [
 	"/assets/trustbit_ethanol/js/ts_connections.js",
 	"/assets/trustbit_ethanol/js/ts_version_badge.js",
 	"/assets/trustbit_ethanol/js/vehicle_origin_autocomplete.js",
+	# v2.24.0 — Notification Center: navbar icon beside the native bell (fail-soft)
+	"/assets/trustbit_ethanol/js/ts_navbar_notification.js?v=3",
 ]
 
 # Module-workspace mapping for correct breadcrumbs
@@ -351,6 +353,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.ts_quality_inspection_perms.seed_quality_inspection_permissions",
 	# Maize PO confidentiality — ts_confidential Check field on PO/PR/PI/MR
 	"trustbit_ethanol.ts_gate_entry.setup_confidential_po.seed_confidential_fields",
+	# v2.24.0 — Notification Center: kill-switch Custom Field + BBPL Ethanol workspace shortcut
+	"trustbit_ethanol.ts_gate_entry.notification_center_api.after_migrate_notification_center",
 ]
 
 # Scheduled Tasks
@@ -381,6 +385,8 @@ scheduler_events = {
 			"trustbit_ethanol.ts_gate_entry.ts_whatsapp_reminders.run_whatsapp_escalations",
 			# v2.21 P2 — dept Add-Production reminders (fail-closed on both kill switches; inert on prod)
 			"trustbit_ethanol.ts_gate_entry.ts_production_reminders.run_department_production_reminders",
+			# v2.24.0 — Notification Center: bell the current-step approvers of SLA-overdue PO/MRs (read-only wrapper; ts_po_approval untouched)
+			"trustbit_ethanol.ts_gate_entry.ts_notification_coverage.emit_stuck_approval_bells",
 		],
 		"0 9 * * 1": [
 			"trustbit_ethanol.ts_gate_entry.ts_qc_sla_scheduler.weekly_qc_email",

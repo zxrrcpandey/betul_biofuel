@@ -319,6 +319,11 @@ def check_inspection_sla():
 				_send_inspection_notification_raw(
 					list(set(recipients)), subject, message, insp.name
 				)
+				# Bell channel for SLA stages 2-4 — email alone is dead (no SMTP
+				# on either server), so without this the reminders reach nobody.
+				from trustbit_ethanol.ts_gate_entry.ts_notification_coverage import _coverage_bell
+				_coverage_bell(list(set(recipients)), subject,
+					"TS Material Inspection", insp.name, body=message)
 
 	frappe.db.commit()
 

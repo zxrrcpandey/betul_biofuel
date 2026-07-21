@@ -726,6 +726,11 @@ def _notify_stores_managers_release(doc):
 	recipients = _role_emails("Stores Manager")
 	if not recipients:
 		return
+	# Bell first — email alone is dead (no SMTP) and sendmail may raise.
+	from trustbit_ethanol.ts_gate_entry.ts_notification_coverage import _coverage_bell
+	_coverage_bell(recipients,
+		_("Production raw-material release pending: {0}").format(doc.name),
+		"TS Production Entry", doc.name)
 	frappe.sendmail(
 		recipients=recipients,
 		subject=_("Production raw-material release pending: {0}").format(doc.name),
@@ -743,6 +748,11 @@ def _notify_stores_managers_release(doc):
 def _notify_creator(doc, event):
 	if not doc.owner or doc.owner == "Administrator":
 		return
+	# Bell first — email alone is dead (no SMTP) and sendmail may raise.
+	from trustbit_ethanol.ts_gate_entry.ts_notification_coverage import _coverage_bell
+	_coverage_bell([doc.owner],
+		_("Your production entry {0} was {1}").format(doc.name, event),
+		"TS Production Entry", doc.name)
 	frappe.sendmail(
 		recipients=[doc.owner],
 		subject=_("Your production entry {0} was {1}").format(doc.name, event),
