@@ -509,4 +509,8 @@ def _seed_workspace_shortcut():
                     "data": {"shortcut_name": SHORTCUT_LABEL, "col": 4}})
     ws.content = json.dumps(content)
     ws.flags.ignore_permissions = True
+    # ignore_links: a full ws.save() re-validates EVERY legacy row — prod's
+    # workspace carries a stale Number Card link that is not ours to fix, and
+    # our own link_to Page is existence-checked above (L317).
+    ws.flags.ignore_links = True
     ws.save()
