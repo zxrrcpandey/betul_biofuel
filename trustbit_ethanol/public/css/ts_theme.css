@@ -251,3 +251,42 @@ footer::after {
 	padding: 2px 10px;
 	font-size: 12px;
 }
+
+/* ══════════════════════════════════════════════
+   PO / MR / PR / PI ITEMS GRID: wrap long "code: item
+   name" in the Item Code column instead of ellipsis-
+   truncating (ERPNext's Item link formatter appends
+   item_name to the code in this column)
+   ══════════════════════════════════════════════ */
+
+.page-container[data-page-route="Purchase Order"] .grid-body .grid-static-col[data-fieldname="item_code"],
+.page-container[data-page-route="Material Request"] .grid-body .grid-static-col[data-fieldname="item_code"],
+.page-container[data-page-route="Purchase Receipt"] .grid-body .grid-static-col[data-fieldname="item_code"],
+.page-container[data-page-route="Purchase Invoice"] .grid-body .grid-static-col[data-fieldname="item_code"] {
+    height: auto;
+    min-height: 38px;
+}
+
+.page-container[data-page-route="Purchase Order"] .grid-body .grid-static-col[data-fieldname="item_code"] .static-area,
+.page-container[data-page-route="Material Request"] .grid-body .grid-static-col[data-fieldname="item_code"] .static-area,
+.page-container[data-page-route="Purchase Receipt"] .grid-body .grid-static-col[data-fieldname="item_code"] .static-area,
+.page-container[data-page-route="Purchase Invoice"] .grid-body .grid-static-col[data-fieldname="item_code"] .static-area {
+    white-space: normal;
+    overflow-wrap: break-word;
+    line-height: 1.35;
+}
+
+/* Same wrap in the "Update Items" dialog (rows added AFTER submit go
+   through this modal grid, which lives outside the page container).
+   trans_items exists only in that dialog (PO + SO Update Items). */
+
+.modal .frappe-control[data-fieldname="trans_items"] .grid-body .grid-static-col[data-fieldname="item_code"] {
+    height: auto;
+    min-height: 38px;
+}
+
+.modal .frappe-control[data-fieldname="trans_items"] .grid-body .grid-static-col[data-fieldname="item_code"] .static-area {
+    white-space: normal;
+    overflow-wrap: break-word;
+    line-height: 1.35;
+}
