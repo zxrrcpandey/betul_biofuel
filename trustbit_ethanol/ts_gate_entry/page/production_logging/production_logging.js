@@ -419,7 +419,7 @@ class ProductionLogging {
 				<button class="cancel-btn" id="pl-cancel-btn">Cancel</button>
 				<button class="submit-btn" id="pl-submit-btn" disabled>
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-					Submit for Store Release
+					Submit for Release & Department
 				</button>
 			</div>
 		</aside>`;
@@ -759,7 +759,7 @@ class ProductionLogging {
 		this.$root.find("#pl-step1-label").text(multi ? "Select BOM Connector" : "Select BOM");
 		this.$root.find("#pl-submit-btn").html(multi
 			? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Submit — notify departments'
-			: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Submit for Store Release');
+			: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Submit for Release & Department');
 		// reset the working state — the two flows must never share a half-built form
 		this.bom = null; this.bom_std = null; this.connector = null;
 		this.rm_state = []; this.bp_state = [];
