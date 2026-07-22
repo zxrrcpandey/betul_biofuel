@@ -1,0 +1,67 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-07-20 18:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "category",
+  "decision",
+  "decided_by",
+  "decided_at",
+  "ceo_override"
+ ],
+ "fields": [
+  {
+   "fieldname": "category",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Department (Category)",
+   "options": "TS Production BOM Category",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "decision",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Department Decision",
+   "options": "Pending\nYes\nNo",
+   "default": "Pending",
+   "read_only": 1
+  },
+  {
+   "fieldname": "decided_by",
+   "fieldtype": "Link",
+   "label": "Decided By",
+   "options": "User",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "decided_at",
+   "fieldtype": "Datetime",
+   "label": "Decided At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ceo_override",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "CEO Override",
+   "options": "\nYes\nNo",
+   "description": "CEO may override the department's decision. Blank = department's decision stands (unvoted = No/keep)."
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-20 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Production Cascade Dept Vote",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

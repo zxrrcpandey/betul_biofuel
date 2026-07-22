@@ -8,7 +8,7 @@
  "engine": "InnoDB",
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-26 00:00:00",
+ "modified": "2026-07-20 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Production Cascade Log",
@@ -76,7 +76,10 @@
   "integrity_scan_clean",
   "col_integrity_right",
   "integrity_scan_orphans_json",
-  "amended_from"
+  "amended_from",
+  "dept_delete_section",
+  "include_departments",
+  "dept_votes"
  ],
  "fields": [
   {
@@ -498,6 +501,25 @@
    "no_copy": 1,
    "print_hide": 1,
    "permlevel": 0
+  },
+  {
+   "fieldname": "dept_delete_section",
+   "fieldtype": "Section Break",
+   "label": "Department Deletion (votes + CEO override)"
+  },
+  {
+   "fieldname": "include_departments",
+   "fieldtype": "Check",
+   "label": "Also Delete Department Entries",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Set at initiation. Departments vote Yes/No on deleting THEIR entries; the CEO may override each; a standing No = that department's records are KEPT (partial delete)."
+  },
+  {
+   "fieldname": "dept_votes",
+   "fieldtype": "Table",
+   "label": "Department Votes",
+   "options": "TS Production Cascade Dept Vote"
   }
  ],
  "permissions": [

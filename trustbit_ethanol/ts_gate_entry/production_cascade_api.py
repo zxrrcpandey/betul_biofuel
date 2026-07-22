@@ -171,6 +171,7 @@ def preview_production_cascade(production_name: str) -> dict:
 @frappe.whitelist(methods=["POST"])
 def initiate_production_cascade(
 	production_name: str,
+	include_departments: int = 0,
 	force_manufacture: int = 0,
 	force_dispatched: int = 0,
 	confirm_production_name_typed: str = "",
@@ -274,8 +275,30 @@ def initiate_production_cascade(
 	log.target_chain_json = chain_json
 	log.forensic_block_json = forensic_json
 	log.rate_limit_position = rate_limit_position
+	dept_cats = []
+	if int(include_departments):
+		cats = set(frappe.get_all("TS Production Department Entry",
+			filters={"production_entry": production_name}, pluck="category", limit=0))
+		cats |= set(frappe.get_all("TS Production Release Slot",
+			filters={"production_entry": production_name}, pluck="category", limit=0))
+		dept_cats = sorted(cats)
+		log.include_departments = 1
+		for c in dept_cats:
+			log.append("dept_votes", {"category": c, "decision": "Pending"})
 	log.flags.ignore_permissions = True
 	log.insert(ignore_permissions=True)
+	for c in dept_cats:
+		try:
+			from trustbit_ethanol.ts_gate_entry.ts_production_notify import notify_category
+			notify_category(c,
+				_("Delete request: confirm removal of your entries — {0}").format(escape_html(production_name)),
+				_("The Production Manager requested cascade deletion of run {0} INCLUDING "
+				  "department entries. Open cascade log {1} and vote Yes/No on deleting "
+				  "your department's records. The CEO decides finally.").format(
+				  escape_html(production_name), escape_html(log.name)),
+				ref_doctype="TS Production Cascade Log", ref_name=log.name)
+		except Exception:
+			frappe.clear_messages()
 	log.submit()
 	frappe.db.commit()
 
@@ -332,8 +355,97 @@ def _production_backup_doc_map(chain: dict) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
+def cascade_department_vote(log_name: str, category: str, decision: str) -> dict:
+	"""A department recipient votes Yes/No on deleting THEIR entries for a pending
+	cascade delete. One vote per category; the CEO may override later."""
+	_gate_kill_switch()
+	_validate_log_name(log_name)
+	if decision not in ("Yes", "No"):
+		frappe.throw(_("decision must be 'Yes' or 'No'."))
+	from trustbit_ethanol.ts_gate_entry import ts_production_dept as dept
+	dept._recipient_gate(category)
+	log = frappe.get_doc("TS Production Cascade Log", log_name)
+	if log.approval_status != "Pending CEO Approval":
+		frappe.throw(_("Log {0} is no longer pending (currently {1}).").format(
+			escape_html(log_name), escape_html(log.approval_status)))
+	row = next((r for r in (log.dept_votes or []) if r.category == category), None)
+	if not row:
+		frappe.throw(_("Category {0} is not part of this delete request.").format(escape_html(category)))
+	if row.decision != "Pending":
+		frappe.throw(_("Your department already voted: {0}.").format(escape_html(row.decision)))
+	frappe.db.set_value("TS Production Cascade Dept Vote", row.name, {
+		"decision": decision, "decided_by": frappe.session.user,
+		"decided_at": now_datetime()}, update_modified=False)
+	log.add_comment("Comment", _("Department {0} voted {1} on deleting its entries (by {2}).").format(
+		escape_html(category), escape_html(decision), escape_html(frappe.session.user)))
+	pending = [r.category for r in log.dept_votes
+	           if r.name != row.name and r.decision == "Pending"]
+	if not pending:
+		for u in frappe.get_all("Has Role", filters={"role": ["in", ["CEO", "MD"]]},
+		                        pluck="parent", limit=0):
+			if frappe.db.get_value("User", u, "enabled"):
+				try:
+					frappe.get_doc({"doctype": "Notification Log", "for_user": u, "type": "Alert",
+						"document_type": "TS Production Cascade Log", "document_name": log_name,
+						"subject": _("All departments voted — cascade {0} awaits your decision").format(
+							escape_html(log_name))}).insert(ignore_permissions=True)
+				except Exception:
+					frappe.clear_messages()
+	frappe.db.commit()
+	return {"success": True, "pending_departments": pending}
+
+
+def _cascade_dept_teardown(log_doc):
+	"""On CEO approve: per department, final = ceo_override or the dept decision
+	(Pending/blank = No = KEEP, partial delete). Yes -> cancel+delete the dept
+	entries' Stock Entries, delete the entries + that category's release slots.
+	No -> keep + annotate. Returns a summary dict."""
+	run = log_doc.target_production
+	summary = {"deleted": [], "kept": []}
+	for v in (log_doc.dept_votes or []):
+		final = (v.ceo_override or "").strip() or ("Yes" if v.decision == "Yes" else "No")
+		ents = frappe.get_all("TS Production Department Entry",
+			filters={"production_entry": run, "category": v.category},
+			fields=["name", "stock_entry"], limit=0)
+		slots = frappe.get_all("TS Production Release Slot",
+			filters={"production_entry": run, "category": v.category}, pluck="name", limit=0)
+		if final == "Yes":
+			for e in ents:
+				if e.stock_entry and frappe.db.exists("Stock Entry", e.stock_entry):
+					try:
+						se = frappe.get_doc("Stock Entry", e.stock_entry)
+						if se.docstatus == 1:
+							se.flags.ignore_permissions = True
+							se.cancel()
+						frappe.delete_doc("Stock Entry", e.stock_entry, force=1,
+						                  ignore_permissions=True)
+					except Exception:
+						frappe.clear_messages()
+				frappe.delete_doc("TS Production Department Entry", e.name, force=1,
+				                  ignore_permissions=True)
+			for sl in slots:
+				frappe.delete_doc("TS Production Release Slot", sl, force=1,
+				                  ignore_permissions=True)
+			summary["deleted"].append(v.category)
+		else:
+			for e in ents:
+				try:
+					frappe.get_doc("TS Production Department Entry", e.name).add_comment(
+						"Comment", _("KEPT by department decision — production run {0} was "
+						"deleted via cascade {1}.").format(escape_html(run),
+						escape_html(log_doc.name)))
+				except Exception:
+					frappe.clear_messages()
+			summary["kept"].append(v.category)
+	log_doc.add_comment("Comment", _("Department teardown: deleted {0}; kept {1}.").format(
+		escape_html(", ".join(summary["deleted"]) or "—"),
+		escape_html(", ".join(summary["kept"]) or "—")))
+	return summary
+
+
+@frappe.whitelist(methods=["POST"])
 @rate_limit(key="prod_cascade_approve", limit=30, seconds=60)
-def approve_production_cascade(log_name: str, decision: str, reason: str = "") -> dict:
+def approve_production_cascade(log_name: str, decision: str, reason: str = "", dept_overrides: str = "") -> dict:
 	"""CEO or MD approves or rejects a pending production cascade.
 	`decision` in {'approve','reject'}. On approve: state -> Approved, engine runs -> Executed.
 	On reject: state -> Rejected. Reason must be >=10 chars.
@@ -380,6 +492,17 @@ def approve_production_cascade(log_name: str, decision: str, reason: str = "") -
 	})
 
 	log_doc = frappe.get_doc("TS Production Cascade Log", log_name)
+	if log_doc.get("include_departments"):
+		try:
+			ov = json.loads(dept_overrides or "{}")
+		except Exception:
+			ov = {}
+		for v in (log_doc.dept_votes or []):
+			o = (ov.get(v.category) or "").strip()
+			if o in ("Yes", "No"):
+				frappe.db.set_value("TS Production Cascade Dept Vote", v.name,
+				                    "ceo_override", o, update_modified=False)
+				v.ceo_override = o
 	from trustbit_ethanol.ts_gate_entry.production_cascade_engine import execute_production_cascade
 
 	_approver_user = frappe.session.user
@@ -442,6 +565,15 @@ def approve_production_cascade(log_name: str, decision: str, reason: str = "") -
 		"execution_result_json": exec_json,
 		"revert_window_expires_at": revert_expires_at if result.get("success") else None,
 	})
+	# 20 Jul — department teardown ONLY after the engine succeeded (an engine
+	# failure must never leave dept records deleted while the run survives).
+	if result.get("success") and log_doc.get("include_departments"):
+		try:
+			_cascade_dept_teardown(log_doc)
+		except Exception:
+			frappe.log_error(title="Cascade dept teardown failed",
+			                 message=f"{log_name}: {frappe.get_traceback()}")
+			frappe.clear_messages()
 
 	# Post-cascade orphan scan — only meaningful on success.
 	if result.get("success"):
