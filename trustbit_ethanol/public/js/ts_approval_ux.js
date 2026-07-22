@@ -185,3 +185,47 @@ window.ts_check_submit_on_behalf = function(frm) {
 		d.show();
 	});
 };
+
+// ─── Grid Description hover card (PO / MR / PR / PI + Update Items dialog) ───
+// Row's FULL description in a popover card (same Bootstrap component frappe's
+// link preview uses). html:false → text-only render, cell content can never
+// inject markup. One card at a time; disposed on leave/click/route-change/10s.
+(function () {
+	const TS_HOVER_ROUTES = new Set(["Purchase Order", "Material Request", "Purchase Receipt", "Purchase Invoice"]);
+	const SEL = '.grid-body .grid-static-col[data-fieldname="description"]';
+	let active_el = null, show_timer = null, life_timer = null;
+
+	function dispose_card() {
+		if (show_timer) { clearTimeout(show_timer); show_timer = null; }
+		if (life_timer) { clearTimeout(life_timer); life_timer = null; }
+		if (active_el) { $(active_el).popover("dispose"); active_el = null; }
+	}
+
+	$(document).on("mouseenter", SEL, function () {
+		const pc = this.closest(".page-container");
+		const in_scope = (pc && TS_HOVER_ROUTES.has(pc.getAttribute("data-page-route"))) ||
+			this.closest('.frappe-control[data-fieldname="trans_items"]');
+		if (!in_scope) return;
+		const sa = this.querySelector(".static-area");
+		const text = sa ? (sa.textContent || "").trim() : "";
+		if (!text) return;
+		const row = this.closest(".data-row");
+		const item_sa = row && row.querySelector('[data-fieldname="item_code"] .static-area');
+		const title = ((item_sa && item_sa.textContent) || "Description").trim();
+
+		dispose_card();
+		const el = this;
+		show_timer = setTimeout(() => {
+			show_timer = null;
+			$(el).popover({
+				trigger: "manual", container: "body", placement: "top",
+				boundary: "viewport", html: false, title: title, content: text,
+			}).popover("show");
+			active_el = el;
+			life_timer = setTimeout(dispose_card, 10000);
+		}, 350);
+	});
+	$(document).on("mouseleave", SEL, dispose_card);
+	$(document).on("click", dispose_card);
+	frappe.router && frappe.router.on && frappe.router.on("change", dispose_card);
+})();

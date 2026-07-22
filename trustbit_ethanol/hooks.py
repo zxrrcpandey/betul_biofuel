@@ -11,12 +11,12 @@ app_license = "mit"
 # ------------------
 
 # include js, css files in header of desk.html
-app_include_css = "/assets/trustbit_ethanol/css/ts_theme.css?v=2"
+app_include_css = "/assets/trustbit_ethanol/css/ts_theme.css?v=3"
 web_include_css = "/assets/trustbit_ethanol/css/ts_login.css"
 app_include_js = [
 	"/assets/trustbit_ethanol/js/po_payment_amount_gst.js?v=5",
 	"/assets/trustbit_ethanol/js/ts_executive_override.js",
-	"/assets/trustbit_ethanol/js/ts_approval_ux.js",
+	"/assets/trustbit_ethanol/js/ts_approval_ux.js?v=2",
 	"/assets/trustbit_ethanol/js/ts_my_approvals.js",
 	"/assets/trustbit_ethanol/js/ts_cc_filter.js",
 	"/assets/trustbit_ethanol/js/po_list.js",

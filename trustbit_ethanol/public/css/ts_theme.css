@@ -253,40 +253,51 @@ footer::after {
 }
 
 /* ══════════════════════════════════════════════
-   PO / MR / PR / PI ITEMS GRID: wrap long "code: item
-   name" in the Item Code column instead of ellipsis-
-   truncating (ERPNext's Item link formatter appends
-   item_name to the code in this column)
+   PO / MR / PR / PI GRIDS: cells stretch to the row
+   height and text wraps instead of ellipsis-truncating
+   or clipping at the fixed 38px cell height. Applies to
+   ALL columns (grid columns are user-configurable via
+   the gear icon — Item Code, Description, Make Remark,
+   remarks, warehouses…). Frappe's own max-height:200px
+   on .grid-static-col stays as the runaway cap.
    ══════════════════════════════════════════════ */
 
-.page-container[data-page-route="Purchase Order"] .grid-body .grid-static-col[data-fieldname="item_code"],
-.page-container[data-page-route="Material Request"] .grid-body .grid-static-col[data-fieldname="item_code"],
-.page-container[data-page-route="Purchase Receipt"] .grid-body .grid-static-col[data-fieldname="item_code"],
-.page-container[data-page-route="Purchase Invoice"] .grid-body .grid-static-col[data-fieldname="item_code"] {
+.page-container[data-page-route="Purchase Order"] .grid-body .grid-static-col,
+.page-container[data-page-route="Material Request"] .grid-body .grid-static-col,
+.page-container[data-page-route="Purchase Receipt"] .grid-body .grid-static-col,
+.page-container[data-page-route="Purchase Invoice"] .grid-body .grid-static-col {
     height: auto;
     min-height: 38px;
 }
 
-.page-container[data-page-route="Purchase Order"] .grid-body .grid-static-col[data-fieldname="item_code"] .static-area,
-.page-container[data-page-route="Material Request"] .grid-body .grid-static-col[data-fieldname="item_code"] .static-area,
-.page-container[data-page-route="Purchase Receipt"] .grid-body .grid-static-col[data-fieldname="item_code"] .static-area,
-.page-container[data-page-route="Purchase Invoice"] .grid-body .grid-static-col[data-fieldname="item_code"] .static-area {
+.page-container[data-page-route="Purchase Order"] .grid-body .grid-static-col .static-area,
+.page-container[data-page-route="Material Request"] .grid-body .grid-static-col .static-area,
+.page-container[data-page-route="Purchase Receipt"] .grid-body .grid-static-col .static-area,
+.page-container[data-page-route="Purchase Invoice"] .grid-body .grid-static-col .static-area {
     white-space: normal;
-    overflow-wrap: break-word;
+    /* 'anywhere' (not break-word) enters flex min-content sizing — the
+       .indicator link is inline-flex and otherwise clips its last word
+       instead of breaking it in narrow gear-shrunk columns */
+    overflow-wrap: anywhere;
+    word-break: break-word;
     line-height: 1.35;
 }
 
-/* Same wrap in the "Update Items" dialog (rows added AFTER submit go
-   through this modal grid, which lives outside the page container).
+/* Same treatment in the "Update Items" dialog (rows added AFTER submit
+   go through this modal grid, which lives outside the page container).
    trans_items exists only in that dialog (PO + SO Update Items). */
 
-.modal .frappe-control[data-fieldname="trans_items"] .grid-body .grid-static-col[data-fieldname="item_code"] {
+.modal .frappe-control[data-fieldname="trans_items"] .grid-body .grid-static-col {
     height: auto;
     min-height: 38px;
 }
 
-.modal .frappe-control[data-fieldname="trans_items"] .grid-body .grid-static-col[data-fieldname="item_code"] .static-area {
+.modal .frappe-control[data-fieldname="trans_items"] .grid-body .grid-static-col .static-area {
     white-space: normal;
-    overflow-wrap: break-word;
+    /* 'anywhere' (not break-word) enters flex min-content sizing — the
+       .indicator link is inline-flex and otherwise clips its last word
+       instead of breaking it in narrow gear-shrunk columns */
+    overflow-wrap: anywhere;
+    word-break: break-word;
     line-height: 1.35;
 }
