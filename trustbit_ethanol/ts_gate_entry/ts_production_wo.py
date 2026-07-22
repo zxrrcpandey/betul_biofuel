@@ -185,6 +185,19 @@ def create_and_submit_work_order(pe, settings, skip_transfer=0):
 	wo.flags.ignore_permissions = True
 	wo.insert()
 	wo.submit()  # ops BOM -> Job Cards auto-create here
+	# 20 Jul (team finding): WO.validate() re-normalizes required_items back to
+	# BOM-scaled on insert, so the PM edits above were LOST for CONSUMPTION — the
+	# Manufacture consumed BOM std (10) even when the PM entered 8/12. Mirror the
+	# PM's actuals back via db_set (the proven dept-release _mirror_actuals
+	# pattern; make_stock_entry reads DB values) so consumption = PM ACTUALS.
+	if pe_mat:
+		for ri in frappe.get_all("Work Order Item", filters={"parent": wo.name},
+		                         fields=["name", "item_code"], limit=0):
+			row = pe_mat.get(ri.item_code)
+			if row is not None and flt(row.actual_qty) > 0:
+				frappe.db.set_value("Work Order Item", ri.name,
+				                    "required_qty", flt(row.actual_qty),
+				                    update_modified=False)
 	return wo.name
 
 
