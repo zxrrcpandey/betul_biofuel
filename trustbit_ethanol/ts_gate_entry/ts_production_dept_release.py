@@ -434,9 +434,9 @@ def _mirror_actuals(run, slot_wh, actual):
 			                    {"required_qty": actual[wi.item_code],
 			                     "source_warehouse": slot_wh[wi.item_code]},
 			                    update_modified=False)
-	for r in (run.materials or []):
-		if r.item_code in actual and r.item_code in slot_wh:
-			r.db_set("actual_qty", actual[r.item_code], update_modified=False)
+	# 20 Jul (consumption-report fix): do NOT overwrite the RUN's material rows —
+	# they are the PM's ENTRY and must stay for PM-vs-Department variance. The
+	# department's actual lives on the SLOT (report), the WO and the SE (consumption).
 
 
 # ------------------------------------------------------------------ dashboard reads
