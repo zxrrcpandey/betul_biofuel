@@ -556,6 +556,28 @@ def submit_manufacture_se(wo_name, company=None):
 
 	se = frappe.get_doc(make_stock_entry(wo_name, "Manufacture", remaining))
 	se.company = company or wo.company
+	# 20 Jul — by-product ACTUALS: the native mapper builds scrap rows BOM-scaled;
+	# the PM's edited by-product qty/warehouse (run.byproducts) must win — same
+	# actuals-first rule as materials. qty 0 drops the row.
+	_pe_bp = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},
+	                        pluck="name", limit=1)
+	if _pe_bp:
+		bp = {r.item_code: r for r in
+		      (frappe.get_doc("TS Production Entry", _pe_bp[0]).byproducts or [])}
+		if bp:
+			kept = []
+			for row in se.items:
+				if getattr(row, "is_scrap_item", 0) and row.item_code in bp:
+					r = bp[row.item_code]
+					if flt(r.actual_qty) <= 0:
+						continue
+					cf = flt(row.conversion_factor) or 1.0
+					row.qty = flt(r.actual_qty)
+					row.transfer_qty = flt(r.actual_qty) * cf
+					if r.get("target_warehouse"):
+						row.t_warehouse = r.target_warehouse
+				kept.append(row)
+			se.items = kept
 	_cap_byproduct_rates(se)  # keep FG cost >= 0 when by-products out-value the inputs
 	# v2.21 ② department-wise cost centre — resolve from the run linked to this WO
 	_pe = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},

@@ -391,7 +391,7 @@ class ProductionLogging {
 					</div>
 					<div class="form-sec-h" style="margin-top:6px">By-products <span class="scale-badge" id="pl-bp-badge">auto-scaled</span></div>
 					<table class="mat-table">
-						<thead><tr><th>By-product</th><th class="r">Std / batch</th><th class="r">Qty</th><th>UOM</th></tr></thead>
+						<thead><tr><th>By-product</th><th class="r">Std / batch</th><th class="r">Qty (editable)</th><th>UOM</th><th>Warehouse (editable)</th></tr></thead>
 						<tbody id="pl-bp-body"></tbody>
 					</table>
 				</div>
@@ -411,7 +411,7 @@ class ProductionLogging {
 					</div>
 					<div class="scale-note">
 						<span style="font-size:14px;line-height:1">&#9881;</span>
-						<span>Raw material is <b>auto-calculated from the BOM &times; produced qty</b>. You may edit a quantity or remove a line &mdash; that changes the material <b>RELEASE only</b>; finished-goods consumption always follows the BOM recipe (reconciled as a WIP variance).</span>
+						<span>Raw material is <b>auto-calculated from the BOM &times; produced qty</b>. You may edit a quantity or remove a line &mdash; production releases AND consumes your ACTUAL quantities. By-product quantities &amp; warehouses are editable below.</span>
 					</div>
 				</div>
 			</div>
@@ -1783,19 +1783,27 @@ class ProductionLogging {
 		// by-products (read-only, auto-scaled)
 		const $bp = this.$root.find("#pl-bp-body");
 		if (!this.bp_state.length) {
-			$bp.html('<tr class="mat-empty"><td colspan="4">No by-products on this BOM.</td></tr>');
+			$bp.html('<tr class="mat-empty"><td colspan="5">No by-products on this BOM.</td></tr>');
 		} else {
 			$bp.html(
 				this.bp_state
 					.map(
-						(b) =>
+						(b, i) =>
 							`<tr><td><div class="mat-item"><span class="mn">${this.esc(b.item_name || b.item_code)}</span><span class="mc mono">${this.esc(b.item_code)}</span></div></td>` +
 							`<td class="r std-q">${this.fmt1(b.std_qty)}</td>` +
-							`<td class="r"><b class="mono">${this.fmt1(this.round_qty(flt(b.std_qty) * s))}</b></td>` +
-							`<td class="uom-cell">${this.esc(b.uom || "")}</td></tr>`
+							`<td class="r"><input class="inp bp-q" type="number" min="0" step="any" data-i="${i}" value="${b.edited_qty != null ? flt(b.edited_qty) : this.round_qty(flt(b.std_qty) * s)}" style="max-width:110px;text-align:right"></td>` +
+							`<td class="uom-cell">${this.esc(b.uom || "")}</td>` +
+							`<td><input class="inp bp-wh" type="text" data-i="${i}" value="${this.esc(b.target_warehouse || "")}" placeholder="warehouse" style="max-width:190px"></td></tr>`
 					)
 					.join("")
 			);
+			const self = this;
+			$bp.find(".bp-q").on("change", function () {
+				self.bp_state[$(this).data("i")].edited_qty = flt($(this).val());
+			});
+			$bp.find(".bp-wh").on("change", function () {
+				self.bp_state[$(this).data("i")].target_warehouse = ($(this).val() || "").trim();
+			});
 		}
 
 		// raw material (editable)
@@ -1874,7 +1882,7 @@ class ProductionLogging {
 		}
 		const byproducts = this.bp_state.map((b) => ({
 			item_code: b.item_code,
-			actual_qty: this.round_qty(flt(b.std_qty) * this.scale()),
+			actual_qty: b.edited_qty != null ? flt(b.edited_qty) : this.round_qty(flt(b.std_qty) * this.scale()),
 			uom: b.uom,
 			rate: flt(b.rate),
 			target_warehouse: b.target_warehouse,
