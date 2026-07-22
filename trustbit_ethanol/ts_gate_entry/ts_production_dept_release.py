@@ -379,11 +379,47 @@ def release_department_slot(name, items):
 	slot.db_set("released_at", now_datetime(), update_modified=False)
 	slot.db_set("status", "Released", update_modified=False)
 	slot.add_comment("Comment", _("Released by {0} with actual quantities.").format(user))
+	deltas = _notify_pm_of_deviation(run, slot, actual)
 	run.add_comment("Comment", _("Department {0} released its material (by {1}).").format(
-		slot.category, user))
+		slot.category, user) + (("<br><b>" + _("Differs from planned") + ":</b><br>"
+		+ "<br>".join(deltas)) if deltas else ""))
 	frappe.db.commit()
 	return {"ok": True, "status": "Released",
 	        "remaining": pending_slots(run.name)}
+
+
+def _notify_pm_of_deviation(run, slot, actual):
+	"""PM visibility (20 Jul): when a department releases with quantities different
+	from planned, tell the run owner immediately (Notification Log) with the exact
+	numbers — and return the delta lines for the run's timeline comment."""
+	lines = []
+	for it in slot.items:
+		a = actual.get(it.item_code)
+		if a is None:
+			continue
+		planned = flt(it.planned_qty)
+		if abs(flt(a) - planned) < 1e-9:
+			continue
+		pct = ((flt(a) - planned) / planned * 100.0) if planned else 0.0
+		lines.append(_("{0}: planned {1}, released {2} ({3}{4}%)").format(
+			frappe.utils.escape_html(it.item_name or it.item_code),
+			planned, flt(a), "+" if pct >= 0 else "", round(pct, 1)))
+	if not lines:
+		return []
+	owner = run.owner
+	if owner and owner not in ("Administrator", "Guest"):
+		try:
+			frappe.get_doc({
+				"doctype": "Notification Log", "for_user": owner, "type": "Alert",
+				"document_type": RUN_DOCTYPE, "document_name": run.name,
+				"subject": _("{0} released DIFFERENT quantities — {1}").format(
+					frappe.utils.escape_html(slot.category),
+					frappe.utils.escape_html(run.name)),
+				"email_content": "<br>".join(lines),
+			}).insert(ignore_permissions=True)
+		except Exception:
+			frappe.clear_messages()  # notification never blocks the release (L238)
+	return lines
 
 
 def _mirror_actuals(run, slot_wh, actual):
