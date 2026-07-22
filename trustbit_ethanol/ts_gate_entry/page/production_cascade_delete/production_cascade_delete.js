@@ -5,7 +5,7 @@
 // Lesson 174 — version pill rendered into DOM by JS; bump on every page edit.
 // Frappe v15 does NOT auto-inject {page}.html — JS builds the DOM via page.main.html().
 
-const PCD_PAGE_VERSION = "v1.0.0-2026-06-26";
+const PCD_PAGE_VERSION = "v1.1.0-2026-07-22"; // dept-inclusive delete: PM checkbox + CEO per-dept override
 
 const PCD_CSS = `
 	#pcd-root { padding: 18px 22px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -407,6 +407,10 @@ function _pcd_show_final(production_name, force_mfg, force_disp) {
 		<h2>Stage 3 — FINAL CONFIRMATION</h2>
 		<p style="font-size:12px;color:#475569;">You are about to <strong>queue a FULL cascade delete</strong> for <code>${esc(production_name)}</code>. A CEO or MD must approve before execution. The whole chain will be cancelled, physically deleted, and the ledger swept to zero. Type the Production Entry name ONE MORE TIME to submit.</p>
 		<p class="pcd-warn-note">Scope: <span style="color:#dc2626;font-weight:600;">FULL CHAIN + PHYSICAL DELETE</span> — Quality Inspections, surplus/Manufacture/Release Stock Entries, Job Cards, Work Order, and the Production Entry are all removed.</p>
+		<label style="display:flex;align-items:flex-start;gap:8px;margin:10px 0;font-size:12px;color:#334155;cursor:pointer;">
+			<input type="checkbox" id="pcd-incl-dept" style="margin-top:2px;" />
+			<span>Also delete <strong>department entries</strong> for this run. Each affected department is notified to vote Yes/No on removing its own records; you (CEO/MD) make the final call per department at approval. Departments that don't vote default to <strong>keep</strong> (partial delete).</span>
+		</label>
 		<label for="pcd-final">Type Production Entry name to submit:</label>
 		<input type="text" id="pcd-final" maxlength="24" autofocus />
 		<div class="pcd-modal-actions">
@@ -424,6 +428,7 @@ function _pcd_show_final(production_name, force_mfg, force_disp) {
 			method: "trustbit_ethanol.ts_gate_entry.production_cascade_api.initiate_production_cascade",
 			args: {
 				production_name: production_name,
+				include_departments: (div.querySelector("#pcd-incl-dept") || {}).checked ? 1 : 0,
 				force_manufacture: force_mfg ? 1 : 0,
 				force_dispatched: force_disp ? 1 : 0,
 				confirm_production_name_typed: production_name,
@@ -572,41 +577,94 @@ function _pcd_decision(log_name, action) {
 			__("Reject Production Cascade"), __("Reject"),
 		);
 	} else {
-		frappe.confirm(
-			__("Approve this production cascade? The engine will run IMMEDIATELY — the whole chain is cancelled, physically deleted, and the ledger swept to zero. A short revert window (documents only) follows."),
-			() => {
-				frappe.call({
-					method: "trustbit_ethanol.ts_gate_entry.production_cascade_api.approve_production_cascade",
-					args: { log_name, decision: "approve" },
-					freeze: true,
-					freeze_message: __("Executing production cascade — this may take a few seconds…"),
-					callback(r) {
-						_pcd_render_pending_list();
-						_pcd_render_recent_list();
-						if (r.message && r.message.success) {
-							frappe.show_alert({ message: __("✓ Production cascade approved & executed — {0}", [frappe.utils.escape_html(log_name)]), indicator: "green" }, 7);
-						} else if (r.message && !r.message.success) {
-							frappe.msgprint({
-								title: __("Cascade Engine Failed"),
-								message: `<p>The cascade was approved but the engine reported a failure (aborted at <code>${frappe.utils.escape_html(r.message.aborted_step || "?")}</code>). A pre-flight failure deletes nothing.</p>`
-									+ `<pre style="font-size:11px;max-height:300px;overflow:auto;">${frappe.utils.escape_html(JSON.stringify(r.message.steps || r.message, null, 2))}</pre>`,
-								indicator: "red",
-							});
-						}
-					},
-					error() {
-						_pcd_render_pending_list();
-						_pcd_render_recent_list();
+		// A department-inclusive cascade needs a per-department Yes/No decision first
+		// (each pre-selected to the department's own vote; the CEO may override).
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.production_cascade_api.get_pending_production_review_detail",
+			args: { log_name },
+			callback(r) {
+				const d = r.message || {};
+				if (d.include_departments && (d.dept_votes || []).length) {
+					_pcd_approve_with_departments(log_name, d.dept_votes);
+				} else {
+					_pcd_approve_confirm(log_name, "");
+				}
+			},
+			error() { _pcd_approve_confirm(log_name, ""); },
+		});
+	}
+}
+
+function _pcd_approve_confirm(log_name, dept_overrides) {
+	frappe.confirm(
+		__("Approve this production cascade? The engine will run IMMEDIATELY — the whole chain is cancelled, physically deleted, and the ledger swept to zero. A short revert window (documents only) follows."),
+		() => {
+			frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.production_cascade_api.approve_production_cascade",
+				args: { log_name, decision: "approve", dept_overrides: dept_overrides || "" },
+				freeze: true,
+				freeze_message: __("Executing production cascade — this may take a few seconds…"),
+				callback(r) {
+					_pcd_render_pending_list();
+					_pcd_render_recent_list();
+					if (r.message && r.message.success) {
+						frappe.show_alert({ message: __("✓ Production cascade approved & executed — {0}", [frappe.utils.escape_html(log_name)]), indicator: "green" }, 7);
+					} else if (r.message && !r.message.success) {
 						frappe.msgprint({
-							title: __("Approval Failed"),
-							message: __("The approval request errored on the server. The page has been refreshed — check the row's current status before retrying. Do NOT approve repeatedly."),
+							title: __("Cascade Engine Failed"),
+							message: `<p>The cascade was approved but the engine reported a failure (aborted at <code>${frappe.utils.escape_html(r.message.aborted_step || "?")}</code>). A pre-flight failure deletes nothing.</p>`
+								+ `<pre style="font-size:11px;max-height:300px;overflow:auto;">${frappe.utils.escape_html(JSON.stringify(r.message.steps || r.message, null, 2))}</pre>`,
 							indicator: "red",
 						});
-					},
-				});
-			},
-		);
-	}
+					}
+				},
+				error() {
+					_pcd_render_pending_list();
+					_pcd_render_recent_list();
+					frappe.msgprint({
+						title: __("Approval Failed"),
+						message: __("The approval request errored on the server. The page has been refreshed — check the row's current status before retrying. Do NOT approve repeatedly."),
+						indicator: "red",
+					});
+				},
+			});
+		},
+	);
+}
+
+function _pcd_approve_with_departments(log_name, votes) {
+	const esc = frappe.utils.escape_html;
+	const rows = votes.map((v) => {
+		const cur = v.ceo_override || (v.decision === "Yes" ? "Yes" : "No");
+		const voteLabel = v.decision === "Pending"
+			? `Pending <span style="opacity:.6">(no vote — defaults to keep)</span>`
+			: `${esc(v.decision)}${v.decided_by ? ` <span style="opacity:.6">(${esc(v.decided_by)})</span>` : ""}`;
+		return `<tr>
+			<td style="padding:6px 8px;">${esc(v.category)}</td>
+			<td style="padding:6px 8px;">${voteLabel}</td>
+			<td style="padding:6px 8px;"><select class="pcd-ovr" data-cat="${esc(v.category)}">
+				<option value="No"${cur === "No" ? " selected" : ""}>Keep (No)</option>
+				<option value="Yes"${cur === "Yes" ? " selected" : ""}>Delete (Yes)</option>
+			</select></td></tr>`;
+	}).join("");
+	const div = _pcd_modal(`
+		<div class="pcd-modal-bg"><div class="pcd-modal">
+		<h2>Approve — Department Decisions</h2>
+		<p style="font-size:12px;color:#475569;">Each department's own vote is pre-selected below. Override any row before approving. <strong>Delete</strong> cancels that department's Stock Entry and removes its records; <strong>Keep</strong> leaves them untouched (partial delete).</p>
+		<table class="pcd-detail-items" style="width:100%;border-collapse:collapse;font-size:12.5px;">
+			<thead><tr style="text-align:left;opacity:.7;"><th style="padding:6px 8px;">Department</th><th style="padding:6px 8px;">Its Vote</th><th style="padding:6px 8px;">Final (you decide)</th></tr></thead>
+			<tbody>${rows}</tbody></table>
+		<div class="pcd-modal-actions">
+			<button class="pcd-btn pcd-btn-secondary" id="pcd-ovr-cancel">Cancel</button>
+			<button class="pcd-btn pcd-btn-danger" id="pcd-ovr-approve">Approve + Execute →</button>
+		</div></div></div>`);
+	div.querySelector("#pcd-ovr-cancel").addEventListener("click", () => div.remove());
+	div.querySelector("#pcd-ovr-approve").addEventListener("click", () => {
+		const overrides = {};
+		div.querySelectorAll(".pcd-ovr").forEach((sel) => { overrides[sel.dataset.cat] = sel.value; });
+		div.remove();
+		_pcd_approve_confirm(log_name, JSON.stringify(overrides));
+	});
 }
 
 let _pcd_revert_timer = null;

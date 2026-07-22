@@ -61,8 +61,15 @@ from frappe import _
 from frappe.utils import flt, getdate
 
 
-# Tolerance for the net-zero per-(item, warehouse) assertion before a ledger sweep.
-_NET_ZERO_EPS = 0.05  # 20 Jul (user-approved): tolerate paisa-level valuation rounding residue (was 1e-6) — FIFO/capped-rate math on cancel legitimately leaves ±1-2 paise; anything larger still aborts
+# Tolerances for the net-zero assertions before a ledger sweep. Two SEPARATE
+# epsilons (22 Jul) — the earlier single 0.05 constant wrongly loosened the QTY
+# gate too:
+#   VALUE (rupees): FIFO/capped-rate math on cancel legitimately leaves ±1-2 paise,
+#     so a small tolerance is correct for stock_value_difference + GL debit-credit.
+#   QTY (stock units): a cancel reverses actual_qty EXACTLY, so any residual qty is a
+#     broken-cancel/partial-repost anomaly the sweep must NOT paper over — keep it tight.
+_NET_ZERO_VALUE_EPS = 0.05
+_NET_ZERO_QTY_EPS = 1e-6
 
 
 # ---------------------------------------------------------------- chain snapshot
@@ -674,7 +681,7 @@ def _delete_cancelled_stock_entry_with_sweep(se_name: str) -> dict:
 			"""SELECT item_code, warehouse, SUM(actual_qty) AS net_qty
 			   FROM `tabStock Ledger Entry` WHERE voucher_no=%s
 			   GROUP BY item_code, warehouse HAVING ABS(SUM(actual_qty)) > %s""",
-			(se_name, _NET_ZERO_EPS), as_dict=True,
+			(se_name, _NET_ZERO_QTY_EPS), as_dict=True,
 		)
 		if residual_qty:
 			detail = ", ".join(f"{r.item_code}@{r.warehouse}={flt(r.net_qty)}" for r in residual_qty)
@@ -693,7 +700,7 @@ def _delete_cancelled_stock_entry_with_sweep(se_name: str) -> dict:
 		net_val = frappe.db.sql(
 			"SELECT IFNULL(SUM(stock_value_difference), 0) FROM `tabStock Ledger Entry` WHERE voucher_no=%s",
 			(se_name,))[0][0]
-		if abs(flt(net_val)) > _NET_ZERO_EPS:
+		if abs(flt(net_val)) > _NET_ZERO_VALUE_EPS:
 			return {"doctype": "Stock Entry", "name": se_name, "action": "value-nonzero-abort",
 			        "success": False, "error": (
 			            f"Stock Entry {se_name} residual SLE value does NOT net to zero "
@@ -705,7 +712,7 @@ def _delete_cancelled_stock_entry_with_sweep(se_name: str) -> dict:
 			"""SELECT IFNULL(SUM(debit), 0) - IFNULL(SUM(credit), 0)
 			   FROM `tabGL Entry` WHERE voucher_no=%s AND voucher_type='Stock Entry'""",
 			(se_name,))[0][0]
-		if abs(flt(gl_net)) > _NET_ZERO_EPS:
+		if abs(flt(gl_net)) > _NET_ZERO_VALUE_EPS:
 			return {"doctype": "Stock Entry", "name": se_name, "action": "gl-nonzero-abort",
 			        "success": False, "error": (
 			            f"Stock Entry {se_name} residual GL rows do NOT net to zero "

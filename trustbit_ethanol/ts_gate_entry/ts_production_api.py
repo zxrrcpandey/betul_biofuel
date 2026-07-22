@@ -284,6 +284,35 @@ def validate_entry(doc):
 		if flt(row.actual_qty) < 0:
 			frappe.throw(_("Actual Qty cannot be negative for by-product {0}.").format(row.item_code))
 
+	# Warehouse overrides are typed free-hand on the Production Logging page (the by-product
+	# warehouse box, the material source). A group node or a warehouse of the WRONG company
+	# passes the Link check but only detonates DEEP in the completion chain — after the run,
+	# release SE and job cards exist and stock is already in WIP — stranding the run at
+	# 'Released' with an error the Store Manager cannot fix. Catch it here at entry time
+	# instead, with a clear message (22 Jul). Mirrors _assert_wh_company in the SE builder.
+	def _check_wh(wh, label):
+		if not wh:
+			return
+		info = frappe.db.get_value("Warehouse", wh, ["company", "is_group"], as_dict=True)
+		if not info:
+			return  # nonexistent name is rejected by the Link field itself
+		if info.is_group:
+			frappe.throw(_("The {0} warehouse '{1}' is a GROUP warehouse and cannot receive "
+			              "stock. Pick a leaf warehouse.").format(label, frappe.utils.escape_html(wh)),
+			             title=_("Group Warehouse Not Allowed"))
+		if info.company and doc.company and info.company != doc.company:
+			frappe.throw(_("The {0} warehouse '{1}' belongs to company '{2}', not '{3}'. "
+			              "Pick a warehouse of the run's company.").format(
+			              label, frappe.utils.escape_html(wh), frappe.utils.escape_html(info.company),
+			              frappe.utils.escape_html(doc.company or "")),
+			             title=_("Warehouse Company Mismatch"))
+	for row in (doc.byproducts or []):
+		if row.target_warehouse:
+			_check_wh(row.target_warehouse, _("by-product target"))
+	for row in (doc.materials or []):
+		if row.source_warehouse:
+			_check_wh(row.source_warehouse, _("material source"))
+
 
 def guard_control_fields(doc):
 	"""Block REST/form tampering of control-plane fields (Lesson 162/176).

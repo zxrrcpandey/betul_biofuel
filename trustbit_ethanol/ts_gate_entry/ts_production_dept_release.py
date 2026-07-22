@@ -241,6 +241,21 @@ def cancel_run_slots(run_name):
 		frappe.db.set_value(SLOT_DOCTYPE, sl, "status", "Cancelled", update_modified=False)
 
 
+def void_run_slots_for_deleted_run(run_name):
+	"""Cascade-delete cleanup (22 Jul): the run is being physically deleted, so every
+	still-Pending release slot pointing at it is a zombie — a department would click
+	Release and hit DoesNotExist. DELETE the Pending ones (Released slots stay as history).
+
+	Delete, NOT set-Cancelled: an in-place status mutation survives a within-window revert
+	(restore_from_backup idempotently skips rows that still exist), which would leave the
+	restored run's slots stuck Cancelled and silently bypass the per-department release gate.
+	Deleting lets the pre-cascade backup re-insert them as Pending on revert. Keyed on the
+	stored production_entry string, so it works after the run doc is gone."""
+	for sl in frappe.get_all(SLOT_DOCTYPE, filters={
+			"production_entry": run_name, "status": "Pending"}, pluck="name"):
+		frappe.delete_doc(SLOT_DOCTYPE, sl, force=1, ignore_permissions=True)
+
+
 def assert_all_slots_released(run_name):
 	"""Called at the top of approve_release: the Store Manager cannot release the
 	Stores portion until every department has released its own."""
@@ -326,6 +341,15 @@ def release_department_slot(name, items):
 	dept._recipient_gate(slot.category)  # recipients of THIS category (or admin) only
 	if slot.status != "Pending":
 		frappe.throw(_("This release is already {0}.").format(slot.status))
+
+	# The run may have been physically deleted (e.g. a cascade) after this slot was
+	# created — fail gracefully instead of a 500, and void the now-un-releasable slot.
+	if not frappe.db.exists(RUN_DOCTYPE, slot.production_entry):
+		frappe.db.set_value(SLOT_DOCTYPE, name, "status", "Cancelled", update_modified=False)
+		frappe.db.commit()
+		frappe.throw(_("Production run {0} no longer exists (it may have been deleted). "
+		               "This release has been cancelled.").format(
+		               frappe.utils.escape_html(slot.production_entry)))
 
 	run = frappe.get_doc(RUN_DOCTYPE, slot.production_entry)
 	if run.ts_variance_status != "Pending Stores Release":
@@ -457,6 +481,8 @@ def get_my_release_slots():
 	for s in slots:
 		if user_cats is not None and s.category not in user_cats:
 			continue
+		if not frappe.db.exists(RUN_DOCTYPE, s.production_entry):
+			continue  # run gone (e.g. deleted via cascade) — never show an un-releasable slot
 		s["items"] = frappe.get_all("TS Production Release Slot Item",
 		                            filters={"parent": s.name},
 		                            fields=["item_code", "item_name", "warehouse",

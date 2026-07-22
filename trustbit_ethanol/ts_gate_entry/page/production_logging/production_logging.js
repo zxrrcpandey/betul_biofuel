@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.4.2"; // SM release zone shows "Waiting: <depts>" until departments release // v2.21 Single-flow department release (slots + actuals dialog)
+const PL_VERSION = "v1.4.3"; // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // SM release zone shows "Waiting: <depts>" until departments release // v2.21 Single-flow department release (slots + actuals dialog)
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -283,14 +283,16 @@ class ProductionLogging {
 		const mrelease = this.is_store_mgr ? `<div id="pl-multi-release-wrap"></div>` : ``;
 		// v2.21 (13 Jul) Single-flow department release zone (any user; server filters)
 		const deptrel = `<div id="pl-deptrel-wrap"></div>`;
+		// 22 Jul — department vote-to-delete card (cascade delete; server filters by recipient)
+		const cvote = `<div id="pl-cascade-vote-wrap"></div>`;
 		const board = `<div id="pl-board-wrap"></div>`;
 		const dist = `<div id="pl-dist-wrap"></div>`;
 		const dept = `<div id="pl-dept-wrap"></div>`;
 		// dept-only users (no PM/SM hats): their Add-Production + release tasks first
-		if (!this.is_pm && !this.is_store_mgr) return dept + deptrel + board + dist + release + mrelease;
+		if (!this.is_pm && !this.is_store_mgr) return dept + cvote + deptrel + board + dist + release + mrelease;
 		// SM (and PM+SM): the human gates first; pure PM: dist/board first
-		return this.is_store_mgr ? mrelease + release + deptrel + dist + board + dept
-		                         : deptrel + dist + board + dept + release + mrelease;
+		return this.is_store_mgr ? mrelease + release + cvote + deptrel + dist + board + dept
+		                         : cvote + deptrel + dist + board + dept + release + mrelease;
 	}
 
 	// v2.21 premium de-clutter — "My Actions" strip: one glance = what waits for
@@ -314,6 +316,9 @@ class ProductionLogging {
 		if ((this._n_dist || 0) > 0) acts.push({
 			n: this._n_dist, cls: "violet", target: "#pl-dist-wrap",
 			l: "Post Distribution", s: "run" + (this._n_dist > 1 ? "s" : "") + " to split across warehouses" });
+		if ((this._n_cvote || 0) > 0) acts.push({
+			n: this._n_cvote, cls: "amber", target: "#pl-sec-cvote",
+			l: "Delete Vote", s: "delete request" + (this._n_cvote > 1 ? "s" : "") + " awaiting your Yes/No" });
 		if (!acts.length) { $w.empty(); return; }
 		$w.html(`<div class="pl-acts">` + acts.map((a) => `
 			<div class="pl-act ${a.cls} glass" data-target="${a.target}" role="button" tabindex="0">
@@ -484,6 +489,10 @@ class ProductionLogging {
 		this.$root.on("click", ".pl-deptrel-btn", function () {
 			self.open_release_dialog($(this).data("i"));
 		});
+		// 22 Jul — department vote-to-delete Yes/No
+		this.$root.on("click", ".pl-cvote-btn", function () {
+			self.cast_cascade_vote($(this).data("i"), $(this).data("d"));
+		});
 		// v2.21 UAT ③ — dept user corrects their own Logged entry (reopen for re-entry)
 		this.$root.on("click", ".pl-reopen-btn", function () {
 			const name = $(this).data("name");
@@ -623,6 +632,7 @@ class ProductionLogging {
 		if (this.is_store_mgr) this.load_pending_releases();
 		this.load_dept_context();  // Phase C — server decides visibility (kill switch + recipients)
 		this.load_my_release_slots(); // v2.21 (13 Jul) — Single-flow department release
+		this.load_my_cascade_votes(); // 22 Jul — department vote-to-delete card
 		this.load_multi_context(); // Phase D — chooser + pending distributions
 		this.load_multi_board();   // v2.21 — dept status board (R3)
 	}
@@ -714,6 +724,64 @@ class ProductionLogging {
 				</tr></thead><tbody>${rows}</tbody>
 			</table>`);
 		d.show();
+	}
+
+	// ── 22 Jul — DEPARTMENT VOTE-TO-DELETE (cascade delete) ─────────────
+	load_my_cascade_votes() {
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.production_cascade_api.get_my_cascade_votes",
+			callback: (r) => this.render_cascade_votes(r.message || []),
+			error: () => this.render_cascade_votes([]),
+		});
+	}
+
+	render_cascade_votes(votes) {
+		const $wrap = this.$root.find("#pl-cascade-vote-wrap");
+		if (!$wrap.length) return;
+		this._n_cvote = votes.length;
+		this.update_actions();
+		this.cascade_votes = votes;
+		if (!votes.length) { $wrap.empty(); return; }
+		const row = (v, i) => `
+			<div class="pl-row" style="border-left:3px solid var(--red,#dc2626)">
+				<span class="pl-rid">${this.esc(v.production)}</span>
+				<span class="pl-rwhat"><b>${this.esc(v.category)}</b>
+					<span class="dim">· deletion requested by ${this.esc(v.initiated_by)}</span></span>
+				<span class="pl-pill age">confirm removal of your department's records</span>
+				<span class="pl-sp"></span>
+				<button class="btn btn-approve btn-sm pl-cvote-btn" data-i="${i}" data-d="Yes">&#10003; Yes, delete ours</button>
+				<button class="btn btn-danger btn-sm pl-cvote-btn" data-i="${i}" data-d="No">&#10007; No, keep ours</button>
+			</div>`;
+		$wrap.html(`
+			<div class="sec-title" id="pl-sec-cvote">
+				<span class="bar" style="background:var(--red,#dc2626)"></span> Delete Requests &mdash; Confirm Removal of Your Department's Entries
+				<span class="feas-tag tag-gate">&#128465; Vote Yes / No</span>
+			</div>
+			<div class="glass pl-rows">${votes.map(row).join("")}</div>`);
+	}
+
+	cast_cascade_vote(i, decision) {
+		const v = (this.cascade_votes || [])[i];
+		if (!v) return;
+		const self = this;
+		frappe.confirm(
+			decision === "Yes"
+				? __("Vote YES to delete your department's entries for {0}? The CEO makes the final call.", [v.production])
+				: __("Vote NO to keep your department's entries for {0}? The CEO can still override.", [v.production]),
+			() => {
+				frappe.call({
+					method: "trustbit_ethanol.ts_gate_entry.production_cascade_api.cascade_department_vote",
+					type: "POST",
+					args: { log_name: v.log_name, category: v.category, decision: decision },
+					callback: (r) => {
+						if (r.message && r.message.success) {
+							frappe.show_alert({ message: __("Vote recorded: {0}", [decision]), indicator: "green" });
+							self.load_my_cascade_votes();
+						}
+					},
+				});
+			}
+		);
 	}
 
 	// ── Phase D — Multiple (BOM Connector) flow ─────────────────────────
@@ -1821,7 +1889,11 @@ class ProductionLogging {
 			);
 			const self = this;
 			$bp.find(".bp-q").on("change", function () {
-				self.bp_state[$(this).data("i")].edited_qty = flt($(this).val());
+				// Blank => restore auto-scale (edited_qty=null), NOT 0. flt('')=0 used to
+				// stick as an explicit zero and silently DROP the by-product from stock.
+				const raw = ($(this).val() || "").trim();
+				self.bp_state[$(this).data("i")].edited_qty = raw === "" ? null : flt(raw);
+				self.render_form(); // a cleared cell snaps back to the auto-scaled qty
 			});
 			$bp.find(".bp-wh").on("change", function () {
 				self.bp_state[$(this).data("i")].target_warehouse = ($(this).val() || "").trim();

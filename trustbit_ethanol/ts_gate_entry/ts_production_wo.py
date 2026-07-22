@@ -160,10 +160,19 @@ def create_and_submit_work_order(pe, settings, skip_transfer=0):
 	# Assign a source warehouse on EVERY required item (BOM rows are blank) and, if
 	# the PM edited/removed material lines, mirror those edits onto the WO so the
 	# RELEASE reflects the PM's request. PM-removed items are dropped from the WO.
+	# Aggregate by item_code: a real client BOM can list the SAME item on two rows (e.g.
+	# Formaldehyde twice on the RS BOM). The WO consolidates duplicates into ONE required
+	# row, so mirror the SUM of the PM's actuals, not last-row-wins (22 Jul). frappe._dict
+	# keeps the downstream `.actual_qty` / `.source_warehouse` attribute access working.
 	pe_mat = {}
 	for row in (pe.materials or []):
 		if row.item_code and flt(row.actual_qty) > 0:
-			pe_mat[row.item_code] = row
+			agg = pe_mat.get(row.item_code)
+			if agg is not None:
+				agg.actual_qty = flt(agg.actual_qty) + flt(row.actual_qty)
+			else:
+				pe_mat[row.item_code] = frappe._dict(
+					actual_qty=flt(row.actual_qty), source_warehouse=row.source_warehouse)
 	keep = []
 	for ri in (wo.required_items or []):
 		pe_row = pe_mat.get(ri.item_code)
@@ -221,11 +230,14 @@ def build_draft_release_se(wo_name, settings, pe=None):
 	wo = frappe.get_doc("Work Order", wo_name)
 	src_default = settings.get("release_source_warehouse") or settings.get("wip_warehouse")
 
+	# SUM duplicates (same item on 2+ BOM rows) so the RELEASE transfers the same total
+	# the WO consolidates + consumes — last-row-wins here would under-transfer to WIP and
+	# starve the Manufacture (22 Jul, matches the create_and_submit_work_order aggregation).
 	pm_qty = {}
 	if pe is not None:
 		for r in (pe.materials or []):
 			if r.item_code and flt(r.actual_qty) > 0:
-				pm_qty[r.item_code] = flt(r.actual_qty)
+				pm_qty[r.item_code] = pm_qty.get(r.item_code, 0.0) + flt(r.actual_qty)
 
 	def _assign_sources(se):
 		kept = []
@@ -558,26 +570,27 @@ def submit_manufacture_se(wo_name, company=None):
 	se.company = company or wo.company
 	# 20 Jul — by-product ACTUALS: the native mapper builds scrap rows BOM-scaled;
 	# the PM's edited by-product qty/warehouse (run.byproducts) must win — same
-	# actuals-first rule as materials. qty 0 drops the row.
+	# actuals-first rule as materials.
+	# 22 Jul — actual_qty > 0 OVERRIDES the BOM-scaled qty; <= 0 KEEPS the native
+	# BOM-scaled row (never silently DROP the by-product — a run created via the desk
+	# form leaves actual_qty=0 on every by-product row, and clearing the page input
+	# reads as 0; dropping there posted zero DDGS to stock with no warning). A supplied
+	# target_warehouse is honoured either way.
 	_pe_bp = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},
 	                        pluck="name", limit=1)
 	if _pe_bp:
 		bp = {r.item_code: r for r in
 		      (frappe.get_doc("TS Production Entry", _pe_bp[0]).byproducts or [])}
 		if bp:
-			kept = []
 			for row in se.items:
 				if getattr(row, "is_scrap_item", 0) and row.item_code in bp:
 					r = bp[row.item_code]
-					if flt(r.actual_qty) <= 0:
-						continue
-					cf = flt(row.conversion_factor) or 1.0
-					row.qty = flt(r.actual_qty)
-					row.transfer_qty = flt(r.actual_qty) * cf
+					if flt(r.actual_qty) > 0:
+						cf = flt(row.conversion_factor) or 1.0
+						row.qty = flt(r.actual_qty)
+						row.transfer_qty = flt(r.actual_qty) * cf
 					if r.get("target_warehouse"):
 						row.t_warehouse = r.target_warehouse
-				kept.append(row)
-			se.items = kept
 	_cap_byproduct_rates(se)  # keep FG cost >= 0 when by-products out-value the inputs
 	# v2.21 ② department-wise cost centre — resolve from the run linked to this WO
 	_pe = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},

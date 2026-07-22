@@ -279,8 +279,11 @@ def initiate_production_cascade(
 	if int(include_departments):
 		cats = set(frappe.get_all("TS Production Department Entry",
 			filters={"production_entry": production_name}, pluck="category", limit=0))
+		# Exclude categories whose only slots are Cancelled (a prior reject_release leaves
+		# the rows) — don't ask a department with no live stake to vote (22 Jul).
 		cats |= set(frappe.get_all("TS Production Release Slot",
-			filters={"production_entry": production_name}, pluck="category", limit=0))
+			filters={"production_entry": production_name,
+			         "status": ["!=", "Cancelled"]}, pluck="category", limit=0))
 		dept_cats = sorted(cats)
 		log.include_departments = 1
 		for c in dept_cats:
@@ -336,17 +339,36 @@ def initiate_production_cascade(
 
 
 def _production_backup_doc_map(chain: dict) -> dict:
-	"""Build the {label: (doctype, [names])} map for the generalized backup writer."""
+	"""Build the {label: (doctype, [names])} map for the generalized backup writer.
+
+	Includes the run's department entries, their Material-Issue Stock Entries, and its
+	release slots so a within-window revert can restore whatever a dept teardown deleted
+	(22 Jul — these were previously OUTSIDE the backup, making dept deletions
+	unrecoverable). Captured ALWAYS, even when include_departments=0: revert's re-insert
+	is idempotent and skips anything that still exists, so backing them up is harmless
+	when nothing was torn down."""
 	se_names = chain.get("se_names") or []
 	qi_names = [q.get("name") for q in (chain.get("quality_inspections") or []) if q.get("name")]
 	jc_names = [j.get("name") for j in (chain.get("job_cards") or []) if j.get("name")]
+	run = chain.get("production")
+	dept_entries, dept_ses, slots = [], [], []
+	if run:
+		for de in frappe.get_all("TS Production Department Entry",
+				filters={"production_entry": run}, fields=["name", "stock_entry"], limit=0):
+			dept_entries.append(de.name)
+			if de.stock_entry:
+				dept_ses.append(de.stock_entry)
+		slots = frappe.get_all("TS Production Release Slot",
+				filters={"production_entry": run}, pluck="name", limit=0)
 	doc_map = {
-		"production_entry": ("TS Production Entry",
-		                     [chain.get("production")] if chain.get("production") else []),
+		"production_entry": ("TS Production Entry", [run] if run else []),
 		"work_order": ("Work Order", [chain.get("work_order")] if chain.get("work_order") else []),
 		"job_cards": ("Job Card", jc_names),
 		"stock_entries": ("Stock Entry", se_names),
 		"quality_inspections": ("Quality Inspection", qi_names),
+		"dept_stock_entries": ("Stock Entry", dept_ses),
+		"department_entries": ("TS Production Department Entry", dept_entries),
+		"release_slots": ("TS Production Release Slot", slots),
 	}
 	return doc_map
 
@@ -355,31 +377,61 @@ def _production_backup_doc_map(chain: dict) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
+@rate_limit(key="prod_cascade_vote", limit=60, seconds=60)
 def cascade_department_vote(log_name: str, category: str, decision: str) -> dict:
 	"""A department recipient votes Yes/No on deleting THEIR entries for a pending
-	cascade delete. One vote per category; the CEO may override later."""
+	cascade delete. One vote per category; the CEO may override later.
+
+	Hardened 22 Jul:
+	  - Recipient-gated to the caller's OWN category (unchanged), THEN a FOR UPDATE lock
+	    on the log serializes every vote on it — no lost/duplicate 'all voted' CEO alert
+	    and no last-writer-wins overwrite of a No by a Yes.
+	  - Error strings never leak a log's approval-status enum to a caller whose category
+	    is not part of the request: the membership check runs FIRST and the missing-log,
+	    no-departments, and not-your-category cases all return the SAME generic message,
+	    so the endpoint can't be used to enumerate cascade-log statuses.
+	  - Rate-limited (was the only cascade endpoint without a limit)."""
 	_gate_kill_switch()
 	_validate_log_name(log_name)
 	if decision not in ("Yes", "No"):
 		frappe.throw(_("decision must be 'Yes' or 'No'."))
 	from trustbit_ethanol.ts_gate_entry import ts_production_dept as dept
-	dept._recipient_gate(category)
-	log = frappe.get_doc("TS Production Cascade Log", log_name)
-	if log.approval_status != "Pending CEO Approval":
-		frappe.throw(_("Log {0} is no longer pending (currently {1}).").format(
-			escape_html(log_name), escape_html(log.approval_status)))
-	row = next((r for r in (log.dept_votes or []) if r.category == category), None)
-	if not row:
-		frappe.throw(_("Category {0} is not part of this delete request.").format(escape_html(category)))
-	if row.decision != "Pending":
-		frappe.throw(_("Your department already voted: {0}.").format(escape_html(row.decision)))
-	frappe.db.set_value("TS Production Cascade Dept Vote", row.name, {
+	dept._recipient_gate(category)  # recipients of THIS category (or admin) only
+
+	# Serialize every vote on this log (kills the lost/duplicate-alert + overwrite races).
+	log_rows = frappe.db.sql(
+		"""SELECT approval_status, include_departments
+		   FROM `tabTS Production Cascade Log` WHERE name=%s FOR UPDATE""",
+		(log_name,), as_dict=True)
+	# Category-membership BEFORE any status disclosure — a caller whose category is not in
+	# this request gets ONE generic message regardless of the log's real state.
+	_not_yours = _("Delete request {0} does not include your department, or no longer "
+	               "exists.").format(escape_html(log_name))
+	if not log_rows or not int(log_rows[0].include_departments or 0):
+		frappe.throw(_not_yours)
+	log_row = log_rows[0]
+	vote_rows = frappe.db.sql(
+		"""SELECT name, decision FROM `tabTS Production Cascade Dept Vote`
+		   WHERE parent=%s AND category=%s""", (log_name, category), as_dict=True)
+	if not vote_rows:
+		frappe.throw(_not_yours)
+	vote = vote_rows[0]
+	# Category confirmed — only now is it safe to speak of the request's state (generically).
+	if log_row.approval_status != "Pending CEO Approval":
+		frappe.throw(_("Delete request {0} is no longer open for voting.").format(escape_html(log_name)))
+	if vote.decision != "Pending":
+		frappe.throw(_("Your department already voted: {0}.").format(escape_html(vote.decision)))
+
+	frappe.db.set_value("TS Production Cascade Dept Vote", vote.name, {
 		"decision": decision, "decided_by": frappe.session.user,
 		"decided_at": now_datetime()}, update_modified=False)
-	log.add_comment("Comment", _("Department {0} voted {1} on deleting its entries (by {2}).").format(
-		escape_html(category), escape_html(decision), escape_html(frappe.session.user)))
-	pending = [r.category for r in log.dept_votes
-	           if r.name != row.name and r.decision == "Pending"]
+	frappe.get_doc("TS Production Cascade Log", log_name).add_comment(
+		"Comment", _("Department {0} voted {1} on deleting its entries (by {2}).").format(
+			escape_html(category), escape_html(decision), escape_html(frappe.session.user)))
+	# Recompute pending from a FRESH read under the log lock (never a stale in-memory copy).
+	pending = frappe.db.sql_list(
+		"""SELECT category FROM `tabTS Production Cascade Dept Vote`
+		   WHERE parent=%s AND decision='Pending'""", (log_name,))
 	if not pending:
 		for u in frappe.get_all("Has Role", filters={"role": ["in", ["CEO", "MD"]]},
 		                        pluck="parent", limit=0):
@@ -395,13 +447,65 @@ def cascade_department_vote(log_name: str, category: str, decision: str) -> dict
 	return {"success": True, "pending_departments": pending}
 
 
+@frappe.whitelist()
+def get_my_cascade_votes() -> list:
+	"""Pending cascade-delete requests the session user may vote on — one row per
+	(log, category) where the user is a recipient of the category and the vote is still
+	Pending. Recipient-gated (NOT log-read-perm gated) so a department operator who lacks
+	TS Production Cascade Log read can still see + act on their own vote. Feeds the
+	Production Logging 'Delete requests — confirm' card."""
+	# Fail SOFT (return []), never throw: this read runs on EVERY Production Logging page
+	# load, and the cascade tool ships disabled by default (independent kill switch). Throwing
+	# here (as _gate_kill_switch does) would pop a permission-error modal on every load
+	# whenever cascade is off — the sibling get_my_release_slots deliberately never gates.
+	try:
+		if not int(frappe.db.get_single_value("TS Settings", "ts_prod_cascade_enabled") or 0):
+			return []
+	except Exception:
+		return []
+	from trustbit_ethanol.ts_gate_entry import ts_production_dept as dept
+	user_cats = None if dept._is_admin() else set(dept._user_categories())
+	if user_cats is not None and not user_cats:
+		return []
+	rows = frappe.db.sql("""
+		SELECT dv.parent AS log_name, dv.category, dv.decision,
+		       log.target_production AS production, log.initiated_by, log.initiated_at
+		FROM `tabTS Production Cascade Dept Vote` dv
+		JOIN `tabTS Production Cascade Log` log ON log.name = dv.parent
+		WHERE dv.decision = 'Pending'
+		  AND log.approval_status = 'Pending CEO Approval'
+		  AND log.include_departments = 1
+	""", as_dict=True)
+	out = []
+	for r in rows:
+		if user_cats is not None and r.category not in user_cats:
+			continue
+		r["initiated_at"] = str(r.initiated_at or "")
+		out.append(r)
+	# Return RAW (no _escape_dict_strings): `category` + `log_name` are IDENTITY keys the
+	# vote card posts straight back to cascade_department_vote, where they must match the
+	# stored names — HTML-escaping a category like "Power & Utilities" would break the
+	# round-trip. The card escapes every field with esc() at display time (XSS-safe).
+	return out
+
+
 def _cascade_dept_teardown(log_doc):
 	"""On CEO approve: per department, final = ceo_override or the dept decision
-	(Pending/blank = No = KEEP, partial delete). Yes -> cancel+delete the dept
-	entries' Stock Entries, delete the entries + that category's release slots.
-	No -> keep + annotate. Returns a summary dict."""
+	(Pending/blank = No = KEEP, partial delete).
+
+	Yes -> CANCEL the dept entries' Material-Issue Stock Entries (reverses their stock)
+	and delete the dept entries + that category's release slots. The cancel runs ELEVATED
+	to Administrator (via system_session) — a dept SE's on_cancel drives a nested Project
+	cost roll-up whose permission check honours neither ignore_permissions nor a CEO/MD
+	role (the exact reason the engine elevates). The CANCELLED Stock Entry doc is KEPT as
+	the reversal's audit record — deleting it would orphan its ledger rows, which no scan
+	covers for dept SEs. If a cancel FAILS the owning entry is KEPT (never delete an entry
+	whose live stock movement still stands) and the failure is logged + surfaced, not
+	swallowed. No -> keep + annotate. Returns a summary dict.
+	"""
+	from trustbit_ethanol.ts_gate_entry.ts_production_wo import system_session
 	run = log_doc.target_production
-	summary = {"deleted": [], "kept": []}
+	summary = {"deleted": [], "kept": [], "failed": []}
 	for v in (log_doc.dept_votes or []):
 		final = (v.ceo_override or "").strip() or ("Yes" if v.decision == "Yes" else "No")
 		ents = frappe.get_all("TS Production Department Entry",
@@ -409,25 +513,7 @@ def _cascade_dept_teardown(log_doc):
 			fields=["name", "stock_entry"], limit=0)
 		slots = frappe.get_all("TS Production Release Slot",
 			filters={"production_entry": run, "category": v.category}, pluck="name", limit=0)
-		if final == "Yes":
-			for e in ents:
-				if e.stock_entry and frappe.db.exists("Stock Entry", e.stock_entry):
-					try:
-						se = frappe.get_doc("Stock Entry", e.stock_entry)
-						if se.docstatus == 1:
-							se.flags.ignore_permissions = True
-							se.cancel()
-						frappe.delete_doc("Stock Entry", e.stock_entry, force=1,
-						                  ignore_permissions=True)
-					except Exception:
-						frappe.clear_messages()
-				frappe.delete_doc("TS Production Department Entry", e.name, force=1,
-				                  ignore_permissions=True)
-			for sl in slots:
-				frappe.delete_doc("TS Production Release Slot", sl, force=1,
-				                  ignore_permissions=True)
-			summary["deleted"].append(v.category)
-		else:
+		if final != "Yes":
 			for e in ents:
 				try:
 					frappe.get_doc("TS Production Department Entry", e.name).add_comment(
@@ -437,9 +523,47 @@ def _cascade_dept_teardown(log_doc):
 				except Exception:
 					frappe.clear_messages()
 			summary["kept"].append(v.category)
-	log_doc.add_comment("Comment", _("Department teardown: deleted {0}; kept {1}.").format(
+			continue
+		cancel_failed = False
+		for e in ents:
+			if e.stock_entry and frappe.db.exists("Stock Entry", e.stock_entry):
+				se = frappe.get_doc("Stock Entry", e.stock_entry)
+				if se.docstatus == 1:
+					try:
+						with system_session():  # nested Project cost roll-up needs Administrator
+							se.flags.ignore_permissions = True
+							se.cancel()
+					except Exception:
+						frappe.log_error(
+							title="Cascade dept teardown: Stock Entry cancel FAILED",
+							message=(f"run={run} category={v.category} se={e.stock_entry}: "
+							         f"{frappe.get_traceback()}"))
+						frappe.clear_messages()
+						cancel_failed = True
+						try:
+							frappe.get_doc("TS Production Department Entry", e.name).add_comment(
+								"Comment", _("DELETE BLOCKED — its Stock Entry {0} could not be "
+								"cancelled during cascade {1}; entry KEPT so the stock movement "
+								"stays traceable. Cancel {0} manually, then re-run.").format(
+								escape_html(e.stock_entry), escape_html(log_doc.name)))
+						except Exception:
+							frappe.clear_messages()
+						continue  # do NOT delete an entry whose SE still stands
+			# SE is cancelled (or never existed) — safe to delete the owning entry.
+			frappe.delete_doc("TS Production Department Entry", e.name, force=1,
+			                  ignore_permissions=True)
+		if cancel_failed:
+			# Leave the slots too — the category isn't fully torn down.
+			summary["failed"].append(v.category)
+			continue
+		for sl in slots:
+			frappe.delete_doc("TS Production Release Slot", sl, force=1,
+			                  ignore_permissions=True)
+		summary["deleted"].append(v.category)
+	log_doc.add_comment("Comment", _("Department teardown: deleted {0}; kept {1}; FAILED {2}.").format(
 		escape_html(", ".join(summary["deleted"]) or "—"),
-		escape_html(", ".join(summary["kept"]) or "—")))
+		escape_html(", ".join(summary["kept"]) or "—"),
+		escape_html(", ".join(summary["failed"]) or "—")))
 	return summary
 
 
@@ -485,6 +609,26 @@ def approve_production_cascade(log_name: str, decision: str, reason: str = "", d
 		frappe.clear_messages()
 		return {"success": True, "approval_status": "Rejected"}
 
+	# Parse + validate dept_overrides BEFORE the (committed) Approved transition, so a
+	# malformed payload throws while the log is still Pending + re-approvable — never
+	# AFTER the commit (which stranded the log in Approved with the engine never run,
+	# and no API path back). 22 Jul.
+	ceo_overrides = {}
+	if (dept_overrides or "").strip():
+		try:
+			_raw = json.loads(dept_overrides)
+		except Exception:
+			frappe.throw(_('dept_overrides must be valid JSON, e.g. {"Boiler": "Yes"}.'))
+		if not isinstance(_raw, dict):
+			frappe.throw(_("dept_overrides must be a JSON object mapping category -> 'Yes'/'No'."))
+		for _cat, _val in _raw.items():
+			if _val in (None, ""):
+				continue
+			if not isinstance(_val, str) or _val.strip() not in ("Yes", "No"):
+				frappe.throw(_("dept_overrides value for {0} must be 'Yes' or 'No'.").format(
+					escape_html(str(_cat))))
+			ceo_overrides[str(_cat)] = _val.strip()
+
 	# Approve -> mark Approved -> run engine.
 	_transition_log_state(log_name, "Approved", extra={
 		"approved_by": frappe.session.user,
@@ -492,13 +636,9 @@ def approve_production_cascade(log_name: str, decision: str, reason: str = "", d
 	})
 
 	log_doc = frappe.get_doc("TS Production Cascade Log", log_name)
-	if log_doc.get("include_departments"):
-		try:
-			ov = json.loads(dept_overrides or "{}")
-		except Exception:
-			ov = {}
+	if log_doc.get("include_departments") and ceo_overrides:
 		for v in (log_doc.dept_votes or []):
-			o = (ov.get(v.category) or "").strip()
+			o = ceo_overrides.get(v.category)
 			if o in ("Yes", "No"):
 				frappe.db.set_value("TS Production Cascade Dept Vote", v.name,
 				                    "ceo_override", o, update_modified=False)
@@ -572,6 +712,19 @@ def approve_production_cascade(log_name: str, decision: str, reason: str = "", d
 			_cascade_dept_teardown(log_doc)
 		except Exception:
 			frappe.log_error(title="Cascade dept teardown failed",
+			                 message=f"{log_name}: {frappe.get_traceback()}")
+			frappe.clear_messages()
+	# 22 Jul — the run is physically deleted, so ANY still-Pending release slot pointing
+	# at it is a zombie (a department would click Release and hit DoesNotExist). Void them
+	# for EVERY successful cascade (the include_departments=0 default path leaves them all).
+	if result.get("success"):
+		try:
+			from trustbit_ethanol.ts_gate_entry.ts_production_dept_release import (
+				void_run_slots_for_deleted_run,
+			)
+			void_run_slots_for_deleted_run(log_doc.target_production)
+		except Exception:
+			frappe.log_error(title="Cascade slot cleanup failed",
 			                 message=f"{log_name}: {frappe.get_traceback()}")
 			frappe.clear_messages()
 
@@ -712,11 +865,19 @@ def get_pending_production_review_detail(log_name: str) -> dict:
 	log = frappe.db.get_value(
 		"TS Production Cascade Log", log_name,
 		["target_production", "approval_status", "force_manufacture_override",
-		 "force_dispatched_override", "hazard_c_blocked", "hazard_c_findings_json"],
+		 "force_dispatched_override", "hazard_c_blocked", "hazard_c_findings_json",
+		 "include_departments"],
 		as_dict=True,
 	)
 	if not log:
 		frappe.throw(_("Production Cascade Log {0} not found.").format(escape_html(log_name)))
+
+	dept_votes = []
+	if int(log.get("include_departments") or 0):
+		dept_votes = frappe.get_all("TS Production Cascade Dept Vote",
+			filters={"parent": log_name},
+			fields=["category", "decision", "ceo_override", "decided_by"],
+			order_by="idx", limit=0)
 
 	from trustbit_ethanol.ts_gate_entry.production_cascade_engine import build_chain_snapshot
 	chain = build_chain_snapshot(log.target_production)
@@ -729,7 +890,7 @@ def get_pending_production_review_detail(log_name: str) -> dict:
 		except Exception:
 			hazard_findings = []
 
-	return _escape_dict_strings({
+	detail = _escape_dict_strings({
 		"production": log.target_production,
 		"production_status": pe.get("ts_variance_status"),
 		"production_item": pe.get("production_item_name") or pe.get("production_item"),
@@ -754,7 +915,15 @@ def get_pending_production_review_detail(log_name: str) -> dict:
 		},
 		"force_manufacture_override": int(log.force_manufacture_override or 0),
 		"force_dispatched_override": int(log.force_dispatched_override or 0),
+		"include_departments": int(log.get("include_departments") or 0),
 	})
+	# dept_votes attached RAW (NOT through _escape_dict_strings): each row's `category` is
+	# the IDENTITY key the CEO override dialog echoes back as a dept_overrides key, and it
+	# must match the stored category name (escaping "Power & Utilities" would silently drop
+	# the override). The approve dialog esc()'s every field — including the data-cat
+	# attribute — at display, so this stays XSS-safe.
+	detail["dept_votes"] = dept_votes
+	return detail
 
 
 @frappe.whitelist()
