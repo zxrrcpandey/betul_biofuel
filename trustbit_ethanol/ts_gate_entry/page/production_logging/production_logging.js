@@ -880,6 +880,7 @@ class ProductionLogging {
 
 	// ── Phase C — Department consumption (REPORTING ONLY, no stock) ─────
 	load_dept_context() {
+		this.load_bom_names();
 		frappe.call({
 			method: "trustbit_ethanol.ts_gate_entry.ts_production_dept.get_department_context",
 			callback: (r) => {
@@ -914,7 +915,7 @@ class ProductionLogging {
 				<div class="pl-row green">
 					<span class="pl-rid">${this.esc(p.production_entry)}</span>
 					<span class="pl-rwhat"><b>${this.esc(p.category)}</b>
-						<span class="dim">· dept BOM ${this.esc(p.dept_bom)} · main: ${this.esc(p.item_name || "—")} ${this.fmt1(p.produced_qty)} ${this.esc(p.uom || "")}</span></span>
+						<span class="dim">· dept BOM ${this.esc(this.bom_label(p.dept_bom))} · main: ${this.esc(p.item_name || "—")} ${this.fmt1(p.produced_qty)} ${this.esc(p.uom || "")}</span></span>
 					<span class="pl-pill age">notified ${this.age_of(p.notified_at) || "—"} ago</span>
 					<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>
 					<button class="btn btn-approve btn-sm pl-deptlog-btn" data-idx="${i}">&#127981; Add Production</button>
@@ -996,7 +997,7 @@ class ProductionLogging {
 				<input type="number" min="0" step="any" class="form-control pl-dd-output" value="${flt(p.output.std_qty)}" style="text-align:right;max-width:220px;display:inline-block;margin-left:8px"> ${frappe.utils.escape_html(p.output.uom || "")}
 			</div>` : "";
 		d.fields_dict.mat_html.$wrapper.html(`
-			<div style="margin:4px 0 6px;font-size:12px;"><b>${frappe.utils.escape_html(p.category)}</b> &middot; dept BOM <span style="font-family:monospace">${frappe.utils.escape_html(p.dept_bom)}</span>
+			<div style="margin:4px 0 6px;font-size:12px;"><b>${frappe.utils.escape_html(p.category)}</b> &middot; dept BOM <span style="font-family:monospace">${frappe.utils.escape_html(this.bom_label(p.dept_bom))}</span>
 			&middot; <span style="font-weight:600">${note}</span></div>
 			<table style="width:100%;border-collapse:collapse;font-size:12.5px">
 				<thead><tr style="opacity:.65;text-align:left">
@@ -1420,6 +1421,26 @@ class ProductionLogging {
 		});
 	}
 
+	bom_label(bom_id) {
+		// "<ID> — <item name>" when known; graceful fallback to the bare ID.
+		const nm = (this._bom_names || {})[bom_id];
+		return nm ? `${bom_id} — ${nm}` : (bom_id || "—");
+	}
+
+	load_bom_names() {
+		if (this._bom_names) return;
+		this._bom_names = {};
+		frappe.call({
+			method: "frappe.client.get_list",
+			args: { doctype: "BOM", fields: ["name", "item_name"], limit_page_length: 500 },
+			callback: (r) => {
+				(r.message || []).forEach((b) => { this._bom_names[b.name] = b.item_name; });
+				this.render_dept_zone();  // re-render cards with names once loaded
+			},
+			error: () => {},  // no BOM read permission — cards keep the bare ID
+		});
+	}
+
 	load_boms() {
 		frappe.call({
 			method: "frappe.client.get_list",
@@ -1709,6 +1730,7 @@ class ProductionLogging {
 		const lock =
 			'<svg class="lock-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>';
 		this.$root.find("#pl-fetched-box").html(
+			`<div class="fc"><div class="k">${lock} Selected BOM</div><div class="v"><span class="mono">${this.esc(this.bom || "—")}</span> — ${this.esc(b.production_item_name || "")}</div></div>` +
 			`<div class="fc"><div class="k">${lock} Finished Item</div><div class="v">${this.esc(b.production_item_name || "—")}</div></div>` +
 			`<div class="fc"><div class="k">${lock} Item Code</div><div class="v mono">${this.esc(b.production_item || "—")}</div></div>` +
 			`<div class="fc"><div class="k">UOM</div><div class="v">${this.esc(b.production_uom || "—")}</div></div>` +
