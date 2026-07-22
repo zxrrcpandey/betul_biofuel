@@ -62,7 +62,7 @@ from frappe.utils import flt, getdate
 
 
 # Tolerance for the net-zero per-(item, warehouse) assertion before a ledger sweep.
-_NET_ZERO_EPS = 1e-6
+_NET_ZERO_EPS = 0.05  # 20 Jul (user-approved): tolerate paisa-level valuation rounding residue (was 1e-6) — FIFO/capped-rate math on cancel legitimately leaves ±1-2 paise; anything larger still aborts
 
 
 # ---------------------------------------------------------------- chain snapshot
