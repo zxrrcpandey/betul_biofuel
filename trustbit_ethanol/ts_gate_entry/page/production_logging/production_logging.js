@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.5.0"; // 23 Jul — Single-flow by-product Post Distribution (opt-in pause + PM split card) // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // v2.21 Single-flow department release
+const PL_VERSION = "v1.5.1"; // 23 Jul — Single-flow by-product Post Distribution (opt-in pause + PM split card) // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // v2.21 Single-flow department release
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -404,9 +404,9 @@ class ProductionLogging {
 						<thead><tr><th>By-product</th><th class="r">Std / batch</th><th class="r">Qty (editable)</th><th>UOM</th><th>Warehouse (editable)</th></tr></thead>
 						<tbody id="pl-bp-body"></tbody>
 					</table>
-					<label id="pl-bp-dist-wrap" style="display:none;align-items:flex-start;gap:8px;margin:8px 2px 0;font-size:12px;cursor:pointer;">
-						<input type="checkbox" id="pl-bp-dist" style="margin-top:2px;">
-						<span><b>Post-distribute by-products</b> — after the Store-Manager release, pause so you can split each by-product across multiple warehouses (one Manufacture entry posts the split).</span>
+					<label id="pl-bp-dist-wrap" style="display:none;align-items:flex-start;gap:10px;margin:10px 0 2px;padding:10px 12px;font-size:12.5px;line-height:1.45;cursor:pointer;border:1px solid var(--purple-bd);background:var(--purple-chip);border-radius:var(--radius-sm);color:var(--text);">
+						<input type="checkbox" id="pl-bp-dist" checked style="margin-top:3px;width:15px;height:15px;accent-color:#7c3aed;flex:0 0 auto;">
+						<span><b style="color:var(--purple-txt)">&#127981; Post-distribute by-products</b> — after the Store-Manager release, the run pauses so you can split each by-product across multiple warehouses (one Manufacture entry posts the split). Untick for the normal straight-through flow.</span>
 					</label>
 				</div>
 
@@ -844,7 +844,7 @@ class ProductionLogging {
 		// reset the working state — the two flows must never share a half-built form
 		this.bom = null; this.bom_std = null; this.connector = null;
 		this.rm_state = []; this.bp_state = [];
-		this.$root.find("#pl-bp-dist").prop("checked", false);  // opt-in resets per form open
+		this.$root.find("#pl-bp-dist").prop("checked", true);  // PRE-CHECKED per user (23 Jul UAT); PM unticks for straight-through
 		this.$root.find("#pl-bom-select").val("");
 		this.$root.find("#pl-conn-select").val("");
 		this.$root.find("#pl-fetched-box").addClass("hidden").empty();
