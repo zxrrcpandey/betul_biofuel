@@ -56,6 +56,10 @@ CONTROL_FIELDS = [
 	"wip_reconcile_variance_pct",
 	"wip_returned_stock_entry",
 	"wip_reconcile_note",
+	# Single-flow by-product Post Distribution (23 Jul) — set at INSERT by the dialog
+	# payload (no DB baseline -> guard passes), immutable afterwards: flipping it
+	# post-submit would silently change whether the SM release pauses for the PM split.
+	"ts_byproduct_distribution",
 	# Multiple flow (Phase D) — written ONLY by ts_production_multi endpoints (db_set).
 	"flow_type",
 	"bom_connector",

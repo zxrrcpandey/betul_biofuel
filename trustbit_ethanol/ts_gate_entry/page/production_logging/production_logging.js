@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.4.3"; // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // SM release zone shows "Waiting: <depts>" until departments release // v2.21 Single-flow department release (slots + actuals dialog)
+const PL_VERSION = "v1.5.0"; // 23 Jul — Single-flow by-product Post Distribution (opt-in pause + PM split card) // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // v2.21 Single-flow department release
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -286,7 +286,9 @@ class ProductionLogging {
 		// 22 Jul — department vote-to-delete card (cascade delete; server filters by recipient)
 		const cvote = `<div id="pl-cascade-vote-wrap"></div>`;
 		const board = `<div id="pl-board-wrap"></div>`;
-		const dist = `<div id="pl-dist-wrap"></div>`;
+		// #pl-sdist-wrap = Single-flow by-product Post Distribution (23 Jul) — rides
+		// wherever the Multiple dist zone goes, so no layout-order changes needed.
+		const dist = `<div id="pl-dist-wrap"></div><div id="pl-sdist-wrap"></div>`;
 		const dept = `<div id="pl-dept-wrap"></div>`;
 		// dept-only users (no PM/SM hats): their Add-Production + release tasks first
 		if (!this.is_pm && !this.is_store_mgr) return dept + cvote + deptrel + board + dist + release + mrelease;
@@ -319,6 +321,9 @@ class ProductionLogging {
 		if ((this._n_cvote || 0) > 0) acts.push({
 			n: this._n_cvote, cls: "amber", target: "#pl-sec-cvote",
 			l: "Delete Vote", s: "delete request" + (this._n_cvote > 1 ? "s" : "") + " awaiting your Yes/No" });
+		if ((this._n_sdist || 0) > 0) acts.push({
+			n: this._n_sdist, cls: "violet", target: "#pl-sec-sdist",
+			l: "Distribute By-Products", s: "run" + (this._n_sdist > 1 ? "s" : "") + " awaiting your warehouse split" });
 		if (!acts.length) { $w.empty(); return; }
 		$w.html(`<div class="pl-acts">` + acts.map((a) => `
 			<div class="pl-act ${a.cls} glass" data-target="${a.target}" role="button" tabindex="0">
@@ -399,6 +404,10 @@ class ProductionLogging {
 						<thead><tr><th>By-product</th><th class="r">Std / batch</th><th class="r">Qty (editable)</th><th>UOM</th><th>Warehouse (editable)</th></tr></thead>
 						<tbody id="pl-bp-body"></tbody>
 					</table>
+					<label id="pl-bp-dist-wrap" style="display:none;align-items:flex-start;gap:8px;margin:8px 2px 0;font-size:12px;cursor:pointer;">
+						<input type="checkbox" id="pl-bp-dist" style="margin-top:2px;">
+						<span><b>Post-distribute by-products</b> — after the Store-Manager release, pause so you can split each by-product across multiple warehouses (one Manufacture entry posts the split).</span>
+					</label>
 				</div>
 
 				<div class="form-sec" id="pl-step3" style="display:none">
@@ -470,7 +479,10 @@ class ProductionLogging {
 				self.on_flow_change($(this).data("mode"));
 			});
 			this.$root.on("change", "#pl-conn-select", (e) => self.on_connector_change(e.target.value));
-			this.$root.on("click", ".pl-dist-btn", function () {
+			this.$root.on("click", ".pl-sdist-btn", function () {
+			self.open_distribution_dialog($(this).data("name"), true);
+		});
+		this.$root.on("click", ".pl-dist-btn", function () {
 				self.open_distribution_dialog($(this).data("name"));
 			});
 			this.$root.on("input", "#pl-produced-qty", () => self.on_produced_change());
@@ -633,6 +645,7 @@ class ProductionLogging {
 		this.load_dept_context();  // Phase C — server decides visibility (kill switch + recipients)
 		this.load_my_release_slots(); // v2.21 (13 Jul) — Single-flow department release
 		this.load_my_cascade_votes(); // 22 Jul — department vote-to-delete card
+		if (this.is_pm) this.load_single_distributions(); // 23 Jul — by-product Post Distribution
 		this.load_multi_context(); // Phase D — chooser + pending distributions
 		this.load_multi_board();   // v2.21 — dept status board (R3)
 	}
@@ -831,6 +844,7 @@ class ProductionLogging {
 		// reset the working state — the two flows must never share a half-built form
 		this.bom = null; this.bom_std = null; this.connector = null;
 		this.rm_state = []; this.bp_state = [];
+		this.$root.find("#pl-bp-dist").prop("checked", false);  // opt-in resets per form open
 		this.$root.find("#pl-bom-select").val("");
 		this.$root.find("#pl-conn-select").val("");
 		this.$root.find("#pl-fetched-box").addClass("hidden").empty();
@@ -1278,6 +1292,42 @@ class ProductionLogging {
 	}
 
 	// ── Phase D — pending distributions (PM posts the multi-warehouse split) ──
+	// ── 23 Jul — Single-flow BY-PRODUCT Post Distribution (PM) ──────────
+	load_single_distributions() {
+		frappe.call({
+			method: "trustbit_ethanol.ts_gate_entry.ts_production_release.get_awaiting_distributions",
+			callback: (r) => this.render_sdist_zone(r.message || []),
+			error: () => this.render_sdist_zone([]),
+		});
+	}
+
+	render_sdist_zone(rows) {
+		const $wrap = this.$root.find("#pl-sdist-wrap");
+		if (!$wrap.length) return;
+		this._n_sdist = rows.length;
+		this.update_actions();
+		if (!rows.length) { $wrap.empty(); return; }
+		const row = (r) => `
+			<div class="pl-row violet">
+				<span class="pl-rid">${this.esc(r.name)}</span>
+				<span class="pl-rwhat">${this.esc(r.production_item_name || r.production_item)} · <b>${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</b>
+					<span class="dim">· ${(r.byproducts || []).length} by-product(s) to split</span></span>
+				<span class="pl-pill age">waiting ${this.age_of(r.modified) || "—"}</span>
+				<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>
+				<button class="btn btn-approve btn-sm btn-violet pl-sdist-btn" data-name="${this.esc(r.name)}">&#127981; Distribute By-Products</button>
+			</div>
+			<div class="pl-xpand" style="display:none">
+				${(r.byproducts || []).map((b) => `<span><b>${this.esc(b.item_name || b.item_code)}</b> — ${this.fmt1(b.actual_qty)} ${this.esc(b.uom || "")} to split</span>`).join("")}
+				<span><b>Note</b> the finished good goes to the standard FG warehouse; you split ONLY the by-products — each must total exactly its produced quantity.</span>
+			</div>`;
+		$wrap.html(`
+			<div class="sec-title" id="pl-sec-sdist">
+				<span class="bar" style="background:var(--purple)"></span> Post Distribution &mdash; By-Products (Single Flow)
+				<span class="feas-tag tag-auto">&#127981; PM action</span>
+			</div>
+			<div class="glass pl-rows">${rows.map(row).join("")}</div>`);
+	}
+
 	load_pending_distributions() {
 		frappe.call({
 			method: "frappe.client.get_list",
@@ -1323,7 +1373,7 @@ class ProductionLogging {
 			<div class="glass pl-rows">${rows.map(row).join("")}</div>`);
 	}
 
-	open_distribution_dialog(name) {
+	open_distribution_dialog(name, single) {
 		if (this.busy) return;
 		Promise.all([
 			new Promise((res) => frappe.call({
@@ -1334,13 +1384,15 @@ class ProductionLogging {
 			this.load_warehouses(),
 		]).then(([doc, warehouses]) => {
 			if (!doc) return;
-			const targets = [{
+			// single (23 Jul) = Single-flow BY-PRODUCTS-ONLY split: FG is synthesized
+			// server-side to the standard FG warehouse and is NOT part of the dialog.
+			const targets = (single ? [] : [{
 				item_code: doc.production_item,
 				item_name: doc.production_item_name || doc.production_item,
 				line_type: "Finished",
 				target: flt(doc.actual_produced_qty),
 				uom: doc.production_uom || "",
-			}].concat((doc.byproducts || [])
+			}]).concat((doc.byproducts || [])
 				.filter((b) => flt(b.actual_qty) > 0)
 				.map((b) => ({
 					item_code: b.item_code,
@@ -1350,6 +1402,10 @@ class ProductionLogging {
 					uom: b.uom || "",
 					rate: flt(b.rate),
 				})));
+			if (single && !targets.length) {
+				frappe.show_alert({ message: __("No by-products with quantity to split."), indicator: "orange" });
+				return;
+			}
 			const wh_opts = warehouses.map((w) =>
 				`<option value="${frappe.utils.escape_html(w)}">${frappe.utils.escape_html(w)}</option>`).join("");
 			const blocks = targets.map((t, ti) => `
@@ -1370,11 +1426,12 @@ class ProductionLogging {
 				</div>`).join("");
 
 			const d = new frappe.ui.Dialog({
-				title: __("Post Distribution — {0}", [doc.name]),
+				title: single ? __("Distribute By-Products — {0}", [doc.name])
+				              : __("Post Distribution — {0}", [doc.name]),
 				size: "large",
 				fields: [{ fieldtype: "HTML", fieldname: "dist_html" }],
-				primary_action_label: __("Post Distribution"),
-				primary_action: () => this.submit_distribution(d, doc, targets),
+				primary_action_label: single ? __("Post By-Product Split") : __("Post Distribution"),
+				primary_action: () => this.submit_distribution(d, doc, targets, single),
 			});
 			d.fields_dict.dist_html.$wrapper.html(
 				`<div style="font-size:12px;margin-bottom:8px;">Each item's split must total <b>exactly</b> its produced quantity — the button unlocks when everything balances.</div>` + blocks +
@@ -1433,7 +1490,7 @@ class ProductionLogging {
 		}));
 	}
 
-	submit_distribution(d, doc, targets) {
+	submit_distribution(d, doc, targets, single) {
 		const $w = d.fields_dict.dist_html.$wrapper;
 		const rows = [];
 		targets.forEach((t, ti) => {
@@ -1451,18 +1508,21 @@ class ProductionLogging {
 		d.hide();
 		this.busy = true;
 		this.start_progress({
-			title: "Posting distribution…",
+			title: single ? "Posting by-product split…" : "Posting distribution…",
 			subtitle: `${doc.name} · Awaiting Distribution → Completed`,
 			steps: [
 				{ label: "Validating the split (sum = produced)…", kind: "auto" },
 				{ label: "Completing Job Cards (if any)…", kind: "auto" },
-				{ label: "Posting the multi-warehouse Manufacture entry…", kind: "auto" },
+				{ label: single ? "Posting the Manufacture entry with split by-products…"
+				                : "Posting the multi-warehouse Manufacture entry…", kind: "auto" },
 				{ label: "Closing the Work Order + reconciling WIP…", kind: "auto" },
 			],
 		});
 		this.advance_progress(0);
 		frappe.call({
-			method: "trustbit_ethanol.ts_gate_entry.ts_production_multi.complete_distribution",
+			method: single
+				? "trustbit_ethanol.ts_gate_entry.ts_production_release.complete_single_distribution"
+				: "trustbit_ethanol.ts_gate_entry.ts_production_multi.complete_distribution",
 			type: "POST",
 			args: { name: doc.name, distribution: rows },
 			callback: (r) => {
@@ -1872,6 +1932,8 @@ class ProductionLogging {
 
 		// by-products (read-only, auto-scaled)
 		const $bp = this.$root.find("#pl-bp-body");
+		// Post-Distribution opt-in only makes sense when the BOM has by-products
+		this.$root.find("#pl-bp-dist-wrap").css("display", this.bp_state.length ? "flex" : "none");
 		if (!this.bp_state.length) {
 			$bp.html('<tr class="mat-empty"><td colspan="5">No by-products on this BOM.</td></tr>');
 		} else {
@@ -2016,6 +2078,8 @@ class ProductionLogging {
 			standard_batches: 1,
 			materials: materials,
 			byproducts: byproducts,
+			ts_byproduct_distribution:
+				this.$root.find("#pl-bp-dist").is(":checked") && byproducts.length ? 1 : 0,
 		};
 		if (multi) {
 			doc_payload.flow_type = "Multiple";

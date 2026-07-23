@@ -546,10 +546,16 @@ def _cap_byproduct_rates(se):
 				frappe.clear_messages()
 
 
-def submit_manufacture_se(wo_name, company=None):
+def submit_manufacture_se(wo_name, company=None, bp_split=None):
 	"""Create + submit the Manufacture Stock Entry (consumes WIP per BOM-scaled qty,
 	produces FG + by-products). WO auto-Completes when produced_qty == qty.
-	Idempotent: returns an existing submitted Manufacture SE if one already exists."""
+	Idempotent: returns an existing submitted Manufacture SE if one already exists.
+
+	bp_split (23 Jul, single-flow Post Distribution): optional
+	{item_code: [(qty, warehouse), ...]} — replaces that by-product's single scrap
+	row with one row per (qty, warehouse). The caller (complete_single_distribution)
+	has already validated sums == actual + warehouse sanity server-side. None ->
+	behavior byte-identical to before."""
 	from erpnext.manufacturing.doctype.work_order.work_order import make_stock_entry
 
 	existing = frappe.get_all(
@@ -591,6 +597,29 @@ def submit_manufacture_se(wo_name, company=None):
 						row.transfer_qty = flt(r.actual_qty) * cf
 					if r.get("target_warehouse"):
 						row.t_warehouse = r.target_warehouse
+	# Post Distribution (23 Jul): split each listed by-product across warehouses —
+	# first split line reuses the existing scrap row, extras are appended copies.
+	if bp_split:
+		extras = []
+		for row in se.items:
+			splits = bp_split.get(row.item_code) if getattr(row, "is_scrap_item", 0) else None
+			if not splits:
+				continue
+			cf = flt(row.conversion_factor) or 1.0
+			q0, wh0 = splits[0]
+			row.qty = flt(q0)
+			row.transfer_qty = flt(q0) * cf
+			row.t_warehouse = wh0
+			for q, wh in splits[1:]:
+				extras.append({
+					"item_code": row.item_code, "qty": flt(q),
+					"transfer_qty": flt(q) * cf, "uom": row.uom,
+					"stock_uom": row.stock_uom, "conversion_factor": cf,
+					"t_warehouse": wh, "is_scrap_item": 1,
+					"basic_rate": flt(row.basic_rate),
+				})
+		for x in extras:
+			se.append("items", x)
 	_cap_byproduct_rates(se)  # keep FG cost >= 0 when by-products out-value the inputs
 	# v2.21 ② department-wise cost centre — resolve from the run linked to this WO
 	_pe = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},

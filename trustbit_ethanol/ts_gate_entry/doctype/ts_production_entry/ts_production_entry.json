@@ -60,7 +60,8 @@
   "materials_section",
   "materials",
   "byproducts_section",
-  "byproducts"
+  "byproducts",
+  "ts_byproduct_distribution"
  ],
  "fields": [
   {
@@ -477,6 +478,15 @@
    "fieldtype": "Table",
    "label": "By-Products",
    "options": "TS Production By-Product"
+  },
+  {
+   "default": "0",
+   "description": "Set at entry by the Production Logging dialog: pause after the Store-Manager release at 'Awaiting Distribution' so the PM can split by-products across warehouses (one Manufacture SE posts the split). Tamper-guarded after insert (CONTROL_FIELDS).",
+   "fieldname": "ts_byproduct_distribution",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Post-Distribute By-Products",
+   "no_copy": 1
   }
  ],
  "index_web_pages_for_search": 0,
