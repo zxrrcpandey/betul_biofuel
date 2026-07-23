@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.5.1"; // 23 Jul — Single-flow by-product Post Distribution (opt-in pause + PM split card) // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // v2.21 Single-flow department release
+const PL_VERSION = "v1.5.2"; // 23 Jul — Single-flow by-product Post Distribution (opt-in pause + PM split card) // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // v2.21 Single-flow department release
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -505,6 +505,9 @@ class ProductionLogging {
 		this.$root.on("click", ".pl-cvote-btn", function () {
 			self.cast_cascade_vote($(this).data("i"), $(this).data("d"));
 		});
+		// 23 Jul — toggling Post-Distribution re-renders so the by-product
+		// warehouse column greys/un-greys live
+		this.$root.on("change", "#pl-bp-dist", () => self.render_form());
 		// v2.21 UAT ③ — dept user corrects their own Logged entry (reopen for re-entry)
 		this.$root.on("click", ".pl-reopen-btn", function () {
 			const name = $(this).data("name");
@@ -1960,6 +1963,14 @@ class ProductionLogging {
 			$bp.find(".bp-wh").on("change", function () {
 				self.bp_state[$(this).data("i")].target_warehouse = ($(this).val() || "").trim();
 			});
+			// Post-Distribution checked => the row warehouse is superseded by the PM's
+			// later split — grey it out so nobody thinks it will be honoured. Qty stays
+			// editable: the split must total EXACTLY the qty declared here.
+			const dist_on = this.$root.find("#pl-bp-dist").is(":checked");
+			$bp.find(".bp-wh").prop("disabled", dist_on).css("opacity", dist_on ? 0.4 : 1)
+				.attr("title", dist_on
+					? __("Warehouses are chosen at Post Distribution (after the Store-Manager release)")
+					: "");
 		}
 
 		// raw material (editable)
