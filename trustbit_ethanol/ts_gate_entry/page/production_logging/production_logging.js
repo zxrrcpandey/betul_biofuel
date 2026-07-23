@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.5.2"; // 23 Jul — Single-flow by-product Post Distribution (opt-in pause + PM split card) // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // v2.21 Single-flow department release
+const PL_VERSION = "v1.5.3"; // 23 Jul — Single-flow by-product Post Distribution (opt-in pause + PM split card) // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // v2.21 Single-flow department release
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -401,7 +401,7 @@ class ProductionLogging {
 					</div>
 					<div class="form-sec-h" style="margin-top:6px">By-products <span class="scale-badge" id="pl-bp-badge">auto-scaled</span></div>
 					<table class="mat-table">
-						<thead><tr><th>By-product</th><th class="r">Std / batch</th><th class="r">Qty (editable)</th><th>UOM</th><th>Warehouse (editable)</th></tr></thead>
+						<thead><tr><th>By-product</th><th class="r">Std / batch</th><th class="r">Qty (editable)</th><th>UOM</th><th id="pl-bp-wh-th">Warehouse</th></tr></thead>
 						<tbody id="pl-bp-body"></tbody>
 					</table>
 					<label id="pl-bp-dist-wrap" style="display:none;align-items:flex-start;gap:10px;margin:10px 0 2px;padding:10px 12px;font-size:12.5px;line-height:1.45;cursor:pointer;border:1px solid var(--purple-bd);background:var(--purple-chip);border-radius:var(--radius-sm);color:var(--text);">
@@ -1937,8 +1937,22 @@ class ProductionLogging {
 		const $bp = this.$root.find("#pl-bp-body");
 		// Post-Distribution opt-in only makes sense when the BOM has by-products
 		this.$root.find("#pl-bp-dist-wrap").css("display", this.bp_state.length ? "flex" : "none");
+		// Checked => the Warehouse COLUMN is HIDDEN entirely (the PM's later split
+		// decides warehouses); qty stays — the split must total the declared qty.
+		const dist_on = this.$root.find("#pl-bp-dist").is(":checked");
+		this.$root.find("#pl-bp-wh-th").toggle(!dist_on);
+		// Warehouse is a DROPDOWN of real leaf warehouses (same cached list the
+		// distribution dialog uses); the row's current value is always selectable.
+		if (!this.warehouses) this.load_warehouses().then(() => this.render_form());
+		const wh_sel = (cur, i) => {
+			const list = this.warehouses || [];
+			const all = (cur && !list.includes(cur)) ? [cur].concat(list) : list;
+			return `<td><select class="inp bp-wh" data-i="${i}" style="max-width:190px">` +
+				all.map((w) => `<option value="${this.esc(w)}"${w === cur ? " selected" : ""}>${this.esc(w)}</option>`).join("") +
+				`</select></td>`;
+		};
 		if (!this.bp_state.length) {
-			$bp.html('<tr class="mat-empty"><td colspan="5">No by-products on this BOM.</td></tr>');
+			$bp.html(`<tr class="mat-empty"><td colspan="${dist_on ? 4 : 5}">No by-products on this BOM.</td></tr>`);
 		} else {
 			$bp.html(
 				this.bp_state
@@ -1948,7 +1962,7 @@ class ProductionLogging {
 							`<td class="r std-q">${this.fmt1(b.std_qty)}</td>` +
 							`<td class="r"><input class="inp bp-q" type="number" min="0" step="any" data-i="${i}" value="${b.edited_qty != null ? flt(b.edited_qty) : this.round_qty(flt(b.std_qty) * s)}" style="max-width:110px;text-align:right"></td>` +
 							`<td class="uom-cell">${this.esc(b.uom || "")}</td>` +
-							`<td><input class="inp bp-wh" type="text" data-i="${i}" value="${this.esc(b.target_warehouse || "")}" placeholder="warehouse" style="max-width:190px"></td></tr>`
+							(dist_on ? "" : wh_sel(b.target_warehouse || "", i)) + `</tr>`
 					)
 					.join("")
 			);
@@ -1963,14 +1977,6 @@ class ProductionLogging {
 			$bp.find(".bp-wh").on("change", function () {
 				self.bp_state[$(this).data("i")].target_warehouse = ($(this).val() || "").trim();
 			});
-			// Post-Distribution checked => the row warehouse is superseded by the PM's
-			// later split — grey it out so nobody thinks it will be honoured. Qty stays
-			// editable: the split must total EXACTLY the qty declared here.
-			const dist_on = this.$root.find("#pl-bp-dist").is(":checked");
-			$bp.find(".bp-wh").prop("disabled", dist_on).css("opacity", dist_on ? 0.4 : 1)
-				.attr("title", dist_on
-					? __("Warehouses are chosen at Post Distribution (after the Store-Manager release)")
-					: "");
 		}
 
 		// raw material (editable)
