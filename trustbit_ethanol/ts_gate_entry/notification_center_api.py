@@ -123,13 +123,14 @@ def _cat_condition(category):
 # ═══════════════════════════════════════════════════════════════════════
 
 @frappe.whitelist()
-def get_notifications(category="all", unread=0, days="30", start=0, page_length=20):
+def get_notifications(category="all", unread=0, days="30", start=0, page_length=20, search=""):
     _guard()
     user = frappe.session.user
     category = category if category in _CATEGORIES else "all"
     days = str(days) if str(days) in _DAYS else "30"
     start = max(cint(start), 0)
     page_length = min(max(cint(page_length) or 20, 1), 50)
+    search = (search or "").strip()[:100]
 
     conds = ["nl.for_user = %(user)s"]  # hard self-scope — never trust PQC alone
     params = {"user": user}
@@ -139,16 +140,25 @@ def get_notifications(category="all", unread=0, days="30", start=0, page_length=
     base = "FROM `tabNotification Log` nl WHERE " + " AND ".join(conds)
     cat_sql = _cat_condition(category)
     unread_sql = " AND nl.`read` = 0" if cint(unread) else ""
+    # Free-text search — parameterized LIKE (self-scoped, no injection surface).
+    # Applied to the row list + its total ONLY; category_counts stay the
+    # unfiltered navigator so the chips still show what's in the range.
+    search_sql = ""
+    if search:
+        params["search"] = "%" + search + "%"
+        search_sql = " AND (nl.subject LIKE %(search)s OR nl.document_name LIKE %(search)s)"
 
     rows = frappe.db.sql(
         """SELECT nl.name, nl.subject, nl.document_type, nl.document_name,
                   nl.creation, nl.`read` AS is_read, nl.link
-           {base}{cat}{unread}
+           {base}{cat}{unread}{search}
            ORDER BY nl.creation DESC
-           LIMIT %(start)s, %(page_length)s""".format(base=base, cat=cat_sql, unread=unread_sql),
+           LIMIT %(start)s, %(page_length)s""".format(
+            base=base, cat=cat_sql, unread=unread_sql, search=search_sql),
         {**params, "start": start, "page_length": page_length}, as_dict=True)
     total = frappe.db.sql(
-        "SELECT COUNT(*) {base}{cat}{unread}".format(base=base, cat=cat_sql, unread=unread_sql),
+        "SELECT COUNT(*) {base}{cat}{unread}{search}".format(
+            base=base, cat=cat_sql, unread=unread_sql, search=search_sql),
         params)[0][0]
 
     counts_raw = frappe.db.sql(
@@ -255,14 +265,21 @@ def latest_unread():
 
 _CARD_LABELS = {"PO": "PO Approvals", "MR": "MR Approvals", "Inspection": "Inspections",
                 "Production": "Production", "Budget": "Budget", "Other": "Post-Dated"}
+_PENDING_CATEGORIES = ("all", "PO", "MR", "Inspection", "Production", "Budget", "Other")
+# Per-source ceiling — high enough that "showing X of N" is honest for any real
+# personal queue, bounded so a runaway role can't build an unbounded list.
+_PENDING_SOURCE_CAP = 200
 
 
 @frappe.whitelist()
-def get_pending_actions():
+def get_pending_actions(category="all", start=0, page_length=50):
     _guard()
     user = frappe.session.user
     roles = set(frappe.get_roles(user))
     sla_hours = cint(frappe.db.get_single_value("TS Settings", "approval_sla_hours")) or 0
+    category = category if category in _PENDING_CATEGORIES else "all"
+    start = max(cint(start), 0)
+    page_length = min(max(cint(page_length) or 50, 1), 50)
 
     items = []
     items += _pending_approvals("Purchase Order", user, roles, sla_hours)
@@ -271,8 +288,11 @@ def get_pending_actions():
     items += _pending_grain_ds(roles)
     items += _pending_budget(roles)
     items += _pending_production(roles)
-    items.sort(key=lambda x: -x["age_hours"])
+    # Overdue first, then longest-waiting first — what needs action floats up.
+    items.sort(key=lambda x: (0 if x["overdue"] else 1, -x["age_hours"]))
 
+    # Cards count the FULL per-category set (not the visible page) so the
+    # numbers stay honest even when the list below is paginated/filtered.
     cards, order = {}, []
     for it in items:
         if it["category"] not in cards:
@@ -281,7 +301,12 @@ def get_pending_actions():
                                      "count": 0}
             order.append(it["category"])
         cards[it["category"]]["count"] += 1
-    return {"cards": [cards[k] for k in order], "items": items[:50]}
+
+    filtered = items if category == "all" else [it for it in items if it["category"] == category]
+    total = len(filtered)
+    return {"cards": [cards[k] for k in order],
+            "items": filtered[start:start + page_length],
+            "total": total, "category": category}
 
 
 def _item(category, doc_type, doc_name, since_dt, overdue_after=0):
@@ -335,9 +360,10 @@ def _pending_approvals(doctype, user, roles, sla_hours):
              AND d.{submitted_f} != %(user)s
              {conf}
            ORDER BY d.modified ASC
-           LIMIT 50""".format(
+           LIMIT {cap}""".format(
             tbl=tbl, status_f=status_f, rule_f=rule_f, step_f=step_f,
             step_tbl=step_tbl, submitted_f=submitted_f, conf=conf_sql,
+            cap=_PENDING_SOURCE_CAP,
             cc=", d.cost_center" if not is_po else ""),
         {"roles": tuple(role_list), "user": user}, as_dict=True)
 
@@ -375,7 +401,7 @@ def _pending_inspections(user):
         "TS Material Inspection",
         filters={"status": "Pending Inspection"},
         or_filters={"requester": user, "department_head": user},
-        fields=["name", "created_time"], limit_page_length=50)
+        fields=["name", "created_time"], limit_page_length=_PENDING_SOURCE_CAP)
     return [_item("Inspection", "TS Material Inspection", r.name, r.created_time)
             for r in rows]
 
@@ -384,7 +410,7 @@ def _pending_grain_ds(roles):
     if "Grain Manager" not in roles:
         return []
     rows = frappe.get_all("TS Deduction Suggestion", filters={"docstatus": 0},
-                          fields=["name", "creation"], limit_page_length=50)
+                          fields=["name", "creation"], limit_page_length=_PENDING_SOURCE_CAP)
     return [_item("Inspection", "TS Deduction Suggestion", r.name, r.creation)
             for r in rows]
 
@@ -393,12 +419,12 @@ def _pending_budget(roles):
     out = []
     if "CEO" in roles:
         for r in frappe.get_all("TS Budget Proposal", filters={"status": "Pending CEO"},
-                                fields=["name", "modified"], limit_page_length=50):
+                                fields=["name", "modified"], limit_page_length=_PENDING_SOURCE_CAP):
             out.append(_item("Budget", "TS Budget Proposal", r.name, r.modified))
     if roles & {"CEO", "MD", "Managing Director"}:
         for r in frappe.get_all("TS Post Dated Entry Request",
                                 filters={"status": "Pending Approval"},
-                                fields=["name", "modified"], limit_page_length=50):
+                                fields=["name", "modified"], limit_page_length=_PENDING_SOURCE_CAP):
             out.append(_item("Other", "TS Post Dated Entry Request", r.name, r.modified))
     return out
 
@@ -411,7 +437,7 @@ def _pending_production(roles):
     rows = frappe.get_all(
         "TS Production Entry",
         filters={"ts_variance_status": ["in", ["Pending Stores Release", "Pending Material Request"]]},
-        fields=["name", "modified"], limit_page_length=50)
+        fields=["name", "modified"], limit_page_length=_PENDING_SOURCE_CAP)
     return [_item("Production", "TS Production Entry", r.name, r.modified)
             for r in rows]
 
