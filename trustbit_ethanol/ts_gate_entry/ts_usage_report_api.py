@@ -33,11 +33,11 @@ MAX_SPAN_DAYS = 90
 # partially-pruned edge day out. A pre-retention window REFUSES, never fakes zeros.
 RETENTION_FLOOR_DAYS = 89
 
+# System/non-person accounts ONLY (user decision 24 Jul: "all real logins" count —
+# admin/ops accounts like erp.admin [Kr Dhotte, 45 logins/30d on prod] are real
+# people and must appear; hiding them made the report lie)
 _STATIC_EXCLUDED = (
     "Administrator", "Guest",
-    "admin@gmail.com", "admin2@gmail.com",
-    "erp.admin@betulbiofuel.com", "erp.superadmin@betulbiofuel.com",
-    "ra.pandey008@gmail.com",
     # demo-only test accounts — inert on prod (nonexistent users never match)
     "g1@test.com", "g2@test.com", "sharda@gmail.com", "raja.b@trustbit.in",
 )
