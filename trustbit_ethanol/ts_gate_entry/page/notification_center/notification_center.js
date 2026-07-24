@@ -7,7 +7,7 @@
    Every section renders fail-soft WITH console.error (Lesson 311).
    ═══════════════════════════════════════════════════════════════════ */
 
-const NC_VERSION = "v2.1-2026-07-21";
+const NC_VERSION = "v2.4-2026-07-22";
 const NC_API = "trustbit_ethanol.ts_gate_entry.notification_center_api";
 console.log("[notification-center]", NC_VERSION, "loaded");
 
@@ -108,7 +108,7 @@ function _nc_render_shell() {
 			<div id="nc-s1-body"><div class="nc-skel"></div><div class="nc-skel"></div></div>
 		</section>
 		<section class="nc-section">
-			<h3>${__("My Notifications")} <span class="nc-badge nc-badge-unread" id="nc-s2-unread" aria-live="polite" style="display:none;"></span></h3>
+			<h3>${__("My Notifications")} <span class="nc-badge nc-badge-unread" id="nc-s2-unread" aria-live="polite" style="display:none;"></span><span id="nc-s2-controls"></span></h3>
 			<div id="nc-filterbar"></div>
 			<div id="nc-s2-body"><div class="nc-skel"></div><div class="nc-skel"></div><div class="nc-skel"></div></div>
 			<div id="nc-s2-footer"></div>
@@ -196,17 +196,16 @@ function _nc_render_filterbar() {
 			const n = cc[c] ? (f.unread ? cc[c].unread : cc[c].total) : 0;
 			return `<button class="nc-chip ${f.category === c ? "nc-chip-on nc-cat-" + c : ""}" aria-pressed="${f.category === c}" data-cat="${c}">${c === "all" ? __("All") : _nc_esc(c)} (${format_number(n, null, 0)})</button>`;
 		}).join("");
-		$("#nc-filterbar").html(`
-			<div class="nc-chipstrip">${chips}</div>
-			<div class="nc-filterrow">
-				<label class="nc-toggle"><input type="checkbox" id="nc-unread-only" ${f.unread ? "checked" : ""} aria-label="${__("Show unread only")}"> ${__("Unread only")}</label>
-				<select id="nc-days" class="form-control nc-days">
-					<option value="7" ${f.days === "7" ? "selected" : ""}>${__("Last 7 days")}</option>
-					<option value="30" ${f.days === "30" ? "selected" : ""}>${__("Last 30 days")}</option>
-					<option value="90" ${f.days === "90" ? "selected" : ""}>${__("Last 90 days")}</option>
-					<option value="all" ${f.days === "all" ? "selected" : ""}>${__("All")}</option>
-				</select>
-			</div>`);
+		$("#nc-filterbar").html(`<div class="nc-chipstrip">${chips}</div>`);
+		// Toggle + range live in the section title row (right-aligned) — UX ask 22 Jul.
+		$("#nc-s2-controls").html(`
+			<label class="nc-toggle"><input type="checkbox" id="nc-unread-only" ${f.unread ? "checked" : ""} aria-label="${__("Show unread only")}"> ${__("Unread only")}</label>
+			<select id="nc-days" class="form-control nc-days">
+				<option value="7" ${f.days === "7" ? "selected" : ""}>${__("Last 7 days")}</option>
+				<option value="30" ${f.days === "30" ? "selected" : ""}>${__("Last 30 days")}</option>
+				<option value="90" ${f.days === "90" ? "selected" : ""}>${__("Last 90 days")}</option>
+				<option value="all" ${f.days === "all" ? "selected" : ""}>${__("All")}</option>
+			</select>`);
 		$("#nc-filterbar .nc-chip").on("click", function () { f.category = $(this).data("cat"); f.start = 0; _nc_load_notifs(false); });
 		$("#nc-unread-only").on("change", function () { f.unread = this.checked ? 1 : 0; f.start = 0; _nc_load_notifs(false); });
 		$("#nc-days").on("change", function () { f.days = this.value; f.start = 0; _nc_load_notifs(false); });
@@ -233,11 +232,19 @@ function _nc_render_notifs() {
 		if (!n.rows.length) {
 			const msg = f.unread ? __("No unread notifications — you're clear.")
 				: (f.category !== "all" ? __("No {0} notifications in this range.", [f.category]) : __("No notifications in this range."));
+			// Range-aware hint: the badge counts ALL-TIME unread, so an empty
+			// filtered view with a non-zero badge needs an explanation + way out.
+			const hidden = n.unread_total || 0;
+			const filtered = f.days !== "all" || f.category !== "all";
+			const older = (hidden > 0 && filtered) ? `
+				<div class="nc-empty-sub">${__("You have {0} unread outside this view.", [format_number(hidden, null, 0)])}
+					<button class="nc-loadmore" id="nc-show-all">${__("Show all")}</button></div>` : "";
 			$("#nc-s2-body").html(`
 				<div class="nc-empty">
 					<div class="nc-empty-glyph" aria-hidden="true">📭</div>
-					<div class="nc-empty-title">${_nc_esc(msg)}</div>
+					<div class="nc-empty-title">${_nc_esc(msg)}</div>${older}
 				</div>`);
+			$("#nc-show-all").on("click", () => { f.days = "all"; f.category = "all"; f.start = 0; _nc_load_notifs(false); });
 			$("#nc-s2-footer").empty();
 			return;
 		}
@@ -280,22 +287,24 @@ function _nc_paint_badges() {
 	}
 }
 async function _nc_mark_read(name, $btn) {
+	// Phase 1: the network mutation. Only a genuine failure here is a real
+	// error — a post-success render hiccup must NOT report "couldn't mark".
 	try {
 		$btn.prop("disabled", true).html(`<span class="nc-spin" aria-hidden="true"></span>`);
-		const r = await _nc_call("mark_read", { log_name: name });
-		const row = (_nc_state.notifs.rows || []).find(x => x.name === name);
-		if (row) row.read = 1;
-		const cc = _nc_state.notifs.category_counts || {};
-		if (row && cc[row.category]) cc[row.category].unread = Math.max(0, (cc[row.category].unread || 0) - 1);
-		if (cc.all) cc.all.unread = Math.max(0, (cc.all.unread || 0) - 1);
-		_nc_state.notifs.unread_total = r.unread_total;
-		_nc_render_filterbar();
-		_nc_render_notifs();
-		_nc_paint_badges();
+		await _nc_call("mark_read", { log_name: name });
 	} catch (e) {
 		console.error(e);
 		$btn.prop("disabled", false).text("✓");
 		if (!(e && e._server_messages)) frappe.msgprint(__("Couldn't mark as read."));
+		return;
+	}
+	// Phase 2: refresh from server truth (same clean path as Mark-all-read) —
+	// re-buckets the now-read row into Read and repaints badges. Any glitch
+	// here is a display-only issue, never surfaced as a mutation failure.
+	try {
+		await _nc_load_notifs(false);
+	} catch (e) {
+		console.error(e);
 	}
 }
 async function _nc_mark_all() {
@@ -410,8 +419,8 @@ const NC_CSS = `
 .nc-chip-on.nc-cat-Budget{background:#b45309;}
 .nc-chip-on.nc-cat-Other{background:#475569;}
 
-/* ── S2 filter row ──────────────────────────────────────────────── */
-.nc-filterrow{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+/* ── S2 filter controls (in the section title row) ──────────────── */
+#nc-s2-controls{margin-left:auto;display:flex;align-items:center;gap:12px;font-weight:400;}
 .nc-toggle{font-size:12px;color:var(--text-muted);margin:0;display:flex;align-items:center;gap:6px;cursor:pointer;}
 .nc-days{width:auto;font-size:12px;height:28px;padding:2px 8px;}
 
@@ -542,7 +551,8 @@ const NC_CSS = `
 	.nc-cards{grid-template-columns:repeat(2,1fr);}
 	.nc-chipstrip{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;}
 	.nc-chip{flex:none;}
-	.nc-filterrow{flex-wrap:wrap;}
+	.nc-section h3{flex-wrap:wrap;}
+	#nc-s2-controls{margin-left:0;width:100%;flex-wrap:wrap;}
 	.nc-days{font-size:16px;height:36px;}
 	.nc-markread{min-width:44px;min-height:44px;}
 	.nc-open{min-height:40px;display:inline-flex;align-items:center;}
