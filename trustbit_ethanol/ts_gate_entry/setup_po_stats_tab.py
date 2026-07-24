@@ -39,17 +39,22 @@ def seed_po_stats_tab():
 	view columns. Idempotent."""
 	_seed_threshold_setting()
 	_seed_po_custom_fields()
-	# v2.9.8.15 — PO list view column setup (ID at position 2 + extras).
+	# v2.9.8.15 — PO list view column setup (append-only field ensure).
+	# v2.27.2 — the _seed_mr_list_view_columns() call is REMOVED: it force-
+	# overwrote the Material Request List View Settings on EVERY migrate,
+	# reverting admin "Pick Columns" choices (prod column-reset root cause).
 	_seed_po_list_view_columns()
-	# v2.9.8.30 — Same for Material Request list view.
-	_seed_mr_list_view_columns()
 	frappe.clear_cache(doctype="TS Settings")
 	frappe.clear_cache(doctype="Purchase Order")
 	frappe.clear_cache(doctype="Material Request")
 
 
 def _seed_mr_list_view_columns():
-	"""v2.9.8.30 — Material Request list view column setup.
+	"""v2.27.2 — UNUSED (call removed from seed_po_stats_tab; kept for
+	reference only). Do NOT re-wire: MR list columns are admin-owned via the
+	List View Settings row now.
+
+	v2.9.8.30 — Material Request list view column setup.
 
 	Mirrors the PO pattern (Lesson 228): hide_name_column=true via JS,
 	prototype monkey-patch on setup_columns injects `name` at index 2.
@@ -104,15 +109,10 @@ def _seed_po_list_view_columns():
 	v2.9.8.29 — also ensure `per_billed` (% Billed). Both idempotent —
 	only adds entries if absent; never removes admin-configured fields.
 
-	Bumps tabList View Settings.total_fields = 6 to fit:
-	  Tag (invisible) + Approval Status + Grand Total + % Received + % Billed
-	  + injected name (from po_list.js setup_columns monkey-patch) = 7 cols
-	  in the columns array, 6 visible.
-
-	Note: Subject (Supplier Name) is column 0 and counted separately by
-	Frappe — it doesn't go through the slice, so total_fields=6 results in
-	6 visible columns: Supplier Name | ID | Approval Status | Grand Total |
-	% Received | % Billed.
+	v2.27.2 — the total_fields="6" force is REMOVED: it silently reverted the
+	admin's "Pick Columns" max-columns choice on EVERY migrate (root cause of
+	the prod "PO list columns keep resetting" issue). total_fields is
+	admin-owned now; this seeder only APPENDS missing fields, never removes.
 	"""
 	import json
 
@@ -145,17 +145,9 @@ def _seed_po_list_view_columns():
 			if changed:
 				updated_fields_json = json.dumps(fields)
 
-	# 2. total_fields target = 6 (visible 6 + Tag invisible).
-	target_total = "6"
-	cur_total = frappe.db.get_value("List View Settings", name, "total_fields")
-
-	updates = {}
+	# v2.27.2 — total_fields is deliberately NOT written here (admin-owned).
 	if updated_fields_json is not None:
-		updates["fields"] = updated_fields_json
-	if cur_total != target_total:
-		updates["total_fields"] = target_total
-	if updates:
-		frappe.db.set_value("List View Settings", name, updates)
+		frappe.db.set_value("List View Settings", name, {"fields": updated_fields_json})
 
 
 def _seed_threshold_setting():

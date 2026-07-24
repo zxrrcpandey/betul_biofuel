@@ -19,15 +19,12 @@ _TS_LIST_DOCTYPES.forEach((dt) => {
 	const _orig_setup_columns = _proto.setup_columns;
 	_proto.setup_columns = function() {
 		_orig_setup_columns.apply(this, arguments);
-		// Purchase Order: LOCK the column set. List View Settings is a single
-		// GLOBAL row shared by all users, so any System Manager's "Pick Columns"
-		// edit silently changed everyone's PO list ("columns changing
-		// automatically in production"). Rebuild this.columns to a fixed set so
-		// the displayed columns no longer depend on List View Settings at all.
-		if (this.doctype === "Purchase Order") {
-			_ts_lock_po_columns(this);
-			return;
-		}
+		// v2.27.2 — the v2.18.11 hardcoded PO column lock is REMOVED: it made
+		// every admin "Pick Columns" edit cosmetically ignored while the
+		// after_migrate seeder reset List View Settings underneath (root cause
+		// of "columns keep changing on prod"). PO now falls through to the
+		// generic branch below: columns are List View Settings-driven (admin
+		// owns the set), only the ID position is enforced.
 		if (!_TS_LIST_DOCTYPES.includes(this.doctype)) return;
 		if (!Array.isArray(this.columns)) return;
 		if (this.columns[2] && this.columns[2].df && this.columns[2].df.fieldname === "name") return;
@@ -42,10 +39,9 @@ _TS_LIST_DOCTYPES.forEach((dt) => {
 	};
 })();
 
-// Fixed, locked PO list column order (user-agreed):
-//   Supplier Name | ID | Status | % Received | % Billed | Approval Status | Total | Cost Center
-// Supplier Name is the title (Subject) column; Status is the standard indicator
-// column (rendered via the get_indicator override in _patch_po_list).
+// v2.27.2 — UNUSED (kept only for reference; call site removed above). Was the
+// v2.18.11 fixed PO column set. Do NOT re-wire: the global List View Settings
+// row is the single source of truth for columns now.
 function _ts_lock_po_columns(lv) {
 	try {
 		if (!lv || !Array.isArray(lv.columns) || !lv.columns.length) return;
