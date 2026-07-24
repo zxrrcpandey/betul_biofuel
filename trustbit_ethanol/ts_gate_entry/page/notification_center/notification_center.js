@@ -7,7 +7,7 @@
    Every section renders fail-soft WITH console.error (Lesson 311).
    ═══════════════════════════════════════════════════════════════════ */
 
-const NC_VERSION = "v2.7-2026-07-25";
+const NC_VERSION = "v2.8-2026-07-25";
 const NC_API = "trustbit_ethanol.ts_gate_entry.notification_center_api";
 console.log("[notification-center]", NC_VERSION, "loaded");
 
@@ -223,7 +223,7 @@ async function _nc_load_notifs(append) {
 function _nc_render_filterbar() {
 	try {
 		const f = _nc_state.filters, cc = _nc_state.notifs.category_counts || {};
-		const cats = ["all", "PO", "MR", "Inspection", "Production", "Gate", "Budget", "Other"];
+		const cats = ["all", "PO", "MR", "Inspection", "Production", "Gate", "Budget", "Mention", "Other"];
 		const chips = cats.map(c => {
 			const n = cc[c] ? (f.unread ? cc[c].unread : cc[c].total) : 0;
 			return `<button class="nc-chip ${f.category === c ? "nc-chip-on nc-cat-" + c : ""}" aria-pressed="${f.category === c}" data-cat="${c}">${c === "all" ? __("All") : _nc_esc(c)} (${format_number(n, null, 0)})</button>`;
@@ -470,6 +470,7 @@ const NC_CSS = `
 .nc-chip-on.nc-cat-Production{background:#7c3aed;}
 .nc-chip-on.nc-cat-Gate{background:#047857;}
 .nc-chip-on.nc-cat-Budget{background:#b45309;}
+.nc-chip-on.nc-cat-Mention{background:#0f766e;}
 .nc-chip-on.nc-cat-Other{background:#475569;}
 
 /* ── S2 filter controls (in the section title row) ──────────────── */
@@ -541,6 +542,7 @@ const NC_CSS = `
 .nc-pill-Production{background:#ede9fe;color:#5b21b6;}  .nc-cat-Production{border-left-color:#8b5cf6;}
 .nc-pill-Gate{background:#dcfce7;color:#166534;}        .nc-cat-Gate{border-left-color:#10b981;}
 .nc-pill-Budget{background:#fef3c7;color:#92400e;}      .nc-cat-Budget{border-left-color:#f59e0b;}
+.nc-pill-Mention{background:#ccfbf1;color:#0f766e;}     .nc-cat-Mention{border-left-color:#14b8a6;}
 .nc-pill-Other{background:#f1f5f9;color:#475569;}       .nc-cat-Other{border-left-color:#64748b;}
 .nc-pill-wa{background:#e0e7ff;color:#3730a3;}
 
@@ -578,6 +580,7 @@ const NC_CSS = `
 [data-theme="dark"] .nc-pill-Production{background:rgba(139,92,246,.2);color:#c4b5fd;}
 [data-theme="dark"] .nc-pill-Gate{background:rgba(16,185,129,.2);color:#86efac;}
 [data-theme="dark"] .nc-pill-Budget{background:rgba(245,158,11,.2);color:#fcd34d;}
+[data-theme="dark"] .nc-pill-Mention{background:rgba(20,184,166,.2);color:#5eead4;}
 [data-theme="dark"] .nc-pill-Other{background:rgba(100,116,139,.2);color:#cbd5e1;}
 [data-theme="dark"] .nc-pill-wa{background:rgba(99,102,241,.2);color:#c7d2fe;}
 [data-theme="dark"] .nc-open{background:rgba(59,130,246,.2);color:#93c5fd;border-color:rgba(59,130,246,.35);}

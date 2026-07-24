@@ -28,8 +28,11 @@ _CATEGORY = {
     "TS Budget Override Approval": "Budget",
 }
 _PROD_PREFIX = "TS Production"
-_CATEGORIES = ("all", "PO", "MR", "Inspection", "Production", "Gate", "Budget", "Other")
+_CATEGORIES = ("all", "PO", "MR", "Inspection", "Production", "Gate", "Budget", "Mention", "Other")
 _DAYS = ("7", "30", "90", "all")
+# Mentions (core comment @mention → Notification Log type="Mention") are their
+# OWN category regardless of the document they land on.
+_MENTION_EXCL = " AND COALESCE(nl.`type`, '') <> 'Mention'"
 
 
 def _category_of(document_type):
@@ -40,6 +43,14 @@ def _category_of(document_type):
     if document_type.startswith(_PROD_PREFIX):
         return "Production"
     return "Other"
+
+
+def _row_category(document_type, ntype):
+    """A comment @mention is its own category regardless of the document it's
+    on; everything else buckets by document type."""
+    if ntype == "Mention":
+        return "Mention"
+    return _category_of(document_type)
 
 
 def _check_read():
@@ -102,9 +113,12 @@ def _route_of(doc_type, doc_name, link=None):
 
 def _cat_condition(category):
     """Static SQL fragment per validated category (never user input)."""
+    if category == "all":
+        return ""
+    if category == "Mention":
+        return " AND nl.`type` = 'Mention'"
     mapped = ", ".join(frappe.db.escape(d) for d in _CATEGORY)
     frags = {
-        "all": "",
         "PO": " AND nl.document_type = 'Purchase Order'",
         "MR": " AND nl.document_type = 'Material Request'",
         "Inspection": " AND nl.document_type IN ('TS Material Inspection', 'TS Quality Inspection', 'TS Deduction Suggestion')",
@@ -115,7 +129,8 @@ def _cat_condition(category):
                   "(nl.document_type NOT IN ({0}) AND nl.document_type NOT LIKE 'TS Production%%'))"
                   ).format(mapped),
     }
-    return frags[category]
+    # Mentions are their OWN category — keep them out of the document-type buckets.
+    return frags[category] + _MENTION_EXCL
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -150,7 +165,7 @@ def get_notifications(category="all", unread=0, days="30", start=0, page_length=
 
     rows = frappe.db.sql(
         """SELECT nl.name, nl.subject, nl.document_type, nl.document_name,
-                  nl.creation, nl.`read` AS is_read, nl.link
+                  nl.creation, nl.`read` AS is_read, nl.link, nl.`type` AS ntype
            {base}{cat}{unread}{search}
            ORDER BY nl.creation DESC
            LIMIT %(start)s, %(page_length)s""".format(
@@ -162,11 +177,11 @@ def get_notifications(category="all", unread=0, days="30", start=0, page_length=
         params)[0][0]
 
     counts_raw = frappe.db.sql(
-        "SELECT nl.document_type, nl.`read` AS is_read, COUNT(*) AS c {base} "
-        "GROUP BY nl.document_type, nl.`read`".format(base=base), params, as_dict=True)
+        "SELECT nl.document_type, nl.`type` AS ntype, nl.`read` AS is_read, COUNT(*) AS c {base} "
+        "GROUP BY nl.document_type, nl.`type`, nl.`read`".format(base=base), params, as_dict=True)
     category_counts = {c: {"total": 0, "unread": 0} for c in _CATEGORIES}
     for r in counts_raw:
-        for key in (_category_of(r.document_type), "all"):
+        for key in (_row_category(r.document_type, r.ntype), "all"):
             category_counts[key]["total"] += r.c
             if not cint(r.is_read):
                 category_counts[key]["unread"] += r.c
@@ -174,7 +189,7 @@ def get_notifications(category="all", unread=0, days="30", start=0, page_length=
     return {
         "rows": [{
             "name": r.name,
-            "category": _category_of(r.document_type),
+            "category": _row_category(r.document_type, r.ntype),
             "doc_type": r.document_type or "",
             "doc_name": r.document_name or "",
             "subject": strip_html(r.subject or ""),
