@@ -7,12 +7,14 @@
    (L311). Failed sources render "n/a" — never a fabricated 0.
    ═══════════════════════════════════════════════════════════════════ */
 
-const UR_VERSION = "v1.7-2026-07-24";
+const UR_VERSION = "v2.1-2026-07-24";
+const UR_ACT_METHOD = "trustbit_ethanol.ts_gate_entry.ts_usage_report_api.get_user_activity";
 const UR_METHOD = "trustbit_ethanol.ts_gate_entry.ts_usage_report_api.get_usage_report";
 const UR_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 console.log("[usage-report]", UR_VERSION, "loaded");
 
-let _ur = { data: null, loaded_at: 0, fields: {}, applying: false, sort: { key: null, dir: -1 } };
+let _ur = { data: null, loaded_at: 0, fields: {}, applying: false, sort: { key: null, dir: -1 }, sessions_shown: 5,
+	activity: { user: null, from: null, to: null, rows: [], cursor: null, first_page: null, shown: 5, loading: false, facet: null } };
 
 frappe.pages["usage-report"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({ parent: wrapper, title: "Usage Report", single_column: true });
@@ -100,7 +102,7 @@ async function _ur_load() {
 			department: f.department.get_value() || null,
 			flow: f.flow.get_value() || null,
 		} });
-		_ur.data = r.message; _ur.loaded_at = Date.now();
+		_ur.data = r.message; _ur.loaded_at = Date.now(); _ur.sessions_shown = 5;
 		_ur_fill_selects();
 		_ur_render();
 	} catch (e) {
@@ -133,10 +135,14 @@ function _ur_render() {
 		<section class="ur-section"><h3>${__("Per User")}</h3><div class="ur-scroll" id="ur-users"></div></section>
 		<section class="ur-section"><h3>${__("Activity Heatmap")}</h3><div class="ur-scroll" id="ur-heat"></div>
 			<div class="ur-hint">${__("Recorded actions (entries + approval decisions + logins) per hour, IST. Login stream limited to the last 90 days; a small number of date-only events are not shown.")}</div></section>
+		<section class="ur-section"><h3>${__("Login / Logout Sessions")}</h3><div class="ur-scroll" id="ur-sessions"></div>
+			<div class="ur-hint">${__("One row per session. \"auto\" = closed by the midnight session-expiry sweep (the user stopped earlier, so no duration is claimed). Logout \"—\" = browser closed without logging out. History limited to the last 90 days.")}</div></section>
+		<section class="ur-section" id="ur-activity-sec"><h3>${__("Changes & Creations")}</h3><div id="ur-activity"></div>
+			<details class="ur-hint"><summary>${__("What this shows / doesn't show")}</summary>${__("Edits, creations and approval decisions only — views are never recorded. Only tracked doctypes appear; anything else shows nothing here regardless of real activity. Material Request edits are not audit-tracked. Saves are grouped per document per day (see save counts). System-marked writes are badged separately, but hook-driven saves without markers still attribute to the acting user. Units differ from the counts above and will not reconcile. Edit counts are not effort — this is an audit trail, not a productivity score.")}</details></section>
 		<section class="ur-section"><h3>${__("By Flow")}</h3><div class="ur-scroll" id="ur-flows"></div></section>
 		<section class="ur-section"><h3>${__("Inactive Users")}</h3><div id="ur-inactive"></div></section>
 		<div class="ur-method">${__("Methodology: this page counts recorded actions — it cannot measure hours worked, off-system work, or presence, and must not be read as a performance score. Failed logins are not attributable to the named account holder. Bulk imports count one entry per row.")}</div>`);
-	for (const fn of [_ur_banner, _ur_chips, _ur_cards, _ur_depts, _ur_users, _ur_heat, _ur_flows, _ur_inactive]) {
+	for (const fn of [_ur_banner, _ur_chips, _ur_cards, _ur_depts, _ur_users, _ur_heat, _ur_sessions, _ur_activity_shell, _ur_flows, _ur_inactive]) {
 		try { fn(d); } catch (e) { console.error(e); }
 	}
 }
@@ -255,6 +261,132 @@ function _ur_heat(d) {
 	});
 	$("#ur-heat").html(html + `</div>`);
 }
+function _ur_dur(mins) {
+	if (mins == null) return `<span class="ur-na">—</span>`;
+	return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
+}
+function _ur_sessions(d) {
+	const s = d.sessions;
+	if (!s) return $("#ur-sessions").html(`<div class="ur-error">${__("Timeline unavailable — source failed.")}</div>`);
+	if (!s.sessions.length) return $("#ur-sessions").html(`<div class="ur-empty">${__("No login/logout activity in the selected range")}</div>`);
+	const shown = s.sessions.slice(0, _ur.sessions_shown);
+	$("#ur-sessions").html(`<table class="ur-table"><thead><tr>
+		<th>${__("User")}</th><th>${__("Login")}</th><th>${__("Logout")}</th><th>${__("Duration")}</th></tr></thead><tbody>` +
+		shown.map(e => `<tr>
+			<td class="ur-click ur-userlink" data-user="${_esc(e.user)}" title="${__("Filter to this user")}"><span class="ur-uname">${_esc(e.full_name)}</span> <span class="ur-uemail">${_esc(e.user)}</span></td>
+			<td>${e.login ? `<span class="ur-ev ur-ev-in">→ ${_esc(e.login)}</span>` : `<span class="ur-na" title="${__("logged in before the selected range")}">—</span>`}</td>
+			<td>${e.logout ? (e.expired
+				? `<span class="ur-ev ur-ev-exp" title="${__("closed by the automatic midnight session-expiry sweep — the user stopped earlier")}">${_esc(e.logout)} · ${__("auto")}</span>`
+				: `<span class="ur-ev ur-ev-out">← ${_esc(e.logout)}</span>`)
+				: `<span class="ur-na" title="${__("no logout recorded — browser closed")}">—</span>`}</td>
+			<td>${_ur_dur(e.minutes)}</td></tr>`).join("") +
+		`</tbody></table>
+		<div class="ur-sessfoot"><span class="ur-showing">${__("Showing {0} of {1} sessions ({2} events)", [format_number(shown.length, null, 0), format_number(s.total_sessions, null, 0), format_number(s.total_events, null, 0)])}</span>
+		${shown.length < Math.min(s.sessions.length, s.total_sessions) ? `<button id="ur-sess-more" class="ur-chipbtn">${__("Show 5 more")}</button>` : ""}</div>`);
+	$("#ur-sessions td.ur-userlink").on("click", function () { _ur_setfilter("user", this.dataset.user); });
+	$("#ur-sess-more").on("click", () => { _ur.sessions_shown += 5; try { _ur_sessions(_ur.data); } catch (e) { console.error(e); } });
+}
+/* ── Activity Detail (Changes & Creations) — plan §5: explicit Load trigger,
+      keyset paging, batch-of-5, coarse hidden line, facet chips ──────────── */
+function _ur_activity_shell() {
+	const a = _ur.activity, u = _ur.fields.user.get_value();
+	const fromD = _ur.fields.from.get_value(), toD = _ur.fields.to.get_value();
+	$("#ur-activity-sec").toggle(!!u);
+	if (!u) { a.user = null; a.rows = []; a.cursor = null; a.first_page = null; a.facet = null; return; }
+	// reset on user OR range change — stale-range rows must never mix with a
+	// new-range cursor (ui-designer F2)
+	if (a.user !== u || a.from !== fromD || a.to !== toD) {
+		a.user = u; a.from = fromD; a.to = toD;
+		a.rows = []; a.cursor = null; a.first_page = null; a.shown = 5; a.facet = null;
+	}
+	if (!a.rows.length && !a.loading) {
+		$("#ur-activity").html(`<button id="ur-act-load" class="ur-chipbtn">${__("Load activity for {0}", [_esc(u)])}</button>`);
+		$("#ur-act-load").on("click", () => _ur_activity_fetch(true));
+	} else {
+		_ur_activity_render();
+	}
+}
+async function _ur_activity_fetch(reset) {
+	const a = _ur.activity, f = _ur.fields;
+	if (a.loading) return;
+	const forUser = a.user; // discard the response if the drill moved on (ui-designer F1)
+	a.loading = true;
+	if (reset) { a.rows = []; a.cursor = null; a.first_page = null; a.shown = 5; }
+	$("#ur-activity").append(`<div class="ur-loading">${__("Loading…")}</div>`);
+	try {
+		const r = await frappe.call({ method: UR_ACT_METHOD, args: {
+			user: a.user, from_date: f.from.get_value(), to_date: f.to.get_value(),
+			cursor: a.cursor || null, doctype: a.facet || null,
+		} });
+		if (_ur.activity.user !== forUser) return;
+		const m = r.message || {};
+		a.rows = a.rows.concat(m.rows || []);
+		a.cursor = m.cursor || null;
+		if (m.first_page) a.first_page = m.first_page;
+		_ur_activity_render();
+	} catch (e) {
+		console.error(e);
+		const status = e && e.xhr && e.xhr.status;
+		$("#ur-activity").html(`<div class="ur-error">${status === 429
+			? __("Too many requests — try again in a minute.")
+			: __("Couldn't load activity.")}</div>`);
+	} finally {
+		a.loading = false;
+	}
+}
+function _ur_activity_render() {
+	const a = _ur.activity, fp = a.first_page || {};
+	let html = "";
+	if (fp.withheld_unavailable) html += `<div class="ur-warn">${__("Hidden-count unavailable — completeness cannot be confirmed for this range.")}</div>`;
+	else if (fp.withheld_confidential_total > 0) html += `<div class="ur-hiddenline">${__("{0} confidential document changes hidden in this range", [format_number(fp.withheld_confidential_total, null, 0)])}</div>`;
+	if (fp.not_shown_other > 0) html += `<div class="ur-hiddenline">${__("{0} changes not shown", [format_number(fp.not_shown_other, null, 0)])}</div>`;
+	if (fp.facets && Object.keys(fp.facets).length > 1) {
+		html += `<div class="ur-chipstrip">` + Object.entries(fp.facets).map(([dt, n]) =>
+			`<button class="ur-chipbtn ur-facet ${a.facet === dt ? "ur-facet-on" : ""}" data-dt="${_esc(dt)}">${_esc(dt)} (${format_number(n, null, 0)})</button>`).join("") +
+			(a.facet ? `<button class="ur-chipbtn ur-chipclear" id="ur-facet-clear">${__("All doctypes")}</button>` : "") + `</div>`;
+	}
+	if (!a.rows.length) {
+		html += `<div class="ur-empty">${__("No recorded changes in this range.")}</div>`;
+	} else {
+		const shown = a.rows.slice(0, a.shown);
+		let day = null;
+		html += `<div class="ur-actlist">` + shown.map(r => {
+			const rday = (r.ts || r.day || "").substring(0, 10);
+			const hdr = rday && rday !== day ? `<div class="ur-dayhdr">${_esc(rday)}</div>` : "";
+			day = rday || day;
+			if (r.since_deleted) {
+				return `${hdr}<div class="ur-actrow ur-actmuted">${_esc((r.ts || "").substring(11) || "—")} · ${__("edited a since-deleted {0}", [_esc(r.doctype)])}</div>`;
+			}
+			if (r.system) {
+				return `${hdr}<div class="ur-actrow ur-actmuted">${_esc((r.ts || "").substring(11) || "")} <span class="ur-ev ur-ev-exp">${__("System")}</span> ${_esc(r.action)}${r.system_ref ? " (" + __("via") + " " + _esc(r.system_ref) + ")" : ""} ${r.docname ? `· ${_esc(r.docname)}` : ""}</div>`;
+			}
+			const more = (r.more_fields || []).length;
+			return `${hdr}<div class="ur-actrow">
+				<span class="ur-acttime">${_esc((r.ts || "").substring(11))}</span>
+				<span class="ur-ev ${r.decision ? "ur-ev-dec" : r.action === "Created" ? "ur-ev-in" : "ur-ev-chg"}">${_esc(__(r.action))}</span>
+				<span class="ur-actdt">${_esc(r.doctype)}</span>
+				<a href="/app/${_esc(frappe.router.slug(r.doctype))}/${encodeURIComponent(r.docname)}" class="ur-doclink">${_esc(r.docname)}</a>
+				${(r.fields || []).length ? `<span class="ur-actfields">${__("Changed")}: ${r.fields.map(_esc).join(", ")}${more ? ` <span class="ur-more" title="${_esc((r.more_fields || []).join(", "))}">+${more} ${__("more")}</span>` : ""}</span>` : ""}
+				${r.save_count > 1 ? `<span class="ur-uemail">· ${r.save_count} ${__("saves")}</span>` : ""}
+			</div>`;
+		}).join("") + `</div>`;
+		const canLocal = a.shown < a.rows.length;
+		html += `<div class="ur-sessfoot"><span class="ur-showing">${__("Showing {0} changes{1}", [format_number(Math.min(a.shown, a.rows.length), null, 0), a.cursor || canLocal ? " · " + __("more available") : ""])}</span>
+			${canLocal || a.cursor ? `<button id="ur-act-more" class="ur-chipbtn">${__("Show 5 more")}</button>` : ""}</div>`;
+	}
+	if (fp.history_floor) html += `<div class="ur-hint">${__("History available from {0}.", [_esc(fp.history_floor)])}</div>`;
+	$("#ur-activity").html(html);
+	$("#ur-act-more").on("click", () => {
+		const aa = _ur.activity;
+		if (aa.shown < aa.rows.length) { aa.shown += 5; try { _ur_activity_render(); } catch (e) { console.error(e); } }
+		else if (aa.cursor) { aa.shown += 5; _ur_activity_fetch(false); }
+	});
+	$("#ur-activity .ur-facet").on("click", function () {
+		_ur.activity.facet = this.dataset.dt === _ur.activity.facet ? null : this.dataset.dt;
+		_ur_activity_fetch(true);
+	});
+	$("#ur-facet-clear").on("click", () => { _ur.activity.facet = null; _ur_activity_fetch(true); });
+}
 function _ur_flows(d) {
 	if (!d.flows.length) return $("#ur-flows").html(`<div class="ur-empty">${__("No activity in the selected range")}</div>`);
 	$("#ur-flows").html(`<table class="ur-table"><thead><tr>
@@ -316,6 +448,36 @@ const UR_CSS = `
 .ur-hd{font-size:10.5px;color:var(--text-muted);display:flex;align-items:center;}
 .ur-cell{height:20px;border-radius:4px;border:1px solid var(--border-color,#eef2f7);}
 .ur-hint,.ur-method{font-size:11px;color:var(--text-muted);padding-top:10px;line-height:1.5;}
+.ur-showing{font-size:12px;color:var(--text-muted);padding-top:8px;}
+.ur-ev{border-radius:10px;font-size:11px;font-weight:600;padding:2px 9px;white-space:nowrap;}
+.ur-ev-in{background:#dcfce7;color:#166534;}
+.ur-ev-out{background:#fef3c7;color:#92400e;}
+.ur-ev-exp{background:var(--fg-color,#f1f5f9);color:var(--text-muted);}
+.ur-sessfoot{display:flex;align-items:center;gap:12px;padding-top:8px;}
+.ur-ev-dec{background:#ede9fe;color:#5b21b6;}
+.ur-ev-chg{background:#e0f2fe;color:#075985;}
+.ur-hiddenline{font-size:12px;color:var(--text-muted);font-style:italic;padding:4px 0;}
+.ur-dayhdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);padding:10px 0 4px;}
+.ur-actlist{display:flex;flex-direction:column;gap:4px;}
+.ur-actrow{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:5px 8px;border-radius:8px;font-size:12.5px;}
+.ur-actrow:hover{background:var(--fg-color,#f8fafc);}
+.ur-actmuted{color:var(--text-muted);}
+.ur-acttime{font-size:11.5px;color:var(--text-muted);min-width:38px;}
+.ur-actdt{font-weight:600;}
+.ur-actfields{color:var(--text-muted);font-size:12px;}
+.ur-more{color:#2563eb;cursor:help;}
+.ur-facet-on{background:#334155;color:#fff;border-color:transparent;}
+.ur-chipstrip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;}
+.ur-doclink{color:#2563eb;font-weight:600;text-decoration:none;}
+.ur-doclink:hover{text-decoration:underline;}
+[data-theme="dark"] .ur-doclink{color:#93c5fd;}
+[data-theme="dark"] .ur-actrow:hover{background:#111827;}
+[data-theme="dark"] .ur-ev-dec{background:rgba(139,92,246,.2);color:#c4b5fd;}
+[data-theme="dark"] .ur-ev-chg{background:rgba(14,165,233,.2);color:#7dd3fc;}
+[data-theme="dark"] .ur-more{color:#93c5fd;}
+[data-theme="dark"] .ur-ev-in{background:rgba(16,185,129,.2);color:#86efac;}
+[data-theme="dark"] .ur-ev-out{background:rgba(245,158,11,.2);color:#fcd34d;}
+[data-theme="dark"] .ur-ev-exp{background:#111827;color:#9ca3af;}
 .ur-method{padding:6px 4px 0;}
 .ur-warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:12px;}
 #ur-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 12px;}
