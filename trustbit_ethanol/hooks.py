@@ -109,6 +109,10 @@ fixtures = [
 			"Purchase Order-ts_budget_overridden",
 			"Purchase Order-ts_budget_override_log_section",
 			"Purchase Order-ts_budget_override_log",
+			"Purchase Order-ts_po_hold_section",
+			"Purchase Order-ts_po_on_hold",
+			"Purchase Order-ts_po_hold_reason",
+			"Purchase Order-ts_po_held_by",
 			"Material Request-cost_center",
 			"Material Request-ts_mr_section",
 			"Material Request-ts_mr_status",
@@ -144,6 +148,17 @@ override_doctype_class = {
 	"Purchase Invoice": "trustbit_ethanol.ts_gate_entry.ts_pi_override.TSPurchaseInvoice"
 }
 
+# v2.28.5 — list-view JS that MUST run AFTER ERPNext's own *_list.js.
+# erpnext/buying/doctype/purchase_order/purchase_order_list.js does a WHOLE-OBJECT
+# assignment (`frappe.listview_settings["Purchase Order"] = {...}`) at init_doctype,
+# which silently wipes anything the desk bundle (app_include_js, e.g. po_list.js)
+# set at boot. doctype_list_js is appended to __list_js AFTER the core file
+# (frappe/desk/form/meta.py:103 then :115), so settings applied here survive —
+# and land before the list's first data fetch, which add_fields depends on.
+doctype_list_js = {
+	"Purchase Order": "public/js/po_list_hold.js",
+}
+
 # Inject JS into standard DocTypes for approval buttons
 doctype_js = {
 	"Purchase Order": "public/js/po_approval.js",
@@ -172,6 +187,8 @@ doc_events = {
 			# Maize confidentiality: auto-set + tamper-guard ts_confidential (append AFTER approval handler)
 			"trustbit_ethanol.ts_gate_entry.ts_confidential_po.set_confidential_flag",
 		],
+		# v2.28 Executive Hold — a held PO cannot be docstatus-submitted (REST doc.submit bypass)
+		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_before_submit_block_hold",
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_update",
 	},
 	"Material Request": {
@@ -208,6 +225,8 @@ doc_events = {
 		"before_validate": [
 			"trustbit_ethanol.ts_gate_entry.ts_use_location_propagation.purchase_receipt_backfill",
 			"trustbit_ethanol.ts_gate_entry.ts_vehicle_origin_propagation.pr_backfill_vehicle",
+			# v2.28 Executive Hold — no GRN against a held PO
+			"trustbit_ethanol.ts_gate_entry.ts_po_approval.block_docs_against_held_po",
 		],
 		"validate": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.validate_unique_supplier_bill",
 		"before_submit": "trustbit_ethanol.ts_gate_entry.ts_pr_bill_check.require_supplier_bill_on_submit",
@@ -221,7 +240,11 @@ doc_events = {
 		"after_delete": "trustbit_ethanol.ts_gate_entry.stores_receiving_api.pr_after_delete_clear_token",
 	},
 	"Purchase Invoice": {
-		"before_validate": "trustbit_ethanol.ts_gate_entry.ts_use_location_propagation.purchase_invoice_backfill",
+		"before_validate": [
+			"trustbit_ethanol.ts_gate_entry.ts_use_location_propagation.purchase_invoice_backfill",
+			# v2.28 Executive Hold — no PI (direct or from-PR) against a held PO
+			"trustbit_ethanol.ts_gate_entry.ts_po_approval.block_docs_against_held_po",
+		],
 		"validate": [
 			"trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_qc_approved",
 			"trustbit_ethanol.ts_gate_entry.ts_pi_qc_gate.validate_pi_ds_required",
@@ -260,6 +283,10 @@ doc_events = {
 	},
 	"User": {
 		"on_update": "trustbit_ethanol.ts_gate_entry.ts_user_management.on_user_update",
+	},
+	# v2.28 Executive Hold — no payment against a held PO (core has no On-Hold check on PE)
+	"Payment Entry": {
+		"validate": "trustbit_ethanol.ts_gate_entry.ts_po_approval.block_docs_against_held_po",
 	},
 }
 

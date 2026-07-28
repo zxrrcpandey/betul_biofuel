@@ -8,6 +8,8 @@ from trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval
 )
 from trustbit_ethanol.ts_gate_entry.ts_executive_override import (
 	is_executive_override_user,
+	get_override_role_label,
+	EXECUTIVE_OVERRIDE_ROLES,
 	collect_business_changes,
 	log_executive_edit,
 	notify_executive_edit,
@@ -139,6 +141,7 @@ def send_to_md(docname, comment=""):
 	"""CEO manually triggers MD approval step. Only available when next step is manual-trigger."""
 	comment = (comment or "")[:2000]
 	doc = frappe.get_doc("Purchase Order", docname, for_update=True)
+	_block_if_on_hold(doc)  # v2.28 — executive hold freezes the chain
 	_validate_po_is_pending(doc)
 	_validate_not_self_approving(doc)
 	_validate_amount_unchanged(doc)
@@ -197,6 +200,7 @@ def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 	if doctype == "Material Request":
 		return _revise_mr(doc, reason, comment)
 
+	_block_if_on_hold(doc)  # v2.28 — held-but-Pending would pass _validate_po_is_pending
 	_validate_po_is_pending(doc)
 	_validate_user_can_act_on_po(doc)
 
@@ -244,6 +248,7 @@ def reject_document(doctype, docname, reason, comment=""):
 	if doctype == "Material Request":
 		return _reject_mr(doc, reason, comment)
 
+	_block_if_on_hold(doc)  # v2.28 — executive hold freezes the chain
 	_validate_po_is_pending(doc)
 	_validate_user_can_act_on_po(doc)
 
@@ -286,6 +291,7 @@ def resubmit_document(doctype, docname, mode="restart"):
 		_block_if_mr_transfer(doc)  # v2.9.9
 		return _resubmit_mr(doc)
 
+	_block_if_on_hold(doc)  # v2.28 — executive hold freezes the chain
 	if doc.ts_approval_status != "Revised":
 		frappe.throw(_("Only revised POs can be resubmitted"))
 
@@ -358,18 +364,30 @@ def hold_mr(docname, reason):
 
 	role_display = current_step.role_label or current_step.role
 	current_state = doc.ts_mr_status
-	hold_state = f"On Hold - {role_display}"
+	# v2.28.1 — store the PLAIN seeded option "On Hold" (was "On Hold - {role}").
+	# The role-suffixed value was never a legal ts_mr_status Select option, so it
+	# (a) made the list "Approval Status" filter return 0 rows for held MRs,
+	# (b) never matched approval_flow_explorer / health-check IN ('On Hold') lists,
+	# (c) made any later doc.save() of a held MR fail _validate_selects.
+	# Who held it stays on the doc: ts_mr_held_by "user (Role)" + ts_mr_held_at_step,
+	# and the TS Approval Log "Held" row keeps the acting role.
+	hold_state = "On Hold"
 
 	_log_mr_action(doc, "Held", current_state, hold_state,
 		comment=reason, step_order=current_step_order,
 		purchase_category=route_name)
 
+	# v2.28.4 — friendly attribution (was the raw login id), same as the PO side
+	mr_actor = _hold_actor_label(role_display)
 	doc.db_set({
 		"ts_mr_status": hold_state,
 		"ts_mr_hold_reason": reason,
-		"ts_mr_held_by": f"{frappe.session.user} ({role_display})",
+		"ts_mr_held_by": mr_actor,
 		"ts_mr_held_at_step": current_step_order,
 	}, update_modified=True)
+
+	# v2.28.3 — same Activity-feed visibility as the PO hold (after the state write)
+	_add_hold_activity_comment(doc, _("Put On Hold"), mr_actor, reason)
 
 	# Notify creator
 	recipients = [doc.owner]
@@ -417,6 +435,7 @@ def resume_mr(docname, comment=""):
 		comment=comment, step_order=held_step_order,
 		purchase_category=route_name)
 
+	mr_held_by_before = doc.get("ts_mr_held_by") or ""
 	doc.db_set({
 		"ts_mr_status": pending_state,
 		"ts_mr_current_step": held_step_order,
@@ -424,6 +443,13 @@ def resume_mr(docname, comment=""):
 		"ts_mr_held_by": "",
 		"ts_mr_held_at_step": 0,
 	}, update_modified=True)
+
+	# v2.28.3/.4 — Activity-feed entry mirroring the PO resume (see resume_po for the
+	# same de-dup rule: only name the original holder when it was somebody else)
+	_mr_resumer = _hold_actor_label(role_display)
+	if mr_held_by_before and mr_held_by_before != _mr_resumer:
+		_mr_resumer = _("{0} — originally held by {1}").format(_mr_resumer, mr_held_by_before)
+	_add_hold_activity_comment(doc, _("Resumed from Hold"), _mr_resumer, comment)
 
 	# Notify the step's approvers so they know it's back
 	cost_center = _get_mr_cost_center(doc)
@@ -438,6 +464,243 @@ def resume_mr(docname, comment=""):
 		extra={"next_role": role_display, "resumed": True})
 
 	return {"status": "resumed", "pending_state": pending_state}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  v2.28 — EXECUTIVE PO HOLD (CEO/MD, any stage)
+#  Held-ness = ts_po_on_hold (tamper-guarded Check), orthogonal to
+#  ts_approval_status. Enforcement keys ONLY on the flag — never on native
+#  `status`, which ERPNext's ungated update_status lets any authenticated
+#  user flip. Native "On Hold" is written on docstatus-1 holds purely as a
+#  cosmetic mirror (list consistency + core Create-button hiding).
+# ═══════════════════════════════════════════════════════════════════════
+
+def _po_hold_authorized():
+	"""CEO / MD may hold/resume POs (System Manager kept as IT break-glass)."""
+	return is_executive_override_user() or "System Manager" in frappe.get_roles(frappe.session.user)
+
+
+def _executive_role_label(user=None):
+	"""v2.28.4 — the ONE role to attribute a hold to.
+
+	`get_override_role_label()` joins every match ("CEO + MD"), which reads in the
+	Activity feed as a hybrid authority that doesn't exist. For attribution we name
+	a single role, first match wins in EXECUTIVE_OVERRIDE_ROLES order (CEO, MD).
+	That shared helper is deliberately left untouched — it feeds the executive-edit
+	audit trail and other callers.
+	"""
+	roles = set(frappe.get_roles(user or frappe.session.user))
+	for role in EXECUTIVE_OVERRIDE_ROLES:
+		if role in roles:
+			return role
+	if "System Manager" in roles:
+		return "System Manager"
+	return ""
+
+
+def _hold_actor_label(role_label=None):
+	"""'Full Name (ROLE)' — human-readable attribution for the hold fields + Activity.
+
+	Was `frappe.session.user`, i.e. a login id (an email address for real users).
+	The precise identity is NOT lost: TS Approval Log keeps action_by / action_by_name
+	/ action_by_role, and the Comment keeps its owner.
+	"""
+	user = frappe.session.user
+	name = frappe.utils.get_fullname(user) or user
+	role = role_label or _executive_role_label()
+	return f"{name} ({role})" if role else name
+
+
+def _add_hold_activity_comment(doc, action, actor_label, reason):
+	"""v2.28.3 — surface hold/resume in the standard Activity (Comment) feed.
+
+	The reason previously lived only on the doc fields + the TS Approval Log row,
+	so the document's Activity tab showed nothing — users could not see WHY a doc
+	was held without opening the approval history. ERPNext's own native Hold posts
+	a comment for exactly this reason; this mirrors it for the executive flow.
+
+	Never allowed to break the hold: wrapped + clear_messages (L238 / L276).
+	"""
+	try:
+		reason_html = frappe.utils.escape_html(reason or "")
+		# escape EVERY interpolated value — `action` carries the stored held_by on the
+		# resume paths, and on the MR side that embeds ts_mr_approval_step.role_label,
+		# free text set by whoever administers the approval routes. Comment content is
+		# rendered as HTML and bleach keeps class/data-* (mention forgery) and <a>/<img>.
+		# Escaping here, not at the call sites, keeps a future 5th caller safe too.
+		# NOTE: only values are escaped — the literal <br><b> markup below stays raw.
+		text = _("{0} by {1}").format(
+			frappe.utils.escape_html(action or ""),
+			frappe.utils.escape_html(actor_label),
+		)
+		if reason_html:
+			text += f"<br><b>{_('Reason')}:</b> {reason_html}"
+		doc.add_comment("Comment", text=text)
+	except Exception:
+		frappe.clear_messages()
+		try:
+			frappe.log_error(
+				title=f"Hold activity comment skipped ({doc.name})",
+				message=frappe.get_traceback()[:1000],
+			)
+		except Exception:
+			pass
+
+
+def _block_if_on_hold(doc):
+	"""Refuse any progression action while a PO is executive-held."""
+	if cint(doc.get("ts_po_on_hold")):
+		frappe.throw(
+			_("This Purchase Order is On Hold ({0}). It must be Resumed before any further action.").format(
+				frappe.utils.escape_html(doc.get("ts_po_held_by") or _("by an executive"))
+			),
+			title=_("PO On Hold"),
+		)
+
+
+@frappe.whitelist(methods=["POST"])
+def hold_po(docname, reason):
+	"""Executive hold: freeze a PO at ANY stage (draft, mid-chain, submitted)."""
+	if not _po_hold_authorized():
+		frappe.clear_messages()
+		frappe.throw(_("Only CEO or MD can hold a Purchase Order."), frappe.PermissionError)
+
+	reason = (reason or "").strip()[:2000]
+	if not reason:
+		frappe.throw(_("Hold reason is mandatory"))
+
+	doc = frappe.get_doc("Purchase Order", docname, for_update=True)
+	# get_doc performs NO permission check (L224) — enforce doc-level perms explicitly.
+	# Routes through has_permission_purchase_order, so confidential POs stay protected.
+	frappe.has_permission("Purchase Order", "write", doc=doc, throw=True)
+
+	if cint(doc.get("ts_po_on_hold")):
+		frappe.throw(_("This PO is already on hold."))
+	if doc.docstatus == 2:
+		frappe.throw(_("A cancelled PO cannot be put on hold."))
+	if doc.docstatus == 1 and (doc.get("status") or "") in ("Closed", "Delivered"):
+		# Self-referential status_map states can't be recomputed back on resume — refuse.
+		frappe.throw(_("A {0} PO cannot be put on hold. Re-open it first.").format(doc.status))
+
+	role_label = _executive_role_label() or "System Manager"
+	held_by = _hold_actor_label(role_label)
+
+	# Audit row FIRST — the flag flip is the last thing that happens (L288).
+	_log_approval_action(doc, "Held", doc.ts_approval_status or "Draft", "On Hold",
+		comment=reason, po_amount=flt(doc.grand_total),
+		step_order=cint(doc.ts_current_step), purchase_category=doc.get("ts_purchase_category") or "")
+
+	values = {
+		"ts_po_on_hold": 1,
+		"ts_po_hold_reason": reason,
+		"ts_po_held_by": held_by,
+	}
+	if doc.docstatus == 1:
+		values["status"] = "On Hold"  # cosmetic mirror only — never read for enforcement
+	doc.db_set(values, update_modified=True)
+	# Activity feed entry AFTER the state write (L288) so a comment failure can
+	# never leave a half-applied hold.
+	_add_hold_activity_comment(doc, _("Put On Hold"), held_by, reason)
+	doc.notify_update()
+
+	recipients = []
+	if doc.get("ts_submitted_by"):
+		recipients.append(doc.ts_submitted_by)
+	if doc.owner and doc.owner not in recipients:
+		recipients.append(doc.owner)
+	_send_approval_notification(doc, "po_held", recipients,
+		extra={"held_by": role_label, "reason": reason})
+
+	return {"status": "held"}
+
+
+@frappe.whitelist(methods=["POST"])
+def resume_po(docname, comment=""):
+	"""Executive resume: lift the hold, restoring the exact prior approval state."""
+	if not _po_hold_authorized():
+		frappe.clear_messages()
+		frappe.throw(_("Only CEO or MD can resume a held Purchase Order."), frappe.PermissionError)
+
+	comment = (comment or "").strip()[:2000]
+	doc = frappe.get_doc("Purchase Order", docname, for_update=True)
+	frappe.has_permission("Purchase Order", "write", doc=doc, throw=True)
+
+	if not cint(doc.get("ts_po_on_hold")):
+		frappe.throw(_("This PO is not on hold."))
+
+	held_by_before = doc.get("ts_po_held_by") or ""
+	_log_approval_action(doc, "Resumed", "On Hold", doc.ts_approval_status or "Draft",
+		comment=comment, po_amount=flt(doc.grand_total),
+		step_order=cint(doc.ts_current_step), purchase_category=doc.get("ts_purchase_category") or "")
+
+	doc.db_set({
+		"ts_po_on_hold": 0,
+		"ts_po_hold_reason": "",
+		"ts_po_held_by": "",
+	}, update_modified=True)
+
+	if doc.docstatus == 1 and (doc.get("status") or "") == "On Hold":
+		# Undo the cosmetic mirror: recompute native status. Safe because
+		# Closed/Delivered holds were refused at hold time.
+		doc.db_set("status", "Draft", update_modified=False)
+		doc.set_status(update=True)
+
+	# "Resumed from Hold by <actor>" — and only name the original holder when it was
+	# somebody else, so the line stops saying the same person twice. (The comparison
+	# is on the display label: if a holder's role changed between hold and resume the
+	# clause appears for the same person — harmless and still accurate.)
+	_resumer = _hold_actor_label(_executive_role_label() or "System Manager")
+	if held_by_before and held_by_before != _resumer:
+		_resumer = _("{0} — originally held by {1}").format(_resumer, held_by_before)
+	_add_hold_activity_comment(doc, _("Resumed from Hold"), _resumer, comment)
+	doc.notify_update()
+
+	recipients = []
+	if doc.get("ts_submitted_by"):
+		recipients.append(doc.ts_submitted_by)
+	if doc.owner and doc.owner not in recipients:
+		recipients.append(doc.owner)
+	_send_approval_notification(doc, "po_resumed", recipients,
+		extra={"resumed_by": get_override_role_label() or "System Manager", "reason": comment})
+
+	return {"status": "resumed"}
+
+
+def po_before_submit_block_hold(doc, method=None):
+	"""doc_event (PO before_submit): a held PO cannot be docstatus-submitted.
+	Closes the REST doc.submit() bypass — native Submit is only JS-hidden."""
+	_block_if_on_hold(doc)
+
+
+def block_docs_against_held_po(doc, method=None):
+	"""doc_event (PR/PI before_validate, Payment Entry validate): block any
+	downstream document that references an executive-held PO. Reads
+	item.purchase_order unconditionally — also closes the native PI-from-PR
+	path, which skips core's PO status check when purchase_receipt is set."""
+	po_names = set()
+	if doc.doctype in ("Purchase Receipt", "Purchase Invoice"):
+		for item in (doc.get("items") or []):
+			if item.get("purchase_order"):
+				po_names.add(item.get("purchase_order"))
+	elif doc.doctype == "Payment Entry":
+		for ref in (doc.get("references") or []):
+			if ref.get("reference_doctype") == "Purchase Order" and ref.get("reference_name"):
+				po_names.add(ref.get("reference_name"))
+	if not po_names:
+		return
+	# Restart-before-migrate window: column may not exist yet — fail open, not 500.
+	if not frappe.db.has_column("Purchase Order", "ts_po_on_hold"):
+		return
+	held = frappe.get_all("Purchase Order",
+		filters={"name": ["in", sorted(po_names)], "ts_po_on_hold": 1},
+		pluck="name")
+	if held:
+		frappe.throw(
+			_("Cannot proceed — Purchase Order(s) on hold: {0}. An executive (CEO/MD) must Resume the PO first.").format(
+				frappe.utils.escape_html(", ".join(held))
+			),
+			title=_("PO On Hold"),
+		)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -575,6 +838,7 @@ def _warn_if_po_differs_from_mr(doc):
 
 def _submit_po_for_approval(doc):
 	"""Submit a PO for approval using category-based routing."""
+	_block_if_on_hold(doc)  # v2.28 — executive hold freezes the chain
 	_validate_po_submittable(doc)
 
 	# Non-blocking creator-facing budget warning: if this PO breaches its cost-center
@@ -722,6 +986,7 @@ def _submit_po_for_approval(doc):
 
 def _approve_po(doc, comment=""):
 	"""Approve/Review/Forward a PO based on the current step's action_type."""
+	_block_if_on_hold(doc)  # v2.28 — executive hold freezes the chain
 	_validate_po_is_pending(doc)
 	_validate_not_self_approving(doc)
 	_validate_amount_unchanged(doc)
@@ -1610,6 +1875,8 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 		"mr_rejected": f"[Rejected] MR {doc.name} — Rejected",
 		"mr_held": f"[On Hold] MR {doc.name} — Put on Hold",
 		"mr_resumed": f"[Resumed] MR {doc.name} — Resumed from Hold",
+		"po_held": f"[On Hold] PO {doc.name} ({amount_str}) — Put on Hold by Executive",
+		"po_resumed": f"[Resumed] PO {doc.name} ({amount_str}) — Resumed from Hold",
 		"sla_breach": f"[CTL Alert] {doc_label} {doc.name} stuck at approval step",
 	}
 	subject = subjects.get(action, f"{doc_label} {doc.name} — Approval Update")
@@ -1775,6 +2042,7 @@ def _get_po_approval_context(doc, settings):
 	total_steps = cint(doc.ts_total_steps)
 	po_amount = flt(doc.grand_total)
 	is_pending = status.startswith("Pending") or status.startswith("Awaiting")
+	on_hold = cint(doc.get("ts_po_on_hold"))  # v2.28 — cint(get()) handles pre-migrate NULL
 	is_self_submitted = (doc.ts_submitted_by and doc.ts_submitted_by == frappe.session.user)
 	self_skip_impossible = cint(doc.ts_self_skip_impossible) if hasattr(doc, "ts_self_skip_impossible") else 0
 	# Allow self-approval when self-skip was impossible (single-step rule)
@@ -1853,6 +2121,28 @@ def _get_po_approval_context(doc, settings):
 				ctx["can_reject"] = current_step_obj.can_reject
 		except Exception:
 			frappe.log_error(title="Approval Context Error", message=frappe.get_traceback())
+
+	# ── v2.28 Executive Hold context ──
+	_exec = _po_hold_authorized()
+	ctx["is_on_hold"] = bool(on_hold)
+	ctx["hold_reason"] = ""
+	ctx["held_by"] = ""
+	if on_hold and frappe.has_permission("Purchase Order", "read", doc=doc):
+		# read-perm-gated: the ctx endpoint has no doc-perm check of its own —
+		# don't add new confidential data to a pre-existing exposure surface
+		ctx["hold_reason"] = doc.get("ts_po_hold_reason") or ""
+		ctx["held_by"] = doc.get("ts_po_held_by") or ""
+	ctx["can_hold"] = bool(
+		_exec and not on_hold and doc.docstatus in (0, 1)
+		and (doc.get("status") or "") not in ("Closed", "Delivered")
+	)
+	ctx["can_resume"] = bool(_exec and on_hold and doc.docstatus != 2)
+	if on_hold:
+		# every progression action is frozen while held — server endpoints re-enforce
+		for _k in ("can_submit_for_approval", "can_review", "can_approve",
+				"can_final_approve", "can_send_to_md", "can_revise",
+				"can_reject", "can_resubmit"):
+			ctx[_k] = False
 
 	return ctx
 
@@ -2081,6 +2371,13 @@ def po_on_cancel(doc, method):
 			"ts_can_send_to_md": 0,
 			"ts_last_action": f"Cancelled on {now_datetime().strftime('%d %b %Y %H:%M')}",
 		}, update_modified=False)
+	# v2.28 — cancelled ≠ held forever: clear the executive hold
+	if cint(doc.get("ts_po_on_hold")):
+		doc.db_set({
+			"ts_po_on_hold": 0,
+			"ts_po_hold_reason": "",
+			"ts_po_held_by": "",
+		}, update_modified=False)
 
 
 def mr_on_amend(doc, method=None):
@@ -2140,6 +2437,10 @@ def po_on_amend(doc, method):
 	doc.ts_total_steps = 0
 	doc.ts_can_send_to_md = 0
 	doc.ts_self_skip_impossible = 0
+	# v2.28 — PREFIXED names (the MR amend-clear used unprefixed names and silently no-ops)
+	doc.ts_po_on_hold = 0
+	doc.ts_po_hold_reason = ""
+	doc.ts_po_held_by = ""
 
 
 _PO_GATE_FIELDS = (
@@ -2155,6 +2456,11 @@ _PO_GATE_FIELDS = (
 	"ts_approval_rule",
 	"ts_purchase_category",
 	"ts_budget_overridden",
+	# v2.28 Executive Hold — reason/held_by guarded too: read_only is UI-only,
+	# and a REST-writable reason/held_by enables banner spoof + stored XSS
+	"ts_po_on_hold",
+	"ts_po_hold_reason",
+	"ts_po_held_by",
 )
 
 _MR_GATE_FIELDS = (
@@ -2166,6 +2472,12 @@ _MR_GATE_FIELDS = (
 	"ts_mr_self_skip_impossible",
 	"ts_mr_submitted_by",
 	"ts_mr_held_at_step",
+	# v2.28.1 — hold audit fields. read_only=1 is UI-only (permlevel 0), so these
+	# were REST-writable once held MRs became saveable again (before the "On Hold"
+	# normalization every save died on _validate_selects, which masked this).
+	# Mirrors the PO side, where all three hold fields are guarded.
+	"ts_mr_hold_reason",
+	"ts_mr_held_by",
 )
 
 
@@ -2342,6 +2654,11 @@ def po_before_save(doc, method):
 	"""Prevent amount changes while PO is in approval chain + block duplicate PO from MR + copy project from MR."""
 	# ── Duplicate PO from MR block ──
 	if doc.is_new():
+		# v2.28 — the tamper guard early-returns on is_new(): zero the hold fields
+		# so frappe.client.insert cannot forge a held state / fake executive name
+		doc.ts_po_on_hold = 0
+		doc.ts_po_hold_reason = ""
+		doc.ts_po_held_by = ""
 		_check_duplicate_po_from_mr(doc)
 
 	# ── Copy project from MR to PO ──

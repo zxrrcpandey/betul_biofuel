@@ -441,6 +441,56 @@ def create_custom_fields():
 				"cannot_delete_rows": 1,
 				"no_copy": 1
 			},
+			# ── v2.28 Executive Hold (CEO/MD, any stage) ──
+			{
+				"fieldname": "ts_po_hold_section",
+				"fieldtype": "Section Break",
+				"label": "Hold Info",
+				"insert_after": "ts_budget_override_log",
+				"collapsible": 1,
+				"depends_on": "eval:doc.ts_po_on_hold"
+			},
+			{
+				"fieldname": "ts_po_on_hold",
+				"fieldtype": "Check",
+				"label": "On Hold (Executive)",
+				"insert_after": "ts_po_hold_section",
+				"read_only": 1,
+				"no_copy": 1,
+				"default": "0",
+				# v2.28.6 — surfaces an "On Hold (Executive)" box in the PO list filter
+				# row. This is the ONLY honest way to filter for held POs: the obvious
+				# alternative — adding "On Hold" to the ts_approval_status Select — would
+				# be a phantom option, because that field deliberately keeps the real
+				# approval step so Resume can restore it, so such a filter would always
+				# return 0 rows (the v2.28.1 MR trap, mirrored). Filtering the real flag
+				# also works in Report view and via the API. The control does NOT inherit
+				# `default: "0"` (base_list.js:838 builds a fresh object) and only applies
+				# when ticked (:856 `if (value)`), so nobody's default list view changes.
+				"in_standard_filter": 1,
+				# allow_on_submit deliberately 0: before_save (where the tamper guard
+				# lives) does not run on update-after-submit paths — core
+				# UpdateAfterSubmitError is the docstatus-1 tamper layer. The
+				# hold/resume endpoints write via db_set, which is unaffected.
+				"description": "Executive hold flag — set/cleared ONLY via the Hold/Resume buttons (CEO/MD)."
+			},
+			{
+				"fieldname": "ts_po_hold_reason",
+				"fieldtype": "Small Text",
+				"label": "Hold Reason",
+				"insert_after": "ts_po_on_hold",
+				"read_only": 1,
+				"no_copy": 1
+			},
+			{
+				"fieldname": "ts_po_held_by",
+				"fieldtype": "Data",
+				"label": "Held By",
+				"insert_after": "ts_po_hold_reason",
+				"read_only": 1,
+				"no_copy": 1,
+				"hidden": 1
+			},
 		],
 
 		# ── MR Approval Fields ──────────────────────────────────────────

@@ -13,6 +13,20 @@ frappe.ui.form.on("Purchase Order", {
 		// reused form DOM and only cleared on a full page reload).
 		_ts_clear_stale_lifecycle_ui(frm);
 		if (frm.is_new()) return;
+		// v2.28.3 — kill ERPNext's native Status ▸ Hold, unconditionally.
+		// ORDERING (verified in frappe/public/js/frappe/form/script_manager.js):
+		// new-style `frappe.ui.form.on` handlers run BEFORE old-style cscript ones,
+		// and erpnext's PurchaseOrderController.refresh (which ADDS the Status
+		// buttons) is old-style — so at THIS point the button does not exist yet and
+		// the removal below is a no-op. It still matters: this call installs the
+		// cscript neutralisation, so the button is already inert the moment it appears.
+		// The actual removal is done by the setTimeout re-apply (and again by the
+		// approval-context callback). ⚠ Do NOT delete the setTimeout as "redundant" —
+		// without it the native button lingers on screen.
+		// The point of calling it here rather than only in that async callback: no
+		// early return or renderer exception in the callback chain can skip it.
+		_hide_native_hold_buttons(frm);
+		setTimeout(() => { try { _hide_native_hold_buttons(frm); } catch (e) {} }, 600);
 		// v2.9.8.31: default to BBPL Purchase Order (new mockup format).
 		_ts_add_print_button(frm, "BBPL Purchase Order");
 		// Deliveries button — opens the delivery chain in a dialog, next to Print PDF.
@@ -126,6 +140,9 @@ function _load_approval_context(frm) {
 			_render_buttons(frm, ctx);
 			_lock_fields(frm, ctx);
 			_render_timeline(frm);
+			// v2.28 Executive Hold — banner + hide ERPNext's own (ungated) Hold/Resume
+			_render_po_hold_banner(frm, ctx);
+			_hide_native_hold_buttons(frm);
 		},
 		error() {
 			// Silently fail — approval UI just won't show
@@ -134,6 +151,11 @@ function _load_approval_context(frm) {
 }
 
 function _override_po_indicator(frm, ctx) {
+	// v2.28 — the held pill wins over any approval status
+	if (ctx.is_on_hold) {
+		frm.page.set_indicator(__("On Hold"), "orange");
+		return;
+	}
 	const status = ctx.status;
 	if (!status) return;
 
@@ -383,6 +405,34 @@ function _render_buttons(frm, ctx) {
 		}, null).addClass("bbf-approval-btn");
 	}
 
+	// v2.28 Executive Hold — CEO/MD (+System Manager break-glass), any stage.
+	// Client visibility is cosmetic; hold_po/resume_po re-enforce server-side.
+	if (ctx.can_hold) {
+		frm.add_custom_button(__("⏸ Hold"), () => {
+			const d = new frappe.ui.Dialog({
+				title: __("Hold Purchase Order"),
+				fields: [
+					{ fieldtype: "Small Text", fieldname: "reason", label: __("Hold Reason"), reqd: 1 }
+				],
+				primary_action_label: __("Hold PO"),
+				primary_action(values) {
+					d.hide();
+					_call_action(frm, "hold_po", { docname: frm.doc.name, reason: values.reason });
+				}
+			});
+			d.show();
+		}, null).addClass("btn-warning bbf-approval-btn").css({ "color": "#92400e", "border-color": "#f59e0b", "background": "#fef3c7" });
+	}
+
+	if (ctx.can_resume) {
+		frm.add_custom_button(__("▶ Resume"), () => {
+			frappe.confirm(
+				__("Resume this Purchase Order? Approvals and downstream documents will be unblocked."),
+				() => _call_action(frm, "resume_po", { docname: frm.doc.name })
+			);
+		}, null).addClass("btn-success bbf-approval-btn");
+	}
+
 	if (ctx.can_resubmit) {
 		frm.add_custom_button(__("Resubmit for Approval"), () => {
 			if (frm.is_dirty()) {
@@ -607,6 +657,8 @@ function _render_timeline(frm) {
 			"Revised": "#f97316",
 			"Rejected": "#ef4444",
 			"Resubmitted": "#6366f1",
+			"Held": "#f97316",
+			"Resumed": "#10b981",
 		};
 		const color = colors[log.action] || "#6b7280";
 		const date = log.action_date ? frappe.datetime.str_to_user(log.action_date) : "";
@@ -1298,5 +1350,69 @@ function _show_ts_banner_po(frm, key, html, bgColor, borderColor) {
 	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section");
 	if ($dashboard.length) {
 		$dashboard.after(banner);
+	}
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  v2.28 — Executive Hold (CEO/MD, any stage)
+// ═══════════════════════════════════════════════════════════
+
+function _render_po_hold_banner(frm, ctx) {
+	$(frm.page.wrapper).find('.ts-banner[data-key="po-hold"]').remove();
+	if (!ctx.is_on_hold) return;
+	const who = frappe.utils.escape_html(ctx.held_by || "");
+	const reason = frappe.utils.escape_html(ctx.hold_reason || "");
+	let html = `<b>⏸ ${__("This Purchase Order is On Hold")}</b>`;
+	if (who) html += ` — ${__("held by {0}", [who])}`;
+	if (reason) html += `<br><b>${__("Reason")}:</b> ${reason}`;
+	html += `<br>${__("Approvals, Submit, and downstream documents (GRN / Invoice / Payment) are blocked until an executive Resumes it.")}`;
+	_show_ts_banner_po(frm, "po-hold", html, "#fff7ed", "#f97316");
+}
+
+function _hide_native_hold_buttons(frm) {
+	// ERPNext's own Status ▸ Hold / Resume drive the core update_status endpoint —
+	// a competing hold path that does NOT set ts_po_on_hold, so nothing is actually
+	// blocked by it. Remove them so only the executive Hold/Resume governs.
+	// Close / Re-open are legitimate and deliberately left alone.
+	//
+	// v2.28.3: this MUST stay independent of the approval-context call. It used to
+	// run as the last line of that async callback, so any early return (approval
+	// kill-switch off, empty response) or a throw in an earlier renderer skipped it
+	// and the native button survived — exactly what the user reported.
+	if (frm.doc.docstatus !== 1) return;   // native Status group only exists on submitted POs
+	frm.remove_custom_button(__("Hold"), __("Status"));
+
+	// Native "Resume" is removed ONLY when OUR flag governs the hold. A PO put on
+	// hold natively before this feature (status "On Hold", ts_po_on_hold = 0) must
+	// keep its native Resume or it could never be released again.
+	const ours = cint(frm.doc.ts_po_on_hold);
+	if (ours) frm.remove_custom_button(__("Resume"), __("Status"));
+
+	// Belt: neutralise the underlying handlers so a stale browser-cached button
+	// (form scripts are client-cached) cannot still act. Cosmetic/UX only — the
+	// real enforcement is server-side and keys on ts_po_on_hold, never on status.
+	if (frm.cscript && !frm.cscript._bbf_hold_neutralised) {
+		frm.cscript._bbf_hold_neutralised = true;
+		frm.cscript.hold_purchase_order = function () {
+			frappe.msgprint({
+				title: __("Use the Executive Hold"),
+				indicator: "orange",
+				message: __("The standard Hold is disabled on Purchase Orders. Only CEO or MD can place a PO on hold, using the <b>⏸ Hold</b> button."),
+			});
+		};
+		const _native_unhold = frm.cscript.unhold_purchase_order;
+		frm.cscript.unhold_purchase_order = function () {
+			if (cint(frm.doc.ts_po_on_hold)) {
+				frappe.msgprint({
+					title: __("Use the Executive Resume"),
+					indicator: "orange",
+					message: __("This PO is on executive hold. Only CEO or MD can release it, using the <b>▶ Resume</b> button."),
+				});
+				return;
+			}
+			// legacy native hold — let the standard flow clear it
+			if (typeof _native_unhold === "function") return _native_unhold.apply(this, arguments);
+		};
 	}
 }

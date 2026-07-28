@@ -21,14 +21,21 @@ from frappe import _
 # Authoritative role → status mapping. DB-verified strings from
 # seed_data.py PROPERTY_SETTERS (MR:184, PO:200) + doctype JSON options.
 ROLE_STATUS_MAP = {
+	# v2.28.1 — "On Hold" added to every MR approver role: a held MR still needs a
+	# human (the holder or anyone at/above the held step) to Resume it, so it must
+	# stay visible in the default "My Pending" list view instead of silently
+	# dropping out. Every role listed here IS a Review-step role on live routes
+	# (Stock User / Department Head / AVP all hold Review steps) and can therefore
+	# hold + resume. Read-only impact: list filter + workspace tiles + number cards;
+	# no notification/SLA/reminder path reads ROLE_STATUS_MAP.
 	"Material Request": {
 		"field": "ts_mr_status",
 		"roles": {
-			"Stock User":       ["Pending Dept. User"],
-			"Department Head":  ["Pending Dept. Head"],
-			"AVP":              ["Pending AVP"],
-			"CEO":              ["Pending CEO"],
-			"General Manager":  ["Pending GM"],
+			"Stock User":       ["Pending Dept. User", "On Hold"],
+			"Department Head":  ["Pending Dept. Head", "On Hold"],
+			"AVP":              ["Pending AVP", "On Hold"],
+			"CEO":              ["Pending CEO", "On Hold"],
+			"General Manager":  ["Pending GM", "On Hold"],
 		},
 	},
 	"Purchase Order": {

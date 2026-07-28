@@ -31,6 +31,8 @@ CONTROL_PLANE_FIELDS = {
 	"ts_approval_rule", "ts_purchase_category", "ts_budget_overridden",
 	"ts_approved_by", "ts_approved_date", "ts_revision_count",
 	"ts_last_action", "ts_last_sla_alert", "ts_resubmit_mode",
+	# v2.28 Executive Hold — control-plane, never a "business edit"
+	"ts_po_on_hold", "ts_po_hold_reason", "ts_po_held_by",
 	# MR
 	"ts_mr_status", "ts_mr_route", "ts_mr_approval_route",
 	"ts_mr_current_step", "ts_mr_total_steps",

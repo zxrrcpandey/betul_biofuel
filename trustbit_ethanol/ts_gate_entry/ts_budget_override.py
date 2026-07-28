@@ -387,6 +387,11 @@ def approve_budget_override(name, comment=None):
 
     source_doc = frappe.get_doc(override.reference_doctype, override.reference_name)
 
+    # v2.28 Executive Hold — a held source PO cannot progress via budget override.
+    # Lazy import (ts_po_approval lazily imports this module); no-op on MR sources.
+    from trustbit_ethanol.ts_gate_entry.ts_po_approval import _block_if_on_hold
+    _block_if_on_hold(source_doc)
+
     frappe.flags.in_budget_override_approval = True
     try:
         override.db_set({
@@ -449,6 +454,10 @@ def reject_budget_override(name, comment):
         frappe.throw(_("Override is already {0}.").format(override.status))
 
     source_doc = frappe.get_doc(override.reference_doctype, override.reference_name)
+
+    # v2.28 Executive Hold — a held source PO cannot progress via budget override.
+    from trustbit_ethanol.ts_gate_entry.ts_po_approval import _block_if_on_hold
+    _block_if_on_hold(source_doc)
 
     frappe.flags.in_budget_override_approval = True
     try:
