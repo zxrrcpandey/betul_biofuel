@@ -310,6 +310,17 @@ has_permission = {
 	"Material Request": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.has_permission_material_request",
 }
 
+# v2.29.0 — Notification Read Accountability Trail: the stock desk bell calls
+# these CORE dotted paths (frappe.call → POST); the wrappers stamp ts_read_at/
+# ts_read_via (fail-soft, self-scoped) then delegate to core unchanged. Also
+# tightens both to POST-only + adds the ownership check core lacks (L175/L224).
+override_whitelisted_methods = {
+	"frappe.desk.doctype.notification_log.notification_log.mark_as_read":
+		"trustbit_ethanol.ts_gate_entry.ts_notification_trail.mark_as_read",
+	"frappe.desk.doctype.notification_log.notification_log.mark_all_as_read":
+		"trustbit_ethanol.ts_gate_entry.ts_notification_trail.mark_all_as_read",
+}
+
 # Setup custom fields on Purchase Receipt, Purchase Order, Material Request, Company, Item Group, Brand
 after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup.create_custom_fields",
@@ -387,6 +398,9 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_confidential_po.seed_confidential_fields",
 	# v2.24.0 — Notification Center: kill-switch Custom Field + BBPL Ethanol workspace shortcut
 	"trustbit_ethanol.ts_gate_entry.notification_center_api.after_migrate_notification_center",
+	# v2.29.0 — Notification Read Accountability Trail: 4 stamp fields on Notification Log
+	# + TS Settings kill-switch (insert-only) + audit-report roles via ORM (L281/290)
+	"trustbit_ethanol.ts_gate_entry.setup_notification_trail.after_migrate_notification_trail",
 ]
 
 # Scheduled Tasks
@@ -422,6 +436,11 @@ scheduler_events = {
 		],
 		"0 9 * * 1": [
 			"trustbit_ethanol.ts_gate_entry.ts_qc_sla_scheduler.weekly_qc_email",
+		],
+		# v2.29.0 — Notification Trail: monthly evidence archive (private CSV;
+		# extends the audit trail beyond core clear_old_logs' 180-day deletion)
+		"0 2 1 * *": [
+			"trustbit_ethanol.ts_gate_entry.ts_notification_trail.monthly_audit_snapshot",
 		],
 		# v2.9.12 Sprint 2 — Health Check nightly digest (DISABLED until Sprint 3)
 		# Will be uncommented and registered in Sprint 3 once email digest fn is implemented.

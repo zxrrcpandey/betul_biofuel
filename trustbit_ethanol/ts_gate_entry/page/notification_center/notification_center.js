@@ -2,13 +2,18 @@
    Notification Center — everyone's inbox.
      S1 — My Pending Actions (things needing MY decision)
      S2 — My Notifications (uncapped bell inbox, grouped Unread / Read)
-     S3 — My WhatsApp Messages (collapsed, lazy, honest "Sent"-only)
+     S3 — My WhatsApp Messages (pre-opened, collapsible, honest "Sent"-only)
+          — sits in the right column directly under S2, not full-width below.
    House idiom: stores_receiving. No moment() — ages come from the server.
    Every section renders fail-soft WITH console.error (Lesson 311).
    ═══════════════════════════════════════════════════════════════════ */
 
-const NC_VERSION = "v2.8-2026-07-25";
+const NC_VERSION = "v2.12-2026-07-30";
 const NC_API = "trustbit_ethanol.ts_gate_entry.notification_center_api";
+/* Decorative WhatsApp glyph, inlined so it needs no asset build and survives
+   offline/CSP. Kept OUTSIDE #nc-wa-toggle — that button is re-rendered with
+   .text() on every collapse, which would strip any markup placed inside it. */
+const NC_WA_ICON = `<span class="nc-wa-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" focusable="false"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg></span>`;
 console.log("[notification-center]", NC_VERSION, "loaded");
 
 frappe.pages["notification-center"].on_page_load = function (wrapper) {
@@ -26,7 +31,8 @@ frappe.pages["notification-center"].on_page_load = function (wrapper) {
 		document.getElementById("nc-styles").textContent = NC_CSS;
 	}
 	page.add_button(__("Refresh"), () => _nc_reload(), { icon: "refresh" });
-	page.add_button(__("Mark all read"), () => _nc_mark_all(), { icon: "small-message" });
+	// Name the list it clears — it only touches S2, never the pending actions.
+	page.add_button(__("Mark All Notifications Read"), () => _nc_mark_all(), { icon: "small-message" });
 	_nc_subscribe_realtime();
 	setTimeout(() => _nc_init(), 200);
 };
@@ -68,8 +74,11 @@ async function _nc_load_all() {
 	_nc_state.pfilters.start = 0;
 	_nc_state.filters.start = 0;
 	await Promise.allSettled([_nc_load_pending(false), _nc_load_notifs(false)]);
-	if (_nc_state.wa.loaded) _nc_load_wa();
+	// S3 is pre-opened, so load it on first paint too — and keep refreshing it on
+	// reload unless the user has collapsed the section.
+	if (_nc_wa_expanded()) _nc_load_wa();
 }
+function _nc_wa_expanded() { return $("#nc-wa-toggle").attr("aria-expanded") === "true"; }
 
 /* Live updates — core fires a realtime "notification" event to the user on
    every new Notification Log row. Debounced; only refreshes while the Center
@@ -112,17 +121,19 @@ function _nc_render_shell() {
 				<h3>${__("My Pending Actions")}</h3>
 				<div id="nc-s1-body"><div class="nc-skel"></div><div class="nc-skel"></div></div>
 			</section>
-			<section class="nc-section">
-				<h3>${__("My Notifications")} <span class="nc-badge nc-badge-unread" id="nc-s2-unread" aria-live="polite" style="display:none;"></span><span id="nc-s2-controls"></span></h3>
-				<div id="nc-filterbar"></div>
-				<div id="nc-s2-body"><div class="nc-skel"></div><div class="nc-skel"></div><div class="nc-skel"></div></div>
-				<div id="nc-s2-footer"></div>
-			</section>
-		</div>
-		<section class="nc-section">
-			<h3><button id="nc-wa-toggle" class="nc-collapse" aria-expanded="false">▸ ${__("My WhatsApp Messages")}</button></h3>
-			<div id="nc-s3-body" style="display:none;"></div>
-		</section>`);
+			<div class="nc-col">
+				<section class="nc-section">
+					<h3>${__("My Notifications")} <span class="nc-badge nc-badge-unread" id="nc-s2-unread" aria-live="polite" style="display:none;"></span><span id="nc-s2-controls"></span></h3>
+					<div id="nc-filterbar"></div>
+					<div id="nc-s2-body"><div class="nc-skel"></div><div class="nc-skel"></div><div class="nc-skel"></div></div>
+					<div id="nc-s2-footer"></div>
+				</section>
+				<section class="nc-section">
+					<h3>${NC_WA_ICON}<button id="nc-wa-toggle" class="nc-collapse" aria-expanded="true">▾ ${__("My WhatsApp Messages")}</button></h3>
+					<div id="nc-s3-body"><div class="nc-skel"></div></div>
+				</section>
+			</div>
+		</div>`);
 	$("#nc-wa-toggle").on("click", _nc_toggle_wa);
 }
 
@@ -194,7 +205,9 @@ function _nc_render_pending() {
 	}
 }
 function _nc_paint_pending_badge(count) {
-	$("#nc-head-pending").toggle(count > 0).text(`${format_number(count, null, 0)} ${__("pending")}`);
+	// Spell the badge out — a bare "137 pending" doesn't say pending WHAT.
+	const label = count === 1 ? __("Pending Action") : __("Pending Actions");
+	$("#nc-head-pending").toggle(count > 0).text(`${format_number(count, null, 0)} ${label}`);
 }
 
 /* ── Section 2 ──────────────────────────────────────────────────── */
@@ -326,9 +339,12 @@ function _nc_render_notifs() {
 }
 function _nc_paint_badges() {
 	const u = _nc_state.notifs.unread_total || 0;
-	for (const id of ["#nc-head-unread", "#nc-s2-unread"]) {
-		$(id).toggle(u > 0).text(`${format_number(u, null, 0)} ${__("unread")}`);
-	}
+	const n = format_number(u, null, 0);
+	// Header badge sits next to the pending one and must name its own list;
+	// the S2 badge is already under the "My Notifications" heading, so "Unread"
+	// alone reads better there than repeating the word Notifications.
+	$("#nc-head-unread").toggle(u > 0).text(`${n} ${u === 1 ? __("Unread Notification") : __("Unread Notifications")}`);
+	$("#nc-s2-unread").toggle(u > 0).text(`${n} ${__("Unread")}`);
 }
 async function _nc_mark_read(name, $btn) {
 	// Phase 1: the network mutation. Only a genuine failure here is a real
@@ -408,9 +424,11 @@ function _nc_pill(category) {
 const NC_CSS = `
 /* ── container + header ─────────────────────────────────────────── */
 #nc-container{padding:4px 0 16px;}
-/* two-column layout: Pending | Notifications (WhatsApp stays full-width below) */
+/* two-column layout: Pending | (Notifications stacked over WhatsApp) */
 .nc-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;margin-bottom:10px;}
 .nc-cols>.nc-section{margin-bottom:0;}
+.nc-col{display:flex;flex-direction:column;gap:14px;min-width:0;}
+.nc-col>.nc-section{margin-bottom:0;}
 .nc-header{display:flex;align-items:center;gap:12px;padding:8px 4px 12px;}
 .nc-bell-chip{font-size:20px;background:var(--fg-color,#f1f5f9);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:8px 11px;line-height:1;}
 .nc-head-text{min-width:0;}
@@ -512,6 +530,7 @@ const NC_CSS = `
 
 /* ── S3 whatsapp ────────────────────────────────────────────────── */
 .nc-collapse{background:none;border:none;padding:0;font-size:14px;font-weight:600;color:var(--text-color);cursor:pointer;}
+.nc-wa-icon{display:inline-flex;align-items:center;color:#25d366;flex:none;line-height:0;}
 .nc-hint{font-size:11px;color:var(--text-muted);padding-top:10px;line-height:1.4;}
 
 /* ── empty / error / skeleton ───────────────────────────────────── */

@@ -12,6 +12,10 @@ from frappe import _
 from frappe.utils import add_to_date, cint, now_datetime, time_diff_in_hours
 from frappe.utils import format_datetime, get_url_to_form, strip_html
 
+# v2.29.0 accountability trail — fail-soft stamp writers (no import cycle:
+# ts_notification_trail's own imports are frappe-only at module level)
+from trustbit_ethanol.ts_gate_entry.ts_notification_trail import stamp_read, stamp_shown
+
 KILL_SWITCH_FIELD = "ts_notification_center_enabled"
 WORKSPACE_NAME = "BBPL Ethanol"
 PAGE_NAME = "notification-center"
@@ -137,8 +141,11 @@ def _cat_condition(category):
 #  SECTION 2 — My Notifications (bell inbox, uncapped)
 # ═══════════════════════════════════════════════════════════════════════
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def get_notifications(category="all", unread=0, days="30", start=0, page_length=20, search=""):
+    # POST-only (L175 + trail): the returned rows are stamped as delivered-to-UI
+    # evidence, and evidence must never be writable via a CSRF-exempt GET.
+    # All callers use frappe.call (default type POST — request.js:108).
     _guard()
     user = frappe.session.user
     category = category if category in _CATEGORIES else "all"
@@ -175,6 +182,11 @@ def get_notifications(category="all", unread=0, days="30", start=0, page_length=
         "SELECT COUNT(*) {base}{cat}{unread}{search}".format(
             base=base, cat=cat_sql, unread=unread_sql, search=search_sql),
         params)[0][0]
+
+    # Accountability trail (v2.29.0): the rows above are about to be rendered
+    # in the owner's Center list — stamp first-delivery. Fail-soft; separate
+    # statement so a trail problem can never break the inbox.
+    stamp_shown([r.name for r in rows], "Center List")
 
     counts_raw = frappe.db.sql(
         "SELECT nl.document_type, nl.`type` AS ntype, nl.`read` AS is_read, COUNT(*) AS c {base} "
@@ -217,6 +229,8 @@ def mark_read(log_name):
     if owner != user:
         frappe.throw(_("Not permitted."), frappe.PermissionError)
     frappe.db.set_value("Notification Log", log_name, "read", 1, update_modified=False)
+    # trail: flip first, stamp second (a failed flip must leave no read-stamp)
+    stamp_read([log_name], "Center Click")
     return {"ok": 1, "unread_total": _unread_total(user)}
 
 
@@ -233,11 +247,16 @@ def mark_all_read(category="all", days="30"):
         conds.append("nl.creation >= %(cutoff)s")
         params["cutoff"] = add_to_date(now_datetime(), days=-cint(days))
     where = " AND ".join(conds) + _cat_condition(category)
-    marked = frappe.db.sql(
-        "SELECT COUNT(*) FROM `tabNotification Log` nl WHERE " + where, params)[0][0]
+    # trail (v2.29.0): SELECT the names (count = len) so the read flip can be
+    # stamped afterwards; the business UPDATE itself stays byte-identical and
+    # is NEVER coupled to the trail columns or the trail kill-switch.
+    names = [r[0] for r in frappe.db.sql(
+        "SELECT nl.name FROM `tabNotification Log` nl WHERE " + where, params)]
+    marked = len(names)
     if marked:
         frappe.db.sql(
             "UPDATE `tabNotification Log` nl SET nl.`read` = 1 WHERE " + where, params)
+        stamp_read(names, "Center Mark All")
     return {"ok": 1, "marked": marked, "unread_total": _unread_total(user)}
 
 
@@ -255,10 +274,13 @@ def unread_count():
     return _unread_total(frappe.session.user)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def latest_unread():
     """Toast payload — the session user's newest unread notification.
-    Self-scoped, read-only; None when nothing unread or center disabled."""
+    Self-scoped; None when nothing unread or center disabled. POST-only:
+    the toast displays the subject, so the row is stamped delivered-to-UI
+    (trail evidence must never be writable via a CSRF-exempt GET). Caller
+    is frappe.xcall → POST (request.js:108)."""
     _check_read()
     if not _enabled():
         return None
@@ -270,6 +292,7 @@ def latest_unread():
     if not rows:
         return None
     r = rows[0]
+    stamp_shown([r.name], "Toast Push")
     return {"subject": strip_html(r.subject or ""),
             "route": _route_of(r.document_type, r.document_name, r.link)}
 
