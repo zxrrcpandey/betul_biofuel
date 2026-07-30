@@ -644,7 +644,7 @@ const AFE_EXPLAINERS = {
 			nodes: [
 				{ label: "ts_amount_at_submission: ₹4,50,000", state: "done" },
 				{ label: "grand_total: ₹4,50,000", state: "done" },
-				{ label: "Status: Pending PM Review", state: "current" },
+				{ label: "Status: Pending Purchase Manager Review", state: "current" },
 			],
 		},
 		after: {
@@ -666,7 +666,7 @@ const AFE_EXPLAINERS = {
 			label: "Without budget check",
 			nodes: [
 				{ label: "PO ₹50,000 submitted", state: "current" },
-				{ label: "Pending PM Review", state: "queued" },
+				{ label: "Pending Purchase Manager Review", state: "queued" },
 			],
 		},
 		after: {

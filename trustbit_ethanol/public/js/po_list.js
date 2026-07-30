@@ -130,8 +130,17 @@ function _fix_docstatus_for_approval_filter(listview) {
 			f[1] === "ts_approval_status" && f[3] && f[3] !== "Approved"
 		);
 		if (has_approval) {
-			// Remove docstatus filter so Draft (pending) POs show
-			listview.filter_area.remove("docstatus");
+			// v2.28.5: only when a docstatus filter actually EXISTS. FilterArea
+			// .remove() unconditionally runs filter_list.apply() -> on_change ->
+			// debounced refresh -> this wrapper again: with the "My Pending"
+			// `in [...]` filter permanently satisfying has_approval, an
+			// unconditional remove() self-sustained a ~3s reportview.get poll
+			// loop in every patched PO/MR tab, forever.
+			const _fl = listview.filter_area && listview.filter_area.filter_list;
+			if (_fl && typeof _fl.get_filter === "function" && _fl.get_filter("docstatus")) {
+				// Remove docstatus filter so Draft (pending) POs show
+				listview.filter_area.remove("docstatus");
+			}
 		}
 	} catch(e) {}
 }
@@ -143,3 +152,16 @@ function _fix_docstatus_for_approval_filter(listview) {
 // Frappe's default `flex: 1` distribution — accepted as a known
 // limitation pending a cleaner solution (e.g. add more columns to the
 // list view to fill the gaps; will iterate based on user preference).
+
+// v2.28.5 — export for po_list_hold.js's settings.onload/refresh chain (cold-load
+// fix). frappe's list_factory.make() fires "page-change" DURING make_page()
+// argument evaluation and assigns cur_list only AFTER the constructor returns, so
+// the handler above misses the FIRST paint after any F5/hard-refresh — no toggle,
+// no TS indicators — until the user navigates away and back. settings.onload
+// (list_view.js:333) receives the instance directly; the chain lives in
+// po_list_hold.js because doctype_list_js is evaluated AFTER erpnext's
+// whole-object listview_settings assignment (L332). The window export is the
+// explicit cross-file contract: po_list_hold.js runs in a separate evaluation
+// context (`new Function(__list_js)`), where only globals are reachable — and
+// it stays mandatory if this file ever moves into a .bundle.js.
+window.ts_patch_po_list = _patch_po_list;

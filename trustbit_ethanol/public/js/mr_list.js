@@ -50,7 +50,17 @@ function _fix_mr_docstatus_for_approval_filter(listview) {
 			f[1] === "ts_mr_status" && f[3] && f[3] !== "Approved"
 		);
 		if (has_approval) {
-			listview.filter_area.remove("docstatus");
+			// v2.28.5: only when a docstatus filter actually EXISTS — an
+			// unconditional FilterArea.remove() re-triggers refresh and
+			// self-sustains a ~3s poll loop (see the twin comment in po_list.js).
+			const _fl = listview.filter_area && listview.filter_area.filter_list;
+			if (_fl && typeof _fl.get_filter === "function" && _fl.get_filter("docstatus")) {
+				listview.filter_area.remove("docstatus");
+			}
 		}
 	} catch(e) {}
 }
+
+// v2.28.5 — export for mr_list_hooks.js's settings.onload/refresh chain (cold-load
+// fix; see the twin comment at the end of po_list.js — same race, same reason).
+window.ts_patch_mr_list = _patch_mr_list;

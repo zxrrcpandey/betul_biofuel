@@ -24,9 +24,16 @@ frappe.listview_settings["Purchase Order"] = frappe.listview_settings["Purchase 
 (function () {
 	const po = frappe.listview_settings["Purchase Order"];
 
-	// (a) make sure the flag is actually fetched with the list rows
+	// (a) make sure the flag is actually fetched with the list rows.
+	// add_fields is consumed ONCE in setup_fields, BEFORE settings.onload fires
+	// (base_list init task order) — so it must be set here at module scope; adding
+	// it from onload only ever helps the NEXT instance. ts_approval_status is
+	// included defensively too (v2.28.5): it is in_list_view today, but columns
+	// are admin-owned since v2.27.3, and if an admin drops that column the
+	// formatter and indicator would silently lose their data.
 	po.add_fields = (po.add_fields || []).slice();
 	if (!po.add_fields.includes("ts_po_on_hold")) po.add_fields.push("ts_po_on_hold");
+	if (!po.add_fields.includes("ts_approval_status")) po.add_fields.push("ts_approval_status");
 
 	// (b) the Approval Status COLUMN itself — this is what the user reads.
 	// list_view.js:907-911 interpolates the formatter's return value raw, so the
@@ -79,10 +86,8 @@ frappe.listview_settings["Purchase Order"] = frappe.listview_settings["Purchase 
 // ListView instance, so we re-wrap whenever we see an unwrapped base function.
 // The marker lives on the wrapper we install and is tested against the CURRENT
 // get_indicator — a fresh base is wrapped exactly once, and layers can never
-// accumulate across repeated page-changes.
-$(document).on("page-change", function () {
-	if (!(cur_list && cur_list.doctype === "Purchase Order")) return;
-	const settings = cur_list.settings;
+// accumulate across repeated invocations from any trigger below.
+function _ts_wrap_hold_indicator(settings) {
 	if (!settings || (settings.get_indicator && settings.get_indicator._ts_hold_wrapped)) return;
 
 	const _inner = settings.get_indicator;
@@ -94,4 +99,82 @@ $(document).on("page-change", function () {
 	};
 	wrapped._ts_hold_wrapped = true;
 	settings.get_indicator = wrapped;
+}
+
+$(document).on("page-change", function () {
+	if (!(cur_list && cur_list.doctype === "Purchase Order")) return;
+	_ts_wrap_hold_indicator(cur_list.settings);
 });
+
+// (d) v2.28.5 — cold-load fix. frappe's list_factory.make() evaluates
+// `me.make_page(...)` as a constructor ARGUMENT — container.change_to() fires
+// "page-change" inside it — and set_cur_list() runs only after the constructor
+// returns (and on the cached-page branch, change_to likewise precedes on_show).
+// So on any F5 directly on the list, page-change fires while cur_list is still
+// null/stale: po_list.js's handler AND the one above miss the first paint — no
+// toggle buttons, no TS indicators, no hold pill — until the user navigates away
+// and back. settings.onload (list_view.js:333, once per instance) and
+// settings.refresh (base_list.js:512, every render) receive the listview
+// INSTANCE, so there is no race. The page-change handlers stay as belt-and-braces.
+//
+// ORDER MATTERS: settings is the GLOBAL frappe.listview_settings object shared by
+// every PO ListView instance, while _ts_patched is per-instance — so a second
+// instance (e.g. Report view) re-runs _patch_po_list, which re-assigns a FRESH
+// get_indicator and silently drops the hold wrapper. ts_patch_po_list must
+// therefore run FIRST and the hold re-wrap SECOND, in BOTH chains below.
+(function () {
+	const po = frappe.listview_settings["Purchase Order"];
+
+	function _patch(listview) {
+		if (!listview) return;
+		// try/catch: a TS failure must never suppress erpnext's chained half
+		// (Close/Reopen menu + bulk actions used by every Purchase Manager).
+		try {
+			if (typeof window.ts_patch_po_list === "function") {
+				// Full patch: TS get_indicator + docstatus-filter fix + toggle.
+				window.ts_patch_po_list(listview);
+			} else if (typeof window.ts_apply_my_approvals_filter === "function") {
+				// Browser pinned to a pre-v2.28.5 po_list.js (bare-/assets 1y
+				// cache, L318/319) without the export: toggle + role filter still
+				// install; the indicator override arrives with ?v=3. Idempotent
+				// vs a later page-change patch via _already_applied.
+				window.ts_apply_my_approvals_filter(listview);
+			}
+		} catch (e) {
+			// swallow — erpnext half already ran; TS pieces retry on page-change
+		}
+		// Own guard: the hold pill is LIVE on prod — a throw in the patch above
+		// must not skip the re-wrap (the wrap must also run when the patch threw
+		// AFTER re-assigning a fresh, unwrapped get_indicator).
+		try {
+			_ts_wrap_hold_indicator(listview.settings);
+		} catch (e) {}
+	}
+
+	// __list_js can be evaluated more than once per session (clear_cache +
+	// meta reload). erpnext's onload is NOT idempotent (add_menu_item appends
+	// Close/Reopen every call), so guard the chain installation itself.
+	if (!(po.onload && po.onload._ts_chained)) {
+		const _core_onload = po.onload;
+		const chained_onload = function (listview) {
+			if (_core_onload) _core_onload(listview);
+			_patch(listview);
+		};
+		chained_onload._ts_chained = true;
+		po.onload = chained_onload;
+	}
+
+	if (!(po.refresh && po.refresh._ts_chained)) {
+		const _core_refresh = po.refresh;
+		const chained_refresh = function (listview) {
+			if (_core_refresh) _core_refresh(listview);
+			// Re-assert on every render — O(1) no-op when already patched
+			// (_ts_patched / _already_applied / _ts_hold_wrapped guards), and the
+			// recovery path for an instance whose onload ran before the exports
+			// existed (blocked asset fetch / stale service-worker cache).
+			_patch(listview);
+		};
+		chained_refresh._ts_chained = true;
+		po.refresh = chained_refresh;
+	}
+})();

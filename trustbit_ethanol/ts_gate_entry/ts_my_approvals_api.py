@@ -28,21 +28,44 @@ ROLE_STATUS_MAP = {
 	# (Stock User / Department Head / AVP all hold Review steps) and can therefore
 	# hold + resume. Read-only impact: list filter + workspace tiles + number cards;
 	# no notification/SLA/reminder path reads ROLE_STATUS_MAP.
+	# v2.28.3 — this map is EXACT-MATCH, so it was the one consumer genuinely blind
+	# to the full-name spellings the engine emits (every other consumer uses
+	# LIKE 'Pending%' / startswith and always matched). Purchase Managers saw ZERO
+	# of their pending POs. Abbreviations are RETAINED alongside the full names —
+	# both spellings are live in stored data, so a role must match either.
 	"Material Request": {
 		"field": "ts_mr_status",
 		"roles": {
-			"Stock User":       ["Pending Dept. User", "On Hold"],
-			"Department Head":  ["Pending Dept. Head", "On Hold"],
-			"AVP":              ["Pending AVP", "On Hold"],
+			"Stock User":       ["On Hold", "Pending Stock User"],
+			"Department Head":  ["On Hold", "Pending Department Head"],
+			# Route "WTP" step 1 has role="AVP" with role_label="Final" -> "Pending Final".
+			# VERIFIED on prod AND demo (29 Jul) that this is the ONLY step labelled
+			# "Final" and its role IS genuinely AVP, so this alias grants AVP nothing
+			# beyond its own queue. ⚠ role_label is free text a route admin can edit:
+			# if a step for a DIFFERENT role is ever labelled "Final", AVP users would
+			# see it here. Visibility only — PQC + DocPerms still apply and this map
+			# never confers any act/approve capability — but re-verify before adding
+			# further label-derived aliases.
+			"AVP":              ["Pending AVP", "On Hold", "Pending Final"],
 			"CEO":              ["Pending CEO", "On Hold"],
-			"General Manager":  ["Pending GM", "On Hold"],
+			# MR retires "Pending GM" (0 rows, no route step) — the key stays so a GM
+			# can still see/resume a HELD MR. The PO map below deliberately KEEPS
+			# "Pending GM" and "Pending Dept. Head"; that asymmetry is intentional.
+			"General Manager":  ["On Hold"],
+			"MD":               ["Pending MD", "On Hold"],
+			# seeded route "Store 1" (currently inactive) steps through Production Head
+			"Production Head":  ["Pending Production Head", "On Hold"],
 		},
 	},
 	"Purchase Order": {
 		"field": "ts_approval_status",
 		"roles": {
-			"Purchase Manager":       ["Pending PM"],
-			"Grain Purchase Manager": ["Pending Grain PM"],
+			"Purchase Manager":       ["Pending Purchase Manager"],
+			"Grain Purchase Manager": ["Pending Grain Purchase Manager"],
+			# ⚠ KEEP both of these — real PO rows still hold them and no PO rule
+			# steps through Department Head or General Manager, so there is no value
+			# to migrate them to. Dropping either makes those documents invisible to
+			# their approvers, which is the blindness v2.28.3 just fixed.
 			"Department Head":        ["Pending Dept. Head"],
 			"CEO":                    ["Pending CEO"],
 			"MD":                     ["Pending MD"],

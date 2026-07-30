@@ -621,9 +621,12 @@ def get_health_check_targets():
 			    FROM `tab{dt}`
 			    WHERE
 			      (docstatus = 0 AND {status_field} IN
-			        ('Approved','Rejected','Pending Dept. User','Pending Dept. Head',
-			         'Pending AVP','Pending CEO','Pending GM','Pending Stores Manager',
-			         'Revised','On Hold'))
+			        ('Approved','Rejected','Revised','On Hold',
+			         'Pending AVP','Pending CEO','Pending MD','Pending Stores Manager',
+			         'Pending Dept. Head','Pending GM',
+			         'Pending Department Head','Pending Stock User',
+			         'Pending Production Head','Pending Final',
+			         'Pending Purchase Manager','Pending Grain Purchase Manager'))
 			      OR (docstatus = 1 AND {status_field} = 'Revised')
 			      OR (docstatus = 1 AND {status_field} LIKE 'Pending %%' AND DATEDIFF(NOW(), modified) >= 7)
 			      OR (docstatus = 2)

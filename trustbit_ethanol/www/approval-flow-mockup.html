@@ -808,7 +808,7 @@ tr:hover td { background: #f9fafb; }
     </div>
     <div class="tracer-input">
       <select id="tracerDoc" onchange="traceDoc(this.value)">
-        <option value="MAT-MR-2026-00063">MAT-MR-2026-00063 — Process WTP (₹45,230) — Pending Dept. Head</option>
+        <option value="MAT-MR-2026-00063">MAT-MR-2026-00063 — Process WTP (₹45,230) — Pending Department Head</option>
         <option value="MAT-MR-2026-00061">MAT-MR-2026-00061 — BOILER BOP (₹12,500) — Pending AVP</option>
         <option value="PUR-ORD-2026-00040">PUR-ORD-2026-00040 — Store Above 6L (₹7,25,000) — Pending CEO</option>
         <option value="PUR-ORD-2026-00038">PUR-ORD-2026-00038 — Capex Above 6L (₹12,50,000) — Pending MD</option>
@@ -1486,7 +1486,7 @@ const explainers = {
       nodes: [
         { label: "ts_amount_at_submission: ₹4,50,000", state: "done" },
         { label: "grand_total: ₹4,50,000", state: "done" },
-        { label: "Status: Pending PM Review", state: "current", note: "approval proceeds" }
+        { label: "Status: Pending Purchase Manager Review", state: "current", note: "approval proceeds" }
       ]
     },
     after: {
@@ -1507,7 +1507,7 @@ const explainers = {
       label: "Without budget check",
       nodes: [
         { label: "PO ₹50,000 submitted", state: "current" },
-        { label: "Pending PM Review", state: "queued", note: "would proceed normally" }
+        { label: "Pending Purchase Manager Review", state: "queued", note: "would proceed normally" }
       ]
     },
     after: {

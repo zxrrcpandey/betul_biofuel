@@ -43,17 +43,25 @@ CACHE_NS = "health_check_v1"
 # Statuses that indicate a doc is in an in-flight approval state, NOT a
 # fresh draft. If amended_from is set AND docstatus=0 AND status is in
 # this set → state corruption (parent's status carried over to child).
+# v2.28.4 — MR vocabulary only (this validator reads ts_mr_status). The retired
+# abbreviations "Pending Dept. User"/"Pending Dept. Head"/"Pending GM" are replaced
+# by the values the engine actually writes; the full-name spellings introduced in
+# v2.28.3 are ALSO added, because this tuple was silently blind to every one of them
+# (a corrupted amend sitting at e.g. "Pending Department Head" went undetected).
+# Keep this in step with the ts_mr_status options in seed_data.py.
 BROKEN_AMENDED_STATUSES = (
     "Approved",
     "Rejected",
-    "Pending Dept. User",
-    "Pending Dept. Head",
-    "Pending AVP",
-    "Pending CEO",
-    "Pending GM",
-    "Pending Stores Manager",
     "Revised",
     "On Hold",
+    "Pending AVP",
+    "Pending CEO",
+    "Pending MD",
+    "Pending Stores Manager",
+    "Pending Department Head",
+    "Pending Stock User",
+    "Pending Production Head",
+    "Pending Final",
 )
 
 # SLA thresholds (days). Configurable via TS Settings in a future sprint;

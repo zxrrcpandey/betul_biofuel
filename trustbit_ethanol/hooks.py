@@ -19,8 +19,10 @@ app_include_js = [
 	"/assets/trustbit_ethanol/js/ts_approval_ux.js?v=2",
 	"/assets/trustbit_ethanol/js/ts_my_approvals.js",
 	"/assets/trustbit_ethanol/js/ts_cc_filter.js",
-	"/assets/trustbit_ethanol/js/po_list.js?v=2",
-	"/assets/trustbit_ethanol/js/mr_list.js?v=2",
+	# v3 = v2.28.5 cold-load fix exports (?v bump mandatory — bare /assets are
+	# browser-pinned for 1y; without the URL change the fix ships invisibly, L318/319)
+	"/assets/trustbit_ethanol/js/po_list.js?v=3",
+	"/assets/trustbit_ethanol/js/mr_list.js?v=3",
 	"/assets/trustbit_ethanol/js/ts_post_dated_entry_request_list.js",
 	"/assets/trustbit_ethanol/js/ts_budget_proposal_list.js",
 	"/assets/trustbit_ethanol/js/ts_post_dated.js",
@@ -157,6 +159,9 @@ override_doctype_class = {
 # and land before the list's first data fetch, which add_fields depends on.
 doctype_list_js = {
 	"Purchase Order": "public/js/po_list_hold.js",
+	# v2.28.5 — cold-load fix chain for the MR list (erpnext's
+	# material_request_list.js whole-object-assigns exactly like the PO one)
+	"Material Request": "public/js/mr_list_hooks.js",
 }
 
 # Inject JS into standard DocTypes for approval buttons

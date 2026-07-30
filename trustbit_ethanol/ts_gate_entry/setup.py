@@ -2193,7 +2193,188 @@ def seed_property_setters():
 		})
 		doc.insert(ignore_permissions=True)
 
+	_enforce_status_option_enums()
 	frappe.db.commit()
+
+
+# Option enums the APP owns (not the admin). The approval engine derives its
+# status strings from the live rule/route config, so if one of these lists drifts
+# behind seed_data.py the document becomes unsaveable (_validate_selects rejects
+# a value the engine itself just wrote). seed_property_setters() above is
+# INSERT-ONLY — an already-present row silently no-ops an UPDATE (Lesson 239 /
+# 292), which would ship a widened enum completely inert. So these two are
+# re-applied compare-then-apply on EVERY migrate: a redeploy, restart, fresh
+# install or manual DB edit can never leave a server on a stale list.
+# Deliberately an ALLOWLIST — every other options Property Setter stays
+# admin-editable and is left untouched.
+_ENFORCED_OPTION_ENUMS = (
+	("Purchase Order", "ts_approval_status"),
+	("Material Request", "ts_mr_status"),
+)
+
+# v2.28.4 — legacy spellings retired from the enums above, mapped to the value the
+# approval engine writes today. Before v2.28.3 the engine emitted abbreviations; it
+# now emits f"Pending {role_label or role}", so the SAME state had two legal
+# spellings at once (users saw both "Pending Grain PM" and "Pending Grain Purchase
+# Manager" in the Approval Status filter and no single filter returned all rows).
+# NOT listed on purpose: PO "Pending Dept. Head" / "Pending GM" — real rows hold
+# them and NO PO rule steps through Department Head or General Manager, so there is
+# no honest merge target; those records keep their meaning and both stay legal.
+_LEGACY_STATUS_RENAMES = {
+	("Purchase Order", "ts_approval_status"): {
+		"Pending PM": "Pending Purchase Manager",
+		"Pending Grain PM": "Pending Grain Purchase Manager",
+	},
+	("Material Request", "ts_mr_status"): {
+		"Pending Dept. User": "Pending Stock User",
+		"Pending Dept. Head": "Pending Department Head",
+	},
+}
+
+
+def _rename_legacy_statuses(doc_type, field_name):
+	"""Re-spell retired status values BEFORE the narrowed enum is applied.
+
+	This lives HERE rather than in a patch on purpose. It must be impossible for the
+	option list to narrow while a row still holds a retired value — such a row fails
+	`_validate_selects` on every future save, which is precisely the bug v2.28.3 was
+	written to fix. Running immediately before `make_property_setter` in the same
+	function makes that ordering STRUCTURAL instead of a migrate-sequence
+	coincidence: a patch would be defeated by `bench migrate --skip-failing` (which
+	logs the patch as skipped and carries on to the after_migrate hooks) or by anyone
+	re-applying the Property Setter by hand from bench console, which the deploy
+	checklist actively tells operators to do.
+
+	Runs unconditionally, not only on drift, so a restored DB dump or a re-imported
+	document that reintroduces a retired spelling is healed on the next migrate.
+
+	Direct SQL is deliberate: some affected documents are CANCELLED (docstatus=2) and
+	the ORM refuses to save those, and `modified` must NOT move — these are cosmetic
+	re-spellings, and bumping it would reset the age clock that the approval
+	reminder/SLA ladder keys on. Idempotent: a second run matches 0 rows.
+	"""
+	renames = _LEGACY_STATUS_RENAMES.get((doc_type, field_name)) or {}
+	total = 0
+	for old, new in renames.items():
+		names = frappe.db.sql_list(
+			"SELECT name FROM `tab%s` WHERE `%s` = %%s" % (doc_type, field_name), old
+		)
+		if not names:
+			continue
+		frappe.db.sql(
+			"UPDATE `tab%s` SET `%s` = %%s WHERE `%s` = %%s"
+			% (doc_type, field_name, field_name),
+			(new, old),
+		)
+		total += len(names)
+		# Rollback aid: once merged, these rows are indistinguishable from the ones
+		# that already held the new spelling, so record which ones moved.
+		frappe.log_error(
+			title="v2.28.4 status re-spelled: %s" % doc_type,
+			message="%s.%s: %r -> %r (%d rows)\n%s"
+			% (doc_type, field_name, old, new, len(names), ", ".join(names)),
+		)
+	return total
+
+
+def _enforce_status_option_enums():
+	"""Re-apply the app-owned Select enums from seed_data (single source of truth)."""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+	from trustbit_ethanol.ts_gate_entry.seed_data import PROPERTY_SETTERS
+
+	changed = []
+	for doc_type, field_name in _ENFORCED_OPTION_ENUMS:
+		desired = None
+		for entry in PROPERTY_SETTERS:
+			if (
+				entry["doc_type"] == doc_type
+				and entry.get("field_name") == field_name
+				and entry["property"] == "options"
+			):
+				desired = entry.get("value")
+				break
+		if desired is None:
+			continue
+
+		current = frappe.db.get_value(
+			"Property Setter",
+			{"doc_type": doc_type, "field_name": field_name, "property": "options"},
+			"value",
+		)
+		narrowing = current != desired
+
+		# FAIL-SAFE — runs BEFORE the rename, and tests the PROJECTED post-rename
+		# values. Both details are load-bearing:
+		#
+		#  * BEFORE, because `continue` is not an exception — it falls through to the
+		#    frappe.db.commit() in seed_property_setters(). A veto placed AFTER the
+		#    rename would COMMIT re-spelled data while leaving the old enum in place,
+		#    stranding exactly the documents it meant to protect (the live enum does
+		#    not yet contain the rename targets on a server that has not taken this
+		#    release). Refusing must mean "change nothing at all".
+		#  * PROJECTED, because `desired` has to cover what the data will look like
+		#    AFTER the rename, not before — otherwise every legacy value looks stray
+		#    and the fix could never apply anywhere.
+		#
+		# _LEGACY_STATUS_RENAMES only heals spellings we know about; this catches
+		# everything else — a restored dump, a bulk import (`frappe.flags.in_import`
+		# skips Select validation), or a new rule step whose role name nobody added
+		# to the list. Skipped entirely when not narrowing, so steady-state migrates
+		# pay nothing.
+		if narrowing:
+			renames = _LEGACY_STATUS_RENAMES.get((doc_type, field_name)) or {}
+			stored = frappe.db.sql_list(
+				"SELECT DISTINCT `%s` FROM `tab%s` WHERE `%s` IS NOT NULL AND `%s` != ''"
+				% (field_name, doc_type, field_name, field_name)
+			)
+			stray = sorted({renames.get(v, v) for v in stored} - set(desired.split("\n")))
+			if stray:
+				frappe.log_error(
+					title="Enum NOT narrowed: %s" % doc_type,
+					message=(
+						"Refused to apply the %s.%s option list: %d stored value(s) "
+						"would be missing from it, and those documents would become "
+						"permanently unsaveable. Nothing was changed for this doctype "
+						"— the re-spelling was skipped too.\n\nStray values: %s\n\n"
+						"Fix: add them to seed_data.PROPERTY_SETTERS, or map them in "
+						"_LEGACY_STATUS_RENAMES, then re-run bench migrate."
+						% (doc_type, field_name, len(stray), stray)
+					),
+				)
+				# Veto is per-doctype by design: the two enums are independent
+				# columns with no shared invariant, so a data problem on one must
+				# not block the repair of the other.
+				continue
+
+		if _rename_legacy_statuses(doc_type, field_name):
+			changed.append(doc_type)
+
+		if narrowing:
+			# ⚠ Do NOT add a frappe.db.commit() here or inside
+			# _rename_legacy_statuses(), and do NOT add any early-exit between the
+			# rename above and this write — `continue` COMMITS, only an exception
+			# rolls back. The rename and this write share one transaction (the sole
+			# commit is in seed_property_setters, after this returns), which is what
+			# stops a server ever holding re-spelled data under an un-narrowed enum,
+			# or vice versa.
+			make_property_setter(
+				doc_type, field_name, "options", desired, "Text",
+				validate_fields_for_doctype=False,
+			)
+			changed.append(doc_type)
+
+	# Meta flush so the new options are visible without a session-destroying
+	# `bench clear-cache` (Lesson 234 — never run that on production).
+	# dict.fromkeys: a doctype can be appended twice (rename AND option change) —
+	# dedupe while preserving order so we flush each doctype once.
+	for doc_type in dict.fromkeys(changed):
+		frappe.clear_cache(doctype=doc_type)
+	if changed:
+		from frappe.cache_manager import clear_global_cache
+
+		clear_global_cache()
+
+	return changed
 
 
 def seed_over_receipt_allowance():

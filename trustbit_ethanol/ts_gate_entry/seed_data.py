@@ -188,7 +188,19 @@ PROPERTY_SETTERS = [
 	# v2.10.0 — added "Pending Budget Override" (positioned immediately before Approved per plan §2.4).
 	# Lesson 239: bench migrate does NOT auto-apply this — post-deploy patch
 	# patches/v2_10_0/add_pending_budget_override_status.py calls make_property_setter.
-	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "options", "property_type": "Text", "value": "Not Submitted\nPending Dept. User\nPending Dept. Head\nPending AVP\nPending CEO\nPending GM\nPending Budget Override\nApproved\nRevised\nRejected\nOn Hold\nPending Stores Manager", "doctype_or_field": "DocField"},
+	# v2.28.3 — the approval engine writes f"Pending {step.role_label or step.role}",
+	# i.e. the FULL role name, but this list only ever held abbreviations. Seeded
+	# routes carry no role_label at all, so 3 of 4 seeded MR routes emit a value
+	# that was NOT a legal option -> _validate_selects blocked Save on those MRs.
+	# v2.28.4 — collapsed to ONE value per state: the legacy abbreviations
+	# "Pending Dept. User" / "Pending Dept. Head" / "Pending GM" are RETIRED, their
+	# rows re-spelled by _rename_legacy_statuses() in setup.py, which runs
+	# immediately before this list is applied so no row can be stranded on a value
+	# the enum no longer allows. ⚠ ANY value added here must be one a live route can
+	# actually emit AND every stored value must appear here — this list is
+	# force-applied on every migrate, so an omission makes those documents
+	# permanently unsaveable. Verify with a GROUP BY of the live column, not by eye.
+	{"doc_type": "Material Request", "field_name": "ts_mr_status", "property": "options", "property_type": "Text", "value": "Not Submitted\nPending AVP\nPending CEO\nPending Budget Override\nApproved\nRevised\nRejected\nOn Hold\nPending Stores Manager\nPending Department Head\nPending Stock User\nPending Production Head\nPending Final\nPending MD", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "buying_price_list", "property": "hidden", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "material_request_type", "property": "options", "property_type": "Text", "value": "Purchase\nMaterial Transfer\nMaterial Issue\nManufacture\nCustomer Provided\nService Request", "doctype_or_field": "DocField"},
 	{"doc_type": "Material Request", "field_name": "schedule_date", "property": "in_list_view", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
@@ -205,7 +217,18 @@ PROPERTY_SETTERS = [
 	{"doc_type": "Purchase Order", "field_name": "ts_approval_status", "property": "in_standard_filter", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order", "field_name": "ts_approval_status", "property": "label", "property_type": "Data", "value": "Approval Status", "doctype_or_field": "DocField"},
 	# v2.10.0 — added "Pending Budget Override" (positioned immediately before Approved per plan §2.4).
-	{"doc_type": "Purchase Order", "field_name": "ts_approval_status", "property": "options", "property_type": "Text", "value": "Not Submitted\nPending PM\nPending Grain PM\nPending Dept. Head\nPending CEO\nPending MD\nPending GM\nPending Budget Override\nApproved\nRevised\nRejected", "doctype_or_field": "DocField"},
+	# v2.28.3 — same defect on the PO side: 4 of the 7 seeded PO rules step through
+	# "Purchase Manager" / "Grain Purchase Manager" with no role_label, emitting
+	# "Pending Purchase Manager" / "Pending Grain Purchase Manager" — neither of
+	# which was a legal option.
+	# v2.28.4 — collapsed to ONE value per state: "Pending PM" / "Pending Grain PM"
+	# are RETIRED and their rows re-spelled by _rename_legacy_statuses() in setup.py.
+	# ⚠ "Pending Dept. Head" and "Pending GM" are DELIBERATELY KEPT: real rows hold
+	# them and NO PO rule steps through Department Head or General Manager, so there
+	# is no honest merge target — retiring them would strand those documents.
+	# Note the asymmetry with the MR list above, which DOES retire both: that is
+	# intentional, not an oversight. Same force-apply warning as the MR list.
+	{"doc_type": "Purchase Order", "field_name": "ts_approval_status", "property": "options", "property_type": "Text", "value": "Not Submitted\nPending Dept. Head\nPending CEO\nPending MD\nPending GM\nPending Budget Override\nApproved\nRevised\nRejected\nPending Purchase Manager\nPending Grain Purchase Manager", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order", "field_name": "rounded_total", "property": "hidden", "property_type": "Check", "value": "0", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order", "field_name": "in_words", "property": "hidden", "property_type": "Check", "value": "0", "doctype_or_field": "DocField"},
 	{"doc_type": "Purchase Order Item", "field_name": "schedule_date", "property": "in_list_view", "property_type": "Check", "value": "0", "doctype_or_field": "DocField"},
