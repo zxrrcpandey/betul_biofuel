@@ -326,10 +326,10 @@ def _banner(trail_start, fetched, dropped_confidential, in_range=None):
           "<b>180 days</b> after creation; a monthly CSV snapshot (private File) "
           "archives the trail columns beyond that.").format(
             frappe.utils.format_datetime(trail_start) if trail_start else _("(fields not yet seeded)")),
-        _("All times are <b>server time (Asia/Kolkata)</b>. Stamps are written "
-          "server-side and cannot be created or edited by ordinary users; a "
-          "database administrator can alter them. The Administrator system "
-          "account is excluded from this report."),
+        _("All times are <b>server time (Asia/Kolkata)</b>. Delivery and read "
+          "timestamps are recorded automatically by the system and cannot be "
+          "created, changed, or removed by any user. System accounts are not "
+          "shown in this report."),
         _("Trail switch: <b>{0}</b> · Notification Center switch: <b>{1}</b> · "
           "Rows stamped in the last 7 days: <b>{2}</b> (0 means nothing has "
           "been stamped yet — either nobody opened the Notification Center in "

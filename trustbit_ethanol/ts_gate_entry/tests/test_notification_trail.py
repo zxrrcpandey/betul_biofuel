@@ -640,7 +640,8 @@ check("Administrator rows hidden from report",
       all(d.for_user != "Administrator" for d in data))
 cols, data, msg = report.execute({"user": "Administrator"})
 check("user=Administrator filter returns nothing", len(data) == 0)
-check("banner states Administrator exclusion", "Administrator system" in msg)
+check("banner states system-account exclusion without naming Administrator",
+      "System accounts are not shown" in msg and "Administrator" not in msg)
 
 # ═══════════════════════════════════════════════════════════════════════
 category("13. Report confidentiality")
