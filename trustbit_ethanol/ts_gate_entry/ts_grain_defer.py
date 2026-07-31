@@ -136,7 +136,7 @@ def get_grain_purchase_orders(po_id=None, po_date=None, **kwargs):
         filters["name"] = ["like", "%{0}%".format(po_id)]
     if po_date:
         filters["transaction_date"] = po_date
-    return frappe.get_all(
+    pos = frappe.get_all(
         "Purchase Order",
         filters=filters,
         fields=["name", "supplier", "supplier_name", "transaction_date",
@@ -144,6 +144,22 @@ def get_grain_purchase_orders(po_id=None, po_date=None, **kwargs):
         order_by="transaction_date desc",
         limit=20,
     )
+    if pos:
+        # Item names + rates for the dialog list — same allow-listed audience
+        # that already sees grand_total (non-allow-listed users got [] above).
+        item_rows = frappe.get_all(
+            "Purchase Order Item",
+            filters={"parenttype": "Purchase Order",
+                     "parent": ["in", [p.name for p in pos]]},
+            fields=["parent", "item_name", "qty", "uom", "rate"],
+            order_by="parent, idx",
+        )
+        items_by_po = {}
+        for row in item_rows:
+            items_by_po.setdefault(row.parent, []).append(row)
+        for p in pos:
+            p["items"] = items_by_po.get(p.name, [])
+    return pos
 
 
 # --------------------------------------------------------------------------- #

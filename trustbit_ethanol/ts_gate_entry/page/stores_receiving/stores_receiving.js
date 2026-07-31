@@ -6,7 +6,7 @@
      C — Approved Direct PO (new, no token)
    ═══════════════════════════════════════════════════════════════════ */
 
-const SR_VERSION = "v6.9-2026-07-16-grain-received-qty";
+const SR_VERSION = "v6.11-2026-07-31-grain-po-items-rate";
 const SR_API = "trustbit_ethanol.ts_gate_entry.stores_receiving_api";
 console.log("[stores-receiving]", SR_VERSION, "loaded");
 
@@ -220,7 +220,11 @@ function _sr_open_link_grain_dialog(token, vehicle, material, net) {
 				});
 				frappe.show_alert({ message: __("GRN {0} created — vehicle released.", [r.message.purchase_receipt]), indicator: "green" }, 6);
 				dlg.hide();
-				_sr_reload();
+				if (r && r.message && r.message.purchase_receipt) {
+					frappe.set_route("Form", "Purchase Receipt", r.message.purchase_receipt);
+				} else {
+					_sr_reload();
+				}
 			} catch (e) {
 				dlg.enable_primary_action();
 				// frappe.call already surfaces the server's own error message
@@ -279,9 +283,13 @@ function _sr_open_link_grain_dialog(token, vehicle, material, net) {
 				const action = fully_received
 					? `<span class="sr-status sr-muted" title="This PO is already 100% received">Fully received</span>`
 					: `<button class="btn btn-xs btn-default grain-pick" data-po="${_sr_esc(p.name)}" data-supplier="${_sr_esc(p.supplier_name || p.supplier)}" data-total="${_sr_esc(p.grand_total || 0)}">Select</button>`;
+				const items_html = (p.items || []).map(it =>
+					`<div style="white-space:nowrap">${_sr_esc(it.item_name || "")} <span style="color:var(--text-muted)">· ${format_number(it.qty || 0)} ${_sr_esc(it.uom || "")} @</span> ${format_currency(it.rate || 0)}</div>`
+				).join("") || `<span class="sr-muted">—</span>`;
 				return `<tr>
 					<td class="sr-mono">${_sr_esc(p.name)}</td>
 					<td>${_sr_esc(p.supplier_name || p.supplier)}</td>
+					<td>${items_html}</td>
 					<td>${_sr_esc(p.transaction_date || "")}</td>
 					<td class="sr-num">${format_number(p.total_qty || 0)}</td>
 					<td class="sr-num">${format_currency(p.grand_total || 0)}</td>
@@ -290,7 +298,7 @@ function _sr_open_link_grain_dialog(token, vehicle, material, net) {
 				</tr>`;
 			}).join("");
 			$b.find("#grain-results").html(`<table class="sr-table" style="font-size:12px"><thead><tr>
-				<th>PO</th><th>Supplier</th><th>Date</th><th>Ordered</th><th>Grand Total</th><th>Recd %</th><th></th></tr></thead><tbody>${rows}</tbody></table>`);
+				<th>PO</th><th>Supplier</th><th>Items (Rate)</th><th>Date</th><th>Ordered</th><th>Grand Total</th><th>Recd %</th><th></th></tr></thead><tbody>${rows}</tbody></table>`);
 			$b.find(".grain-pick").on("click", async function () {
 				const el = $(this);
 				selected_po = el.data("po");
