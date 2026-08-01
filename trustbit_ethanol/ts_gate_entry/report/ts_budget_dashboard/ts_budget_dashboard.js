@@ -1,6 +1,14 @@
 frappe.query_reports["TS Budget Dashboard"] = {
 	filters: [
 		{
+			fieldname: "view",
+			label: __("View"),
+			fieldtype: "Select",
+			options: "Full Pipeline\nBudget vs PO\nBudget vs Consumed",
+			default: "Full Pipeline",
+			reqd: 1,
+		},
+		{
 			fieldname: "fiscal_year",
 			label: __("Fiscal Year"),
 			fieldtype: "Link",
@@ -16,12 +24,26 @@ frappe.query_reports["TS Budget Dashboard"] = {
 			default: frappe.defaults.get_global_default("company"),
 			reqd: 1,
 		},
+		{
+			fieldname: "month",
+			label: __("Month (blank = full year)"),
+			fieldtype: "Select",
+			options: "\nApril\nMay\nJune\nJuly\nAugust\nSeptember\nOctober\nNovember\nDecember\nJanuary\nFebruary\nMarch",
+		},
+		{
+			fieldname: "tax_basis",
+			label: __("PO Amounts"),
+			fieldtype: "Select",
+			options: "Without GST\nWith GST",
+			default: "Without GST",
+		},
 	],
 
 	formatter(value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);
+		if (!data) return value;
 
-		if (column.fieldname === "status") {
+		if (column.fieldname === "status" && data.status) {
 			if (data.status === "Exceeded") {
 				value = `<span style="color: #dc2626; font-weight: 700;">⚠ ${value}</span>`;
 			} else if (data.status === "Warning") {
