@@ -186,7 +186,7 @@ def send_to_md(docname, comment=""):
 	return {"status": "sent_to_md", "next_state": next_state}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 	"""Send a PO/MR back for revision."""
 	_validate_doctype(doctype)
@@ -196,11 +196,19 @@ def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 		frappe.throw(_("Revision reason is mandatory"))
 
 	doc = frappe.get_doc(doctype, docname, for_update=True)
+	# v2.29.2 — L224: whitelist alone is not a permission check. DOCTYPE-level
+	# read on purpose, twice over: chain roles act via the role/step validation
+	# below and do not all hold write DocPerm, and a doc-level check collides
+	# with item-scoped Cost Center User Permissions (live-data audit: a
+	# configured CC approver was denied on an MR whose item CC differed from
+	# its header CC). This fences out users with no MR/PO access at all.
+	frappe.has_permission(doctype, throw=True)
 
 	if doctype == "Material Request":
 		return _revise_mr(doc, reason, comment)
 
 	_block_if_on_hold(doc)  # v2.28 — held-but-Pending would pass _validate_po_is_pending
+	_block_if_budget_override_pending(doc)  # v2.29.2 — frozen while the CEO decision is pending
 	_validate_po_is_pending(doc)
 	_validate_user_can_act_on_po(doc)
 
@@ -234,7 +242,7 @@ def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 	return {"status": "revised", "message": f"PO {doc.name} has been sent back for revision"}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def reject_document(doctype, docname, reason, comment=""):
 	"""Reject a PO/MR. Terminal state."""
 	_validate_doctype(doctype)
@@ -244,11 +252,14 @@ def reject_document(doctype, docname, reason, comment=""):
 		frappe.throw(_("Rejection reason is mandatory"))
 
 	doc = frappe.get_doc(doctype, docname, for_update=True)
+	# v2.29.2 — L224 doctype-level read fence; see revise_document.
+	frappe.has_permission(doctype, throw=True)
 
 	if doctype == "Material Request":
 		return _reject_mr(doc, reason, comment)
 
 	_block_if_on_hold(doc)  # v2.28 — executive hold freezes the chain
+	_block_if_budget_override_pending(doc)  # v2.29.2 — frozen while the CEO decision is pending
 	_validate_po_is_pending(doc)
 	_validate_user_can_act_on_po(doc)
 
@@ -281,11 +292,13 @@ def reject_document(doctype, docname, reason, comment=""):
 	return {"status": "rejected", "message": f"PO {doc.name} has been rejected"}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def resubmit_document(doctype, docname, mode="restart"):
 	"""Resubmit a revised PO/MR back into the approval chain."""
 	_validate_doctype(doctype)
 	doc = frappe.get_doc(doctype, docname, for_update=True)
+	# v2.29.2 — L224 doctype-level read fence; see revise_document.
+	frappe.has_permission(doctype, throw=True)
 
 	if doctype == "Material Request":
 		_block_if_mr_transfer(doc)  # v2.9.9
@@ -866,13 +879,23 @@ def _submit_po_for_approval(doc):
 	# overruns. Standalone POs (no item.material_request) still hit the check.
 	# Fail-closed: forged `material_request` values that don't reference an
 	# Approved + submitted MR are ignored — every claimed MR must verify.
+	# v2.29.2 — the bypass NARROWS: "the MR was the gating event" holds only if
+	# (1) EVERY line traces to an MR — a mixed PO's standalone lines were never
+	#     vetted anywhere,
+	# (2) every claimed MR verifies (unchanged, fail-closed), and
+	# (3) every claimed MR was actually breach-checkable at its own submit — an
+	#     MR with any unrated item was skipped there (mr_no_rate), so its PO
+	#     must be checked here, the first document in the chain with real amounts.
 	claimed_mr_names = {
 		item.get("material_request")
 		for item in (doc.get("items") or [])
 		if item.get("material_request")
 	}
+	every_line_mr_sourced = bool(doc.get("items")) and all(
+		item.get("material_request") for item in doc.get("items")
+	)
 	po_has_mr_source = False
-	if claimed_mr_names:
+	if claimed_mr_names and every_line_mr_sourced:
 		verified = frappe.db.count(
 			"Material Request",
 			filters={
@@ -882,7 +905,10 @@ def _submit_po_for_approval(doc):
 				"company": doc.company,  # defense-in-depth: same-company MR only
 			},
 		)
-		po_has_mr_source = (verified == len(claimed_mr_names))
+		if verified == len(claimed_mr_names):
+			from trustbit_ethanol.ts_gate_entry.ts_budget import mr_amount_is_resolvable
+
+			po_has_mr_source = all(mr_amount_is_resolvable(n) for n in claimed_mr_names)
 	settings = frappe.get_single("TS Settings")
 	if not po_has_mr_source and cint(settings.enable_budget_check) and not frappe.flags.get("in_budget_override_approval"):
 		from trustbit_ethanol.ts_gate_entry.ts_budget import (
@@ -1126,52 +1152,11 @@ def _submit_mr_for_approval(doc):
 	if not cost_center:
 		frappe.throw(_("Cost Center is required for MR approval routing. Please set it on the MR or its items."))
 
-	# v2.10.0 — Budget breach detection (mirrors PO branch).
-	# Inserted BEFORE route selection so a breach diverts straight to override approval.
-	settings = frappe.get_single("TS Settings")
-	if cint(settings.enable_budget_check) and not frappe.flags.get("in_budget_override_approval"):
-		from trustbit_ethanol.ts_gate_entry.ts_budget import (
-			_is_override_flow_enabled as _bo_enabled,
-			detect_budget_breach_for_mr,
-		)
-
-		if _bo_enabled():
-			breach = detect_budget_breach_for_mr(doc)
-			if breach.get("has_breach"):
-				from trustbit_ethanol.ts_gate_entry.ts_budget_override import (
-					create_budget_override_for_doc,
-				)
-
-				override = create_budget_override_for_doc("Material Request", doc.name)
-				frappe.flags.in_budget_override_approval = True
-				try:
-					doc.db_set({
-						"ts_mr_status": "Pending Budget Override",
-						"ts_budget_override_ref": override["name"],
-						"ts_budget_breach_flag": 1,
-						"ts_mr_submitted_by": frappe.session.user,
-					}, update_modified=True)
-				finally:
-					frappe.flags.in_budget_override_approval = False
-				# v2.10.0.1 — Lesson 238 best-effort audit log (see PO branch above).
-				try:
-					_log_mr_action(
-						doc,
-						"Held for Budget Override",
-						"Draft",
-						"Pending Budget Override",
-						step_order=0,
-						purchase_category=breach.get("breach_type") or "",
-					)
-				except Exception:
-					try:
-						frappe.log_error(
-							title="budget override log skipped (MR)",
-							message=f"doc={doc.name} override={override['name']} err={frappe.get_traceback()[:500]}",
-						)
-					except Exception:
-						pass
-				return "Pending Budget Override"
+	# v2.10.0 — Budget breach detection (extracted to a helper in v2.29.2 so the
+	# resubmit path shares it). Runs BEFORE route selection so a breach diverts
+	# straight to override approval.
+	if _maybe_divert_mr_for_budget(doc, from_state="Draft"):
+		return "Pending Budget Override"
 
 	route_name = _find_mr_route(cost_center)
 	if not route_name:
@@ -1324,9 +1309,137 @@ def _approve_mr(doc, comment=""):
 		return {"status": "forwarded", "next_state": next_state}
 
 
+def _maybe_divert_mr_for_budget(doc, from_state="Draft"):
+	"""v2.10.0 budget fork, extracted v2.29.2 so first-submit AND resubmit share it.
+
+	Returns True when the MR was diverted to 'Pending Budget Override'.
+	When the check cannot run because items lack rates (mr_no_rate), warns loudly
+	instead of skipping silently, then lets the MR route normally.
+	"""
+	settings = frappe.get_single("TS Settings")
+	if not cint(settings.enable_budget_check) or frappe.flags.get("in_budget_override_approval"):
+		return False
+	from trustbit_ethanol.ts_gate_entry.ts_budget import (
+		_is_override_flow_enabled as _bo_enabled,
+		detect_budget_breach_for_mr,
+	)
+
+	if not _bo_enabled():
+		return False
+	breach = detect_budget_breach_for_mr(doc)
+	if breach.get("reason") == "mr_no_rate":
+		_warn_budget_check_skipped(doc)
+		return False
+	if not breach.get("has_breach"):
+		return False
+	from trustbit_ethanol.ts_gate_entry.ts_budget_override import (
+		create_budget_override_for_doc,
+	)
+
+	override = create_budget_override_for_doc("Material Request", doc.name)
+	frappe.flags.in_budget_override_approval = True
+	try:
+		fields = {
+			"ts_mr_status": "Pending Budget Override",
+			"ts_budget_override_ref": override["name"],
+			"ts_budget_breach_flag": 1,
+			"ts_mr_submitted_by": frappe.session.user,
+		}
+		if from_state == "Revised":
+			fields["ts_mr_revision_reason"] = ""
+		doc.db_set(fields, update_modified=True)
+	finally:
+		frappe.flags.in_budget_override_approval = False
+	# v2.10.0.1 — Lesson 238 best-effort audit log (see PO branch above).
+	try:
+		_log_mr_action(
+			doc,
+			"Held for Budget Override",
+			from_state,
+			"Pending Budget Override",
+			step_order=0,
+			purchase_category=breach.get("breach_type") or "",
+		)
+	except Exception:
+		try:
+			frappe.log_error(
+				title="budget override log skipped (MR)",
+				message=f"doc={doc.name} override={override['name']} err={frappe.get_traceback()[:500]}",
+			)
+		except Exception:
+			pass
+	return True
+
+
+def _warn_budget_check_skipped(doc):
+	"""v2.29.2 — the mr_no_rate skip used to be silent; a skip nobody can see is
+	indistinguishable from a passing check. Durable trace first, msgprint second,
+	and neither may ever block the submit (Lesson 238)."""
+	from frappe.utils import escape_html
+
+	cc = escape_html(_get_mr_cost_center(doc) or "")
+	try:
+		doc.add_comment(
+			"Comment",
+			text=_(
+				"Budget check skipped — one or more items have no rate, so this "
+				"Material Request could not be compared against the {0} budget. "
+				"It continues through the normal approval route unchecked."
+			).format(cc or _("cost centre")),
+		)
+	except Exception:
+		frappe.clear_messages()  # L276 — a caught exception still leaks its message
+		try:
+			frappe.log_error(
+				title="budget check skipped (MR)",
+				message=f"doc={doc.name} cc={doc.get('cost_center')} — comment write failed: {frappe.get_traceback()[:500]}",
+			)
+		except Exception:
+			pass
+	frappe.msgprint(
+		_(
+			"Budget check skipped: this Material Request has items without rates, so "
+			"it could not be checked against the cost-centre budget. Add an estimated "
+			"rate on every item if you want it budget-checked. The request will "
+			"continue for approval as normal."
+		),
+		title=_("Budget Check Skipped"),
+		indicator="orange",
+	)
+
+
+def _block_if_budget_override_pending(doc):
+	"""v2.29.2 — freeze Revise/Reject while a budget override awaits the CEO.
+
+	Only an override actively 'Pending CEO' blocks. A Cancelled/Rejected/missing
+	override leaves Revise open on purpose: after cancel_budget_override the
+	source doc can only move again via Revise → Resubmit, so blocking
+	unconditionally would strand it forever. On resubmit the MR re-runs the
+	budget fork; the PO resubmit branch does NOT re-check budget yet (P2
+	follow-up in pending_works — a self-cancelled PO override can re-enter
+	the chain unchecked there).
+	"""
+	status_field = "ts_approval_status" if doc.doctype == "Purchase Order" else "ts_mr_status"
+	if doc.get(status_field) != "Pending Budget Override":
+		return
+	if frappe.flags.get("in_budget_override_approval"):
+		return
+	from trustbit_ethanol.ts_gate_entry.ts_budget_override import _find_active_override
+
+	override = _find_active_override(doc.doctype, doc.name)
+	if override and override.get("status") == "Pending CEO":
+		frappe.throw(
+			_(
+				"This {0} is awaiting CEO budget-override approval ({1}). "
+				"It cannot be revised or rejected while that decision is pending."
+			).format(_(doc.doctype), override.get("name"))
+		)
+
+
 def _revise_mr(doc, reason, comment=""):
 	"""Revise MR — send back to creator."""
 	_block_if_mr_transfer(doc)  # v2.9.9
+	_block_if_budget_override_pending(doc)  # v2.29.2 — after transfer guard (test-pinned order)
 	if not (doc.ts_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.ts_mr_status))
 
@@ -1355,6 +1468,7 @@ def _revise_mr(doc, reason, comment=""):
 def _reject_mr(doc, reason, comment=""):
 	"""Reject MR."""
 	_block_if_mr_transfer(doc)  # v2.9.9
+	_block_if_budget_override_pending(doc)  # v2.29.2 — after transfer guard (test-pinned order)
 	if not (doc.ts_mr_status or "").startswith("Pending"):
 		frappe.throw(_("This MR is not pending approval (status: {0})").format(doc.ts_mr_status))
 
@@ -1394,6 +1508,12 @@ def _resubmit_mr(doc):
 		allowed_users.add(mr_submitted_by)
 	if frappe.session.user not in allowed_users:
 		frappe.throw(_("Only the MR creator or original submitter can resubmit after revision"))
+
+	# v2.29.2 — a resubmitted MR re-enters the budget gate: amounts may have
+	# changed during revision, and the cancel-override dialog's promise
+	# ("Re-submit will create a fresh override request") must be true.
+	if _maybe_divert_mr_for_budget(doc, from_state="Revised"):
+		return {"status": "resubmitted", "next_state": "Pending Budget Override"}
 
 	cost_center = _get_mr_cost_center(doc)
 	route_name = _find_mr_route(cost_center)

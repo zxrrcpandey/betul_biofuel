@@ -33,6 +33,9 @@ frappe.ui.form.on("Purchase Order", {
 		_ts_add_deliveries_button(frm);
 		_load_approval_context(frm);
 		_load_budget_indicator(frm);
+		// v2.29.2 — MR-style monthly Budget Status banner under the Cost Center
+		// field (user request: parity with the MR form).
+		_check_cc_budget_po(frm);
 		// v2.8.10: bilingual approval banner
 		if (typeof window.ts_render_approval_banner === "function") {
 			window.ts_render_approval_banner(frm);
@@ -42,6 +45,7 @@ frappe.ui.form.on("Purchase Order", {
 	},
 	cost_center(frm) {
 		if (!frm.is_new()) _load_budget_indicator(frm);
+		setTimeout(() => _check_cc_budget_po(frm), 500);
 	},
 	// v2.9.8.37 — preserve cost_center when ts_project (BBPL's project field) changes.
 	// Native `project` is hidden on PO in v2.9.8.37; users interact with ts_project.
@@ -202,7 +206,10 @@ function _show_ts_po_banner(frm, key, html, bgColor, borderColor) {
 		border-radius: 4px;
 		font-size: 12px;
 	">${html}</div>`;
-	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section");
+	// .first() is load-bearing: v15 forms can carry SEVERAL .form-dashboard-section
+	// nodes, and jQuery .after() on a multi-element set inserts one copy per node
+	// (seen live on the Budget Override form: 5 duplicate banners).
+	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section").first();
 	if ($dashboard.length) {
 		$dashboard.after(banner);
 	}
@@ -599,6 +606,66 @@ function _load_budget_indicator(frm) {
 			}
 		},
 		error() {} // Silent fail
+	});
+}
+
+// v2.29.2 — MIRROR of mr_approval.js _check_cc_budget — keep in sync.
+// Monthly Budget Status banner under the Cost Center field (informational only,
+// no block). Same read-only endpoint the MR form uses; works on new AND saved POs.
+function _check_cc_budget_po(frm) {
+	if (!frm.doc.cost_center) return;
+
+	frappe.call({
+		method: "trustbit_ethanol.ts_gate_entry.ts_budget.get_cc_budget_status",
+		args: { cost_center: frm.doc.cost_center },
+		callback(r) {
+			// Remove old budget banner
+			$(frm.page.wrapper).find(".bbf-budget-banner").remove();
+
+			if (!r.message || !r.message.has_budget) return;
+
+			const d = r.message;
+			const pct = d.budget_monthly > 0 ? (d.used / d.budget_monthly * 100) : 0;
+
+			let color, icon, status_text;
+			if (d.used > d.budget_monthly) {
+				color = "#ef4444"; icon = "⛔"; status_text = "EXCEEDED";
+			} else if (pct > 80) {
+				color = "#f59e0b"; icon = "⚠️"; status_text = "Nearing Limit";
+			} else {
+				color = "#10b981"; icon = "✅"; status_text = "Within Budget";
+			}
+
+			const fmt = (v) => "₹" + Math.round(v).toLocaleString("en-IN");
+
+			const html = `
+				<div class="bbf-budget-banner" style="
+					background: ${d.used > d.budget_monthly ? '#fef2f2' : pct > 80 ? '#fffbeb' : '#ecfdf5'};
+					border: 1px solid ${color};
+					border-radius: 8px;
+					padding: 10px 16px;
+					margin: 8px 0;
+					font-size: 12px;
+				">
+					<div style="font-weight:bold;color:${color};margin-bottom:4px;">
+						${icon} Budget Status: ${status_text} — FY ${frappe.utils.escape_html(d.fiscal_year || "—")} · ${frappe.utils.escape_html(d.month_name)}
+					</div>
+					<table style="border:none;width:100%;font-size:11px;">
+						<tr>
+							<td style="border:none;padding:2px 8px;">Monthly Budget: <strong>${fmt(d.budget_monthly)}</strong></td>
+							<td style="border:none;padding:2px 8px;">Used (PO committed): <strong style="color:${pct > 100 ? '#ef4444' : '#374151'}">${fmt(d.used_excl_gst != null ? d.used_excl_gst : d.used)}</strong>${d.used_excl_gst != null ? ` <span style="opacity:0.75;">(${fmt(d.used)} With GST)</span>` : ""}</td>
+							<td style="border:none;padding:2px 8px;">Remaining: <strong style="color:${d.remaining < 0 ? '#ef4444' : '#10b981'}">${fmt(d.remaining)}</strong></td>
+							<td style="border:none;padding:2px 8px;">Utilization: <strong>${pct.toFixed(1)}%</strong></td>
+						</tr>
+					</table>
+				</div>`;
+
+			// Insert after cost_center field
+			const $cc_field = $(frm.fields_dict.cost_center?.wrapper);
+			if ($cc_field.length) {
+				$cc_field.after(html);
+			}
+		}
 	});
 }
 
@@ -1347,7 +1414,10 @@ function _show_ts_banner_po(frm, key, html, bgColor, borderColor) {
 		border-radius: 4px;
 		font-size: 12px;
 	">${html}</div>`;
-	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section");
+	// .first() is load-bearing: v15 forms can carry SEVERAL .form-dashboard-section
+	// nodes, and jQuery .after() on a multi-element set inserts one copy per node
+	// (seen live on the Budget Override form: 5 duplicate banners).
+	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section").first();
 	if ($dashboard.length) {
 		$dashboard.after(banner);
 	}

@@ -761,15 +761,19 @@ def get_budget_dashboard(fiscal_year=None, company=None):
 	for row in committed_rows:
 		committed_data[row.cost_center] = flt(row.total)
 
-	# Get actual spent per CC (from GL Entry in FY date range)
+	# Get actual spent per CC (from GL Entry in FY date range).
+	# v2.29.x — expense-root accounts only + Stock Entry included; see the
+	# MIRROR comment in ts_budget_dashboard.py (keep both queries in sync).
 	actual_data = {}
 	actual_rows = frappe.db.sql("""
-		SELECT cost_center, COALESCE(SUM(debit) - SUM(credit), 0) as total
-		FROM `tabGL Entry`
-		WHERE posting_date BETWEEN %s AND %s
-			AND company = %s AND is_cancelled = 0
-			AND voucher_type IN ('Purchase Invoice', 'Journal Entry')
-		GROUP BY cost_center
+		SELECT gle.cost_center, COALESCE(SUM(gle.debit) - SUM(gle.credit), 0) as total
+		FROM `tabGL Entry` gle
+		INNER JOIN `tabAccount` acc ON acc.name = gle.account
+		WHERE gle.posting_date BETWEEN %s AND %s
+			AND gle.company = %s AND gle.is_cancelled = 0
+			AND gle.voucher_type IN ('Purchase Invoice', 'Journal Entry', 'Stock Entry')
+			AND acc.root_type = 'Expense'
+		GROUP BY gle.cost_center
 	""", (fy_start, fy_end, company), as_dict=True)
 	for row in actual_rows:
 		actual_data[row.cost_center] = flt(row.total)
@@ -950,15 +954,26 @@ def get_cc_budget_status(cost_center):
 	# Calculate monthly amount (equal distribution = annual / 12)
 	monthly_amount = annual_amount / 12
 
-	# Calculate PO committed amount for this CC this month
-	used = flt(frappe.db.sql("""
-		SELECT COALESCE(SUM(poi.amount), 0)
-		FROM `tabPurchase Order Item` poi
-		JOIN `tabPurchase Order` po ON po.name = poi.parent
-		WHERE po.docstatus = 1
-		AND poi.cost_center = %s
-		AND po.transaction_date BETWEEN %s AND %s
-	""", (cost_center, month_start, month_end))[0][0])
+	# Calculate PO committed amount for this CC this month.
+	# v2.29.x — ALIGNED to the CEO gate's _committed_for_period formula (header
+	# cost centre, tax-inclusive grand_total minus billed portion, Closed/
+	# Cancelled excluded, company-scoped). The old item-amount sum was net of
+	# GST and disagreed with the gate/dashboard by exactly the tax component —
+	# the banner must warn with the number the gate will actually enforce.
+	company = frappe.db.get_value("Cost Center", cost_center, "company")
+	row = frappe.db.sql("""
+		SELECT
+			COALESCE(SUM(grand_total * (1 - IFNULL(per_billed, 0) / 100)), 0),
+			COALESCE(SUM(total * (1 - IFNULL(per_billed, 0) / 100)), 0)
+		FROM `tabPurchase Order`
+		WHERE cost_center = %s
+			AND transaction_date BETWEEN %s AND %s
+			AND company = %s
+			AND docstatus = 1
+			AND status NOT IN ('Closed', 'Cancelled')
+	""", (cost_center, month_start, month_end, company))[0]
+	used = flt(row[0])          # incl. GST — what the gate enforces
+	used_excl_gst = flt(row[1])  # net of taxes — client's preferred reading
 
 	remaining = monthly_amount - used
 
@@ -970,6 +985,7 @@ def get_cc_budget_status(cost_center):
 		"budget_monthly": monthly_amount,
 		"budget_annual": annual_amount,
 		"used": used,
+		"used_excl_gst": used_excl_gst,
 		"remaining": remaining,
 		"exceeded": used > monthly_amount,
 	}
@@ -1048,6 +1064,24 @@ def _resolve_doc_amount(doc, ref_doctype):
 			total += qty * rate
 		return total
 	return None
+
+
+def mr_amount_is_resolvable(mr_name):
+	"""True when every item on this MR carries a rate — i.e. _resolve_doc_amount
+	returns a number rather than the mr_no_rate skip.
+
+	NOTE: this covers only the rate-skip. The no_cost_center / no_fiscal_year
+	skips are not detected here — both are either impossible at MR submit
+	(CC is mandatory there) or would skip the PO check identically, so the
+	bypass outcome is the same. Used by the PO-submit bypass: "the MR was the
+	gating event" only holds if the MR's own breach check was able to run.
+	Fail-closed: any error means False, so the PO gets checked.
+	"""
+	try:
+		mr = frappe.get_doc("Material Request", mr_name)
+		return _resolve_doc_amount(mr, "Material Request") is not None
+	except Exception:
+		return False
 
 
 def _share_amount_for_cc(doc, cc, ref_doctype, total_amount):

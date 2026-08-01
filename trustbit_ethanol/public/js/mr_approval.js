@@ -667,7 +667,22 @@ function _call_mr_action(frm, method, args) {
 		args,
 		freeze: true,
 		freeze_message: __("Processing..."),
-		callback() { frm.reload_doc(); },
+		callback(r) {
+			const reload = frm.reload_doc();
+			// MIRROR of po_approval.js _call_action — keep in sync. The reload issues a
+			// getdoc whose response runs frappe.hide_msgprint() (Frappe request cleanup),
+			// flash-dismissing warnings this action queued server-side (e.g. the v2.29.2
+			// "Budget Check Skipped" notice). Re-surface them after the reload settles.
+			let msgs = null;
+			if (r && r._server_messages) {
+				try { msgs = JSON.parse(r._server_messages); } catch (e) { msgs = null; }
+			}
+			if (msgs && msgs.length) {
+				const reshow = () => setTimeout(() => frappe.msgprint(msgs), 100);
+				if (reload && typeof reload.then === "function") { reload.then(reshow); }
+				else { setTimeout(reshow, 1200); }
+			}
+		},
 		error() { frm.reload_doc(); }
 	});
 }
@@ -901,7 +916,7 @@ function _check_cc_budget(frm) {
 					<table style="border:none;width:100%;font-size:11px;">
 						<tr>
 							<td style="border:none;padding:2px 8px;">Monthly Budget: <strong>${fmt(d.budget_monthly)}</strong></td>
-							<td style="border:none;padding:2px 8px;">Used (PO committed): <strong style="color:${pct > 100 ? '#ef4444' : '#374151'}">${fmt(d.used)}</strong></td>
+							<td style="border:none;padding:2px 8px;">Used (PO committed): <strong style="color:${pct > 100 ? '#ef4444' : '#374151'}">${fmt(d.used_excl_gst != null ? d.used_excl_gst : d.used)}</strong>${d.used_excl_gst != null ? ` <span style="opacity:0.75;">(${fmt(d.used)} With GST)</span>` : ""}</td>
 							<td style="border:none;padding:2px 8px;">Remaining: <strong style="color:${d.remaining < 0 ? '#ef4444' : '#10b981'}">${fmt(d.remaining)}</strong></td>
 							<td style="border:none;padding:2px 8px;">Utilization: <strong>${pct.toFixed(1)}%</strong></td>
 						</tr>

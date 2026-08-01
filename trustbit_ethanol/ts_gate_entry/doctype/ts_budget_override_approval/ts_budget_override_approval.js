@@ -59,7 +59,10 @@ function _bo_render_breach_summary(frm) {
 		border-radius: 4px;
 		font-size: 12px;
 	">${html}</div>`;
-	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section");
+	// .first() is load-bearing: v15 forms can carry SEVERAL .form-dashboard-section
+	// nodes, and jQuery .after() on a multi-element set inserts one copy per node
+	// (seen live: 5 duplicate banners on BO-2026-10475).
+	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section").first();
 	if ($dashboard.length) $dashboard.after(banner);
 }
 
