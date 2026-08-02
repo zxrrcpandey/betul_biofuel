@@ -61,17 +61,13 @@ def _generate_mr_name(doc):
 
 def mr_autoname(doc, method=None):
 	"""Called from doc_events autoname hook.
-	Sets doc.name directly — Frappe will use this instead of naming_series."""
-	doc.name = _generate_mr_name(doc)
+	Sets doc.name directly — Frappe will use this instead of naming_series.
 
-
-def mr_before_insert(doc, method=None):
-	"""Fallback: if autoname didn't fire (naming_series took priority),
-	override the name here before insert."""
-	if doc.name and doc.name.startswith(("PR-", "SR-", "FA-", "BBPL-TRAN-", "BBPL-ISSU-")):
-		return  # autoname already set the name correctly
-
-	# autoname didn't fire — generate name now
+	This is the ONLY naming entry point. Do not add a before_insert fallback:
+	v15 runs before_insert BEFORE set_new_name, which nulls doc.name and fires
+	this hook anyway — a fallback there burns one extra serial per MR
+	(the 8 Apr–1 Aug 2026 series-jumping bug, removed in v2.29.6).
+	"""
 	doc.name = _generate_mr_name(doc)
 
 

@@ -198,8 +198,11 @@ doc_events = {
 	},
 	"Material Request": {
 		"autoname": "trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_autoname",
+		# v2.29.6 — MR naming happens via the "autoname" doc_event ONLY. Never add a
+		# before_insert naming fallback: v15 runs before_insert BEFORE set_new_name,
+		# which nulls doc.name and fires autoname anyway — a fallback here burns one
+		# extra serial per MR (the 8 Apr–1 Aug 2026 series-jumping bug).
 		"before_insert": [
-			"trustbit_ethanol.ts_gate_entry.ts_mr_naming.mr_before_insert",
 			# v2.9.12 Sprint 1 — reset ts_mr_status + tracking fields on amend (parallel to po_on_amend)
 			"trustbit_ethanol.ts_gate_entry.ts_po_approval.mr_on_amend",
 		],
