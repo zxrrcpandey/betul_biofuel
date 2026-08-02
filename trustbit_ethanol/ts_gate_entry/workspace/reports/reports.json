@@ -1,0 +1,232 @@
+{
+ "charts": [],
+ "content": "[{\"id\": \"hdr_main\", \"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#0f766e,#10b981);padding:24px 28px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:22px;font-weight:700;'>Reports</div><div style='font-size:13px;opacity:0.85;margin-top:4px;'>Betul Biofuel \\u2014 Department-wise Reports Hub</div></div>\", \"col\": 12}}, {\"id\": \"sp_0\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_0\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #2563eb;padding-bottom:6px;'>Purchase</div>\", \"col\": 12}}, {\"id\": \"sc_0_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"PO Approval Date Wise\", \"col\": 4}}, {\"id\": \"sc_0_1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"MR Approval Date Wise\", \"col\": 4}}, {\"id\": \"sc_0_2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Open PO Report\", \"col\": 4}}, {\"id\": \"sp_1\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_1\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #ea580c;padding-bottom:6px;'>Stores & Stock</div>\", \"col\": 12}}, {\"id\": \"sc_1_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Material Issue Ledger\", \"col\": 3}}, {\"id\": \"sc_1_1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Item - Warehouse Wise\", \"col\": 3}}, {\"id\": \"sc_1_2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Stock Balance\", \"col\": 3}}, {\"id\": \"sc_1_3\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Stock Ledger FIFO\", \"col\": 3}}, {\"id\": \"sp_2\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_2\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #7c3aed;padding-bottom:6px;'>Gate & Vehicle</div>\", \"col\": 12}}, {\"id\": \"sc_2_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Live Vehicle Tracker\", \"col\": 4}}, {\"id\": \"sc_2_1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Vehicle Turnaround\", \"col\": 4}}, {\"id\": \"sp_3\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_3\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #ca8a04;padding-bottom:6px;'>Accounts</div>\", \"col\": 12}}, {\"id\": \"sc_3_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Budget Dashboard\", \"col\": 4}}]",
+ "creation": "2026-06-24 00:00:00",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "file",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Reports",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Purchase",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "PO Approval Date Wise",
+   "link_to": "TS PO Approval Date Wise",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "MR Approval Date Wise",
+   "link_to": "TS MR Approval Date Wise",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Open PO Report",
+   "link_to": "TS Open PO Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Stores & Stock",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Material Issue Ledger",
+   "link_to": "TS Material Issue Ledger",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Item - Warehouse Wise",
+   "link_to": "TS Item - Warehouse Wise",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Stock Balance",
+   "link_to": "TS Stock Balance Computed",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Stock Ledger FIFO",
+   "link_to": "TS Stock Ledger FIFO",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Gate & Vehicle",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Live Vehicle Tracker",
+   "link_to": "TS Live Vehicle Tracker",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Vehicle Turnaround",
+   "link_to": "TS Vehicle Turnaround Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Accounts",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Budget Dashboard",
+   "link_to": "TS Budget Dashboard",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-06-24 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "Reports",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "BBPL Ethanol",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 11.0,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "format": "{} report",
+   "label": "PO Approval Date Wise",
+   "link_to": "TS PO Approval Date Wise",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
+  {
+   "color": "Blue",
+   "format": "{} report",
+   "label": "MR Approval Date Wise",
+   "link_to": "TS MR Approval Date Wise",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
+  {
+   "color": "Blue",
+   "format": "{} report",
+   "label": "Open PO Report",
+   "link_to": "TS Open PO Report",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
+  {
+   "color": "Orange",
+   "format": "{} report",
+   "label": "Material Issue Ledger",
+   "link_to": "TS Material Issue Ledger",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
+  {
+   "color": "Orange",
+   "format": "{} report",
+   "label": "Item - Warehouse Wise",
+   "link_to": "TS Item - Warehouse Wise",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
+  {
+   "color": "Orange",
+   "format": "{} report",
+   "label": "Stock Balance",
+   "link_to": "TS Stock Balance Computed",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
+  {
+   "color": "Orange",
+   "format": "{} report",
+   "label": "Stock Ledger FIFO",
+   "link_to": "TS Stock Ledger FIFO",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
+  {
+   "color": "Purple",
+   "format": "{} report",
+   "label": "Live Vehicle Tracker",
+   "link_to": "TS Live Vehicle Tracker",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
+  {
+   "color": "Purple",
+   "format": "{} report",
+   "label": "Vehicle Turnaround",
+   "link_to": "TS Vehicle Turnaround Report",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
+  {
+   "color": "Yellow",
+   "format": "{} report",
+   "label": "Budget Dashboard",
+   "link_to": "TS Budget Dashboard",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  }
+ ],
+ "title": "Reports"
+}
