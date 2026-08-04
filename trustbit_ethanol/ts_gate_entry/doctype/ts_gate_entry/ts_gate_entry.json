@@ -10,6 +10,7 @@
   "stock_direction",
   "entry_date",
   "entry_time",
+  "g2_entry_datetime",
   "column_break_main",
   "vehicle_type",
   "status",
@@ -84,14 +85,21 @@
    "fetch_from": "token_number.entry_date",
    "fieldname": "entry_date",
    "fieldtype": "Date",
-   "label": "Entry Date",
+   "label": "Token Entry Date",
    "read_only": 1
   },
   {
    "fetch_from": "token_number.entry_time",
    "fieldname": "entry_time",
    "fieldtype": "Time",
-   "label": "Entry Time",
+   "label": "Token Entry Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "g2_entry_datetime",
+   "fieldtype": "Datetime",
+   "label": "G2 Entry Date & Time",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -353,7 +361,7 @@
    "link_fieldname": "gate_entry"
   }
  ],
- "modified": "2026-04-27 12:30:00",
+ "modified": "2026-08-04 09:30:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Gate Entry",

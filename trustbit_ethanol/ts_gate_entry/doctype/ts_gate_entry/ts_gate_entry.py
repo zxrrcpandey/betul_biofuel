@@ -5,6 +5,13 @@ from frappe.utils import now_datetime, flt, getdate, cint
 
 
 class TSGateEntry(Document):
+	def before_insert(self):
+		# Own G2 stamp — entry_date/entry_time are fetched from the Token (G1
+		# arrival), so this is the only field recording when G2 actually
+		# processed the vehicle. Unconditional: an API-supplied value must not
+		# override the audit stamp.
+		self.g2_entry_datetime = now_datetime()
+
 	def validate(self):
 		# Post-dated entry validation (past dates need approval, future dates blocked)
 		if self.entry_date and getdate(self.entry_date) != getdate():
