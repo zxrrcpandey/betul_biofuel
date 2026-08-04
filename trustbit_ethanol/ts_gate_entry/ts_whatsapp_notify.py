@@ -21,7 +21,7 @@ import re
 
 import frappe
 from frappe import _
-from frappe.utils import flt, formatdate
+from frappe.utils import flt, formatdate, get_url_to_form
 
 from trustbit_ethanol.ts_gate_entry.ts_whatsapp import send_template
 
@@ -161,6 +161,20 @@ def _resolve_token(token, doc, recipient_name, extra):
 		return DOCTYPE_LABEL.get(doc.doctype, doc.doctype)
 	if key in ("doc_no", "docno", "no", "name"):
 		return doc.name
+	if key in ("url", "link", "doc_url", "doc_link"):
+		# Direct desk link to the document (host from site config; name is
+		# percent-encoded by get_url_to_form — some MR names contain a space).
+		# WhatsApp renders it as a tappable link inside the template variable.
+		# Both sites pin http_port 443 (L135, do not change server config) —
+		# strip the redundant default port so the link reads clean.
+		u = get_url_to_form(doc.doctype, doc.name)
+		if u.startswith("https://") and ":443/" in u:
+			# Both sites pin host_name + http_port "443" in site_config (L139),
+			# so the FIRST ":443/" is deterministically the host:port boundary
+			# and count=1 stops there. (quoted() passes "/" and ":" through —
+			# do not rely on name encoding here.)
+			u = u.replace(":443/", "/", 1)
+		return u
 	if key == "status":
 		return doc.get(_STATUS_FIELD.get(doc.doctype, "status")) or "Pending Approval"
 	if key in ("raised_by", "raisedby", "creator"):
