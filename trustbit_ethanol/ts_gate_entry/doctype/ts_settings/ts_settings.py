@@ -1,13 +1,38 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import getdate, add_days, today
+from frappe.utils import cint, getdate, add_days, today
 
 
 class TSSettings(Document):
 	def validate(self):
 		self._validate_pre_post_dated()
 		self._validate_cascade_delete_settings()
+
+	def on_update(self):
+		self._sync_buying_allow_multiple_items()
+
+	def _sync_buying_allow_multiple_items(self):
+		"""Mirror `ts_allow_multiple_items` -> Buying Settings.allow_multiple_items.
+
+		`allow_multiple_items` is the field ERPNext's native guard reads
+		(erpnext/buying/utils.py:validate_for_items) to decide whether the same
+		item may appear in more than one row on Material Request / Purchase Order
+		(and RFQ / Supplier Quotation). Surfacing the control on TS Settings keeps
+		the team's config in one place; this keeps the underlying Buying Settings
+		flag consistent. 1:1 polarity (checked = allow = 1).
+
+		Only syncs when the flag actually changed (Lesson 170) so unrelated
+		TS Settings saves don't churn the Buying Settings cache. PR / PI have no
+		native duplicate guard, so this intentionally does not touch them.
+		"""
+		if not self.is_new() and not self.has_value_changed("ts_allow_multiple_items"):
+			return
+		desired = cint(self.get("ts_allow_multiple_items"))
+		current = cint(frappe.db.get_single_value("Buying Settings", "allow_multiple_items"))
+		if current != desired:
+			frappe.db.set_single_value("Buying Settings", "allow_multiple_items", desired)
+			frappe.clear_cache(doctype="Buying Settings")
 
 	def _validate_cascade_delete_settings(self):
 		"""v2.11.0 Token Cascade Delete kill-switch + webhook URL hygiene.

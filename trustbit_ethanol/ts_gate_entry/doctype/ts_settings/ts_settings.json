@@ -32,6 +32,7 @@
   "approval_section",
   "enable_po_approval",
   "enable_mr_approval",
+  "ts_allow_multiple_items",
   "ts_avp_deputy_enabled",
   "ts_ds_full_override_enabled",
   "column_break_approval",
@@ -258,6 +259,13 @@
    "label": "Enable MR Approval",
    "default": "1",
    "description": "Master switch for Material Request approval workflow"
+  },
+  {
+   "fieldname": "ts_allow_multiple_items",
+   "fieldtype": "Check",
+   "label": "Allow Item To Be Added Multiple Times (MR / PO)",
+   "default": "0",
+   "description": "When UNCHECKED (default): ERPNext blocks the same item appearing in more than one row on Material Request and Purchase Order (also RFQ / Supplier Quotation) \u2014 'Same item cannot be entered multiple times'. When checked: duplicate item rows are allowed. This mirrors Buying Settings \u2192 'Allow Item To Be Added Multiple Times in a Transaction', which it keeps in sync. Does NOT affect Purchase Receipt or Purchase Invoice."
   },
   {
    "fieldname": "ts_ds_full_override_enabled",
