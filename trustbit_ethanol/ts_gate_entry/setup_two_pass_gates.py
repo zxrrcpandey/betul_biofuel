@@ -74,6 +74,47 @@ def seed_two_pass_gate_fields():
 			"print_hide": 1,
 			"description": "v2.8.3: G2 operator who recorded the exit.",
 		},
+		# v2.18.0 — Non-Raw-Material Stores-approved exit gate. These 3 fields
+		# authorise a Non-RM vehicle to exit WITHOUT weighbridge / GRN / the
+		# two-pass flag. Set EXCLUSIVELY by the approve_non_rm_exit POST API
+		# (via db_set, which skips save hooks). They are permlevel-0 control-plane
+		# fields → protected from REST tamper by TSToken.before_save (Lesson 162/176).
+		{
+			"doctype": "Custom Field",
+			"dt": "TS Token",
+			"fieldname": "non_rm_exit_approved",
+			"label": "Non-RM Exit Approved",
+			"fieldtype": "Check",
+			"default": "0",
+			"read_only": 1,
+			"insert_after": "g2_mat_exit_by",
+			"in_list_view": 0,
+			"print_hide": 1,
+			"description": "v2.18.0: Stores has approved this Non-Raw-Material vehicle to exit. Set by approve_non_rm_exit API; unlocks Record G2 Exit for non-RM tokens.",
+		},
+		{
+			"doctype": "Custom Field",
+			"dt": "TS Token",
+			"fieldname": "non_rm_exit_approved_by",
+			"label": "Non-RM Exit Approved By",
+			"fieldtype": "Link",
+			"options": "User",
+			"read_only": 1,
+			"insert_after": "non_rm_exit_approved",
+			"print_hide": 1,
+			"description": "v2.18.0: Stores user who approved the Non-RM exit.",
+		},
+		{
+			"doctype": "Custom Field",
+			"dt": "TS Token",
+			"fieldname": "non_rm_exit_approved_at",
+			"label": "Non-RM Exit Approved At",
+			"fieldtype": "Datetime",
+			"read_only": 1,
+			"insert_after": "non_rm_exit_approved_by",
+			"print_hide": 1,
+			"description": "v2.18.0: timestamp of the Non-RM exit approval.",
+		},
 	]
 	for f in fields:
 		try:

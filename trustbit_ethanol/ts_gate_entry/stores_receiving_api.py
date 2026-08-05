@@ -513,7 +513,8 @@ def _fetch_section_b_non_weighing():
 		if not ge.get("token_number"):
 			continue
 		tok = frappe.db.get_value("TS Token", ge["token_number"],
-			["name", "vehicle_number", "status", "purchase_receipt", "docstatus", "entry_time"],
+			["name", "vehicle_number", "status", "purchase_receipt", "docstatus",
+			 "entry_time", "non_rm_exit_approved"],
 			as_dict=True)
 		if not tok:
 			continue
@@ -536,6 +537,8 @@ def _fetch_section_b_non_weighing():
 			"vehicle": tok.get("vehicle_number") or "",
 			"supplier": ge.get("supplier_name") or "",
 			"po": ge.get("purchase_order") or "",
+			"status": tok.get("status") or "",
+			"exit_approved": cint(tok.get("non_rm_exit_approved") or 0),
 			"inspection_status": insp_status,
 			"items": items,
 			"items_count": len(items),

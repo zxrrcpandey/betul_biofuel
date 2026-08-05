@@ -75,6 +75,14 @@ frappe.ui.form.on("TS Token", {
 			return { filters: { is_blacklisted: 0 } };
 		});
 
+		// Purpose + Stock Direction are declared at G2 — when the Gate Entry is
+		// submitted it sets both on the token (purpose = material_flow, stock_direction).
+		// Reception (G1) no longer TYPES them, but they stay VISIBLE (read-only) so
+		// everyone can see the load's purpose; they fill in once the gate entry is
+		// submitted at G2. Both are reqd=0, so read-only never blocks token creation.
+		frm.set_df_property("purpose", "read_only", 1);
+		frm.set_df_property("stock_direction", "read_only", 1);
+
 		// Hide barcode and token_number on new unsaved form
 		if (frm.is_new()) {
 			frm.set_df_property("barcode", "hidden", 1);
@@ -225,6 +233,33 @@ frappe.ui.form.on("TS Token", {
 						|| frappe.user.has_role("IT Head")
 						|| frappe.user.has_role("System Manager")
 						|| frappe.user.has_role("Admin Reception");
+					// v2.18.0 — Stores roles may approve a Non-Raw-Material vehicle for exit.
+					const has_stores = frappe.user.has_role("Stores User")
+						|| frappe.user.has_role("Stores Manager")
+						|| frappe.user.has_role("IT Head")
+						|| frappe.user.has_role("System Manager");
+					const _is_non_rm = (frm.doc.purpose === "Non-Raw Material");
+					const _already_exited = ["Plant Exited", "Campus Exited", "Exited"].includes(frm.doc.status);
+
+					// v2.18.0 — "Exit Approved" (Stores). Authorises a Non-RM vehicle to
+					// leave with no weighbridge / GRN / two-pass; unlocks B2 + B3 below.
+					if (has_stores && _is_non_rm && !frm.doc.non_rm_exit_approved && !_already_exited) {
+						frm.add_custom_button(__("Exit Approved"), function () {
+							frappe.confirm(
+								__("Approve this Non-Raw-Material vehicle to exit? G2 and G1 will then be able to record exit."),
+								function () {
+									frappe.call({
+										method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.approve_non_rm_exit",
+										args: { token_name: frm.doc.name },
+										callback: () => {
+											frm.reload_doc();
+											frappe.show_alert({ message: __("Exit approved — G2 can now record exit"), indicator: "green" });
+										}
+									});
+								}
+							);
+						}, __("Gate Actions")).addClass("btn-primary");
+					}
 
 					// B1 — Record G2 Entry (status=G1 Entered)
 					if (has_g2 && frm.doc.status === "G1 Entered") {
@@ -245,8 +280,9 @@ frappe.ui.form.on("TS Token", {
 						}, __("Gate Actions")).addClass("btn-primary");
 					}
 
-					// B2 — Record G2 Exit (status=Tare Weighed or GRN Created)
-					if (has_g2 && ["Tare Weighed", "GRN Created"].includes(frm.doc.status)) {
+					// B2 — Record G2 Exit (status=Tare Weighed/GRN Created, OR a Stores-approved Non-RM token)
+					const _non_rm_exit_ready = _is_non_rm && frm.doc.non_rm_exit_approved && !_already_exited;
+					if (has_g2 && (["Tare Weighed", "GRN Created"].includes(frm.doc.status) || _non_rm_exit_ready)) {
 						frm.add_custom_button(__("Record G2 Exit"), function () {
 							frappe.confirm(
 								__("Confirm vehicle has completed unloading and is leaving the plant via G2?"),
@@ -404,6 +440,8 @@ frappe.ui.form.on("TS Token", {
 				frm.page.set_indicator(__("Campus Exited"), "green");
 			} else if (frm.doc.status === "Plant Exited") {
 				frm.page.set_indicator(__("Plant Exited"), "yellow");
+			} else if (frm.doc.purpose === "Non-Raw Material" && frm.doc.non_rm_exit_approved) {
+				frm.page.set_indicator(__("Exit Approved"), "yellow");
 			} else if (frm.doc.status === "GRN Created") {
 				frm.page.set_indicator(__("GRN Created"), "green");
 			} else if (frm.doc.status === "Token Generated") {

@@ -669,6 +669,7 @@ function _sr_render_section_b() {
 			<td>
 				<button class="btn btn-xs btn-default sr-open-token" data-token="${_sr_esc(r.token)}">Open</button>
 				<button class="btn btn-xs btn-success sr-create-b" data-token="${_sr_esc(r.token)}">Create GRN</button>
+				${_sr_exit_approve_btn(r)}
 			</td>
 		</tr>${_sr_items_detail(r.items, 8)}`),
 		'</tbody></table>'
@@ -679,6 +680,45 @@ function _sr_render_section_b() {
 	});
 	$("#sr-b-body .sr-create-b").on("click", function () {
 		_sr_section_b_start($(this), $(this).data("token"));
+	});
+	$("#sr-b-body .sr-exit-approve").on("click", function () {
+		_sr_exit_approve_start($(this), $(this).data("token"));
+	});
+}
+
+// v2.18.0 — Non-RM Stores exit approval. Section B holds only Non-RM no-weighing
+// tokens, so every row is eligible. The button shows only to approve-capable roles
+// (server re-checks); once approved it renders as a disabled badge.
+function _sr_can_approve_exit() {
+	return frappe.user.has_role("Stores User") || frappe.user.has_role("Stores Manager")
+		|| frappe.user.has_role("IT Head") || frappe.user.has_role("System Manager");
+}
+
+function _sr_exit_approve_btn(r) {
+	if (!_sr_can_approve_exit()) return "";
+	if (r.exit_approved) return '<button class="btn btn-xs btn-warning" disabled>Exit Approved \u2713</button>';
+	return `<button class="btn btn-xs btn-primary sr-exit-approve" data-token="${_sr_esc(r.token)}">Exit Approved</button>`;
+}
+
+function _sr_exit_approve_start(btn, token) {
+	_sr_confirm_create(`Approve Non-Raw-Material vehicle on token ${token} to exit? G2 and G1 can then record exit.`, async () => {
+		btn.prop("disabled", true).text("Approving\u2026");
+		try {
+			const r = await frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.approve_non_rm_exit",
+				args: { token_name: token },
+				freeze: true, freeze_message: "Approving exit\u2026",
+			});
+			if (r && r.message && r.message.approved) {
+				frappe.show_alert({ message: `Exit approved for ${token} \u2014 G2 can now record exit.`, indicator: "green" }, 6);
+				_sr_reload();
+			} else {
+				btn.prop("disabled", false).text("Exit Approved");
+			}
+		} catch (e) {
+			// Frappe native AJAX handler shows the server frappe.throw message.
+			btn.prop("disabled", false).text("Exit Approved");
+		}
 	});
 }
 

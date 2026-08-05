@@ -2,12 +2,18 @@ import random
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import now_datetime, time_diff_in_seconds, getdate, nowtime, flt
+from frappe.utils import now_datetime, time_diff_in_seconds, getdate, nowtime, flt, cint
 
 
 # v2.8.3 Two-Pass Gate Flow role constants
 TWO_PASS_G2_ROLE = "G2 Gate Operator"
 TWO_PASS_G1_ROLE = "G1 Security"
+
+# v2.18.0 Non-Raw-Material Stores-approved exit
+NON_RM_PURPOSE = "Non-Raw Material"
+STORES_EXIT_APPROVE_ROLES = ("Stores User", "Stores Manager")
+# Statuses that mean the vehicle has already left — never re-process exit from these.
+_EXITED_STATUSES = ("Plant Exited", "Campus Exited", "Exited")
 
 
 def _two_pass_flag_on():
@@ -172,6 +178,19 @@ class TSToken(Document):
 				frappe.throw("Visit Purpose is required for Gate Pass")
 			if not self.destination:
 				frappe.throw("Destination is required for Gate Pass")
+
+	def before_save(self):
+		# v2.18.0: protect the Non-RM exit-approval control-plane fields from REST
+		# tamper. These permlevel-0 fields are set ONLY by approve_non_rm_exit (via
+		# db_set, which skips save hooks), so this guard fires only on unauthorised
+		# frappe.client.set_value mutations (Lesson 162/176). Administrator / System
+		# Manager bypass is built into the shared helper (REUSE, not rebuild).
+		from trustbit_ethanol.ts_gate_entry.ts_po_approval import _block_gate_field_tampering
+		_block_gate_field_tampering(self, (
+			"non_rm_exit_approved",
+			"non_rm_exit_approved_by",
+			"non_rm_exit_approved_at",
+		))
 
 	def calculate_turnaround(self):
 		self.g1_to_g2_minutes = self._diff_minutes(self.g1_entry_time, self.g2_link_time)
@@ -824,9 +843,17 @@ def g2_mat_log_exit(token_name):
 			).format(escape_html(tok.vehicle_number or token_name)),
 			title=_("Awaiting PO Link"),
 		)
-
-	if tok.status not in ("Tare Weighed", "GRN Created"):
-		frappe.throw(_("Token {0} is at '{1}' — cannot record G2 Exit (expected 'Tare Weighed' or 'GRN Created').").format(token_name, tok.status))
+	# v2.18.0: a Non-Raw-Material token that Stores approved for exit may record
+	# G2 Exit from its natural resting status (no weighbridge / GRN needed). The
+	# Raw-Material and weighed flows keep the original Tare Weighed / GRN Created
+	# gate untouched.
+	_non_rm_approved = (
+		cint(getattr(tok, "non_rm_exit_approved", 0))
+		and _non_rm_flow_confirmed(token_name)
+		and tok.status not in _EXITED_STATUSES
+	)
+	if tok.status not in ("Tare Weighed", "GRN Created") and not _non_rm_approved:
+		frappe.throw(_("Token {0} is at '{1}' — cannot record G2 Exit (expected 'Tare Weighed'/'GRN Created', or a Stores-approved Non-Raw-Material token).").format(token_name, tok.status))
 	tok.db_set({
 		"g2_mat_exit_time": now_datetime(),
 		"g2_mat_exit_by": frappe.session.user,
@@ -875,3 +902,56 @@ def g1_final_exit(token_name):
 	except Exception as e:
 		frappe.log_error(message=f"g1_final_exit post-write update: {e}", title="g1_final_exit")
 	return {"ok": True, "token": token_name, "status": "Campus Exited"}
+
+
+def _non_rm_flow_confirmed(token_name):
+	"""The token's `purpose` is permlevel-0 and REST-writable by gate roles, so
+	it must never solely gate the weighbridge/GRN-free exit (security H1, 5 Aug).
+	The SUBMITTED Gate Entry's material_flow is the tamper-resistant source —
+	reqd, immutable after submit, and the very value update_token_status mirrors
+	into purpose. Fail-closed: no submitted Non-RM Gate Entry (or it was
+	cancelled later) → not a Non-RM flow."""
+	return bool(frappe.db.exists(
+		"TS Gate Entry",
+		{"token_number": token_name, "docstatus": 1, "material_flow": NON_RM_PURPOSE},
+	))
+
+
+@frappe.whitelist(methods=["POST"])
+def approve_non_rm_exit(token_name):
+	"""v2.18.0: Stores approves a Non-Raw-Material vehicle to exit.
+
+	Decouples the non-RM exit from the two-pass flag, the weighbridge, and the
+	GRN: once approved, g2_mat_log_exit accepts the token (→ 'Plant Exited') and
+	g1_final_exit releases it (→ 'Campus Exited'). Writes three permlevel-0
+	control-plane fields via db_set (which skips save hooks); REST tamper of those
+	fields is blocked by TSToken.before_save (Lesson 162/176).
+
+	Role: Stores User / Stores Manager (IT Head / System Manager break-glass).
+	Mutation endpoint → POST only (Lesson 175).
+	"""
+	# Defence in depth: hard existence check before any load (mirrors g2/g1 exit).
+	if not frappe.db.exists("TS Token", token_name):
+		frappe.throw(_("Token {0} not found").format(token_name))
+	user_roles = set(frappe.get_roles())
+	allowed = set(STORES_EXIT_APPROVE_ROLES) | {"IT Head", "System Manager"}
+	if not (allowed & user_roles):
+		frappe.throw(_("Only Stores can approve a Non-Raw-Material vehicle exit"), frappe.PermissionError)
+	tok = frappe.get_doc("TS Token", token_name)
+	if tok.entry_type != "Material":
+		frappe.throw(_("Exit approval is only valid for Material tokens (not Gate Pass)."))
+	# Resolve the flow from the SUBMITTED Gate Entry, never from tok.purpose —
+	# purpose is REST-writable by gate roles, so trusting it would let a
+	# re-labeled Raw-Material token skip the weighbridge/GRN via this path.
+	if not _non_rm_flow_confirmed(token_name):
+		frappe.throw(_("Token {0} has no submitted Non-Raw-Material Gate Entry — exit approval does not apply.").format(token_name))
+	if tok.status in _EXITED_STATUSES:
+		frappe.throw(_("Token {0} has already exited (status '{1}').").format(token_name, tok.status))
+	if cint(getattr(tok, "non_rm_exit_approved", 0)):
+		frappe.throw(_("Exit is already approved for token {0}.").format(token_name))
+	tok.db_set({
+		"non_rm_exit_approved": 1,
+		"non_rm_exit_approved_by": frappe.session.user,
+		"non_rm_exit_approved_at": now_datetime(),
+	})
+	return {"ok": True, "token": token_name, "approved": True}
