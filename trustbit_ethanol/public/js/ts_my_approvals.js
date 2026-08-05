@@ -214,6 +214,49 @@
 		});
 	}
 
+	// ---------- v2.17.4: reconcile a manual status filter vs. the role default ----------
+	// BUG (PO/MR list): the "My Pending" default adds a filter-list filter
+	//     <status_field> in [viewer's role statuses]
+	// When the user then picks a value in the standard "Approval Status" dropdown
+	//     <status_field> = X
+	// Frappe's FilterArea.get() keeps BOTH (different conditions on the same field),
+	// so the server ANDs `in [...] AND = X` → ZERO rows for any status outside the
+	// viewer's own queue (e.g. a CEO filtering "Pending PM"). The manual pick must win.
+	//
+	// Called from po_list.js / mr_list.js inside their existing refresh override,
+	// BEFORE orig_refresh(). Filter.remove() sets field=null (no on_change, no nested
+	// refresh) so the rebuilt query simply omits the conflicting `in` filter;
+	// update_filters() then tidies the filter-button count — the same path the
+	// framework's own filter_area.remove() uses (proven null-safe in prod).
+	window.ts_reconcile_manual_status_filter = function (listview, field) {
+		try {
+			if (!listview || !field) return;
+			const fd = listview.page && listview.page.fields_dict;
+			const std = fd && fd[field];
+			const manual_val = (std && typeof std.get_value === "function") ? std.get_value() : "";
+			if (!manual_val) return;  // no manual dropdown selection → nothing to reconcile
+
+			const fl = listview.filter_area && listview.filter_area.filter_list;
+			const conflicting = (fl && typeof fl.get_filter === "function") ? fl.get_filter(field) : null;
+			if (!conflicting) return;  // no filter-list filter on this field → no collision
+
+			conflicting.remove();  // field=null → dropped from get_filters(); no refresh fired
+			if (typeof fl.update_filters === "function") fl.update_filters();  // tidy button count
+
+			// Forget our tracked filter (keep the array a list of fieldname strings).
+			if (Array.isArray(listview._ts_my_approvals_tracked_filters)) {
+				listview._ts_my_approvals_tracked_filters =
+					listview._ts_my_approvals_tracked_filters.filter(function (f) { return f !== field; });
+			}
+			// Reflect "All Records" in the toggle — the manual filter left the role view.
+			const $tg = $(listview.page.wrapper).find(".ts-my-approvals-toggle");
+			if ($tg.length) {
+				$tg.find("button").removeClass("btn-primary").addClass("btn-default").attr("aria-pressed", "false");
+				$tg.find('button[data-choice="all"]').removeClass("btn-default").addClass("btn-primary").attr("aria-pressed", "true");
+			}
+		} catch (e) {}
+	};
+
 	// Dashboard tiles are rendered by the "TS My Approvals Dashboard"
 	// Custom HTML Block inside the "MR & PO Dashboard" workspace — native
 	// Frappe v15 pattern. This JS is now list-view-only.

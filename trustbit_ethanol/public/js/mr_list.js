@@ -13,10 +13,11 @@ function _patch_mr_list(listview) {
 	listview.settings.get_indicator = function(doc) {
 		const bbf = doc.ts_mr_status;
 		if (bbf && bbf !== "Approved" && bbf !== "Not Submitted") {
-			if (bbf.startsWith("Pending")) return [bbf, "orange", "ts_mr_status,like,Pending%"];
+			// v2.17.4: drill to the EXACT status clicked (was `like,Pending%`/`like,On Hold%`).
+			if (bbf.startsWith("Pending")) return [bbf, "orange", "ts_mr_status,=," + bbf];
 			if (bbf === "Rejected") return [bbf, "red", "ts_mr_status,=,Rejected"];
 			if (bbf === "Revised") return [bbf, "orange", "ts_mr_status,=,Revised"];
-			if (bbf.startsWith("On Hold")) return [bbf, "yellow", "ts_mr_status,like,On Hold%"];
+			if (bbf.startsWith("On Hold")) return [bbf, "yellow", "ts_mr_status,=," + bbf];
 		}
 		if (orig) return orig(doc);
 	};
@@ -29,6 +30,11 @@ function _patch_mr_list(listview) {
 	const orig_refresh = listview.refresh.bind(listview);
 	listview.refresh = function() {
 		_fix_mr_docstatus_for_approval_filter(listview);
+		// v2.17.4: a manual "Approval Status" pick must win over the role-scoped
+		// "My Pending" default — else the two filters AND to zero rows.
+		if (typeof window.ts_reconcile_manual_status_filter === "function") {
+			window.ts_reconcile_manual_status_filter(listview, "ts_mr_status");
+		}
 		return orig_refresh();
 	};
 

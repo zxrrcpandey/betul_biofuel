@@ -92,8 +92,10 @@ function _patch_po_list(listview) {
 		if (bbf === "Rejected")        return ["Rejected", "red",    "ts_approval_status,=,Rejected"];
 		if (bbf === "Revised")         return ["Revised",  "orange", "ts_approval_status,=,Revised"];
 		if (bbf === "Not Submitted")   return ["Not Submitted", "gray", "ts_approval_status,=,Not Submitted"];
-		if (bbf && bbf.startsWith("Pending"))  return [bbf, "orange", "ts_approval_status,like,Pending%"];
-		if (bbf && bbf.startsWith("On Hold"))  return [bbf, "yellow", "ts_approval_status,like,On Hold%"];
+		// v2.17.4: drill to the EXACT status clicked (was `like,Pending%`, which
+		// showed ALL pending statuses when you clicked one "Pending PM" badge).
+		if (bbf && bbf.startsWith("Pending"))  return [bbf, "orange", "ts_approval_status,=," + bbf];
+		if (bbf && bbf.startsWith("On Hold"))  return [bbf, "yellow", "ts_approval_status,=," + bbf];
 		// Empty / Draft / unknown — show neutral Draft pill, NOT native Frappe status.
 		return ["Draft", "gray", "ts_approval_status,in,,Draft,Not Submitted"];
 	};
@@ -109,6 +111,11 @@ function _patch_po_list(listview) {
 	const orig_refresh = listview.refresh.bind(listview);
 	listview.refresh = function() {
 		_fix_docstatus_for_approval_filter(listview);
+		// v2.17.4: a manual "Approval Status" pick must win over the role-scoped
+		// "My Pending" default — else the two filters AND to zero rows (e.g. Pending PM).
+		if (typeof window.ts_reconcile_manual_status_filter === "function") {
+			window.ts_reconcile_manual_status_filter(listview, "ts_approval_status");
+		}
 		return orig_refresh();
 	};
 
