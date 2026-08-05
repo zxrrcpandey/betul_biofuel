@@ -22,7 +22,8 @@
   {"role": "Accounts Manager"},
   {"role": "Accounts User"},
   {"role": "IT Head"},
-  {"role": "GM"},
+  {"role": "General Manager"},
+  {"role": "AVP"},
   {"role": "CEO"},
   {"role": "MD"}
  ]
