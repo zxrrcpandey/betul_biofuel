@@ -386,26 +386,30 @@ def complete_single_distribution(name, distribution):
 	if isinstance(distribution, str):
 		distribution = _json.loads(distribution or "[]")
 	settings = api._get_settings()
-	fg_wh = settings.get("fg_warehouse")
-	if not fg_wh:
-		frappe.throw(_("Configure the Finished-Goods Warehouse in TS Settings first."))
-	# Synthesize the FG row (unsplit, standard warehouse) so the imported validator's
-	# every-target-must-total-exactly rule covers FG + ALL by-products.
-	rows_in = [{"item_code": doc.production_item, "warehouse": fg_wh,
-	            "qty": flt(doc.actual_produced_qty), "uom": doc.production_uom}]
-	for d in (distribution or []):
-		rows_in.append({"item_code": (d.get("item_code") or "").strip(),
-		                "warehouse": (d.get("warehouse") or "").strip(),
-		                "qty": flt(d.get("qty")), "uom": d.get("uom")})
+	rows_in = [{"item_code": (d.get("item_code") or "").strip(),
+	            "warehouse": (d.get("warehouse") or "").strip(),
+	            "qty": flt(d.get("qty")), "uom": d.get("uom")}
+	           for d in (distribution or [])]
+	# The PM may now choose the FINISHED GOOD's warehouse(s) too (23 Jul). If the
+	# payload carries no FG row, fall back to synthesizing it unsplit at the TS
+	# Settings default — keeps older clients and by-products-only splits working.
+	if not any(r["item_code"] == doc.production_item for r in rows_in):
+		fg_wh = settings.get("fg_warehouse")
+		if not fg_wh:
+			frappe.throw(_("Configure the Finished-Goods Warehouse in TS Settings first."))
+		rows_in.insert(0, {"item_code": doc.production_item, "warehouse": fg_wh,
+		                   "qty": flt(doc.actual_produced_qty), "uom": doc.production_uom})
+	# The imported validator enforces per-item exact totals over FG + every by-product,
+	# so a client-supplied FG split can never under/over-produce.
 	from trustbit_ethanol.ts_gate_entry.ts_production_multi import _validate_distribution
 	rows = _validate_distribution(doc, rows_in)
 
-	bp_split = {}
+	bp_split, fg_split = {}, {}
 	for r in rows:
-		if r["line_type"] == "By-Product":
-			bp_split.setdefault(r["item_code"], []).append((flt(r["qty"]), r["warehouse"]))
-	if not bp_split:
-		frappe.throw(_("No by-product rows in the distribution."))
+		target = fg_split if r["line_type"] == "Finished" else bp_split
+		target.setdefault(r["item_code"], []).append((flt(r["qty"]), r["warehouse"]))
+	if not bp_split and not fg_split:
+		frappe.throw(_("No distribution rows given."))
 
 	# Persist the split for audit (existing child table; children not tamper-guarded).
 	with wo_engine.system_session():
@@ -414,9 +418,12 @@ def complete_single_distribution(name, distribution):
 			doc.append("fg_distribution", r)
 		doc.flags.ignore_permissions = True
 		doc.save()
-	doc.add_comment("Comment", _("By-product distribution posted by {0} ({1} split row(s)).").format(
-		user, sum(len(v) for v in bp_split.values())))
-	return _run_completion_chain(doc.name, settings, actor=user, bp_split=bp_split)
+	doc.add_comment("Comment", _(
+		"Distribution posted by {0} — finished good across {1} warehouse(s), "
+		"by-products across {2} row(s).").format(
+		user, sum(len(v) for v in fg_split.values()), sum(len(v) for v in bp_split.values())))
+	return _run_completion_chain(doc.name, settings, actor=user,
+	                             bp_split=bp_split, fg_split=fg_split)
 
 
 @frappe.whitelist()
@@ -473,7 +480,7 @@ def complete_released_production(name):
 #  COMPLETION CHAIN  (steps 7-10) — idempotent, never half-completes a WO
 # ─────────────────────────────────────────────────────────────────────────
 
-def _run_completion_chain(name, settings, actor=None, bp_split=None):
+def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=None):
 	"""Steps 7-10: auto-complete Job Cards -> Manufacture SE -> close WO ->
 	auto-return surplus -> WIP reconciliation -> flip to Completed.
 
@@ -526,7 +533,7 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None):
 
 		# 8 — Manufacture SE (consumes WIP per BOM-scaled qty). Idempotent.
 		manufacture_se = wo_engine.submit_manufacture_se(wo_name, company=company,
-		                                                 bp_split=bp_split)
+		                                                 bp_split=bp_split, fg_split=fg_split)
 		if not manufacture_se:
 			manufacture_se = frappe.db.get_value(
 				"Stock Entry",

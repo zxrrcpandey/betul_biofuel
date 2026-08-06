@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.5.3"; // 23 Jul — Single-flow by-product Post Distribution (opt-in pause + PM split card) // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // v2.21 Single-flow department release
+const PL_VERSION = "v1.6.0"; // 23 Jul — Single-flow by-product Post Distribution (opt-in pause + PM split card) // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // v2.21 Single-flow department release
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -323,7 +323,7 @@ class ProductionLogging {
 			l: "Delete Vote", s: "delete request" + (this._n_cvote > 1 ? "s" : "") + " awaiting your Yes/No" });
 		if ((this._n_sdist || 0) > 0) acts.push({
 			n: this._n_sdist, cls: "violet", target: "#pl-sec-sdist",
-			l: "Distribute By-Products", s: "run" + (this._n_sdist > 1 ? "s" : "") + " awaiting your warehouse split" });
+			l: "Distribute Output", s: "run" + (this._n_sdist > 1 ? "s" : "") + " awaiting your warehouse split" });
 		if (!acts.length) { $w.empty(); return; }
 		$w.html(`<div class="pl-acts">` + acts.map((a) => `
 			<div class="pl-act ${a.cls} glass" data-target="${a.target}" role="button" tabindex="0">
@@ -1314,18 +1314,19 @@ class ProductionLogging {
 			<div class="pl-row violet">
 				<span class="pl-rid">${this.esc(r.name)}</span>
 				<span class="pl-rwhat">${this.esc(r.production_item_name || r.production_item)} · <b>${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</b>
-					<span class="dim">· ${(r.byproducts || []).length} by-product(s) to split</span></span>
+					<span class="dim">· finished + ${(r.byproducts || []).length} by-product(s) to place</span></span>
 				<span class="pl-pill age">waiting ${this.age_of(r.modified) || "—"}</span>
 				<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>
-				<button class="btn btn-approve btn-sm btn-violet pl-sdist-btn" data-name="${this.esc(r.name)}">&#127981; Distribute By-Products</button>
+				<button class="btn btn-approve btn-sm btn-violet pl-sdist-btn" data-name="${this.esc(r.name)}">&#127981; Distribute Output</button>
 			</div>
 			<div class="pl-xpand" style="display:none">
+				<span><b>${this.esc(r.production_item_name || r.production_item)}</b> (finished) — ${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")} to place</span>
 				${(r.byproducts || []).map((b) => `<span><b>${this.esc(b.item_name || b.item_code)}</b> — ${this.fmt1(b.actual_qty)} ${this.esc(b.uom || "")} to split</span>`).join("")}
-				<span><b>Note</b> the finished good goes to the standard FG warehouse; you split ONLY the by-products — each must total exactly its produced quantity.</span>
+				<span><b>Note</b> choose the warehouse for the finished good AND each by-product — one line per warehouse, and every item must total exactly its produced quantity.</span>
 			</div>`;
 		$wrap.html(`
 			<div class="sec-title" id="pl-sec-sdist">
-				<span class="bar" style="background:var(--purple)"></span> Post Distribution &mdash; By-Products (Single Flow)
+				<span class="bar" style="background:var(--purple)"></span> Post Distribution &mdash; Output Warehouses (Single Flow)
 				<span class="feas-tag tag-auto">&#127981; PM action</span>
 			</div>
 			<div class="glass pl-rows">${rows.map(row).join("")}</div>`);
@@ -1387,15 +1388,16 @@ class ProductionLogging {
 			this.load_warehouses(),
 		]).then(([doc, warehouses]) => {
 			if (!doc) return;
-			// single (23 Jul) = Single-flow BY-PRODUCTS-ONLY split: FG is synthesized
-			// server-side to the standard FG warehouse and is NOT part of the dialog.
-			const targets = (single ? [] : [{
+			// The finished good is split the SAME way as by-products (23 Jul): one line
+			// per warehouse, totalling exactly the produced qty. Server-side the FG row
+			// is only synthesized at the TS Settings default if the payload omits it.
+			const targets = [{
 				item_code: doc.production_item,
 				item_name: doc.production_item_name || doc.production_item,
 				line_type: "Finished",
 				target: flt(doc.actual_produced_qty),
 				uom: doc.production_uom || "",
-			}]).concat((doc.byproducts || [])
+			}].concat((doc.byproducts || [])
 				.filter((b) => flt(b.actual_qty) > 0)
 				.map((b) => ({
 					item_code: b.item_code,
@@ -1405,8 +1407,8 @@ class ProductionLogging {
 					uom: b.uom || "",
 					rate: flt(b.rate),
 				})));
-			if (single && !targets.length) {
-				frappe.show_alert({ message: __("No by-products with quantity to split."), indicator: "orange" });
+			if (!targets.length) {
+				frappe.show_alert({ message: __("Nothing to distribute for this run."), indicator: "orange" });
 				return;
 			}
 			const wh_opts = warehouses.map((w) =>
@@ -1429,11 +1431,11 @@ class ProductionLogging {
 				</div>`).join("");
 
 			const d = new frappe.ui.Dialog({
-				title: single ? __("Distribute By-Products — {0}", [doc.name])
+				title: single ? __("Distribute Output — {0}", [doc.name])
 				              : __("Post Distribution — {0}", [doc.name]),
 				size: "large",
 				fields: [{ fieldtype: "HTML", fieldname: "dist_html" }],
-				primary_action_label: single ? __("Post By-Product Split") : __("Post Distribution"),
+				primary_action_label: single ? __("Post Distribution") : __("Post Distribution"),
 				primary_action: () => this.submit_distribution(d, doc, targets, single),
 			});
 			d.fields_dict.dist_html.$wrapper.html(

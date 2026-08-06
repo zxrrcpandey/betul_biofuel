@@ -546,7 +546,7 @@ def _cap_byproduct_rates(se):
 				frappe.clear_messages()
 
 
-def submit_manufacture_se(wo_name, company=None, bp_split=None):
+def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None):
 	"""Create + submit the Manufacture Stock Entry (consumes WIP per BOM-scaled qty,
 	produces FG + by-products). WO auto-Completes when produced_qty == qty.
 	Idempotent: returns an existing submitted Manufacture SE if one already exists.
@@ -555,7 +555,15 @@ def submit_manufacture_se(wo_name, company=None, bp_split=None):
 	{item_code: [(qty, warehouse), ...]} — replaces that by-product's single scrap
 	row with one row per (qty, warehouse). The caller (complete_single_distribution)
 	has already validated sums == actual + warehouse sanity server-side. None ->
-	behavior byte-identical to before."""
+	behavior byte-identical to before.
+
+	fg_split (23 Jul): same shape, for the FINISHED GOOD — the PM picks the FG's
+	warehouse(s) instead of the TS Settings default. ERPNext supports this natively:
+	validate_finished_goods only rejects multiple DISTINCT finished item codes, and
+	get_basic_rate_for_manufactured_item has an explicit same-item branch that divides
+	the consumed cost by the TOTAL finished qty — so every split row carries the same
+	correct per-unit valuation and total value is conserved (the Multiple flow has
+	used this shape since v2.19)."""
 	from erpnext.manufacturing.doctype.work_order.work_order import make_stock_entry
 
 	existing = frappe.get_all(
@@ -619,6 +627,29 @@ def submit_manufacture_se(wo_name, company=None, bp_split=None):
 					"basic_rate": flt(row.basic_rate),
 				})
 		for x in extras:
+			se.append("items", x)
+	# Finished-good split: first line reuses the native FG row (keeps bom_no / flags),
+	# extras are appended as same-item finished rows at their own warehouses.
+	if fg_split:
+		fg_extras = []
+		for row in se.items:
+			splits = fg_split.get(row.item_code) if getattr(row, "is_finished_item", 0) else None
+			if not splits:
+				continue
+			cf = flt(row.conversion_factor) or 1.0
+			q0, wh0 = splits[0]
+			row.qty = flt(q0)
+			row.transfer_qty = flt(q0) * cf
+			row.t_warehouse = wh0
+			for q, wh in splits[1:]:
+				fg_extras.append({
+					"item_code": row.item_code, "qty": flt(q),
+					"transfer_qty": flt(q) * cf, "uom": row.uom,
+					"stock_uom": row.stock_uom, "conversion_factor": cf,
+					"t_warehouse": wh, "is_finished_item": 1,
+				})
+			break  # exactly one finished item per Manufacture SE (ERPNext invariant)
+		for x in fg_extras:
 			se.append("items", x)
 	_cap_byproduct_rates(se)  # keep FG cost >= 0 when by-products out-value the inputs
 	# v2.21 ② department-wise cost centre — resolve from the run linked to this WO
