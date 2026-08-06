@@ -411,6 +411,21 @@ def complete_single_distribution(name, distribution):
 	if not bp_split and not fg_split:
 		frappe.throw(_("No distribution rows given."))
 
+	# RESUME path (6 Aug, PROD-2026-00824 forensics): if a prior attempt already
+	# SUBMITTED the Manufacture SE and then failed on a LATER step, the SE carries
+	# the FIRST split — do NOT overwrite the fg_distribution audit with the retry's
+	# rows (audit must match the posted SE) and do NOT pass a new split; just finish
+	# the remaining chain steps idempotently.
+	_existing_mfg = frappe.get_all("Stock Entry", filters={
+		"work_order": doc.work_order, "purpose": "Manufacture", "docstatus": 1},
+		pluck="name", limit=1)
+	if _existing_mfg:
+		doc.add_comment("Comment", _(
+			"Resuming completion by {0} — the split was already posted via {1}; "
+			"finishing the remaining steps.").format(user, _existing_mfg[0]))
+		with wo_engine.system_session():
+			return _run_completion_chain(doc.name, settings, actor=user)
+
 	# Persist the split for audit (existing child table; children not tamper-guarded).
 	with wo_engine.system_session():
 		doc.set("fg_distribution", [])
@@ -422,8 +437,16 @@ def complete_single_distribution(name, distribution):
 		"Distribution posted by {0} — finished good across {1} warehouse(s), "
 		"by-products across {2} row(s).").format(
 		user, sum(len(v) for v in fg_split.values()), sum(len(v) for v in bp_split.values())))
-	return _run_completion_chain(doc.name, settings, actor=user,
-	                             bp_split=bp_split, fg_split=fg_split)
+	# The WHOLE chain runs elevated — same as approve_release / complete_released_
+	# production / the Multiple flow's complete_distribution. The Manufacture/surplus
+	# Stock Entry submits drive a NESTED Project cost roll-up whose permission check
+	# honours neither ignore_permissions nor the caller's role (system_session
+	# docstring); running it as the PM threw "does not have doctype access ... for
+	# document Project" on the FIRST attempt (6 Aug UAT). Authorization already
+	# happened above (role gate + has_permission); audit fields carry the real actor.
+	with wo_engine.system_session():
+		return _run_completion_chain(doc.name, settings, actor=user,
+		                             bp_split=bp_split, fg_split=fg_split)
 
 
 @frappe.whitelist()
