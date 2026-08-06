@@ -1,22 +1,84 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import now_datetime, flt, getdate, cint
+from frappe.utils import now_datetime, flt, getdate, get_datetime, cint
 
 
 class TSGateEntry(Document):
 	def before_insert(self):
 		# Own G2 stamp — entry_date/entry_time are fetched from the Token (G1
 		# arrival), so this is the only field recording when G2 actually
-		# processed the vehicle. Unconditional: an API-supplied value must not
-		# override the audit stamp.
-		self.g2_entry_datetime = now_datetime()
+		# processed the vehicle. Default: server clock — an API-supplied value
+		# must not override the audit stamp. Sole exception: an active
+		# Post-Dated window, where the operator records the real (past) G2
+		# time for paper catch-up entries. Second precision: the desk control
+		# round-trips without microseconds, so a microsecond stamp would make
+		# every later re-save look like a change to _guard_g2_stamp_change.
+		supplied = self.g2_entry_datetime
+		self.g2_entry_datetime = now_datetime().replace(microsecond=0)
+		if supplied:
+			self._apply_post_dated_g2_stamp(supplied)
+
+	def _apply_post_dated_g2_stamp(self, supplied):
+		"""Keep a client-supplied G2 stamp only under an active Post-Dated
+		window. No window → keep the server stamp silently (REST/import
+		inserts never errored on this field). Window active → the form field
+		is editable, so a bad value must THROW: silently replacing what the
+		operator typed would ship a stamp they never saw."""
+		from trustbit_ethanol.ts_gate_entry.ts_post_dated import (
+			check_post_dated_access,
+			validate_post_dated_date,
+		)
+		access = check_post_dated_access("TS Gate Entry", self.token_number)
+		if not access.get("enabled"):
+			return
+		supplied = get_datetime(supplied).replace(microsecond=0)
+		if supplied > now_datetime():
+			frappe.throw(_("G2 Entry Date & Time cannot be in the future."))
+		validate_post_dated_date("TS Gate Entry", supplied.date(), self.token_number)
+		self.g2_entry_datetime = supplied
+
+	def _guard_g2_stamp_change(self):
+		"""g2_entry_datetime is server-owned: changing it on an existing doc
+		is allowed ONLY inside an active Post-Dated window, never into the
+		future. Gated on is_new() and NOT docstatus — submit runs validate
+		with docstatus already 1, so a set-and-submit call would slip past a
+		docstatus gate. Closes the v2.29.9 draft-REST-overwrite finding."""
+		if self.is_new():
+			return
+		before = self.get_doc_before_save()
+		if not before:
+			return
+		old = get_datetime(before.g2_entry_datetime).replace(microsecond=0) if before.g2_entry_datetime else None
+		new = get_datetime(self.g2_entry_datetime).replace(microsecond=0) if self.g2_entry_datetime else None
+		if new == old:
+			# A Transaction-wise window is scoped to ONE token, so a backdated
+			# stamp must be re-authorized when the token link changes — else a
+			# two-save token swap carries the stamp onto an unauthorized GE.
+			token_changed = (self.token_number or "") != (before.token_number or "")
+			if not token_changed or not new or new.date() >= getdate():
+				return
+		if not new:
+			frappe.throw(_("G2 Entry Date & Time cannot be cleared."))
+		from trustbit_ethanol.ts_gate_entry.ts_post_dated import (
+			check_post_dated_access,
+			validate_post_dated_date,
+		)
+		access = check_post_dated_access("TS Gate Entry", self.token_number)
+		if not access.get("enabled"):
+			frappe.throw(_("G2 Entry Date & Time can only be changed during an active Post-Dated Entry window."))
+		if new > now_datetime():
+			frappe.throw(_("G2 Entry Date & Time cannot be in the future."))
+		validate_post_dated_date("TS Gate Entry", new.date(), self.token_number)
+		self.g2_entry_datetime = new
 
 	def validate(self):
 		# Post-dated entry validation (past dates need approval, future dates blocked)
 		if self.entry_date and getdate(self.entry_date) != getdate():
 			from trustbit_ethanol.ts_gate_entry.ts_post_dated import validate_post_dated_date
 			validate_post_dated_date("TS Gate Entry", self.entry_date, self.token_number)
+
+		self._guard_g2_stamp_change()
 
 		if self.stock_direction == "Stock OUT":
 			self._validate_stock_out()

@@ -1,9 +1,13 @@
 frappe.ui.form.on("TS Gate Entry", {
 	refresh(frm) {
-		// Post-dated entry check — ONLY on brand-new Gate Entries being created (Lesson 166).
-		// Previously triggered on every draft view, polluting the screen and silently
-		// unlocking entry_date/entry_time on already-saved drafts.
-		if (frm.is_new()) {
+		// Post-dated entry check — drafts only (new + saved). Unlocks ONLY the
+		// G2 stamp: token entry_date/entry_time are G1-owned and stay locked
+		// at G2 (the server refetches them from the Token on every save, so
+		// unlocking them here never persisted anything). Saved drafts are
+		// included because g2_entry_datetime first appears after insert; every
+		// change is re-validated server-side against the Post-Dated window
+		// (Lesson 166-safe: no token field is ever unlocked on a saved draft).
+		if (frm.doc.docstatus === 0) {
 			// Apply cached result instantly (prevents lock on re-render)
 			if (frm._pd_access && frm._pd_access.enabled) {
 				_ge_pd_apply(frm, frm._pd_access);
@@ -24,7 +28,7 @@ frappe.ui.form.on("TS Gate Entry", {
 				});
 			}
 		} else {
-			// Saved draft or submitted — remove any stale banner
+			// Submitted/cancelled — remove any stale banner
 			$(frm.wrapper).find(".pd-banner").remove();
 		}
 
@@ -436,7 +440,7 @@ function _ge_pd_apply(frm, access) {
 				<strong>&#128197; Post-Dated Entry Enabled</strong> — Dates <strong>${_fmt_pd_date(access.from_date)}</strong> to <strong>${_fmt_pd_date(access.to_date)}</strong> allowed.
 			</div>`);
 		}
-		["entry_date", "entry_time"].forEach(fn => {
+		["g2_entry_datetime"].forEach(fn => {
 			frm.set_df_property(fn, "read_only", 0);
 			if (frm.fields_dict[fn] && frm.fields_dict[fn].$wrapper)
 				frm.fields_dict[fn].$wrapper.find("input").css({"border-color": "#2490ef", "background": "#f0f7ff"});
