@@ -1,4 +1,10 @@
 // TS PO Approval v2.0 — Category-based routing with dynamic stepper
+
+// v2.30.1 — the two canonical masks the PO Type dropdown toggles between.
+// Family rule everywhere: "Work Order" ⇔ naming_series starts with "BBPL-WO".
+const TS_WO_SERIES = "BBPL-WO-OP-.YYYY.-.#####";
+const TS_NONWO_SERIES = "BBPL-PO-OT-.YYYY.-.#####";
+
 frappe.ui.form.on("Purchase Order", {
 	refresh(frm) {
 		_force_po_grid_columns(frm);
@@ -12,6 +18,11 @@ frappe.ui.form.on("Purchase Order", {
 		// never linger on a fresh PO (the old inline tracker leaked across the
 		// reused form DOM and only cleared on a full page reload).
 		_ts_clear_stale_lifecycle_ui(frm);
+		// v2.30.1 — PO Type dropdown sync + Service-Request-capable Get Items
+		// From button. MUST stay above the is_new() early-return: both target
+		// NEW forms (internally gated by is_new()/docstatus themselves).
+		_ts_sync_po_type(frm);
+		_ts_replace_mr_mapper_button(frm);
 		if (frm.is_new()) return;
 		// v2.28.3 — kill ERPNext's native Status ▸ Hold, unconditionally.
 		// ORDERING (verified in frappe/public/js/frappe/form/script_manager.js):
@@ -108,6 +119,27 @@ frappe.ui.form.on("Purchase Order", {
 	// user clears or changes selection.
 	ts_deduction_template(frm) {
 		_ts_on_deduction_template_change(frm);
+	},
+	// v2.30.1 — visible PO Type drives the naming series (new docs only; the
+	// series is set_only_once). No-op when the current mask is already in the
+	// matching family, so a deliberate BBPL-WO-OT / PUR-ORD / BBPL-PO-FA pick
+	// survives and the reverse sync below cannot ping-pong.
+	ts_po_type(frm) {
+		if (!frm.is_new()) return;
+		const wants_wo = frm.doc.ts_po_type === "Work Order";
+		const current = frm.doc.naming_series || "";
+		const is_wo = current.startsWith("BBPL-WO");
+		if (wants_wo === is_wo) return;
+		// Remember the mask being left behind so toggling back restores the
+		// user's own pick (BBPL-PO-FA, PUR-ORD, BBPL-WO-OT…) instead of
+		// silently collapsing it to the canonical mask of that family.
+		frm.__ts_prev_series = frm.__ts_prev_series || {};
+		frm.__ts_prev_series[is_wo ? "wo" : "nonwo"] = current;
+		const remembered = frm.__ts_prev_series[wants_wo ? "wo" : "nonwo"];
+		frm.set_value("naming_series", remembered || (wants_wo ? TS_WO_SERIES : TS_NONWO_SERIES));
+	},
+	naming_series(frm) {
+		_ts_sync_po_type(frm);
 	},
 	validate(frm) {
 		if (!frm.doc.cost_center) {
@@ -1485,4 +1517,60 @@ function _hide_native_hold_buttons(frm) {
 			if (typeof _native_unhold === "function") return _native_unhold.apply(this, arguments);
 		};
 	}
+}
+
+// ═══════════════════════════════════════════════════════════
+//  v2.30.1 — PO Type dropdown + Service-Request-capable MR mapper
+// ═══════════════════════════════════════════════════════════
+
+function _ts_sync_po_type(frm) {
+	// Editable only while unsaved — the series freezes at first save (it is
+	// set_only_once), so the label must freeze with it. NEVER write to a
+	// saved doc: a set_value there would dirty the form (phantom "unsaved
+	// changes"). Pre-feature POs are labelled from their NAME by
+	// setup._align_po_type_with_name() at migrate, never from here.
+	frm.set_df_property("ts_po_type", "read_only", frm.is_new() ? 0 : 1);
+	if (!frm.is_new()) return;
+	const type = (frm.doc.naming_series || "").startsWith("BBPL-WO")
+		? "Work Order" : "Non-Work Order";
+	if (frm.doc.ts_po_type !== type) {
+		frm.set_value("ts_po_type", type);
+	}
+}
+
+function _ts_replace_mr_mapper_button(frm) {
+	// Re-add core's Get Items From ▸ Material Request with two changes: the
+	// picker also lists Service Request MRs, and the mapper endpoint is ours
+	// (ts_sr_to_po.map_mr_to_po — flips SR→Purchase around core's mapper and
+	// stamps Work Order on the unsaved target). Ordering is safe either way:
+	// this new-style handler runs BEFORE erpnext's old-style controller
+	// refresh, and page.add_inner_button dedupes grouped buttons on label
+	// WITHOUT rebinding the action — so the first add (ours) wins; if core
+	// ever ran first, remove_custom_button clears it before we re-add.
+	if (frm.doc.docstatus !== 0) return;
+	frm.remove_custom_button(__("Material Request"), __("Get Items From"));
+	frm.add_custom_button(
+		__("Material Request"),
+		function () {
+			erpnext.utils.map_current_doc({
+				method: "trustbit_ethanol.ts_gate_entry.ts_sr_to_po.map_mr_to_po",
+				source_doctype: "Material Request",
+				target: frm,
+				setters: {
+					schedule_date: undefined,
+				},
+				get_query_filters: {
+					material_request_type: ["in", ["Purchase", "Service Request"]],
+					docstatus: 1,
+					status: ["!=", "Stopped"],
+					per_ordered: ["<", 100],
+					company: frm.doc.company,
+				},
+				allow_child_item_selection: true,
+				child_fieldname: "items",
+				child_columns: ["item_code", "item_name", "qty", "ordered_qty"],
+			});
+		},
+		__("Get Items From")
+	);
 }

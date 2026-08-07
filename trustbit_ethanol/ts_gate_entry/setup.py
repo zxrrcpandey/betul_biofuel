@@ -184,6 +184,21 @@ def create_custom_fields():
 		# ── PO Approval Fields ──────────────────────────────────────────
 		"Purchase Order": [
 			{
+				# v2.30.1 — visible PO Type dropdown; drives naming_series via
+				# po_approval.js sync (Work Order ⇔ BBPL-WO-* masks). Auto-set
+				# to "Work Order" when the PO is mapped from a Service Request
+				# MR (ts_sr_to_po.py). Cosmetic/filter metadata — the document's
+				# real identity is the set_only_once naming_series.
+				"fieldname": "ts_po_type",
+				"fieldtype": "Select",
+				"label": "PO Type",
+				"options": "Non-Work Order\nWork Order",
+				"default": "Non-Work Order",
+				"insert_after": "naming_series",
+				"in_standard_filter": 1,
+				"description": "Work Order POs are numbered BBPL-WO-*. Set before the first save — the series cannot change afterwards."
+			},
+			{
 				"fieldname": "ts_approval_section",
 				"fieldtype": "Section Break",
 				"label": "TS Approval",
@@ -1035,6 +1050,7 @@ def create_custom_fields():
 	]
 
 	_create_custom_fields(custom_fields)
+	_align_po_type_with_name()
 	_seed_vehicle_origin_fields()
 	_seed_pi_update_stock_return_visibility()
 	_seed_dsg_receipt_context_fields()
@@ -2668,6 +2684,34 @@ def _seed_material_transfer_kill_switch():
 			},
 		]
 	})
+	frappe.db.commit()
+
+
+def _align_po_type_with_name():
+	"""v2.30.1 — keep ts_po_type honest for POs the dropdown never touched.
+
+	The field carries a DDL default, so ADD COLUMN stamps every pre-existing
+	PO "Non-Work Order" — including genuinely BBPL-WO-* numbered ones, which
+	would make the PO Type standard filter LIE (a real Work Order PO filed
+	under Non-Work Order). The document's name is the authority: it is minted
+	once from the series and can never change (set_only_once), so deriving the
+	label from the name prefix is always correct and never overrides a
+	meaningful user choice. Idempotent — the WHERE clauses make repeat
+	migrates no-ops, and update_modified is not touched.
+	"""
+	if not frappe.db.has_column("Purchase Order", "ts_po_type"):
+		return
+
+	frappe.db.sql("""
+		UPDATE `tabPurchase Order`
+		SET ts_po_type = 'Work Order'
+		WHERE name LIKE 'BBPL-WO-%%' AND IFNULL(ts_po_type, '') != 'Work Order'
+	""")
+	frappe.db.sql("""
+		UPDATE `tabPurchase Order`
+		SET ts_po_type = 'Non-Work Order'
+		WHERE name NOT LIKE 'BBPL-WO-%%' AND IFNULL(ts_po_type, '') = ''
+	""")
 	frappe.db.commit()
 
 
