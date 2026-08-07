@@ -6,7 +6,7 @@
      C — Approved Direct PO (new, no token)
    ═══════════════════════════════════════════════════════════════════ */
 
-const SR_VERSION = "v6.11-2026-07-31-grain-po-items-rate";
+const SR_VERSION = "v6.12-2026-08-06-pre-grn-exit-release";
 const SR_API = "trustbit_ethanol.ts_gate_entry.stores_receiving_api";
 console.log("[stores-receiving]", SR_VERSION, "loaded");
 
@@ -82,7 +82,7 @@ function _sr_render_shell() {
 		<div class="sr-section sr-section-grain" id="sr-section-g" style="display:none">
 			<div class="sr-section-head sr-grain-head">
 				<div class="sr-section-title">🔒 Grain — Awaiting PO Link</div>
-				<div class="sr-section-hint">Weighed grain vehicles held at G2 Exit until you link the grain PO and create the GRN</div>
+				<div class="sr-section-hint">Weighed grain vehicles held at G2 Exit until you link the grain PO and create the GRN — a released truck stays listed here until its GRN is done</div>
 			</div>
 			<div id="sr-g-body" class="sr-body"><div class="sr-empty">Loading…</div></div>
 		</div>
@@ -171,15 +171,16 @@ function _sr_render_section_g() {
 	if (!rows.length) { $("#sr-g-body").html('<div class="sr-empty">No grain vehicles awaiting PO link.</div>'); return; }
 	const html = [
 		'<table class="sr-table"><thead><tr>',
-		'<th>Token</th><th>Vehicle</th><th>Material</th><th>Net Wt (Kg)</th><th>Waiting</th><th>Action</th>',
+		'<th>Token</th><th>Vehicle</th><th>Material</th><th>Net Wt (Kg)</th><th>Status</th><th>Waiting</th><th>Action</th>',
 		'</tr></thead><tbody>',
 		...rows.map(r => `<tr data-search="${_sr_esc((r.token + " " + r.vehicle + " " + (r.material || "")).toLowerCase())}">
 			<td><strong>${_sr_esc(r.token)}</strong></td>
 			<td>${_sr_esc(r.vehicle)}</td>
 			<td><span class="sr-status sr-warn">${_sr_esc(r.material)}</span></td>
 			<td class="sr-num">${format_number(r.net_weight || 0, null, 0)}</td>
+			<td>${_sr_grain_status_badge(r)}</td>
 			<td>${_sr_age(r.age_hours)}</td>
-			<td><button class="btn btn-xs btn-warning sr-link-grain" data-token="${_sr_esc(r.token)}" data-vehicle="${_sr_esc(r.vehicle)}" data-material="${_sr_esc(r.material)}" data-net="${_sr_esc(r.net_weight || 0)}">Link PO</button></td>
+			<td><button class="btn btn-xs btn-warning sr-link-grain" data-token="${_sr_esc(r.token)}" data-vehicle="${_sr_esc(r.vehicle)}" data-material="${_sr_esc(r.material)}" data-net="${_sr_esc(r.net_weight || 0)}">Link PO</button>${_sr_grain_release_btn(r)}</td>
 		</tr>`),
 		'</tbody></table>'
 	].join("");
@@ -187,6 +188,49 @@ function _sr_render_section_g() {
 	$("#sr-g-body .sr-link-grain").on("click", function () {
 		const b = $(this);
 		_sr_open_link_grain_dialog(b.data("token"), b.data("vehicle"), b.data("material"), b.data("net"));
+	});
+	$("#sr-g-body .sr-grain-release").on("click", function () {
+		_sr_pre_grn_release_start($(this), $(this).data("token"));
+	});
+}
+
+// v2.30.0 — grain pre-GRN exit release (Section G). A held truck may be released
+// to exit before its GRN; it then stays in this queue ("Exited — GRN pending")
+// until the PO is linked and the GRN created. Reuses sr-status/sr-warn classes —
+// no new CSS, dark mode inherited.
+function _sr_grain_status_badge(r) {
+	if (["Plant Exited", "Campus Exited"].includes(r.status)) {
+		return '<span class="sr-status sr-warn">Exited — GRN pending</span>';
+	}
+	if (Number(r.released)) return '<span class="sr-status sr-ok">Exit released</span>';
+	return '<span class="sr-status sr-muted">Awaiting exit</span>';
+}
+
+function _sr_grain_release_btn(r) {
+	if (!_sr_can_approve_exit()) return "";
+	if (Number(r.released) || r.status !== "Tare Weighed") return "";
+	return ` <button class="btn btn-xs btn-primary sr-grain-release" data-token="${_sr_esc(r.token)}">Release Exit</button>`;
+}
+
+function _sr_pre_grn_release_start(btn, token) {
+	_sr_confirm_create(`Release grain vehicle on token ${token} to exit BEFORE the GRN? The PO link + GRN stay owed in this section.`, async () => {
+		btn.prop("disabled", true).text("Releasing…");
+		try {
+			const r = await frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.approve_pre_grn_exit",
+				args: { token_name: token },
+				freeze: true, freeze_message: "Releasing exit…",
+			});
+			if (r && r.message && r.message.released) {
+				frappe.show_alert({ message: `Exit released for ${token} — G2 can now record exit.`, indicator: "green" }, 6);
+				_sr_reload();
+			} else {
+				btn.prop("disabled", false).text("Release Exit");
+			}
+		} catch (e) {
+			// Frappe native AJAX handler shows the server frappe.throw message.
+			btn.prop("disabled", false).text("Release Exit");
+		}
 	});
 }
 
@@ -695,6 +739,11 @@ function _sr_can_approve_exit() {
 }
 
 function _sr_exit_approve_btn(r) {
+	// v2.30.0: an approved token that already exited stays in this queue until
+	// its GRN is made \u2014 badge instead of the (now moot) approve button.
+	if (["Plant Exited", "Campus Exited", "Exited"].includes(r.status)) {
+		return '<span class="sr-status sr-warn">Exited \u2014 GRN pending</span>';
+	}
 	if (!_sr_can_approve_exit()) return "";
 	if (r.exit_approved) return '<button class="btn btn-xs btn-warning" disabled>Exit Approved \u2713</button>';
 	return `<button class="btn btn-xs btn-primary sr-exit-approve" data-token="${_sr_esc(r.token)}">Exit Approved</button>`;

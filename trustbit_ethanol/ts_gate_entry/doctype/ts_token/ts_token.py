@@ -190,6 +190,14 @@ class TSToken(Document):
 			"non_rm_exit_approved",
 			"non_rm_exit_approved_by",
 			"non_rm_exit_approved_at",
+			# v2.30.0: grain pre-GRN exit release trio — set ONLY by approve_pre_grn_exit.
+			"ts_pre_grn_exit_approved",
+			"ts_pre_grn_exit_approved_by",
+			"ts_pre_grn_exit_approved_at",
+			# v2.30.0: escalation fire-once stamp — set ONLY by the scheduled scan
+			# (db.set_value skips save hooks); guarded so REST tamper can neither
+			# silence nor re-spam the overdue-GRN bell (security re-scan L1).
+			"ts_pre_grn_escalated_at",
 		))
 
 	def calculate_turnaround(self):
@@ -832,8 +840,11 @@ def g2_mat_log_exit(token_name):
 	# token.purchase_receipt, which releases this hold. Keyed strictly on the
 	# marker (via ts_grain_defer.exit_hold_active) so every non-grain / non-deferred
 	# token is byte-unaffected.
-	from trustbit_ethanol.ts_gate_entry.ts_grain_defer import exit_hold_active
-	if exit_hold_active(tok):
+	# v2.30.0: a Stores-released truck (approve_pre_grn_exit) bypasses the hold
+	# at the CALL SITE — exit_hold_active itself stays byte-identical, so the
+	# kill-switch and every non-grain / non-deferred token are provably unaffected.
+	from trustbit_ethanol.ts_gate_entry.ts_grain_defer import exit_hold_active, pre_grn_exit_released
+	if exit_hold_active(tok) and not pre_grn_exit_released(tok):
 		from frappe.utils import escape_html
 		frappe.throw(
 			_(
@@ -955,3 +966,69 @@ def approve_non_rm_exit(token_name):
 		"non_rm_exit_approved_at": now_datetime(),
 	})
 	return {"ok": True, "token": token_name, "approved": True}
+
+
+@frappe.whitelist(methods=["POST"])
+def approve_pre_grn_exit(token_name):
+	"""v2.30.0: Stores releases a grain-held vehicle to exit BEFORE the GRN.
+
+	Applies ONLY to a token currently held by the grain deferred-linking hold
+	(ts_grain_defer.exit_hold_active) — any other token throws, so every
+	non-grain flow is untouched and the feature is self-scoping. The release
+	bypasses the G2-exit hold at its call site; the status gates, weighbridge
+	requirement and the two-checkpoint chain (G2 → Plant Exited → G1 →
+	Campus Exited) are unchanged. The PO link + GRN remain owed and the truck
+	stays visible in Stores Receiving → Section G after exit.
+
+	Writes three permlevel-0 control-plane fields via db_set (skips save
+	hooks); REST tamper is blocked by TSToken.before_save (Lesson 162/176).
+	Role: Stores User / Stores Manager (IT Head / System Manager break-glass).
+	Mutation endpoint → POST only (Lesson 175).
+	"""
+	if not frappe.db.exists("TS Token", token_name):
+		from frappe.utils import escape_html
+		frappe.throw(_("Token {0} not found").format(escape_html(token_name)))
+	user_roles = set(frappe.get_roles())
+	allowed = set(STORES_EXIT_APPROVE_ROLES) | {"IT Head", "System Manager"}
+	if not (allowed & user_roles):
+		frappe.throw(_("Only Stores can release a grain vehicle to exit before the GRN"), frappe.PermissionError)
+	# Row-lock against a concurrent release / link_grain_po_and_create_grn, and
+	# read EVERY gate field THROUGH the lock: under REPEATABLE READ a get_doc()
+	# after the lock still returns the transaction's snapshot, so N concurrent
+	# requests would all pass the idempotency gate on the stale flag (audit M-1
+	# — 3 of 5 concurrent HTTP releases succeeded against the snapshot read).
+	locked_rows = frappe.db.sql(
+		"""SELECT entry_type, status, purchase_receipt, ts_pre_grn_exit_approved
+		   FROM `tabTS Token` WHERE name=%s FOR UPDATE""",
+		(token_name,), as_dict=True,
+	)
+	if not locked_rows:
+		# exists() above is a snapshot read; the locking read sees the latest
+		# committed state, so a concurrent hard-delete lands here (audit L1).
+		from frappe.utils import escape_html
+		frappe.throw(_("Token {0} not found").format(escape_html(token_name)))
+	locked = locked_rows[0]
+	if locked.entry_type != "Material":
+		frappe.throw(_("Pre-GRN exit release is only valid for Material tokens (not Gate Pass)."))
+	from trustbit_ethanol.ts_gate_entry.ts_grain_defer import exit_hold_active
+	if not exit_hold_active(frappe._dict(name=token_name, purchase_receipt=locked.purchase_receipt)):
+		frappe.throw(_(
+			"Token {0} is not held at G2 Exit by the grain PO-link hold — "
+			"a pre-GRN exit release does not apply."
+		).format(token_name))
+	if locked.status in _EXITED_STATUSES:
+		frappe.throw(_("Token {0} has already exited (status '{1}').").format(token_name, locked.status))
+	if locked.status != "Tare Weighed":
+		frappe.throw(_(
+			"Token {0} is at '{1}' — a grain vehicle can only be released after "
+			"Tare weighing (expected 'Tare Weighed')."
+		).format(token_name, locked.status))
+	if cint(locked.ts_pre_grn_exit_approved):
+		frappe.throw(_("Exit is already released for token {0}.").format(token_name))
+	tok = frappe.get_doc("TS Token", token_name)
+	tok.db_set({
+		"ts_pre_grn_exit_approved": 1,
+		"ts_pre_grn_exit_approved_by": frappe.session.user,
+		"ts_pre_grn_exit_approved_at": now_datetime(),
+	})
+	return {"ok": True, "token": token_name, "released": True}

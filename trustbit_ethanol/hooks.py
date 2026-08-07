@@ -17,12 +17,12 @@ app_include_js = [
 	"/assets/trustbit_ethanol/js/po_payment_amount_gst.js?v=5",
 	"/assets/trustbit_ethanol/js/ts_executive_override.js",
 	"/assets/trustbit_ethanol/js/ts_approval_ux.js?v=2",
-	"/assets/trustbit_ethanol/js/ts_my_approvals.js",
+	"/assets/trustbit_ethanol/js/ts_my_approvals.js?v=2",
 	"/assets/trustbit_ethanol/js/ts_cc_filter.js",
 	# v3 = v2.28.5 cold-load fix exports (?v bump mandatory — bare /assets are
 	# browser-pinned for 1y; without the URL change the fix ships invisibly, L318/319)
-	"/assets/trustbit_ethanol/js/po_list.js?v=3",
-	"/assets/trustbit_ethanol/js/mr_list.js?v=3",
+	"/assets/trustbit_ethanol/js/po_list.js?v=4",
+	"/assets/trustbit_ethanol/js/mr_list.js?v=4",
 	"/assets/trustbit_ethanol/js/ts_post_dated_entry_request_list.js",
 	"/assets/trustbit_ethanol/js/ts_budget_proposal_list.js",
 	"/assets/trustbit_ethanol/js/ts_post_dated.js",
@@ -436,6 +436,8 @@ scheduler_events = {
 			"trustbit_ethanol.ts_gate_entry.ts_production_reminders.run_department_production_reminders",
 			# v2.24.0 — Notification Center: bell the current-step approvers of SLA-overdue PO/MRs (read-only wrapper; ts_po_approval untouched)
 			"trustbit_ethanol.ts_gate_entry.ts_notification_coverage.emit_stuck_approval_bells",
+			# v2.30.0 — grain pre-GRN exit release: bell Stores/IT Head once when a released truck's GRN is still owed after 6h (fail-soft, fire-once)
+			"trustbit_ethanol.ts_gate_entry.ts_grain_defer.escalate_overdue_released_trucks",
 		],
 		"0 9 * * 1": [
 			"trustbit_ethanol.ts_gate_entry.ts_qc_sla_scheduler.weekly_qc_email",

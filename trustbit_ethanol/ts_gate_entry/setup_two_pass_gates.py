@@ -115,6 +115,59 @@ def seed_two_pass_gate_fields():
 			"print_hide": 1,
 			"description": "v2.18.0: timestamp of the Non-RM exit approval.",
 		},
+		# v2.30.0 — Grain pre-GRN exit release. These 3 fields authorise a
+		# grain-deferred vehicle (held at G2 Exit by ts_grain_defer.exit_hold_active)
+		# to exit BEFORE its GRN; the PO link + GRN are completed after exit from
+		# Stores Receiving → Section G. Set EXCLUSIVELY by the approve_pre_grn_exit
+		# POST API (via db_set, which skips save hooks); REST tamper is blocked by
+		# TSToken.before_save (Lesson 162/176) — same doctrine as the Non-RM trio.
+		{
+			"doctype": "Custom Field",
+			"dt": "TS Token",
+			"fieldname": "ts_pre_grn_exit_approved",
+			"label": "Pre-GRN Exit Released",
+			"fieldtype": "Check",
+			"default": "0",
+			"read_only": 1,
+			"insert_after": "non_rm_exit_approved_at",
+			"in_list_view": 0,
+			"print_hide": 1,
+			"description": "v2.30.0: Stores released this grain-deferred vehicle to exit before the GRN. Set by approve_pre_grn_exit API; bypasses the G2 grain hold only.",
+		},
+		{
+			"doctype": "Custom Field",
+			"dt": "TS Token",
+			"fieldname": "ts_pre_grn_exit_approved_by",
+			"label": "Pre-GRN Exit Released By",
+			"fieldtype": "Link",
+			"options": "User",
+			"read_only": 1,
+			"insert_after": "ts_pre_grn_exit_approved",
+			"print_hide": 1,
+			"description": "v2.30.0: Stores user who released the pre-GRN exit.",
+		},
+		{
+			"doctype": "Custom Field",
+			"dt": "TS Token",
+			"fieldname": "ts_pre_grn_exit_approved_at",
+			"label": "Pre-GRN Exit Released At",
+			"fieldtype": "Datetime",
+			"read_only": 1,
+			"insert_after": "ts_pre_grn_exit_approved_by",
+			"print_hide": 1,
+			"description": "v2.30.0: timestamp of the pre-GRN exit release.",
+		},
+		{
+			"doctype": "Custom Field",
+			"dt": "TS Token",
+			"fieldname": "ts_pre_grn_escalated_at",
+			"label": "Pre-GRN Escalated At",
+			"fieldtype": "Datetime",
+			"read_only": 1,
+			"insert_after": "ts_pre_grn_exit_approved_at",
+			"print_hide": 1,
+			"description": "v2.30.0: fire-once stamp for the released-truck GRN-overdue escalation (same doctrine as ts_grain_notified_at).",
+		},
 	]
 	for f in fields:
 		try:

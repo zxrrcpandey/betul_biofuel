@@ -178,18 +178,16 @@ frappe.ui.form.on("TS Token", {
 				// Mark Exit (legacy single-step exit).
 				// v2.9.8.20: NEVER show for Raw Material — that path is now ALWAYS the
 				// two-step G2 Exit + G1 Final Exit flow (rendered below, regardless of
-				// ts_two_pass_gates_enabled). Mark Exit still shows for Stock OUT and
-				// for Material tokens that aren't Raw Material (per legacy single-pass
-				// fallback when the two-pass entry flow is disabled).
+				// ts_two_pass_gates_enabled).
+				// v2.30.0: NEVER show for Non-RM Material (Stock IN) either — Stores
+				// "Exit Approved" → Record G2 Exit → Record G1 Final Exit is now the
+				// ONLY exit path for every Material Stock-IN token (user request,
+				// 7 Aug 2026). Mark Exit remains ONLY for Stock OUT (it creates the
+				// Delivery Note on exit); Gate Pass has its own exit machinery.
 				let show_mark_exit = false;
 				if (frm.doc.status && !["Exited", "Campus Exited", "Plant Exited"].includes(frm.doc.status) && !frm._ts_two_pass_flag) {
 					if (frm.doc.stock_direction === "Stock OUT") {
 						show_mark_exit = ["Gross Recorded", "Dispatch Ready"].includes(frm.doc.status);
-					} else if (frm.doc.purpose === "Raw Material") {
-						// v2.9.8.20: Raw Material always uses G2/G1 buttons below.
-						show_mark_exit = false;
-					} else {
-						show_mark_exit = true;
 					}
 				}
 
@@ -259,6 +257,44 @@ frappe.ui.form.on("TS Token", {
 								}
 							);
 						}, __("Gate Actions")).addClass("btn-primary");
+					}
+
+					// v2.30.0 — "Release Exit (before GRN)" (Stores). A grain-deferred
+					// truck held at G2 Exit may be released to leave BEFORE the GRN;
+					// the PO link + GRN are then completed from Stores Receiving →
+					// Section G after exit. Rendered from pre_grn_exit_state — the
+					// SAME predicate the server enforces (server stays the authority).
+					if (has_stores && frm.doc.status === "Tare Weighed"
+						&& !frm.doc.ts_pre_grn_exit_approved && !_already_exited) {
+						const _tok = frm.doc.name;
+						frappe.call({
+							method: "trustbit_ethanol.ts_gate_entry.ts_grain_defer.pre_grn_exit_state",
+							args: { token_name: _tok },
+							callback: (r) => {
+								const st = r && r.message;
+								if (!st || !st.eligible || st.released) return;
+								if (!frm.doc || frm.doc.name !== _tok) return; // stale-render guard
+								if (frm.custom_buttons[__("Release Exit (before GRN)")]) return; // dedupe on refresh race
+								const _btn = frm.add_custom_button(__("Release Exit (before GRN)"), function () {
+									frappe.confirm(
+										__("Release this grain vehicle to exit BEFORE the GRN? Stores must still link the PO and create the GRN afterwards from the Stores Receiving Dashboard."),
+										function () {
+											frappe.call({
+												method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.approve_pre_grn_exit",
+												args: { token_name: frm.doc.name },
+												callback: () => {
+													frm.reload_doc();
+													frappe.show_alert({ message: __("Exit released — G2 can now record exit; the GRN stays pending in Stores Receiving"), indicator: "green" });
+												}
+											});
+										}
+									);
+								}, __("Gate Actions"));
+								// add_custom_button returns undefined when the group dedupes
+								// an already-present label — never chain on it (audit UI-H2).
+								if (_btn) _btn.addClass("btn-primary");
+							}
+						});
 					}
 
 					// B1 — Record G2 Entry (status=G1 Entered)

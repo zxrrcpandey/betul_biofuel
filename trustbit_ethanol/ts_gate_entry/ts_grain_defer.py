@@ -75,14 +75,62 @@ def exit_hold_active(token_doc):
     return bool(_deferred_gate_entry(token_doc.name))
 
 
+def pre_grn_exit_released(token):
+    """v2.30.0 — Stores released this grain-held truck to exit BEFORE the GRN.
+
+    Fail-closed: released ONLY when the stored flag is set AND the token still
+    has a submitted grain-deferred Gate Entry — a cancelled GE revokes the
+    release automatically (same doctrine as _non_rm_flow_confirmed).
+    Deliberately independent of the kill-switch: it is a stored fact about a
+    truck that already left, not a feature toggle. Accepts a doc or a name."""
+    name = token if isinstance(token, str) else token.name
+    flag = None if isinstance(token, str) else getattr(token, "ts_pre_grn_exit_approved", None)
+    if flag is None:
+        # ignore=True: fail-closed (None → False) on a pre-migrate server where
+        # the column does not exist yet — G2 Exit must never 500 (audit L3).
+        flag = frappe.db.get_value("TS Token", name, "ts_pre_grn_exit_approved", ignore=True)
+    if not cint(flag):
+        return False
+    return bool(_deferred_gate_entry(name))
+
+
+@frappe.whitelist()
+def pre_grn_exit_state(token_name):
+    """Read-only state for the TS Token form button — carries NO confidential
+    data (no PO / supplier / amount), so it needs no confidentiality gate.
+    The button renders from the SAME predicates the server enforces."""
+    # Audience gate (audit L2): only the roles that can act on the answer —
+    # mirrors ts_token.STORES_EXIT_APPROVE_ROLES + break-glass (L280 parity;
+    # literal set to avoid a circular top-level import). Fail-soft zeros, not
+    # a throw, so a stray call never breaks the form.
+    if not ({"Stores User", "Stores Manager", "IT Head", "System Manager"}
+            & set(frappe.get_roles())):
+        return {"eligible": 0, "released": 0}
+    if not token_name or not frappe.db.exists("TS Token", token_name):
+        return {"eligible": 0, "released": 0}
+    tok = frappe.db.get_value(
+        "TS Token", token_name,
+        ["status", "purchase_receipt", "ts_pre_grn_exit_approved"],
+        as_dict=True, ignore=True,
+    )
+    if not tok:
+        # Pre-migrate server (column missing) — fail soft, never a traceback.
+        return {"eligible": 0, "released": 0}
+    released = 1 if (cint(tok.ts_pre_grn_exit_approved) and _deferred_gate_entry(token_name)) else 0
+    held = exit_hold_active(frappe._dict(name=token_name, purchase_receipt=tok.purchase_receipt))
+    eligible = 1 if (held and tok.status == "Tare Weighed" and not released) else 0
+    return {"eligible": eligible, "released": released}
+
+
 # --------------------------------------------------------------------------- #
 # Stores Receiving Dashboard — Section G (read)                               #
 # --------------------------------------------------------------------------- #
 @frappe.whitelist()
 def get_section_g():
-    """Grain — Awaiting PO Link. Grain-deferred, Tare-Weighed tokens with no
-    GRN. Confidentiality-safe: vehicle / token / material / net-weight only
-    (there is no PO yet). Non-allow-listed users get an empty queue."""
+    """Grain — Awaiting PO Link. Grain-deferred tokens with no GRN: Tare-Weighed
+    trucks still inside, plus (v2.30.0) released-and-exited trucks whose GRN is
+    still owed. Confidentiality-safe: vehicle / token / material / net-weight
+    only (there is no PO yet). Non-allow-listed users get an empty queue."""
     from trustbit_ethanol.ts_gate_entry.ts_confidential_po import user_sees_confidential
     if not user_sees_confidential("Purchase Order"):
         return []
@@ -90,11 +138,15 @@ def get_section_g():
         """
         SELECT t.name AS token, t.vehicle_number AS vehicle,
                ge.ts_material_type AS material, t.wb_tare_time AS tare_time,
-               TIMESTAMPDIFF(MINUTE, t.wb_tare_time, NOW()) / 60.0 AS age_hours
+               TIMESTAMPDIFF(MINUTE, t.wb_tare_time, NOW()) / 60.0 AS age_hours,
+               t.status AS status,
+               IFNULL(t.ts_pre_grn_exit_approved, 0) AS released
         FROM `tabTS Token` t
         JOIN `tabTS Gate Entry` ge
           ON ge.token_number = t.name AND ge.docstatus = 1
-        WHERE t.status = 'Tare Weighed'
+        WHERE (t.status = 'Tare Weighed'
+               OR (IFNULL(t.ts_pre_grn_exit_approved, 0) = 1
+                   AND t.status IN ('Plant Exited', 'Campus Exited')))
           AND t.docstatus <> 2
           AND t.entry_type = 'Material'
           AND (t.purchase_receipt IS NULL OR t.purchase_receipt = '')
@@ -249,11 +301,18 @@ def link_grain_po_and_create_grn(token_name, po_name, received_qty=None):
     token = frappe.get_doc("TS Token", token_name)
     if token.purchase_receipt:
         frappe.throw(_("Token {0} already has a Purchase Receipt.").format(token_name))
-    if token.status != "Tare Weighed":
+    # v2.30.0: a truck Stores released to exit before its GRN (pre_grn_exit_released)
+    # may still be linked + received AFTER exit — the weighbridge net weight was
+    # final at Tare, so the late GRN uses the same numbers it always would have.
+    if token.status != "Tare Weighed" and not (
+        pre_grn_exit_released(token) and token.status in ("Plant Exited", "Campus Exited")
+    ):
         frappe.throw(
-            _("Token {0} must be 'Tare Weighed' to link a PO (currently '{1}').").format(
-                token_name, token.status
-            )
+            _(
+                "Token {0} must be 'Tare Weighed' to link a PO (currently '{1}'). "
+                "A grain vehicle released to exit before its GRN can also be "
+                "linked after it has exited."
+            ).format(token_name, token.status)
         )
 
     po = frappe.get_doc("Purchase Order", po_name)
@@ -428,6 +487,103 @@ def unlink_grain_po(token_name):
 # --------------------------------------------------------------------------- #
 # Notifications (fail-soft, fire-once)                                         #
 # --------------------------------------------------------------------------- #
+
+# Hours after a pre-GRN exit release before the still-owed GRN escalates.
+PRE_GRN_ESCALATION_HOURS = 6
+
+
+def escalate_overdue_released_trucks():
+    """v2.30.0 scheduled scan (*/30 bucket): a truck Stores released to exit
+    before its GRN whose PO link + GRN are STILL owed after
+    PRE_GRN_ESCALATION_HOURS gets ONE bell escalation to every enabled
+    Stores User / Stores Manager / IT Head (user decision, 7 Aug 2026).
+
+    Fire-once via ts_pre_grn_escalated_at (same doctrine as
+    ts_grain_notified_at). Ages computed in PYTHON with now_datetime() — the
+    MySQL session runs UTC while values are stored in site time, so a SQL
+    NOW() comparison would fire ~5.5 h late. Fully fail-soft — never raises
+    (Lessons 238/276). Confidentiality-safe: vehicle / token / material /
+    hours only — never PO, supplier, or amount."""
+    try:
+        if not _feature_enabled():
+            return
+        from frappe.utils import time_diff_in_hours
+        rows = frappe.db.sql(
+            """
+            SELECT t.name AS token, t.vehicle_number AS vehicle,
+                   t.ts_pre_grn_exit_approved_at AS released_at,
+                   ge.ts_material_type AS material
+            FROM `tabTS Token` t
+            JOIN `tabTS Gate Entry` ge
+              ON ge.token_number = t.name AND ge.docstatus = 1 AND ge.ts_po_deferred = 1
+            WHERE IFNULL(t.ts_pre_grn_exit_approved, 0) = 1
+              AND t.status IN ('Plant Exited', 'Campus Exited')
+              AND (t.purchase_receipt IS NULL OR t.purchase_receipt = '')
+              AND t.ts_pre_grn_escalated_at IS NULL
+              AND t.ts_pre_grn_exit_approved_at IS NOT NULL
+            ORDER BY t.ts_pre_grn_exit_approved_at ASC
+            LIMIT 50
+            """,
+            as_dict=True,
+        )
+        due = [
+            r for r in rows
+            if time_diff_in_hours(now_datetime(), r.released_at) >= PRE_GRN_ESCALATION_HOURS
+        ]
+        if not due:
+            return
+
+        recipients = set()
+        for role in ("Stores User", "Stores Manager", "IT Head"):
+            recipients.update(frappe.get_all(
+                "Has Role", filters={"role": role, "parenttype": "User"}, pluck="parent"))
+        recipients.discard("Administrator")
+        recipients.discard("Guest")
+        if recipients:
+            recipients = frappe.get_all(
+                "User", filters={"name": ["in", sorted(recipients)], "enabled": 1},
+                pluck="name")
+        if not recipients:
+            return
+
+        for r in due:
+            vehicle = escape_html(r.vehicle or r.token)
+            material = escape_html(r.material or "Grain")
+            hours = int(time_diff_in_hours(now_datetime(), r.released_at))
+            subject = _("Released truck still awaiting GRN — {0} ({1}h)").format(vehicle, hours)
+            body = _(
+                "A grain truck released to exit <b>before its GRN</b> has been "
+                "gone for <b>{0} hours</b> and its Purchase Order is still not "
+                "linked.<br><br>Vehicle: <b>{1}</b><br>Token: <b>{2}</b><br>"
+                "Material: <b>{3}</b><br><br>Open the Stores Receiving Dashboard "
+                "→ Grain — Awaiting PO Link to link the PO and create the GRN."
+            ).format(hours, vehicle, r.token, material)
+            for user in recipients:
+                try:
+                    frappe.get_doc({
+                        "doctype": "Notification Log",
+                        "subject": subject,
+                        "email_content": body,
+                        "for_user": user,
+                        "type": "Alert",
+                        "document_type": "TS Token",
+                        "document_name": r.token,
+                        "from_user": "Administrator",
+                    }).insert(ignore_permissions=True)
+                except Exception:
+                    frappe.clear_messages()
+            frappe.db.set_value(
+                "TS Token", r.token, "ts_pre_grn_escalated_at", now_datetime(),
+                update_modified=False,
+            )
+    except Exception:
+        try:
+            frappe.log_error(title="grain pre-GRN escalation", message=frappe.get_traceback())
+            frappe.clear_messages()
+        except Exception:
+            pass
+
+
 def maybe_notify_grain_pending(token_name):
     """Notify the store team (bell primary + WhatsApp best-effort) once, when a
     grain-deferred truck reaches Tare Weighed. Fully fail-soft — NEVER raises,

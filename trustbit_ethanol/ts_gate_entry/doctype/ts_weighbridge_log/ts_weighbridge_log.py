@@ -445,10 +445,15 @@ class TSWeighbridgeLog(Document):
 				self.db_set("tare_operator", frappe.session.user)
 
 				token = frappe.get_doc("TS Token", self.token_number)
-				token.db_set({
-					"wb_tare_time": now_datetime(),
-					"status": "Tare Weighed"
-				})
+				# v2.30.0 (audit M2): a tare-weight correction after the vehicle
+				# has departed must not resurrect it onto the in-plant roster —
+				# the WB Log keeps the corrected weights; the exited token's
+				# status and original tare timestamp are terminal.
+				if token.status not in ("Plant Exited", "Campus Exited", "Exited"):
+					token.db_set({
+						"wb_tare_time": now_datetime(),
+						"status": "Tare Weighed"
+					})
 
 				# Grain deferred-linking: notify the store team once when a grain
 				# truck reaches Tare Weighed (fail-soft — never blocks weighment).

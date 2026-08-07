@@ -111,6 +111,41 @@ STATUS_GRN_CREATED = "GRN Created"
 FLOW_NON_RM = "Non-Raw Material"
 FLOW_TYPE_DIRECT_PO = "Direct PO"
 
+# v2.30.0 — statuses meaning the vehicle has physically left. A token in one of
+# these must NEVER be status-rewritten by the PR lifecycle hooks (a late GRN for
+# a released grain truck would otherwise resurrect it into the in-plant roster).
+_EXITED_TOKEN_STATUSES = ("Plant Exited", "Campus Exited", "Exited")
+
+
+def _released_grain_exit(token):
+	"""v2.30.0: a grain-deferred token that Stores released to exit before its
+	GRN (ts_grain_defer.pre_grn_exit_released) may still be received AFTER
+	exit. Fail-closed and grain-scoped — a non-grain token can never satisfy
+	the predicate (it requires a submitted ts_po_deferred=1 Gate Entry)."""
+	from trustbit_ethanol.ts_gate_entry.ts_grain_defer import pre_grn_exit_released
+	return token.status in ("Plant Exited", "Campus Exited") and pre_grn_exit_released(token)
+
+
+def _released_non_rm_exit(token):
+	"""v2.30.0: a Non-RM token Stores approved for exit (v2.29.12) that has
+	already left may still be received — the same exit-then-GRN-later doctrine
+	as the grain release (user bug report, 7 Aug 2026). Fail-closed: the stored
+	tamper-guarded flag AND the SUBMITTED Non-RM Gate Entry — never
+	token.purpose (v2.29.12 H1). Accepts a doc or a dict."""
+	get = token.get if isinstance(token, dict) else lambda k, d=None: getattr(token, k, d)
+	if get("status") not in _EXITED_TOKEN_STATUSES:
+		return False
+	name = get("name")
+	if not name:
+		return False
+	flag = get("non_rm_exit_approved")
+	if flag is None:
+		flag = frappe.db.get_value("TS Token", name, "non_rm_exit_approved", ignore=True)
+	if not cint(flag):
+		return False
+	from trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token import _non_rm_flow_confirmed
+	return bool(_non_rm_flow_confirmed(name))
+
 
 def _is_kg_uom(uom):
 	"""v2.8.9 — UOM normalization helper (predictor non-negotiable #1).
@@ -365,16 +400,26 @@ def _classify_receivable(tok, ge, insp_label):
 	status = tok.get("status") or ""
 
 	# Path A — weighbridge-complete (mirror create_grn_for_weighed_token).
-	if status == STATUS_TARE_WEIGHED:
+	# v2.30.0: a released-and-exited grain truck is also path-A receivable
+	# (mirror of the _released_grain_exit widening — audit finding M3).
+	_released = False
+	if status in ("Plant Exited", "Campus Exited") and tok.get("name"):
+		from trustbit_ethanol.ts_gate_entry.ts_grain_defer import pre_grn_exit_released
+		_released = pre_grn_exit_released(tok["name"])
+	if status == STATUS_TARE_WEIGHED or _released:
 		# Inspection gate applies only to non-Raw-Material purpose in path A.
 		if tok.get("purpose") != "Raw Material" and gate_enabled and insp_label not in INSPECTION_PASS_STATES:
 			return no("Inspection is '{0}' — needs Quality approval before receiving.".format(insp_label))
+		if _released:
+			return {"receivable": True, "grn_path": "A",
+					"reason": "Released to exit before GRN — receive via Grain section (PO link pending)."}
 		return {"receivable": True, "grn_path": "A",
 				"reason": "Ready to receive (weighbridge complete)."}
 
 	# Path B — Non-RM without weighing (mirror create_grn_for_non_weighing_token).
+	# v2.30.0: an approved-exited Non-RM token remains path-B receivable.
 	if (ge.get("material_flow") or "") == FLOW_NON_RM and cint(ge.get("requires_weighing") or 0) == 0:
-		if status in _TERMINAL_TOKEN_STATUSES:
+		if status in _TERMINAL_TOKEN_STATUSES and not _released_non_rm_exit(tok):
 			return no("Token status '{0}' does not allow GRN creation.".format(status))
 		if gate_enabled and insp_label not in INSPECTION_PASS_STATES:
 			return no("Inspection is '{0}' — needs Quality approval before receiving.".format(insp_label))
@@ -522,7 +567,13 @@ def _fetch_section_b_non_weighing():
 			continue
 		if tok.get("purchase_receipt"):
 			continue
-		if tok.get("status") in (STATUS_GRN_CREATED, "Exited", "Campus Exited", "Plant Exited", "Cancelled"):
+		# v2.30.0: a Stores-approved token that exited before its GRN STAYS in
+		# this queue ("Exited — GRN pending") until it is received — mirror of
+		# Section G's released-grain behaviour (user bug report, 7 Aug 2026).
+		if tok.get("status") in (STATUS_GRN_CREATED, "Cancelled"):
+			continue
+		if (tok.get("status") in _EXITED_TOKEN_STATUSES
+				and not cint(tok.get("non_rm_exit_approved") or 0)):
 			continue
 
 		insp_status = _get_inspection_status_label(tok["name"])
@@ -710,7 +761,7 @@ def create_grn_for_weighed_token(token_name, manual_qty_per_po=None):
 		frappe.throw(_("Cannot create GRN for a cancelled token"))
 	if token.purchase_receipt:
 		frappe.throw(_("Purchase Receipt {0} already exists for this token").format(token.purchase_receipt))
-	if token.status != STATUS_TARE_WEIGHED:
+	if token.status != STATUS_TARE_WEIGHED and not _released_grain_exit(token):
 		frappe.throw(_("Token status must be 'Tare Weighed', currently '{0}'").format(token.status))
 
 	# Inspection gate for Non-RM
@@ -1049,7 +1100,8 @@ def create_grn_for_non_weighing_token(token_name):
 		frappe.throw(_("Cannot create GRN for a cancelled token"))
 	if token.purchase_receipt:
 		frappe.throw(_("Purchase Receipt {0} already exists for this token").format(token.purchase_receipt))
-	if token.status in (STATUS_GRN_CREATED, "Exited", "Campus Exited", "Plant Exited", "Cancelled"):
+	if (token.status in (STATUS_GRN_CREATED, "Exited", "Campus Exited", "Plant Exited", "Cancelled")
+			and not _released_non_rm_exit(token)):
 		frappe.throw(_("Token status '{0}' does not allow GRN creation").format(token.status))
 
 	# Find linked gate entry (must be Non-RM + not requiring weighing)
@@ -1369,10 +1421,21 @@ def pr_on_submit_update_token(doc, method=None):
 	if not frappe.db.exists("TS Token", token_name):
 		return
 
-	frappe.db.set_value("TS Token", token_name, {
-		"status": STATUS_GRN_CREATED,
-		"grn_time": now_datetime(),
-	}, update_modified=False)
+	# v2.30.0: never resurrect a RELEASED truck — its late GRN stamps grn_time
+	# only; the exited status is terminal. Scoped to the stored release flags
+	# (tamper-guarded, permanent): grain pre-GRN release OR the v2.29.12
+	# Non-RM exit approval. Every other token keeps the exact pre-v2.30.0
+	# behaviour (byte-parity — audit finding M1 + user bug report 7 Aug).
+	tok_state = frappe.db.get_value(
+		"TS Token", token_name,
+		["status", "ts_pre_grn_exit_approved", "non_rm_exit_approved"],
+		as_dict=True, ignore=True)
+	updates = {"grn_time": now_datetime()}
+	if not (tok_state and tok_state.status in _EXITED_TOKEN_STATUSES
+			and (cint(tok_state.ts_pre_grn_exit_approved)
+				or cint(tok_state.non_rm_exit_approved))):
+		updates["status"] = STATUS_GRN_CREATED
+	frappe.db.set_value("TS Token", token_name, updates, update_modified=False)
 
 
 def pr_on_cancel_clear_token(doc, method=None):
@@ -1386,6 +1449,24 @@ def pr_on_cancel_clear_token(doc, method=None):
 	# Only revert if this PR is still the one linked to the token
 	current_pr = frappe.db.get_value("TS Token", token_name, "purchase_receipt")
 	if current_pr != doc.name:
+		return
+
+	# v2.30.0: a RELEASED truck stays exited — clear the GRN linkage only, so it
+	# returns to its queue (Section G for grain, Section B for approved Non-RM,
+	# both "Exited — GRN pending"). Scoped to the stored release flags; every
+	# OTHER exited token keeps the pre-v2.30.0 revert path, which is its only
+	# re-receive route after a PR cancel (audit M1 + user bug report 7 Aug).
+	tok_state = frappe.db.get_value(
+		"TS Token", token_name,
+		["status", "ts_pre_grn_exit_approved", "non_rm_exit_approved"],
+		as_dict=True, ignore=True)
+	if (tok_state and tok_state.status in _EXITED_TOKEN_STATUSES
+			and (cint(tok_state.ts_pre_grn_exit_approved)
+				or cint(tok_state.non_rm_exit_approved))):
+		frappe.db.set_value("TS Token", token_name, {
+			"purchase_receipt": "",
+			"grn_time": None,
+		}, update_modified=False)
 		return
 
 	# Find previous status (Non-RM without weighing → "PO Linked" or fallback)
