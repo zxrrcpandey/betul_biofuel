@@ -207,14 +207,58 @@ test("No duplicate MR names", test_naming_counter_sync)
 print("\n[5/10] Print Formats")
 
 def test_print_format_exists():
-    """All print formats exist"""
+    """All print formats exist, are wipe-proofed, and kept their restored content.
+
+    v2.30.3 — this test used to assert frappe.db.exists() alone, and its list omitted
+    every BBPL format. bench migrate DELETES and RE-INSERTS an app-shipped Print Format,
+    so db.exists() is True at every point in the wipe cycle: 16 consecutive migrates
+    destroyed the prod Purchase Order / Purchase Receipt / Material Request templates
+    with a fully green board. The three assertions below close that blind spot.
+    """
+    import glob
+    import json as _json
+
+    # (1) existence — now including the five business-facing BBPL formats
     formats = [
         "TS Material Request", "TS Material Request (Clean)",
         "TS Purchase Order", "TS Purchase Order (Clean)",
         "TS Token Print", "TS Token Slip", "TS Gate Pass",
+        "BBPL Purchase Order", "BBPL Purchase Receipt", "BBPL Material Request",
+        "BBPL Purchase Invoice", "BBPL Material Transfer Slip",
     ]
     for pf in formats:
         assert frappe.db.exists("Print Format", pf), f"Print Format '{pf}' missing"
+
+    # (2) the actual root cause — a JSON with no "modified" key can never take the skip
+    #     branch in frappe/modules/import_file.py (get_datetime(None) == now), so migrate
+    #     delete+reinserts it every single time and any UI edit is destroyed.
+    app = frappe.get_app_path("trustbit_ethanol")
+    unprotected = []
+    for pattern in ("*/print_format/*/*.json", "*/report/*/*.json"):
+        for path in glob.glob(os.path.join(app, pattern)):
+            slug = os.path.basename(path)[:-5]
+            if os.path.basename(os.path.dirname(path)) != slug:
+                continue
+            with open(path) as fh:
+                if not _json.load(fh).get("modified"):
+                    unprotected.append(os.path.relpath(path, app))
+    assert not unprotected, (
+        "JSON has no 'modified' key — bench migrate will wipe these on every run: "
+        f"{sorted(unprotected)}"
+    )
+
+    # (3) content sentinels for the three templates whose prod UI edits were destroyed.
+    #     Substring checks, not a hash: after the freeze the DB legitimately diverges from
+    #     the repo the moment anyone edits in the UI, which is the whole point of the fix.
+    markers = {
+        "BBPL Purchase Receipt": "doc.cost_center",   # header cost centre, not the item row
+        "BBPL Purchase Order": "custom_item_image",   # Item Image column
+        "BBPL Material Request": "custom_item_image",
+    }
+    for pf, marker in markers.items():
+        html = frappe.db.get_value("Print Format", pf, "html") or ""
+        assert len(html) > 1000, f"Print Format '{pf}' html is empty/truncated ({len(html)} chars)"
+        assert marker in html, f"Print Format '{pf}' lost its '{marker}' block — migrate-wipe regression"
 
 test("All print formats exist", test_print_format_exists)
 

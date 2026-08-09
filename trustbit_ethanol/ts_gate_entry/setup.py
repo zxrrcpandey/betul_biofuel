@@ -790,6 +790,19 @@ def create_custom_fields():
 				"in_list_view": 1,
 				"columns": 2,
 			},
+			# NOTE: deliberately NOT ts_-prefixed. This field was created in the desk UI on
+			# 2026-07-04 and already holds live data on prod + demo; the BBPL Material Request
+			# print format renders it by this exact name. Renaming would orphan both.
+			# Seeded here (v2.30.3) so the repo owns it — otherwise the restored "Item Image"
+			# column renders a live header over a permanently blank column on a fresh site.
+			# insert_after mirrors the live row exactly so create_custom_fields(update=True)
+			# does not reposition the existing field.
+			{
+				"fieldname": "custom_item_image",
+				"fieldtype": "Attach Image",
+				"label": "Item Image",
+				"insert_after": "item_code",
+			},
 		],
 		"Purchase Order Item": [
 			{
@@ -809,6 +822,15 @@ def create_custom_fields():
 				"in_list_view": 1,
 				"columns": 2,
 				"fetch_from": "material_request_item.ts_item_remark",
+			},
+			# See the Material Request Item note above. "insert_after" is OMITTED on purpose:
+			# the live prod/demo row has insert_after = NULL, and create_custom_fields(update=True)
+			# only writes the keys present here — supplying one would silently reposition the
+			# field on every existing server.
+			{
+				"fieldname": "custom_item_image",
+				"fieldtype": "Attach Image",
+				"label": "Item Image",
 			},
 		],
 		"Purchase Receipt Item": [
