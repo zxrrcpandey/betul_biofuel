@@ -12,6 +12,7 @@ import frappe.sessions
 from trustbit_ethanol.ts_gate_entry.ts_exec_api import (
     KILL_SWITCH_FIELD,
     SW_FLAG_FIELD,
+    exec_app_allowed,
     flag_on,
     overview_visible,
 )
@@ -43,4 +44,14 @@ def get_context(context):
     # Safe to compute for Guest (returns 0) because login ends in a full
     # window.location navigation, which re-renders this shell for the real user.
     context.exec_overview = 1 if overview_visible() else 0
+
+    # App-access gate (v2.34.0). ⚠ GUEST MUST RENDER AS ALLOWED — this same
+    # page serves the login screen, and denying Guest here would make signing
+    # in impossible for the very executives the app is for. The real check
+    # happens once they are authenticated: login ends in a full window.location
+    # navigation, so this context is recomputed for the actual user.
+    # This flag is presentation only — every PWA endpoint re-checks server-side
+    # via _guard()/_app_gate(), so a forged execEnv buys nothing.
+    is_guest = frappe.session.user in (None, "", "Guest")
+    context.exec_allowed = 1 if (is_guest or exec_app_allowed()) else 0
     return context

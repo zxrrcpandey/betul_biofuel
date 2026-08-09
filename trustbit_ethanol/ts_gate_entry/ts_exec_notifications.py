@@ -21,7 +21,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 
 from trustbit_ethanol.ts_gate_entry import notification_center_api as nc
-from trustbit_ethanol.ts_gate_entry.ts_exec_api import flag_on
+from trustbit_ethanol.ts_gate_entry.ts_exec_api import exec_app_allowed, flag_on
 
 KILL_SWITCH_FIELD = "ts_exec_bell_enabled"
 
@@ -47,10 +47,21 @@ def _bell_on():
 
 
 def _guard():
+    """⚠ This is a LOCAL guard — it is NOT ts_exec_api._guard(). The two were
+    written to look alike, and that cost a real hole: when the v2.34.0 app-access
+    gate was added to ts_exec_api._guard(), get_alerts / mark_alert_read /
+    mark_all_alerts_read silently kept serving denied users, because they call
+    THIS one. Any gate added there must be mirrored here (or these should call
+    through) — verified by testing every endpoint per user, not by reading."""
     if not frappe.session.user or frappe.session.user == "Guest":
         frappe.throw(_("Not permitted."), frappe.PermissionError)
     if not flag_on(KILL_SWITCH_FIELD):
         frappe.throw(_("Alerts are switched off."))
+    if not exec_app_allowed():
+        frappe.throw(
+            _("BBPL Approvals is limited to approved users."),
+            frappe.PermissionError,
+        )
 
 
 @frappe.whitelist(methods=["POST"])
@@ -76,6 +87,12 @@ def alert_count():
     """Badge count. Uses the SAME exclusion as get_alerts — a client-side
     filter here would guarantee the badge and the list disagree."""
     if not frappe.session.user or frappe.session.user == "Guest":
+        return 0
+    # v2.34.0 app-access gate. Returns 0 rather than throwing: this is a badge
+    # poller, and a 403 storm from a non-approved user's stale tab would be
+    # noise, not protection. The alert LIST endpoints go through _guard() and
+    # do throw — no count is disclosed here that the list would not.
+    if not exec_app_allowed():
         return 0
     if not _bell_on():
         return 0

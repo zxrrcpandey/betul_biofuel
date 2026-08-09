@@ -34,8 +34,23 @@ def _require_post():
 
 
 def _check_session():
+    """Session + app-access gate (v2.34.0).
+
+    Push endpoints are PWA-owned, so they carry the same access boundary as the
+    rest of the app: without it any of the 48 enabled System Users could
+    register a device and subscribe themselves to executive alerts. Lazy import
+    to avoid a cycle — ts_exec_api does not import this module, but keeping the
+    import local matches the pattern used elsewhere here.
+    """
     if not frappe.session.user or frappe.session.user == "Guest":
         frappe.throw(_("Not permitted."), frappe.PermissionError)
+    from trustbit_ethanol.ts_gate_entry.ts_exec_api import exec_app_allowed
+
+    if not exec_app_allowed():
+        frappe.throw(
+            _("BBPL Approvals is limited to approved users."),
+            frappe.PermissionError,
+        )
 
 
 def _flag_on_strict(field):
@@ -214,7 +229,14 @@ def unsubscribe(endpoint=None):
     """Retire this browser's subscription. Called on sign-out and when the user
     turns alerts off. Only ever deletes rows owned by the session user."""
     _require_post()
-    _check_session()
+    # ⚠ Session-only ON PURPOSE — NOT _check_session(), which now also enforces
+    # app access. Revoking someone's app access must not trap their device:
+    # this endpoint only ever deletes rows the session user already owns, so
+    # requiring the very access they are being denied would leave them unable
+    # to stop notifications they never chose to keep. Deleting your own record
+    # is not a privilege (security scan #2, v2.34.0).
+    if not frappe.session.user or frappe.session.user == "Guest":
+        frappe.throw(_("Not permitted."), frappe.PermissionError)
     user = frappe.session.user
 
     if endpoint:

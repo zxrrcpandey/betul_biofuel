@@ -165,6 +165,39 @@ def after_migrate_exec_pwa():
         frappe.clear_messages()
 
     _seed_push_switch_rows()
+    _seed_exec_app_role()
+
+
+def _seed_exec_app_role():
+    """Create the grantable app-access role (v2.34.0).
+
+    The gate allows Administrator + CEO + MD implicitly; this role is how the
+    business adds anyone else LATER, from the ordinary User form, with no
+    deploy and an audit trail in tabHas Role.
+
+    It MUST exist before it can be granted — assigning a non-existent role is a
+    silent no-op (L281/L290), which would look like "I added them and it did
+    nothing". desk=0 so it never clutters the desk permission UI as a module
+    role, and it is deliberately created EMPTY: holding it grants access to
+    this app only, never any doctype permission.
+    """
+    try:
+        from trustbit_ethanol.ts_gate_entry.ts_exec_api import EXEC_APP_ROLE
+
+        if frappe.db.exists("Role", EXEC_APP_ROLE):
+            return
+        doc = frappe.get_doc({
+            "doctype": "Role",
+            "role_name": EXEC_APP_ROLE,
+            "desk_access": 1,   # holders are System Users who also use the desk
+            "is_custom": 1,
+        })
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+    except Exception:
+        # after_migrate must never break a deploy. Without the role the gate
+        # still works — it simply falls back to Administrator/CEO/MD only.
+        frappe.clear_messages()
 
 
 def _seed_push_switch_rows():

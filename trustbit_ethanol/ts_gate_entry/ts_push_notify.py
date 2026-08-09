@@ -222,6 +222,16 @@ def on_notification_log_insert(doc, method=None):
         user = doc.for_user
         if not user or user in ("Administrator", "Guest"):
             return
+        # G2.5 — app access (v2.34.0). The endpoint gate stops a denied user
+        # SUBSCRIBING, but it does not retire a device subscribed BEFORE the
+        # gate existed — that phone would keep buzzing with approval subjects
+        # on its lock screen. Delivery is the app's last data-egress path and
+        # needs the same boundary. exec_app_allowed() takes an explicit user
+        # and is fail-closed, so a lookup failure silently declines to send.
+        from trustbit_ethanol.ts_gate_entry.ts_exec_api import exec_app_allowed
+
+        if not exec_app_allowed(user):
+            return
         # G3 — does this user have a device at all?
         if not frappe.db.exists(DOCTYPE, {"user": user, "status": "Active"}):
             return

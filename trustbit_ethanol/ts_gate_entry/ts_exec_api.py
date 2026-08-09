@@ -21,6 +21,7 @@ from frappe.rate_limiter import rate_limit
 from frappe.utils import (
     add_to_date,
     cint,
+    cstr,
     format_datetime,
     now_datetime,
     time_diff_in_hours,
@@ -94,15 +95,66 @@ def flag_on(field):
     return bool(cint(rows[0][0]))
 
 
+# ── Who may USE the app at all (v2.34.0, user decision 10 Aug 2026) ─────────
+#
+# This is a DIFFERENT question from "what may they approve". Approval authority
+# lives in the workflow endpoints (ts_po_approval, ts_budget_override,
+# ts_post_dated), which are SHARED WITH THE DESK and are deliberately NOT gated
+# here — doing so would break desk approvals for 16 Department Heads, 14
+# Accounts Managers, 13 Purchase Managers and 7 AVPs on prod.
+#
+# Before this gate existed, `_guard()` only rejected Guest, so all 48 enabled
+# System Users on prod could open the executive app; on demo a Department Head
+# was measured getting a working inbox of 53 items.
+EXEC_APP_ROLES = frozenset({"CEO", "MD"})
+# Grantable on the ordinary User form, so people can be added later with NO
+# deploy and an audit trail in tabHas Role. Seeded by setup_exec_pwa.py — a
+# role that does not exist is a silent no-op (L281/L290).
+EXEC_APP_ROLE = "BBPL Exec App"
+
+
+def exec_app_allowed(user=None):
+    """May this user open the BBPL Approvals app? FAIL-CLOSED.
+
+    NEVER raises: it is called from the www context module that also renders
+    the GUEST login screen, so an exception here would take sign-in down for
+    everyone. Administrator is allowed unconditionally — it is the break-glass
+    account and must never be lockable out of its own app.
+    """
+    try:
+        u = user or frappe.session.user
+        if not u or u == "Guest":
+            return False
+        if u == "Administrator":
+            return True
+        roles = set(frappe.get_roles(u))
+        return bool(roles & EXEC_APP_ROLES) or EXEC_APP_ROLE in roles
+    except Exception:
+        frappe.clear_messages()
+        return False
+
+
 def _check_session():
     if not frappe.session.user or frappe.session.user == "Guest":
         frappe.throw(_("Not permitted."), frappe.PermissionError)
+
+
+def _app_gate():
+    """The access boundary for every PWA-owned endpoint. Separate from the kill
+    switch: 'switched off for everyone' and 'you are not on the list' are
+    different states and must not share a message."""
+    if not exec_app_allowed():
+        frappe.throw(
+            _("BBPL Approvals is limited to approved users."),
+            frappe.PermissionError,
+        )
 
 
 def _guard():
     _check_session()
     if not flag_on(KILL_SWITCH_FIELD):
         frappe.throw(_("BBPL Approvals is temporarily disabled."))
+    _app_gate()
 
 
 def _status_field(doctype):
@@ -235,32 +287,82 @@ def get_inbox():
 
 @frappe.whitelist()
 @rate_limit(limit=60, seconds=60)
-def get_my_actions():
+def get_my_actions(search=None):
     """Self-scoped approval history for the History tab: the session user's
     OWN TS Approval Log rows (PO/MR actions they performed). Hard-filtered by
     action_by = session user — no parameter accepts another user, so this can
     never read someone else's trail. ignore_permissions=True is safe under
     that self-scoping: every row IS the user's own past action (they were a
     participant on the document when they acted); tapping through to the
-    document still goes via get_document, which permission-fences."""
+    document still goes via get_document, which permission-fences.
+
+    `search` is SERVER-side on purpose. The default page is the 50 most recent
+    actions, but a real executive has far more (799 for the prod CEO on
+    10 Aug 2026), so a client-side filter over the loaded page would answer
+    "no results" for ~94% of his own history — confidently and wrongly.
+
+    ⚠ The search widens WHICH of the user's rows match; it must never widen
+    WHOSE. `or_filters` is safe for that: frappe's DatabaseQuery collects it
+    into `grouped_or_conditions`, wraps it in parentheses and ANDs it with the
+    normal filters (db_query.py:291-294), so the final WHERE stays
+    `action_by = <me> AND parenttype IN (...) AND (<search terms>)`.
+    Do NOT hand-build this as a raw OR string.
+    """
     _guard()
     user = frappe.session.user
+
+    filters = {
+        "action_by": user,
+        "parenttype": ["in", ["Purchase Order", "Material Request"]],
+    }
+    or_filters = None
+    limit = 50
+
+    term = (cstr(search) or "").strip()[:100]  # bounded: no unbounded LIKE input
+    if term:
+        # Escape LIKE metacharacters so the box behaves like a search box:
+        # unescaped, "%" matches EVERYTHING (a user typing it gets the whole
+        # cap back) and "_" matches any single character, while a literal "%"
+        # in a comment ("approved 100%") becomes unsearchable. Backslash first,
+        # or it would double-escape the escapes. Not a security issue — the
+        # action_by scope is a separate AND — purely correctness.
+        esc = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = "%{0}%".format(esc)
+        # Document number is what an executive actually searches for; the rest
+        # are cheap bonuses on the same row.
+        or_filters = [
+            ["parent", "like", like],
+            ["comment", "like", like],
+            ["action", "like", like],
+            ["to_state", "like", like],
+        ]
+        # A search that only looked at the newest 50 would be the very bug this
+        # parameter exists to fix.
+        limit = 200
+
     rows = frappe.get_all(
         "TS Approval Log",
-        filters={
-            "action_by": user,
-            "parenttype": ["in", ["Purchase Order", "Material Request"]],
-        },
+        filters=filters,
+        or_filters=or_filters,
         fields=[
             "parent", "parenttype", "action", "from_state", "to_state",
             "action_date", "comment", "po_amount",
         ],
         order_by="action_date desc",
-        limit_page_length=50,
+        limit_page_length=limit,
         ignore_permissions=True,
     )
     return {
         "user": user,
+        "search": term,
+        # The UI must be able to say "your 50 most recent" rather than implying
+        # this is everything — and to warn when a search itself hit the cap.
+        "limit": limit,
+        "capped": len(rows) >= limit,
+        "total_actions": frappe.db.count(
+            "TS Approval Log",
+            {"action_by": user, "parenttype": ["in", ["Purchase Order", "Material Request"]]},
+        ),
         "items": [
             {
                 "doctype": r.parenttype,
@@ -309,7 +411,14 @@ _EXTRA_ROUTED_STAGES = {"Material Request": ("Pending Stores Manager",)}
 # electrical/instrumentation and accounts-only accounts to an executive screen.
 # Worse, it is a drift vector — whoever next widens READ_ROLES for a stores
 # reason would silently widen this, with no reviewer in the loop.
-OVERVIEW_ROLES = frozenset({"CEO", "MD", "IT Head", "System Manager", "Administrator"})
+#
+# ⚠ NARROWER than app access on purpose (user decision, 10 Aug 2026). Holding
+# EXEC_APP_ROLE lets you into the app — your OWN approvals and history — but
+# NOT into the company-wide figures (total pending, spend-adjacent amounts,
+# gate activity). IT Head and System Manager were removed here too: they are
+# already denied by the outer app gate, and leaving them listed implied an
+# access level they do not have.
+OVERVIEW_ROLES = frozenset({"CEO", "MD", "Administrator"})
 
 # Statuses meaning "this vehicle is no longer inside".
 # ⚠ Config-derived: TS Token's status options come from a Property Setter
