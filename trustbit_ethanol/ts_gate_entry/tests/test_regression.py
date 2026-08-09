@@ -250,15 +250,21 @@ def test_print_format_exists():
     # (3) content sentinels for the three templates whose prod UI edits were destroyed.
     #     Substring checks, not a hash: after the freeze the DB legitimately diverges from
     #     the repo the moment anyone edits in the UI, which is the whole point of the fix.
+    #     The cost-centre markers are deliberately ORDER-SENSITIVE. A bare "doc.cost_center"
+    #     appears in BOTH precedences ("ns.first_cc or doc.cost_center" contains it too), so it
+    #     passed whether the ordering was right or wrong — false confidence for the exact
+    #     behaviour it was annotated to protect. Match the full header-first expression instead:
+    #     it is absent from the item-first form, so a silent revert now fails the suite.
     markers = {
-        "BBPL Purchase Receipt": "doc.cost_center",   # header cost centre, not the item row
-        "BBPL Purchase Order": "custom_item_image",   # Item Image column
-        "BBPL Material Request": "custom_item_image",
+        "BBPL Purchase Receipt": ("doc.cost_center or ns.first_cc",),   # header CC wins, item is fallback
+        "BBPL Purchase Order": ("custom_item_image",),                  # Item Image column
+        "BBPL Material Request": ("custom_item_image", "doc.cost_center or ns.first_cc"),
     }
-    for pf, marker in markers.items():
+    for pf, pf_markers in markers.items():
         html = frappe.db.get_value("Print Format", pf, "html") or ""
         assert len(html) > 1000, f"Print Format '{pf}' html is empty/truncated ({len(html)} chars)"
-        assert marker in html, f"Print Format '{pf}' lost its '{marker}' block — migrate-wipe regression"
+        for marker in pf_markers:
+            assert marker in html, f"Print Format '{pf}' lost its '{marker}' block — migrate-wipe regression"
 
 test("All print formats exist", test_print_format_exists)
 
