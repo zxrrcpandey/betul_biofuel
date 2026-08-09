@@ -111,9 +111,20 @@ def _build_access_result(req):
 #  SUBMIT / APPROVE / REJECT
 # ═══════════════════════════════════════════════════════════════
 
-@frappe.whitelist()
+def _require_post():
+	"""v2.31.0 — L366: methods=["POST"] is enforced on the TOP-LEVEL cmd only;
+	via core's bare-whitelist mapper trampolines a 1-arg mutation stays
+	GET-reachable with CSRF skipped. Re-assert in-body (request is None for
+	console/jobs/tests, which stay allowed). Precedent: ts_sr_to_po."""
+	_req = getattr(frappe.local, "request", None)
+	if _req is not None and _req.method != "POST":
+		raise frappe.PermissionError
+
+
+@frappe.whitelist(methods=["POST"])
 def submit_request(request_name):
 	"""IT Head submits request. Auto-activates if CEO approval not required."""
+	_require_post()  # L366 — trampoline-reachable
 	doc = frappe.get_doc("TS Post Dated Entry Request", request_name)
 
 	if doc.status != "Draft":
@@ -159,9 +170,10 @@ def submit_request(request_name):
 		frappe.msgprint(_("Post-dated entry activated (CEO approval not required)"), indicator="green")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def approve_request(request_name):
 	"""CEO approves the request."""
+	_require_post()  # L366 — trampoline-reachable
 	doc = frappe.get_doc("TS Post Dated Entry Request", request_name)
 
 	if doc.status != "Pending Approval":
@@ -205,9 +217,10 @@ def approve_request(request_name):
 	frappe.msgprint(_("Request approved. Post-dated entry is now active."), indicator="green")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def reject_request(request_name, reason=""):
 	"""CEO rejects the request."""
+	_require_post()  # L366 — trampoline-reachable
 	doc = frappe.get_doc("TS Post Dated Entry Request", request_name)
 
 	if doc.status != "Pending Approval":

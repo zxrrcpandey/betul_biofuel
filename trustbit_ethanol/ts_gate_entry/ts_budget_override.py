@@ -16,6 +16,17 @@ from trustbit_ethanol.ts_gate_entry.ts_budget import (
 
 
 APPROVER_ROLES = {"CEO", "MD", "System Manager"}
+
+
+def _require_post():
+    """v2.31.0 — L366: methods=["POST"] is enforced on the TOP-LEVEL cmd only;
+    via core's bare-whitelist mapper trampolines (make_mapped_doc 1-arg,
+    map_docs 2-arg) a mutation stays GET-reachable with CSRF skipped.
+    Re-assert in-body (request is None for console/jobs/tests, which stay
+    allowed). Precedent: ts_sr_to_po / ts_po_approval / ts_post_dated."""
+    _req = getattr(frappe.local, "request", None)
+    if _req is not None and _req.method != "POST":
+        raise frappe.PermissionError
 SUPPORTED_REF_DOCTYPES = ("Material Request", "Purchase Order")
 
 
@@ -271,10 +282,12 @@ def get_budget_override_for_doc(reference_doctype, reference_name):
 @frappe.whitelist(methods=["POST"])
 def create_budget_override_for_doc(reference_doctype, reference_name, submission_reason=None):
     """Auto-create a TS Budget Override Approval for a breach-detected source doc.
+    v2.31.0: _require_post() re-asserted below (L366 trampoline hole).
 
     Intended to be called server-side from `_submit_*_for_approval` only.
     External callers must hold doc 'submit' perm on the source — defense-in-depth.
     """
+    _require_post()  # L366 — trampoline-reachable
     # FAIL2 fix (live-data-tester Phase 4): when kill switch is OFF, this
     # endpoint MUST also be disabled — otherwise a REST caller could create
     # overrides even though the auto-flow inside _submit_*_for_approval is
@@ -368,6 +381,7 @@ def create_budget_override_for_doc(reference_doctype, reference_name, submission
 @frappe.whitelist(methods=["POST"])
 def approve_budget_override(name, comment=None):
     """Approver action: approve the override + resume source doc's normal route."""
+    _require_post()  # L366 — trampoline-reachable
     if not name:
         frappe.throw(_("Override name is required."))
     if not _user_is_approver():
@@ -436,6 +450,7 @@ def reject_budget_override(name, comment):
 
     `comment` is required and must be ≥10 chars.
     """
+    _require_post()  # L366 — trampoline-reachable
     if not name:
         frappe.throw(_("Override name is required."))
     if not (comment or "").strip() or len((comment or "").strip()) < 10:
@@ -496,6 +511,7 @@ def cancel_budget_override(name, reason):
 
     `reason` is required.
     """
+    _require_post()  # L366 — trampoline-reachable
     if not name:
         frappe.throw(_("Override name is required."))
     if not (reason or "").strip():

@@ -24,6 +24,19 @@ def _validate_doctype(doctype):
 		frappe.throw(_("Invalid document type for approval: {0}").format(doctype))
 
 
+def _require_post():
+	"""v2.31.0 — L366: methods=["POST"] is enforced on the TOP-LEVEL cmd only
+	(handler.py::is_valid_http_method). Reached through core's bare-whitelist
+	mapper trampolines (make_mapped_doc takes 1 positional arg, map_docs takes
+	2 — every mutation below fits one of those shapes), a mutation stays
+	GET-reachable with CSRF entirely skipped. Re-assert POST in-body, where
+	every caller passes. request is None for background jobs / console /
+	tests, which stay allowed (precedent: ts_sr_to_po._map_service_request)."""
+	_req = getattr(frappe.local, "request", None)
+	if _req is not None and _req.method != "POST":
+		raise frappe.PermissionError
+
+
 def _block_if_mr_transfer(doc):
 	"""v2.9.9 — Reject Purchase-chain endpoints for Material Transfer / Material Issue MRs.
 
@@ -64,6 +77,12 @@ def get_approval_context(doctype, docname):
 	"""Return approval context for the current user on a PO or MR."""
 	_validate_doctype(doctype)
 	doc = frappe.get_doc(doctype, docname)
+	# v2.31.0 — doc-level read fence (L224/L297): without it ANY logged-in user
+	# could read any PO/MR's approval context + chain by name, confidential
+	# grain POs included (this routes through has_permission_purchase_order).
+	# Fenced AGAINST THE LOADED DOC so has_permission does not re-load the
+	# full document a second time on every form refresh (predictor audit).
+	frappe.has_permission(doctype, doc=doc, throw=True)
 
 	settings = frappe.get_single("TS Settings")
 	if doctype == "Purchase Order" and not settings.enable_po_approval:
@@ -81,6 +100,10 @@ def get_approval_context(doctype, docname):
 def get_submit_target(doctype, docname=None):
 	"""Return the target step info for the submit confirmation dialog."""
 	_validate_doctype(doctype)
+	# v2.31.0 — same doc-level read fence as get_approval_context: leaks only a
+	# route label, but it is the same read-any-doc-by-name shape (predictor B).
+	if docname:
+		frappe.has_permission(doctype, doc=docname, throw=True)
 	if doctype == "Material Request" and docname:
 		doc = frappe.get_doc("Material Request", docname)
 		cost_center = _get_mr_cost_center(doc)
@@ -110,9 +133,10 @@ def get_submit_target(doctype, docname=None):
 	return {"target_label": "Approver"}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def submit_for_approval(doctype, docname):
 	"""Submit a Draft PO/MR into the approval chain."""
+	_require_post()  # L366 — trampoline-reachable
 	_validate_doctype(doctype)
 	doc = frappe.get_doc(doctype, docname, for_update=True)
 
@@ -123,9 +147,10 @@ def submit_for_approval(doctype, docname):
 		return {"status": "ok", "next_state": next_state}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def approve_document(doctype, docname, comment=""):
 	"""Approve/Review action — handles Review, Approve, Final Approve based on step config."""
+	_require_post()  # L366 — trampoline-reachable
 	_validate_doctype(doctype)
 	comment = (comment or "")[:2000]
 	doc = frappe.get_doc(doctype, docname, for_update=True)
@@ -136,9 +161,10 @@ def approve_document(doctype, docname, comment=""):
 	return _approve_po(doc, comment)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def send_to_md(docname, comment=""):
 	"""CEO manually triggers MD approval step. Only available when next step is manual-trigger."""
+	_require_post()  # L366 — trampoline-reachable
 	comment = (comment or "")[:2000]
 	doc = frappe.get_doc("Purchase Order", docname, for_update=True)
 	_block_if_on_hold(doc)  # v2.28 — executive hold freezes the chain
@@ -189,6 +215,7 @@ def send_to_md(docname, comment=""):
 @frappe.whitelist(methods=["POST"])
 def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 	"""Send a PO/MR back for revision."""
+	_require_post()  # L366 — trampoline-reachable
 	_validate_doctype(doctype)
 	comment = (comment or "")[:2000]
 	reason = (reason or "")[:2000]
@@ -245,6 +272,7 @@ def revise_document(doctype, docname, reason, revise_to_level=None, comment=""):
 @frappe.whitelist(methods=["POST"])
 def reject_document(doctype, docname, reason, comment=""):
 	"""Reject a PO/MR. Terminal state."""
+	_require_post()  # L366 — trampoline-reachable
 	_validate_doctype(doctype)
 	comment = (comment or "")[:2000]
 	reason = (reason or "")[:2000]
@@ -295,6 +323,7 @@ def reject_document(doctype, docname, reason, comment=""):
 @frappe.whitelist(methods=["POST"])
 def resubmit_document(doctype, docname, mode="restart"):
 	"""Resubmit a revised PO/MR back into the approval chain."""
+	_require_post()  # L366 — trampoline-reachable
 	_validate_doctype(doctype)
 	doc = frappe.get_doc(doctype, docname, for_update=True)
 	# v2.29.2 — L224 doctype-level read fence; see revise_document.
@@ -343,9 +372,10 @@ def resubmit_document(doctype, docname, mode="restart"):
 	return {"status": "resubmitted", "next_state": next_state}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def hold_mr(docname, reason):
 	"""Put an MR on hold. Only Reviewers (HOD) can hold."""
+	_require_post()  # L366 — trampoline-reachable
 	reason = (reason or "")[:2000]
 	if not reason:
 		frappe.throw(_("Hold reason is mandatory"))
@@ -414,9 +444,10 @@ def hold_mr(docname, reason):
 	return {"status": "held", "hold_state": hold_state}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def resume_mr(docname, comment=""):
 	"""Resume a held MR. Returns it to Pending at the same step."""
+	_require_post()  # L366 — trampoline-reachable
 	comment = (comment or "")[:2000]
 	doc = frappe.get_doc("Material Request", docname, for_update=True)
 	_block_if_mr_transfer(doc)  # v2.9.9
@@ -574,6 +605,7 @@ def _block_if_on_hold(doc):
 @frappe.whitelist(methods=["POST"])
 def hold_po(docname, reason):
 	"""Executive hold: freeze a PO at ANY stage (draft, mid-chain, submitted)."""
+	_require_post()  # L366 — trampoline-reachable
 	if not _po_hold_authorized():
 		frappe.clear_messages()
 		frappe.throw(_("Only CEO or MD can hold a Purchase Order."), frappe.PermissionError)
@@ -630,6 +662,7 @@ def hold_po(docname, reason):
 @frappe.whitelist(methods=["POST"])
 def resume_po(docname, comment=""):
 	"""Executive resume: lift the hold, restoring the exact prior approval state."""
+	_require_post()  # L366 — trampoline-reachable
 	if not _po_hold_authorized():
 		frappe.clear_messages()
 		frappe.throw(_("Only CEO or MD can resume a held Purchase Order."), frappe.PermissionError)
@@ -2311,6 +2344,9 @@ def _get_mr_approval_context(doc, settings):
 		"is_pending": is_pending,
 		"is_on_hold": is_on_hold,
 		"hold_reason": (doc.ts_mr_hold_reason if hasattr(doc, "ts_mr_hold_reason") else "") or "",
+		# v2.31.0 — PO context exposes held_by; MR previously omitted it, so the
+		# PWA's hold banner could never name the holder (ui-designer 6a).
+		"held_by": (doc.ts_mr_held_by if hasattr(doc, "ts_mr_held_by") else "") or "",
 		"approval_chain": [],
 	}
 

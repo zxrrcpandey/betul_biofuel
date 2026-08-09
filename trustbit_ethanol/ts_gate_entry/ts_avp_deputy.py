@@ -13,6 +13,16 @@ from frappe.utils import escape_html, now_datetime
 DEPUTY_ROLE = "CEO"
 
 
+def _require_post():
+	"""v2.31.0 — L366: methods=["POST"] is enforced on the TOP-LEVEL cmd only;
+	via core's bare-whitelist mapper trampolines a 1-arg mutation stays
+	GET-reachable with CSRF skipped. Re-assert in-body (request is None for
+	console/jobs/tests, which stay allowed). Precedent: ts_sr_to_po."""
+	_req = getattr(frappe.local, "request", None)
+	if _req is not None and _req.method != "POST":
+		raise frappe.PermissionError
+
+
 @frappe.whitelist(methods=["POST"])
 def approve_as_avp_deputy(mr_name, reason=None):
 	"""Approve a Material Request at 'Pending AVP' status on behalf of AVP.
@@ -31,6 +41,7 @@ def approve_as_avp_deputy(mr_name, reason=None):
 	Returns: dict with ok=True + the approve_document result on success.
 	Raises: frappe.PermissionError or frappe.ValidationError on rejection.
 	"""
+	_require_post()  # L366 — trampoline-reachable; must block HERE, not in the delegate
 	if not mr_name:
 		frappe.throw(_("Material Request name is required."))
 

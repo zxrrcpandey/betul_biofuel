@@ -45,8 +45,10 @@ _NL_FIELDS = {
             "label": "Delivery Channel",
             "fieldtype": "Select",
             # leading blank keeps pre-trail NULL rows valid; "Bell Dropdown"
-            # is RESERVED for the deferred opt-in bell beacon (decision D-3)
-            "options": "\nCenter List\nToast Push\nBell Dropdown",
+            # is RESERVED for the deferred opt-in bell beacon (decision D-3).
+            # v2.32.0 "Exec List" = the BBPL Approvals PWA alerts sheet, kept
+            # distinct so desk-delivery evidence stays unpolluted.
+            "options": "\nCenter List\nToast Push\nBell Dropdown\nExec List",
             "insert_after": "ts_first_shown_at",
             "read_only": 1,
             "no_copy": 1,
@@ -67,7 +69,9 @@ _NL_FIELDS = {
             "fieldname": "ts_read_via",
             "label": "Marked Read Via",
             "fieldtype": "Select",
-            "options": "\nCenter Click\nCenter Mark All\nBell Click\nBell Mark All",
+            # v2.32.0 — Exec* = the BBPL Approvals PWA (see ts_first_shown_via)
+            "options": ("\nCenter Click\nCenter Mark All\nBell Click\nBell Mark All"
+                        "\nExec Click\nExec Mark All"),
             "insert_after": "ts_read_at",
             "read_only": 1,
             "no_copy": 1,

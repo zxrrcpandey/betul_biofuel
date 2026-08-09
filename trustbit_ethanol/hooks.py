@@ -175,8 +175,26 @@ doctype_js = {
 }
 
 
+# v2.31.0 — BBPL Approvals executive PWA: ONLY the SPA's own routes rewrite to
+# the www/exec shell (Vue router takes over client-side). Deliberately NOT a
+# /exec/<path> catch-all — that would swallow the raw-served service worker
+# (www/exec/sw.min.js) and manifest (www/exec/manifest.webmanifest), which
+# must resolve as plain www files so the SW keeps its /exec/ scope.
+website_route_rules = [
+	{"from_route": "/exec/login", "to_route": "exec"},
+	{"from_route": "/exec/history", "to_route": "exec"},
+	{"from_route": "/exec/settings", "to_route": "exec"},
+	{"from_route": "/exec/d/<path:app_path>", "to_route": "exec"},
+]
+
 # Force password change on login (set by IT Head via User Management page)
-on_session_creation = "trustbit_ethanol.ts_gate_entry.ts_user_management.check_force_password_change"
+# v2.31.0 — str→list; check_force_password_change MUST stay FIRST (its
+# redirect_to contract is what the login flow branches on), the exec sign-in
+# bell runs after and is entirely fail-soft.
+on_session_creation = [
+	"trustbit_ethanol.ts_gate_entry.ts_user_management.check_force_password_change",
+	"trustbit_ethanol.ts_gate_entry.ts_exec_login_alert.on_session_creation_login_alert",
+]
 
 # Doc Events — PO lifecycle hooks for approval state management
 doc_events = {
@@ -404,6 +422,8 @@ after_migrate = [
 	# v2.29.0 — Notification Read Accountability Trail: 4 stamp fields on Notification Log
 	# + TS Settings kill-switch (insert-only) + audit-report roles via ORM (L281/290)
 	"trustbit_ethanol.ts_gate_entry.setup_notification_trail.after_migrate_notification_trail",
+	# v2.31.0 — Executive PWA: 3 kill-switch Custom Fields on TS Settings (idempotent)
+	"trustbit_ethanol.ts_gate_entry.setup_exec_pwa.after_migrate_exec_pwa",
 ]
 
 # Scheduled Tasks

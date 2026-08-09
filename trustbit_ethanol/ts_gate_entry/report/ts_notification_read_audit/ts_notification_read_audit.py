@@ -79,7 +79,12 @@ def derive_trail_status(row, trail_start):
             and get_datetime(row.creation) < get_datetime(trail_start)):
         return STATUS_PRE_TRAIL
     if row.ts_read_at:
-        if row.ts_read_via in ("Center Click", "Bell Click"):
+        # "Exec Click" (v2.32.0) is the BBPL Approvals PWA alerts sheet — a
+        # single-row deliberate tap, semantically identical to a Center/Bell
+        # click. Without it here, every genuine executive open would be
+        # credited as a bulk clear, which is the exact conflation this report
+        # exists to prevent. "Exec Mark All" correctly stays in the bulk buckets.
+        if row.ts_read_via in ("Center Click", "Bell Click", "Exec Click"):
             return STATUS_READ_OPENED
         if (row.ts_first_shown_at
                 and get_datetime(row.ts_first_shown_at) <= get_datetime(row.ts_read_at)):

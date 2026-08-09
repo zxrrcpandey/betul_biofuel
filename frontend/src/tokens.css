@@ -1,0 +1,33 @@
+/* BBPL Approvals — design tokens. The ONLY file where colour hex appears.
+   Brand: Trustbit violet (extracted from the trustbit.png wordmark — a
+   blue→violet→magenta gradient identity; primary ≈ #8408e6). All text
+   pairings verified ≥4.5:1 WCAG AA: brand-deep/white 9.7:1, brand/white
+   6.6:1, ink 17:1, ink-faint 6.1:1, blocked 6.8:1 on tint.
+   Phase 1 ships light-only (meta color-scheme: light, no dark rules at all —
+   a partial dark mode is worse than none). Phase 3 adds a `.dark` block here
+   and nothing else changes. Semantic status hues stay brand-independent;
+   "blocked" is slate (NOT violet) so it can never be read as brand. */
+:root {
+  --exec-brand: #8408e6;
+  --exec-brand-deep: #5b0fb4;
+  --exec-brand-soft: #f3e8fc;
+
+  --exec-page: #f6f4f9;
+  --exec-surface: #ffffff;
+  --exec-line: #e2ddeb;
+
+  --exec-ink: #1d1b24;
+  --exec-ink-muted: #4e4859;
+  --exec-ink-faint: #665f70;
+
+  --exec-ok-text: #047857;
+  --exec-ok-bg: #e0efe5;
+  --exec-warn-text: #a04a08;
+  --exec-warn-bg: #f5edda;
+  --exec-danger-text: #b91c1c;
+  --exec-danger-bg: #f6e5e3;
+  --exec-info-text: #1d4ed8;
+  --exec-info-bg: #e3ecf6;
+  --exec-blocked-text: #3f4f63;
+  --exec-blocked-bg: #e2e8f0;
+}

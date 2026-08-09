@@ -38,6 +38,15 @@ _DAYS = ("7", "30", "90", "all")
 # OWN category regardless of the document they land on.
 _MENTION_EXCL = " AND COALESCE(nl.`type`, '') <> 'Mention'"
 
+# v2.32.0 — accountability-trail via-labels. `_stamp` writes with raw SQL, so an
+# off-vocabulary value becomes filter-invisible debris rather than an error:
+# every caller-supplied label is validated against these sets and falls back to
+# the desk default. Must stay in sync with setup_notification_trail.py's Select
+# options (which self-heal on migrate via create_custom_fields(update=True)).
+_SHOWN_VIA = ("Center List", "Toast Push", "Bell Dropdown", "Exec List")
+_READ_VIA = ("Center Click", "Center Mark All", "Bell Click", "Bell Mark All",
+             "Exec Click", "Exec Mark All")
+
 
 def _category_of(document_type):
     if not document_type:
@@ -142,7 +151,8 @@ def _cat_condition(category):
 # ═══════════════════════════════════════════════════════════════════════
 
 @frappe.whitelist(methods=["POST"])
-def get_notifications(category="all", unread=0, days="30", start=0, page_length=20, search=""):
+def get_notifications(category="all", unread=0, days="30", start=0, page_length=20, search="",
+                      exclude_types=None, shown_via="Center List"):
     # POST-only (L175 + trail): the returned rows are stamped as delivered-to-UI
     # evidence, and evidence must never be writable via a CSRF-exempt GET.
     # All callers use frappe.call (default type POST — request.js:108).
@@ -156,6 +166,19 @@ def get_notifications(category="all", unread=0, days="30", start=0, page_length=
 
     conds = ["nl.for_user = %(user)s"]  # hard self-scope — never trust PQC alone
     params = {"user": user}
+    # v2.32.0 — server-side type exclusion so a caller's list and badge share ONE
+    # predicate (a client-side .filter() guarantees they disagree). Defaults to
+    # no exclusion, so the desk Center is unchanged. Values are bound, never
+    # interpolated; the exec caller passes a module-level constant.
+    exclude_types = _norm_exclude_types(exclude_types)
+    excl_sql = ""
+    if exclude_types:
+        keys = []
+        for i, t in enumerate(exclude_types):
+            k = "excl{0}".format(i)
+            params[k] = t
+            keys.append("%({0})s".format(k))
+        excl_sql = " AND COALESCE(nl.document_type, '') NOT IN ({0})".format(", ".join(keys))
     if days != "all":
         conds.append("nl.creation >= %(cutoff)s")
         params["cutoff"] = add_to_date(now_datetime(), days=-cint(days))
@@ -173,24 +196,25 @@ def get_notifications(category="all", unread=0, days="30", start=0, page_length=
     rows = frappe.db.sql(
         """SELECT nl.name, nl.subject, nl.document_type, nl.document_name,
                   nl.creation, nl.`read` AS is_read, nl.link, nl.`type` AS ntype
-           {base}{cat}{unread}{search}
+           {base}{cat}{unread}{search}{excl}
            ORDER BY nl.creation DESC
            LIMIT %(start)s, %(page_length)s""".format(
-            base=base, cat=cat_sql, unread=unread_sql, search=search_sql),
+            base=base, cat=cat_sql, unread=unread_sql, search=search_sql, excl=excl_sql),
         {**params, "start": start, "page_length": page_length}, as_dict=True)
     total = frappe.db.sql(
-        "SELECT COUNT(*) {base}{cat}{unread}{search}".format(
-            base=base, cat=cat_sql, unread=unread_sql, search=search_sql),
+        "SELECT COUNT(*) {base}{cat}{unread}{search}{excl}".format(
+            base=base, cat=cat_sql, unread=unread_sql, search=search_sql, excl=excl_sql),
         params)[0][0]
 
     # Accountability trail (v2.29.0): the rows above are about to be rendered
     # in the owner's Center list — stamp first-delivery. Fail-soft; separate
     # statement so a trail problem can never break the inbox.
-    stamp_shown([r.name for r in rows], "Center List")
+    stamp_shown([r.name for r in rows], shown_via if shown_via in _SHOWN_VIA else "Center List")
 
     counts_raw = frappe.db.sql(
-        "SELECT nl.document_type, nl.`type` AS ntype, nl.`read` AS is_read, COUNT(*) AS c {base} "
-        "GROUP BY nl.document_type, nl.`type`, nl.`read`".format(base=base), params, as_dict=True)
+        "SELECT nl.document_type, nl.`type` AS ntype, nl.`read` AS is_read, COUNT(*) AS c {base}{excl} "
+        "GROUP BY nl.document_type, nl.`type`, nl.`read`".format(base=base, excl=excl_sql),
+        params, as_dict=True)
     category_counts = {c: {"total": 0, "unread": 0} for c in _CATEGORIES}
     for r in counts_raw:
         for key in (_row_category(r.document_type, r.ntype), "all"):
@@ -214,13 +238,14 @@ def get_notifications(category="all", unread=0, days="30", start=0, page_length=
         "total": total,
         # ALL-TIME unread — must agree with the navbar badge (unread_count) and
         # mark_read's response; the range-scoped numbers live in category_counts.
-        "unread_total": _unread_total(user),
+        # Same exclusion as the rows above, so list and badge can never disagree.
+        "unread_total": _unread_total(user, exclude_types),
         "category_counts": category_counts,
     }
 
 
 @frappe.whitelist(methods=["POST"])
-def mark_read(log_name):
+def mark_read(log_name, read_via="Center Click", exclude_types=None):
     _guard()
     user = frappe.session.user
     owner = frappe.db.get_value("Notification Log", log_name, "for_user")
@@ -230,12 +255,12 @@ def mark_read(log_name):
         frappe.throw(_("Not permitted."), frappe.PermissionError)
     frappe.db.set_value("Notification Log", log_name, "read", 1, update_modified=False)
     # trail: flip first, stamp second (a failed flip must leave no read-stamp)
-    stamp_read([log_name], "Center Click")
-    return {"ok": 1, "unread_total": _unread_total(user)}
+    stamp_read([log_name], read_via if read_via in _READ_VIA else "Center Click")
+    return {"ok": 1, "unread_total": _unread_total(user, exclude_types)}
 
 
 @frappe.whitelist(methods=["POST"])
-def mark_all_read(category="all", days="30"):
+def mark_all_read(category="all", days="30", read_via="Center Mark All"):
     """Marks only the session user's unread rows matching the current filter."""
     _guard()
     user = frappe.session.user
@@ -256,12 +281,33 @@ def mark_all_read(category="all", days="30"):
     if marked:
         frappe.db.sql(
             "UPDATE `tabNotification Log` nl SET nl.`read` = 1 WHERE " + where, params)
-        stamp_read(names, "Center Mark All")
+        stamp_read(names, read_via if read_via in _READ_VIA else "Center Mark All")
     return {"ok": 1, "marked": marked, "unread_total": _unread_total(user)}
 
 
-def _unread_total(user):
-    return frappe.db.count("Notification Log", {"for_user": user, "read": 0})
+def _norm_exclude_types(exclude_types):
+    """Coerce to a bounded list of strings. These endpoints are whitelisted, so
+    a caller can send anything: a nested dict raises TypeError inside pymysql
+    and a huge list would build an unbounded IN() (the same max_allowed_packet
+    lesson _stamp already learned). Cap at 20 — the real callers pass one."""
+    out = []
+    for t in (exclude_types or []):
+        if isinstance(t, (str, bytes)) and t:
+            out.append(frappe.as_unicode(t)[:140])
+        if len(out) >= 20:
+            break
+    return out
+
+
+def _unread_total(user, exclude_types=None):
+    """v2.32.0 — optional exclude_types (list of document_type) so a caller can
+    scope the badge to the same rows its list shows. Default None = unchanged
+    desk behaviour, byte for byte."""
+    filters = {"for_user": user, "read": 0}
+    exclude_types = _norm_exclude_types(exclude_types)
+    if exclude_types:
+        filters["document_type"] = ["not in", exclude_types]
+    return frappe.db.count("Notification Log", filters)
 
 
 @frappe.whitelist()

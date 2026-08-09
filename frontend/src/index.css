@@ -1,0 +1,63 @@
+@import "./tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  /* 17px base — anything under 16px triggers Safari's input auto-zoom, and
+     the two readers are executives aged 55+. 13px is the absolute floor. */
+  font-size: 17px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-surface-page text-ink;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans",
+    "Helvetica Neue", Arial, sans-serif;
+  margin: 0;
+  min-height: 100dvh;
+}
+
+/* Numbers line up in cards and tables */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fixed bottom action bar clears the iPhone home indicator; insets are zero
+   in Safari and non-zero only in the installed (standalone) app. */
+.safe-bottom {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+/* Visible keyboard focus */
+:focus-visible {
+  outline: 2px solid var(--exec-brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Skeleton shimmer at the real row height so content doesn't jump */
+.skeleton {
+  @apply bg-surface-line rounded-xl;
+  animation: exec-pulse 1.2s ease-in-out infinite;
+}
+@keyframes exec-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
