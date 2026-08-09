@@ -4,7 +4,8 @@ Allows Purchase User / Purchase Manager / IT Head (plus existing senior roles)
 to request a revision on an already-APPROVED (docstatus=1) MR.
 
 Path 3 = notification-only:
-  - MR state is NOT changed. docstatus stays 1.
+  - MR state is NOT changed. docstatus stays 1. (Since v2.30.2 the cosmetic
+    ts_mr_revision_requested Check is stamped for list pill + filter visibility.)
   - An audit log row is inserted in the TS Approval Log child table.
   - A visible timeline Comment is added.
   - A Notification Log (bell) + email is sent to the MR creator.
@@ -35,13 +36,27 @@ ALLOWED_ROLES = {
 MAX_REASON_LEN = 2000
 
 
-@frappe.whitelist()
+def _require_post():
+	"""v2.31.0 — L366: methods=["POST"] is enforced on the TOP-LEVEL cmd only;
+	via core's bare-whitelist map_docs trampoline this 2-arg mutation stays
+	GET-reachable with CSRF skipped (and it commits explicitly, so GET
+	auto-rollback does not save it). Re-assert in-body (request is None for
+	console/jobs/tests, which stay allowed). Precedent: ts_sr_to_po."""
+	_req = getattr(frappe.local, "request", None)
+	if _req is not None and _req.method != "POST":
+		raise frappe.PermissionError
+
+
+@frappe.whitelist(methods=["POST"])
 def request_mr_revision(mr_name, reason):
 	"""Soft-revise a post-approval Material Request.
 
 	Does NOT change docstatus or ts_mr_status. Creates audit trail +
-	notifies the original creator to cancel + amend manually.
+	notifies the original creator to cancel + amend manually. Only the
+	cosmetic ts_mr_revision_requested Check is stamped (v2.30.2) so the
+	list pill + standard filter can surface the open request.
 	"""
+	_require_post()  # L366 — trampoline-reachable
 	# 1. Role guard
 	user = frappe.session.user
 	user_roles = set(frappe.get_roles(user))
@@ -96,6 +111,11 @@ def request_mr_revision(mr_name, reason):
 
 	# 6. Insert audit log row (TS Approval Log child table)
 	_insert_approval_log_entry(mr, user, user_roles, reason)
+
+	# 6b. Stamp the display flag — drives the list pill + standard filter only;
+	# approval state (docstatus / ts_mr_status) stays untouched. db_set skips
+	# save hooks, so no tamper guard fires (same pattern as hold_mr/resume_mr).
+	mr.db_set("ts_mr_revision_requested", 1, update_modified=True)
 
 	# 7. Add visible timeline comment on the MR
 	user_name = get_fullname(user) or user

@@ -623,10 +623,26 @@ def create_custom_fields():
 				"allow_on_submit": 1
 			},
 			{
+				"fieldname": "ts_mr_revision_requested",
+				"fieldtype": "Check",
+				"label": "Revision Requested",
+				"insert_after": "ts_mr_approved_date",
+				"read_only": 1,
+				"no_copy": 1,
+				# explicit 0 (L350): db_set bypasses docfield meta, so post-submit
+				# writes don't need it — and 1 would leave the flag REST-writable
+				# on submitted MRs (permlevel-0 read_only is UI-only, L162)
+				"allow_on_submit": 0,
+				"in_standard_filter": 1,
+				"default": "0",
+				"depends_on": "eval:doc.ts_mr_revision_requested",
+				"description": "Set when a post-approval revision request is made. Display/filter only — approval state is unchanged."
+			},
+			{
 				"fieldname": "ts_mr_revision_section",
 				"fieldtype": "Section Break",
 				"label": "MR Revision Info",
-				"insert_after": "ts_mr_approved_date",
+				"insert_after": "ts_mr_revision_requested",
 				"collapsible": 1,
 				"depends_on": "eval:doc.ts_mr_status=='Revised'"
 			},

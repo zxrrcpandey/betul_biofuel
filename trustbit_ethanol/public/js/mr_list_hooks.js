@@ -33,6 +33,24 @@ frappe.listview_settings["Material Request"] = frappe.listview_settings["Materia
 	// indicator override would silently lose its data.
 	mr.add_fields = (mr.add_fields || []).slice();
 	if (!mr.add_fields.includes("ts_mr_status")) mr.add_fields.push("ts_mr_status");
+	if (!mr.add_fields.includes("ts_mr_revision_requested")) mr.add_fields.push("ts_mr_revision_requested");
+
+	// v2.30.2 — post-approval "Request Revision" pill. The flag rides docstatus-1
+	// rows only, so frappe's draft branch cannot pre-empt it; mr_list.js's
+	// instance wrapper (installed later, at onload) sees ts_mr_status="Approved",
+	// skips its own branches, and falls through to this one. Marker guard because
+	// __list_js can re-evaluate (clear_cache + meta reload) — never stack layers.
+	if (!(mr.get_indicator && mr.get_indicator._ts_rev_wrapped)) {
+		const _core_gi = mr.get_indicator;
+		const rev_gi = function (doc) {
+			if (cint(doc.docstatus) === 1 && cint(doc.ts_mr_revision_requested)) {
+				return [__("Revision Requested"), "orange", "ts_mr_revision_requested,=,1"];
+			}
+			return _core_gi ? _core_gi(doc) : undefined;
+		};
+		rev_gi._ts_rev_wrapped = true;
+		mr.get_indicator = rev_gi;
+	}
 
 	function _patch(listview) {
 		if (!listview) return;

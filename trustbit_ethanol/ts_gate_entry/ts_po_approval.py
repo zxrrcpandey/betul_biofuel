@@ -2529,6 +2529,9 @@ def mr_on_amend(doc, method=None):
 		"hold_reason",
 		"held_by",
 		"held_at_step",
+		# v2.30.2: amend COPIES no_copy fields (create_new.js from_amend skips
+		# is_no_copy) — the successor MR must not inherit the revision flag
+		"ts_mr_revision_requested",
 	):
 		if hasattr(doc, fname):
 			doc.set(fname, None)
