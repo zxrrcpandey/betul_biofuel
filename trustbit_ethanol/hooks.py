@@ -182,6 +182,7 @@ doctype_js = {
 # must resolve as plain www files so the SW keeps its /exec/ scope.
 website_route_rules = [
 	{"from_route": "/exec/login", "to_route": "exec"},
+	{"from_route": "/exec/overview", "to_route": "exec"},
 	{"from_route": "/exec/history", "to_route": "exec"},
 	{"from_route": "/exec/settings", "to_route": "exec"},
 	{"from_route": "/exec/d/<path:app_path>", "to_route": "exec"},
@@ -313,6 +314,15 @@ doc_events = {
 	# v2.28 Executive Hold — no payment against a held PO (core has no On-Hold check on PE)
 	"Payment Entry": {
 		"validate": "trustbit_ethanol.ts_gate_entry.ts_po_approval.block_docs_against_held_po",
+	},
+	# v2.32.0 — Executive PWA lock-screen alerts. Hooking the bell row itself
+	# means EVERY existing producer (approval hub, escalations, budget,
+	# post-dated) can reach a phone without any producer being modified.
+	# The handler is fail-soft by contract: after_insert runs inside the
+	# transaction that created the notification, so a push problem must never
+	# break the PO/MR save that triggered it.
+	"Notification Log": {
+		"after_insert": "trustbit_ethanol.ts_gate_entry.ts_push_notify.on_notification_log_insert",
 	},
 }
 
@@ -472,7 +482,13 @@ scheduler_events = {
 		# "0 6 * * *": [
 		# 	"trustbit_ethanol.ts_gate_entry.health_check_validators.health_check_nightly_digest",
 		# ],
-	}
+	},
+	# v2.32.0 — retire push subscriptions that keep failing or were minted under
+	# a VAPID key we no longer use. New top-level bucket on purpose: the `cron`
+	# block above is snapshot-frozen and must not be restructured.
+	"daily": [
+		"trustbit_ethanol.ts_gate_entry.ts_push_notify.prune_dead_subscriptions",
+	],
 }
 
 # Automatically update python controller files with type annotations for this app.

@@ -1,0 +1,186 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-09 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "section_owner",
+  "user",
+  "status",
+  "column_break_owner",
+  "platform",
+  "vapid_key_id",
+  "section_keys",
+  "endpoint",
+  "endpoint_hash",
+  "column_break_keys",
+  "p256dh",
+  "auth",
+  "section_health",
+  "last_seen_at",
+  "last_success_at",
+  "column_break_health",
+  "last_error_at",
+  "last_error_code",
+  "fail_count",
+  "section_agent",
+  "user_agent"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_owner",
+   "fieldtype": "Section Break",
+   "label": "Owner"
+  },
+  {
+   "description": "Server-set from the session. No request body ever supplies this.",
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "User",
+   "options": "User",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "default": "Active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Active\nExpired\nRevoked",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_owner",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "platform",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Platform",
+   "options": "\nAndroid\niOS\nDesktop\nOther",
+   "read_only": 1
+  },
+  {
+   "description": "First 12 chars of sha256(VAPID public key) — identifies which key minted this subscription so a rotation can prune orphans.",
+   "fieldname": "vapid_key_id",
+   "fieldtype": "Data",
+   "label": "VAPID Key ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_keys",
+   "fieldtype": "Section Break",
+   "label": "Subscription (restricted)"
+  },
+  {
+   "description": "The push service URL. This is a CAPABILITY TOKEN — anyone holding it can send to this device. Small Text, not Data: FCM/Apple endpoints run 180-300 chars and varchar(140) would silently truncate them. NO ROLE has permissions on this DocType (user decision, 9 Aug 2026): Administrator only, since these rows are device credentials for the two executives.",
+   "fieldname": "endpoint",
+   "fieldtype": "Small Text",
+   "label": "Endpoint",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "description": "sha256 of the endpoint. Uniqueness carrier — Frappe cannot put a unique index on a Text field.",
+   "fieldname": "endpoint_hash",
+   "fieldtype": "Data",
+   "label": "Endpoint Hash",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_keys",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "p256dh",
+   "fieldtype": "Data",
+   "label": "P256DH",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "auth",
+   "fieldtype": "Data",
+   "label": "Auth Secret",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_health",
+   "fieldtype": "Section Break",
+   "label": "Delivery Health"
+  },
+  {
+   "fieldname": "last_seen_at",
+   "fieldtype": "Datetime",
+   "label": "Last Seen At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_success_at",
+   "fieldtype": "Datetime",
+   "label": "Last Success At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_health",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_error_at",
+   "fieldtype": "Datetime",
+   "label": "Last Error At",
+   "read_only": 1
+  },
+  {
+   "description": "HTTP status only. NEVER the endpoint or the Authorization header.",
+   "fieldname": "last_error_code",
+   "fieldtype": "Data",
+   "label": "Last Error Code",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "fail_count",
+   "fieldtype": "Int",
+   "label": "Fail Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_agent",
+   "fieldtype": "Section Break",
+   "label": "Device"
+  },
+  {
+   "fieldname": "user_agent",
+   "fieldtype": "Small Text",
+   "label": "User Agent",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-09 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Push Subscription",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "quick_entry": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

@@ -63,17 +63,49 @@ html = html.replace(
     // safe_render rejects the whole page as "Illegal template" (dunder guard).
     "<script>window.frappe = window.frappe || {};</script>",
     "<!-- csrf_token -->",
-    "<script>window.execEnv = { enabled: {{ exec_enabled }}, sw: {{ exec_sw }} };</script>",
+    "<script>window.execEnv = { enabled: {{ exec_enabled }}, sw: {{ exec_sw }}, overview: {{ exec_overview }} };</script>",
     "<!-- no-cache -->",
   ].join("\n    ")
 )
 if (!html.includes("<!-- csrf_token -->")) fail("csrf_token marker missing after transform")
 if (!html.includes("<!-- no-cache -->")) fail("no-cache marker missing after transform")
+// Every execEnv key the app reads must be a Jinja placeholder here. www/exec.html
+// is GENERATED — hand-editing it looks like it works until the next build
+// silently reverts it, and the tab then never appears for anyone.
+for (const v of ["exec_enabled", "exec_sw", "exec_overview"]) {
+  if (!html.includes(`{{ ${v} }}`)) fail(`execEnv placeholder {{ ${v} }} missing from exec.html`)
+}
 // frappe safe_render rejects the whole page as "Illegal template" if the
 // Jinja source contains ".__" anywhere (dunder-attack guard).
 if (html.includes(".__")) fail('".__" found in exec.html — frappe safe_render will refuse to render it')
 fs.writeFileSync(path.join(WWW, "exec.html"), html)
 fs.rmSync(builtIndex) // never ship the raw shell under /assets
+
+// ── ASSERTION: no Tailwind opacity modifier over a var()-backed token colour.
+// Every colour in tailwind.config.js resolves to `var(--exec-*)`, and Tailwind
+// v3 cannot compute alpha over that — it emits NO rule at all, so the element
+// silently loses the property. It fails at RUNTIME, invisibly, and only for
+// the one class you got wrong. Literal palette colours (bg-black/45) are fine.
+{
+  const TOKENS = "brand|ink|surface|ok|warn|danger|info|blocked"
+  const bad = []
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (/\.(vue|js)$/.test(e.name)) {
+        const re = new RegExp(`(?:bg|text|border|ring|fill|stroke)-(?:${TOKENS})(?:-[a-z]+)?\\/\\d+`, "g")
+        for (const m of fs.readFileSync(p, "utf8").matchAll(re)) {
+          bad.push(`${path.relative(FRONTEND, p)}: ${m[0]}`)
+        }
+      }
+    }
+  }
+  walk(path.join(FRONTEND, "src"))
+  if (bad.length) {
+    fail(`Tailwind opacity modifier over a var() token colour compiles to nothing:\n  ${bad.join("\n  ")}\n  Use an inline style with the CSS variable, or a solid token.`)
+  }
+}
 
 // ── Service worker → www/exec/sw.min.js (raw-served, scope /exec/)
 fs.mkdirSync(WWW_EXEC, { recursive: true })

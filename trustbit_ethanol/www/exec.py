@@ -13,6 +13,7 @@ from trustbit_ethanol.ts_gate_entry.ts_exec_api import (
     KILL_SWITCH_FIELD,
     SW_FLAG_FIELD,
     flag_on,
+    overview_visible,
 )
 
 # Never serve a Redis-cached shell pointing at an old bundle — the SPA
@@ -38,4 +39,8 @@ def get_context(context):
     # (main.js unregisters on 0).
     context.exec_enabled = 1 if flag_on(KILL_SWITCH_FIELD) else 0
     context.exec_sw = 1 if flag_on(SW_FLAG_FIELD) else 0
+    # Overview tab: kill switch AND audience, resolved per user at render time.
+    # Safe to compute for Guest (returns 0) because login ends in a full
+    # window.location navigation, which re-renders this shell for the real user.
+    context.exec_overview = 1 if overview_visible() else 0
     return context

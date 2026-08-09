@@ -30,4 +30,21 @@
   --exec-info-bg: #e3ecf6;
   --exec-blocked-text: #3f4f63;
   --exec-blocked-bg: #e2e8f0;
+
+  /* Aging ramp — fresh→stale, used ONLY as bar fill on the Overview aging
+     chart, never as text, so these are chosen for adjacent-segment
+     distinguishability rather than text contrast. Applied via inline style,
+     NOT a Tailwind opacity modifier: `bg-warn-text/50` and friends silently
+     emit NO rule at all, because Tailwind v3 cannot compute alpha over a bare
+     var() colour — it drops the declaration instead of erroring, which
+     rendered the whole bar invisible in the first build of this page. */
+  --exec-age-1: #0f9d67;
+  /* age-2 lightened from #86a81f: measured 1.07:1 against age-3 in normal
+     vision and 1.09–1.16:1 under protanopia/deuteranopia — one swatch, not two,
+     for ~8% of men, and both readers of this screen are men. Now 1.30:1 vs
+     age-3 and over the 3:1 non-text threshold against the track. */
+  --exec-age-2: #a8c33a;
+  --exec-age-3: #d99404;
+  --exec-age-4: #c2560c;
+  --exec-age-5: #b91c1c;
 }

@@ -10,15 +10,7 @@
         <div class="mt-1 truncate text-[15px] font-semibold">{{ session.user }}</div>
       </div>
 
-      <div class="rounded-xl border border-surface-line bg-surface p-4">
-        <div class="text-[13px] font-bold uppercase tracking-wide text-ink-faint">
-          Notifications
-        </div>
-        <p class="mt-1 text-[14px] text-ink-muted">
-          Lock-screen alerts arrive in the next update (Phase 2). Until then,
-          everything pending for you is always on the Inbox tab.
-        </p>
-      </div>
+      <PushSettingsCard />
 
       <div class="rounded-xl border border-surface-line bg-surface p-4">
         <div class="text-[13px] font-bold uppercase tracking-wide text-ink-faint">
@@ -50,6 +42,7 @@
 
 <script setup>
 import AppHeader from "@/components/AppHeader.vue"
+import PushSettingsCard from "@/components/PushSettingsCard.vue"
 import TabBar from "@/components/TabBar.vue"
 import { logout, session } from "@/data/session.js"
 

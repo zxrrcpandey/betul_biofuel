@@ -10,7 +10,14 @@
       >
         ‹
       </button>
-      <h1 class="truncate text-xl font-bold">{{ title }}</h1>
+      <!-- Logo variant keeps the <h1> so the page still has exactly one level-1
+           heading; the wordmark is the visible label and the sr-only text keeps
+           the page name for screen readers, which an image alone would lose. -->
+      <h1 v-if="logo" class="flex min-w-0 items-center">
+        <img :src="trustbitLogo" alt="Trustbit" class="h-7 w-auto shrink-0" />
+        <span class="sr-only">{{ title }}</span>
+      </h1>
+      <h1 v-else class="truncate text-xl font-bold">{{ title }}</h1>
     </div>
     <div class="flex items-center gap-1">
       <button
@@ -105,8 +112,14 @@ const props = defineProps({
   refreshable: { type: Boolean, default: false },
   refreshing: { type: Boolean, default: false },
   bell: { type: Boolean, default: false },
+  // Show the Trustbit wordmark instead of the title text (home tab only).
+  logo: { type: Boolean, default: false },
 })
 defineEmits(["refresh"])
+
+// Same asset Login.vue renders. Bare /assets is cached ~1yr by the browser, so
+// a CHANGED logo must ship under a NEW filename or phones keep the old bytes.
+const trustbitLogo = "/assets/trustbit_ethanol/exec/icons/brand-trustbit-v2.png"
 
 // The badge is aria-hidden, so the BUTTON must carry the count — otherwise a
 // screen reader announces only "3, button".

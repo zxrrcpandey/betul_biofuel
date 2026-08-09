@@ -2,6 +2,7 @@
   <div class="pb-28">
     <AppHeader
       title="Approvals"
+      logo
       bell
       refreshable
       :refreshing="inbox.loading"
