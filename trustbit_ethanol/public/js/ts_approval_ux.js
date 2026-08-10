@@ -64,62 +64,10 @@ window.ts_bilingual = function(en) {
 	return (hi && hi !== en) ? `${en} | ${hi}` : en;
 };
 
-window.ts_render_approval_banner = function(frm) {
-	// Remove any previous banner to avoid duplicates on refresh
-	$(frm.page.wrapper).find(".ts-approval-banner").remove();
-
-	if (!frm || !frm.doc) return;
-
-	// Map DocType -> status field. MR/PO use Custom Fields; others use native `status`.
-	const status_field_map = {
-		"Material Request": "ts_mr_status",
-		"Purchase Order": "ts_approval_status",
-		"TS Post Dated Entry Request": "status",
-		"TS Budget Proposal": "status",
-	};
-	const status_field = status_field_map[frm.doctype];
-	if (!status_field) return;  // not a supported approval doctype
-
-	// MR/PO banner limited to drafts (docstatus=0). Post-Dated + Budget Proposal
-	// are non-submittable DocTypes (docstatus stays 0), so same check works.
-	if (frm.doc.docstatus !== 0) return;
-
-	const status = frm.doc[status_field];
-	if (!status || status === "Draft" || status === "Not Submitted") return;
-
-	// Step info only meaningful for MR/PO (they have step tracking)
-	const is_mr = frm.doctype === "Material Request";
-	const is_po = frm.doctype === "Purchase Order";
-	let step_label = "";
-	if (is_mr || is_po) {
-		const current_step = is_mr ? frm.doc.ts_mr_current_step : frm.doc.ts_current_step;
-		const total_steps = is_mr ? frm.doc.ts_mr_total_steps : frm.doc.ts_total_steps;
-		step_label = `${window.ts_bilingual("Step")} ${current_step || "?"} ${window.ts_bilingual("of")} ${total_steps || "?"}`;
-	}
-
-	const status_bi = window.ts_bilingual(status);
-
-	// Escape dynamic values
-	const esc = (s) => frappe.utils.escape_html(String(s || ""));
-
-	const step_html = step_label
-		? `<span style="color: var(--text-muted, #64748b); font-weight: normal; margin-left: 8px;">(${esc(step_label)})</span>`
-		: "";
-
-	const html = `
-		<div class="ts-approval-banner" style="margin: 10px 15px 8px; padding: 10px 14px; border-left: 4px solid var(--primary-color, #1d4ed8); background: var(--bg-light-gray, #f0f9ff); border-radius: 6px; font-size: 12px;">
-			<div style="font-weight: 600; color: var(--heading-color, #0f172a); margin-bottom: 4px;">
-				📋 ${esc(window.ts_bilingual("Current Status"))}: <span style="color: var(--primary-color, #1d4ed8);">${esc(status_bi)}</span> ${step_html}
-			</div>
-			<div style="color: var(--text-muted, #64748b); font-size: 11px;">
-				${esc(window.ts_bilingual("Created by"))}: ${esc(frm.doc.owner || "?")}
-			</div>
-		</div>
-	`;
-
-	const $layout = $(frm.layout.wrapper);
-	if ($layout.length) $layout.before(html);
-};
+// ts_render_approval_banner ("Current Status" form banner) removed 11 Aug 2026 —
+// no longer needed. Call sites (po_approval.js, mr_approval.js,
+// ts_post_dated_entry_request.js, ts_budget_proposal.js) typeof-guard the call
+// and become silent no-ops; they were deliberately left untouched.
 
 window.ts_check_submit_on_behalf = function(frm) {
 	// Returns Promise<boolean>: true = proceed with submit, false = cancel
