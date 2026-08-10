@@ -1,0 +1,333 @@
+/* User Management page styles.
+ *
+ * The page previously carried ~59 hardcoded light-mode colours inline
+ * (including `background:white` on the table card), which made it unreadable in
+ * Frappe's dark theme: the desk sets `.table { color: var(--text-color) }`, which
+ * resolves to near-white, so the body text was white-on-white. It was 1 of only 4
+ * custom pages in this app with no dark handling at all.
+ *
+ * Everything below is expressed in Frappe's own theme variables, so both themes
+ * follow the desk automatically and there is no second palette to maintain.
+ */
+
+.um-wrap {
+	padding: 15px;
+}
+
+/* ── Summary tiles ─────────────────────────────────────────────── */
+
+.um-stats {
+	display: flex;
+	gap: 15px;
+	flex-wrap: wrap;
+	margin-bottom: 15px;
+}
+
+.um-stat {
+	background: var(--card-bg);
+	border: 1px solid var(--border-color);
+	border-left: 4px solid var(--gray-400);
+	border-radius: var(--border-radius-md, 6px);
+	padding: 10px 15px;
+	min-width: 120px;
+	flex: 1 1 120px;
+}
+
+.um-stat--total    { border-left-color: var(--blue-500); }
+.um-stat--active   { border-left-color: var(--green-500); }
+.um-stat--disabled { border-left-color: var(--red-500); }
+
+.um-stat__value {
+	font-size: 22px;
+	font-weight: 700;
+	line-height: 1.2;
+	color: var(--heading-color);
+	font-variant-numeric: tabular-nums;
+}
+
+.um-stat__label {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.um-rolecount {
+	margin-bottom: 5px;
+	text-align: right;
+	font-size: 10px;
+	color: var(--text-muted);
+}
+
+/* ── User table ────────────────────────────────────────────────── */
+
+.um-tablecard {
+	background: var(--card-bg);
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-md, 6px);
+	/* was overflow:hidden, which clipped the Actions column on narrow screens
+	 * with no way to reach it. Scroll the table instead of amputating it. */
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.um-table {
+	margin: 0;
+	min-width: 640px;
+	color: var(--text-color);
+}
+
+.um-table thead tr {
+	background: var(--subtle-accent, var(--control-bg));
+}
+
+.um-table th {
+	padding: 10px 15px;
+	font-size: 12px;
+	color: var(--text-muted);
+	font-weight: 600;
+	white-space: nowrap;
+	border-bottom: 1px solid var(--border-color);
+}
+
+.um-table td {
+	padding: 10px 15px;
+	vertical-align: middle;
+	border-bottom: 1px solid var(--border-color);
+}
+
+.um-table tbody tr:last-child td {
+	border-bottom: none;
+}
+
+.um-table .um-cell-email,
+.um-table .um-cell-seen {
+	color: var(--text-muted);
+	font-size: 13px;
+	white-space: nowrap;
+}
+
+.um-cell-actions {
+	text-align: right;
+	white-space: nowrap;
+}
+
+.um-empty {
+	text-align: center;
+	padding: 30px;
+	color: var(--text-muted);
+}
+
+.um-loading {
+	text-align: center;
+	padding: 40px;
+	color: var(--text-muted);
+}
+
+.um-error {
+	text-align: center;
+	padding: 40px;
+	color: var(--text-color);
+}
+
+.um-error__title {
+	font-weight: 600;
+	color: var(--red-500);
+	margin-bottom: 6px;
+}
+
+.um-error__detail {
+	font-size: 12px;
+	color: var(--text-muted);
+	max-width: 34rem;
+	margin: 0 auto;
+}
+
+/* ── Badges and pills ──────────────────────────────────────────── */
+
+.um-badge {
+	display: inline-block;
+	padding: 3px 10px;
+	border-radius: 12px;
+	font-size: 11px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.um-badge--active {
+	background: var(--bg-green, var(--green-100));
+	color: var(--text-on-green, var(--green-700));
+}
+
+.um-badge--disabled {
+	background: var(--bg-red, var(--red-100));
+	color: var(--text-on-red, var(--red-700));
+}
+
+.um-role {
+	display: inline-block;
+	background: var(--control-bg);
+	color: var(--text-color);
+	border: 1px solid var(--border-color);
+	padding: 2px 8px;
+	border-radius: 4px;
+	font-size: 11px;
+	margin: 0 3px 3px 0;
+}
+
+.um-role-more {
+	color: var(--text-muted);
+	font-size: 11px;
+}
+
+.um-flag {
+	font-size: 11px;
+	margin-left: 4px;
+}
+
+.um-flag--protected { color: var(--orange-500); }
+.um-flag--self      { color: var(--purple-500, var(--blue-500)); }
+
+/* ── Role picker (create + edit dialogs) ───────────────────────── */
+
+.um-rolegrid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 6px;
+}
+
+.um-rolegrid label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-md, 6px);
+	cursor: pointer;
+	font-size: 13px;
+	margin: 0;
+	color: var(--text-color);
+	background: var(--card-bg);
+	transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.um-rolegrid label.is-checked {
+	border-color: var(--primary, var(--blue-500));
+	background: var(--subtle-fg, var(--control-bg));
+}
+
+.um-rolegrid label:focus-within {
+	outline: 2px solid var(--primary, var(--blue-500));
+	outline-offset: 1px;
+}
+
+/* ── Dialog helpers ────────────────────────────────────────────── */
+
+.um-info {
+	display: flex;
+	gap: 20px;
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+	color: var(--text-color);
+}
+
+.um-note {
+	background: var(--bg-yellow, var(--yellow-100));
+	border: 1px solid var(--yellow-300, var(--border-color));
+	color: var(--text-on-yellow, var(--yellow-800));
+	border-radius: var(--border-radius-md, 6px);
+	padding: 8px 12px;
+	margin-bottom: 10px;
+	font-size: 12px;
+}
+
+.um-secret {
+	background: var(--bg-yellow, var(--yellow-100));
+	border: 1px solid var(--yellow-300, var(--border-color));
+	border-radius: var(--border-radius-md, 6px);
+	padding: 12px;
+	margin: 10px 0;
+}
+
+/* NOTE: the old `.um-secret code` rule was removed with the temporary-password
+ * display it styled — nothing renders a <code> element here any more. The
+ * one-time link is styled by .um-link below. */
+
+/* One-time reset link. Must wrap — it is ~80 chars and would otherwise either
+ * overflow the dialog or be silently truncated, and a half-copied key fails
+ * with the same "invalid link" message as an expired one. */
+.um-link {
+	margin-top: 6px;
+	padding: 8px 10px;
+	background: var(--card-bg);
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-md, 6px);
+	font-family: var(--font-stack-mono, monospace);
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--text-color);
+	word-break: break-all;
+	user-select: all;
+}
+
+.um-warn {
+	color: var(--red-500);
+	font-size: 12px;
+}
+
+/* ── Audit trail ───────────────────────────────────────────────── */
+
+.um-audit {
+	max-height: 220px;
+	overflow-y: auto;
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-md, 6px);
+	background: var(--control-bg);
+}
+
+.um-audit__row {
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--border-color);
+	font-size: 12px;
+	color: var(--text-color);
+}
+
+.um-audit__row:last-child {
+	border-bottom: none;
+}
+
+.um-audit__when {
+	color: var(--text-muted);
+	font-size: 11px;
+}
+
+.um-audit__empty {
+	padding: 10px;
+	color: var(--text-muted);
+	font-size: 12px;
+}
+
+/* ── Narrow screens ────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+	.um-rolegrid {
+		grid-template-columns: repeat(2, 1fr);
+	}
+
+	.um-stat {
+		min-width: 100px;
+		padding: 8px 12px;
+	}
+
+	.um-stat__value {
+		font-size: 18px;
+	}
+}
+
+@media (max-width: 480px) {
+	.um-rolegrid {
+		grid-template-columns: 1fr;
+	}
+
+	.um-stats {
+		gap: 8px;
+	}
+}

@@ -337,6 +337,13 @@ permission_query_conditions = {
 	"Purchase Receipt": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.get_pqc_purchase_receipt",
 	"Purchase Invoice": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.get_pqc_purchase_invoice",
 	"Material Request": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.get_pqc_material_request",
+	# Restrict the User LIST to the caller's own record. Frappe's own condition
+	# only hides Administrator/Guest, so every desk user could list the whole
+	# staff roster. System Manager keeps the full view; IT Head deliberately does
+	# NOT (they administer accounts through the User Management page, which reads
+	# via frappe.get_all and is unaffected). The link-field / Assign-To search
+	# path is exempted inside the function so user pickers keep working.
+	"User": "trustbit_ethanol.ts_gate_entry.ts_user_management.user_list_query_conditions",
 }
 
 has_permission = {
