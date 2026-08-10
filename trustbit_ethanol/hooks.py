@@ -12,7 +12,12 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 app_include_css = "/assets/trustbit_ethanol/css/ts_theme.css?v=3"
-web_include_css = "/assets/trustbit_ethanol/css/ts_login.css"
+# v2 = login announcement banner styles (?v bump mandatory — bare /assets are
+# served max-age=31536000, so without the URL change the edit ships invisibly, L318/319)
+web_include_css = "/assets/trustbit_ethanol/css/ts_login.css?v=2"
+# Website/portal pages only (base.html). ts_login_banner.js no-ops unless the
+# login form is present; it never reaches /app (desk) or /exec (standalone PWA).
+web_include_js = ["/assets/trustbit_ethanol/js/ts_login_banner.js?v=1"]
 app_include_js = [
 	"/assets/trustbit_ethanol/js/po_payment_amount_gst.js?v=5",
 	"/assets/trustbit_ethanol/js/ts_executive_override.js",

@@ -15,3 +15,49 @@ section.for-login::after {
 [data-theme="dark"] section.for-login::after {
     color: #6b7280;
 }
+
+/* Announcement banner above the login card (injected by ts_login_banner.js).
+   NOTE: this stylesheet is a web_include_css — it loads on EVERY website/portal
+   page, so every rule below stays scoped under .ts-login-banner. */
+.ts-login-banner {
+    max-width: 400px;
+    margin: 24px auto 0;
+    padding: 14px 16px;
+    text-align: left;
+    background: #fff;
+    border: 1px solid var(--border-color, #e2e2e2);
+    border-left: 3px solid var(--blue-600, #007be0);
+    border-radius: var(--border-radius-md, 8px);
+}
+
+.ts-login-banner p { margin: 0; }
+
+.ts-login-banner .ts-lb-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color, #171717);
+}
+
+.ts-login-banner .ts-lb-body {
+    margin-top: 4px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-muted, #7c7c7c);
+}
+
+.ts-login-banner .ts-lb-foot {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color, #ededed);
+    font-size: 12px;
+    color: var(--text-muted, #7c7c7c);
+}
+
+.ts-login-banner .ts-lb-foot a {
+    font-weight: 500;
+    color: var(--blue-600, #007be0);
+}
+
+[data-theme="dark"] .ts-login-banner {
+    background: var(--card-bg, #1c2126);
+}
