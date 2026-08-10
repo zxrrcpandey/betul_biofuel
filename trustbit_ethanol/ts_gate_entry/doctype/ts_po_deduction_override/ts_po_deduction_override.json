@@ -17,11 +17,10 @@
    "fieldname": "deduction_code",
    "fieldtype": "Data",
    "label": "Code",
-   "reqd": 1,
    "in_list_view": 1,
    "columns": 2,
    "read_only": 1,
-   "description": "Mirrored from TS Deduction Master Row when PO is created"
+   "description": "Mirrored from TS Deduction Master Row for template rows; blank for manually-added ad-hoc rows (use Label as the name)."
   },
   {
    "fieldname": "deduction_label",
@@ -29,7 +28,7 @@
    "label": "Label",
    "in_list_view": 1,
    "columns": 3,
-   "read_only": 1
+   "description": "Mirrored for template rows; type a name here for manually-added ad-hoc extra terms."
   },
   {
    "fieldname": "default_rate",

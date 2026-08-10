@@ -55,9 +55,27 @@ they can read default_rate but cannot type into override_rate.
 """
 
 import frappe
+from frappe.permissions import add_permission
 
 
 _ROLE_NAME = "Grain Manager"
+
+# Grain Manager write/create grant on TS Deduction Master (BBF request, Jun 2026).
+# Idempotent Custom DocPerm UPSERT, re-asserted on every migrate — mirrors
+# ts_stock_recon_perms.py (Lesson 292). Tuple: (doctype, permlevel, {ptype: 1}).
+#   TS Deduction Master @ permlevel 0 : gains write + create (read already 1)
+# NB: NO grant is attempted on the CHILD doctype TS PO Deduction Override —
+# Frappe resolves child-row permlevel access through the PARENT's permissions
+# (document.py get_permissions(): istable ⇒ frappe.get_meta(parenttype).permissions),
+# so a permission block on an istable doctype is never consulted. The override_*
+# columns are therefore gated by Purchase Order's permlevel-1 roster (Purchase
+# Manager only). Making them Grain-Manager-writable would require a PO permlevel-1
+# Custom DocPerm — deliberately NOT done here, because PO level 1 also carries the
+# budget control-plane fields ts_budget_override_ref / ts_budget_breach_flag (L162);
+# that widening needs its own reviewed change.
+_GRAIN_DEDUCTION_GRANTS = [
+	("TS Deduction Master", 0, {"read": 1, "write": 1, "create": 1}),
+]
 
 
 def seed_grain_manager_role():
@@ -85,6 +103,72 @@ def seed_grain_manager_role():
 			message=f"seed_grain_manager_role failure: {e}",
 			title="seed_po_deduction_terms",
 		)
+
+
+def _grant_grain_manager_deduction_perms():
+	"""after_migrate — UPSERT Grain Manager perms on TS Deduction Master.
+
+	Single-run deterministic + idempotent. The Grain Manager Custom DocPerm row
+	normally already exists (read-only) on this all-permlevel-0 master; we just
+	drive write + create to 1 with a set_value BY NAME. On a hypothetical fresh
+	site we add_permission first (setup_custom_perms copies Standard->Custom incl.
+	the Grain Manager read-only row — Lesson 169), then RE-FETCH the name (the add
+	may no-op when the row was just copied) before setting the flags. Skips
+	silently if the role is absent on this site (cross-server role gap, Lesson 290).
+	"""
+	if not frappe.db.exists("Role", _ROLE_NAME):
+		return
+
+	touched = set()
+	for doctype, permlevel, perms in _GRAIN_DEDUCTION_GRANTS:
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		row = {"parent": doctype, "role": _ROLE_NAME, "permlevel": permlevel, "if_owner": 0}
+		try:
+			name = frappe.db.get_value("Custom DocPerm", row)
+			if not name:
+				add_permission(doctype, _ROLE_NAME, permlevel)
+				name = frappe.db.get_value("Custom DocPerm", row)
+			if not name:
+				continue
+			current = (
+				frappe.db.get_value("Custom DocPerm", name, list(perms.keys()), as_dict=True)
+				or {}
+			)
+			to_set = {p: v for p, v in perms.items() if int(current.get(p) or 0) != v}
+			if to_set:
+				frappe.db.set_value("Custom DocPerm", name, to_set)
+				touched.add(doctype)
+		except Exception as e:
+			frappe.log_error(
+				message=f"_grant_grain_manager_deduction_perms failure on {doctype}: {e}",
+				title="seed_po_deduction_terms",
+			)
+
+	for doctype in touched:
+		try:
+			from frappe.core.doctype.doctype.doctype import (
+				validate_permissions_for_doctype,
+			)
+
+			validate_permissions_for_doctype(doctype)
+		except Exception as e:
+			frappe.log_error(
+				message=f"_grant_grain_manager_deduction_perms validate failure on {doctype}: {e}",
+				title="seed_po_deduction_terms",
+			)
+		finally:
+			# Always invalidate meta cache — the Custom DocPerm write above is already
+			# committed, so skipping this on a validate failure would leave the grant
+			# live in DB but invisible until an unrelated cache clear (supervisor
+			# restart does NOT flush doctype meta).
+			try:
+				frappe.clear_cache(doctype=doctype)
+			except Exception as e:
+				frappe.log_error(
+					message=f"_grant_grain_manager_deduction_perms cache failure on {doctype}: {e}",
+					title="seed_po_deduction_terms",
+				)
 
 
 def seed_po_deduction_terms():
@@ -213,3 +297,6 @@ def seed_po_deduction_terms():
 			)
 
 	frappe.clear_cache(doctype="Purchase Order")
+
+	# Step 3: grant Grain Manager write/create on the deduction doctypes.
+	_grant_grain_manager_deduction_perms()
