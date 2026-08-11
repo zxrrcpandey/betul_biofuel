@@ -168,6 +168,10 @@ def _visible(doctype, alias, names, extra_cols=""):
 
 	if not names:
 		return []
+	# A hop the user cannot read AT ALL renders blank (blank-leg semantics)
+	# instead of build_match_conditions throwing and killing the whole report.
+	if not frappe.has_permission(doctype, "read"):
+		return []
 	conds = [f"{alias}.docstatus = 1"]
 	conf = confidential_sql_clause(alias, doctype=doctype)
 	if conf:
