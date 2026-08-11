@@ -564,12 +564,22 @@ function _um_reset_password(page, email) {
 			frappe.xcall("trustbit_ethanol.ts_gate_entry.ts_user_management.reset_password", {
 				email: email,
 			}).then((result) => {
-				if (result.method === "link") {
+				if (result.reset_link) {
+					// Server always returns the link now; the email (when an
+					// outgoing account exists) is best-effort delivery of the
+					// SAME link — tell the IT Head which of the two happened.
+					let tail = "";
+					if (result.email_attempted) {
+						tail = result.email_sent
+							? `<p class="text-muted">${__("The same link was also emailed to the user.")}</p>`
+							: `<p class="um-warn">${__("Emailing the link failed (outbound email is not working) — share this link with the user directly.")}</p>`;
+					}
 					_um_show_link_dialog({
 						title: __("Password Reset"),
 						lead: `<p>${__("Send this one-time link to")} <b>${frappe.utils.escape_html(email)}</b>. ${__("Opening it takes them straight to a page where they set their own password — there is no temporary password to explain.")}</p>`,
 						link: result.reset_link,
 						expires_in: result.expires_in,
+						tail: tail,
 					});
 				} else {
 					frappe.msgprint({

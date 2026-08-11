@@ -755,7 +755,9 @@ def reset_own_password(current_password, new_password):
 
 @frappe.whitelist(methods=["POST"])
 def reset_password(email):
-    """Send password reset email to user."""
+    """Hand the IT Head a one-time reset link, and ALSO email the same link
+    when outbound mail is configured. The link is unconditional; the email is
+    best-effort delivery of it, never a gate."""
     _require_post()
     _check_it_head()
     _check_not_self(email)
@@ -764,68 +766,84 @@ def reset_password(email):
     if not frappe.db.exists("User", email):
         frappe.throw(_("User '{0}' does not exist.").format(frappe.utils.escape_html(email)))
 
-    # A reset can only be DELIVERED by email if there is a default outgoing
-    # account. `enable_outgoing` alone is not enough — frappe.sendmail resolves
-    # the sender through the DEFAULT outgoing account, so an enabled-but-not-
-    # default account still cannot send.
-    has_email_account = frappe.db.exists(
-        "Email Account", {"enable_outgoing": 1, "default_outgoing": 1}
-    )
-    if not has_email_account:
-        # No outgoing mail: hand the IT Head a one-time RESET LINK to pass on,
-        # rather than a temporary password.
-        #
-        # A temporary password has to be explained ("this is temporary, please
-        # change it"), and nothing in Frappe enforces that — there is no per-user
-        # "must reset" flag it honours. The only forced-reset redirect lives in
-        # LoginManager.login() (auth.py:137) and fires solely from the GLOBAL
-        # System Setting, before post_login(), so no hook of ours can reach it.
-        # `password_expired=True` sidesteps the whole problem: the link lands the
-        # user on /update-password with "The password of your account has
-        # expired." and the old-password field hidden. Nothing to explain, and no
-        # temporary credential left in a chat thread.
-        original_user = frappe.session.user
-        frappe.set_user("Administrator")
-        try:
-            user = frappe.get_doc("User", email)
-            link = user.reset_password(send_email=False, password_expired=True)
-            frappe.db.commit()
-        finally:
-            frappe.set_user(original_user)
-
-        _audit_log(email, "Password reset link generated (shared by IT Head)")
-        frappe.db.commit()
-        return {
-            "user": email,
-            "method": "link",
-            "reset_link": link,
-            "expires_in": _reset_link_expiry_label(),
-        }
-
-    # Delegate to Frappe's own reset. The hand-rolled version this replaces built
-    # its own /update-password?key=<random> link but never STORED the key, so the
-    # link was rejected 100% of the time and the old password stayed valid.
-    # User.reset_password() stores sha256(key) plus the generation timestamp that
-    # the expiry check needs, and mails the link itself.
+    # Mint the link ONCE — every User.reset_password() call rotates the stored
+    # key, so a second mint (e.g. send_email=True later) would kill the link
+    # already shown to the IT Head. `password_expired=True` lands the user on
+    # /update-password with the old-password field hidden: nothing to explain,
+    # no temporary credential left in a chat thread (there is no per-user
+    # "must reset" flag in Frappe this could use instead — the only forced-reset
+    # redirect fires from the GLOBAL System Setting in LoginManager.login()).
     original_user = frappe.session.user
     frappe.set_user("Administrator")
     try:
         user = frappe.get_doc("User", email)
-        user.reset_password(send_email=True)
+        link = user.reset_password(send_email=False, password_expired=True)
         frappe.db.commit()
     finally:
         frappe.set_user(original_user)
 
-    # MUST start with the same wording as LINK_AUDIT_PREFIX. _link_issuer()
-    # matches that prefix to name the issuer when the link is consumed; a
-    # different string here (it used to read "Password reset email sent") finds
-    # no match and makes the Activity entry + bell affirmatively state
-    # "Self-service password reset link" for a reset the IT Head initiated —
-    # the exact false-audit-statement the strict gap check exists to prevent.
-    # Latent while outbound mail is dead; live the moment M365 is restored.
-    _audit_log(email, "Password reset link generated (emailed to the user)")
+    # Audit BEFORE the send attempt, and it MUST start with LINK_AUDIT_PREFIX's
+    # wording: _link_issuer() attributes a consumed link to the IT Head via this
+    # Comment's sub-second gap from the key mint (120s tolerance). A slow SMTP
+    # failure below would push a later Comment past that window and make the
+    # Activity entry affirmatively claim "Self-service" for an IT-Head reset.
+    _audit_log(email, "Password reset link generated (shared by IT Head)")
     frappe.db.commit()
-    return {"user": email, "method": "email_sent"}
+
+    # Best-effort email of the SAME link. Only a default outgoing account can
+    # deliver (frappe.sendmail resolves the sender through it; enabled-but-not-
+    # default cannot send). password_reset_mail() sends synchronously (now=True)
+    # and RAISES on failure — e.g. an OAuth-dead account — so it is contained
+    # here: the IT Head keeps the on-screen link no matter what mail does.
+    # The follow-up audit strings must NOT start with LINK_AUDIT_PREFIX's
+    # wording or the newest-row LIKE match would steal attribution from the
+    # Comment written above.
+    email_sent = False
+    email_attempted = False
+    if frappe.db.exists("Email Account", {"enable_outgoing": 1, "default_outgoing": 1}):
+        email_attempted = True
+        # Elevated DELIBERATELY (try/finally, L176): send_login_mail derives the
+        # From identity from the SESSION user (STANDARD_USERS check in user.py) —
+        # sent as the IT Head, M365 rejects the send-as once mail is restored;
+        # as Administrator the sender stays the default outgoing account.
+        # No rollback in the except: SendMailContext commits the Email Queue row
+        # itself before the exception reaches us (status "Not Sent", retry+1), so
+        # the scheduler may still retry it up to 3 times — email_sent=False means
+        # "immediate send failed", not "will never be delivered".
+        frappe.set_user("Administrator")
+        try:
+            user.password_reset_mail(link)
+            email_sent = True
+        except Exception as e:
+            frappe.clear_messages()  # L276: a caught throw still leaks its message
+            # cstr(e) only — NEVER title-only log_error and NEVER
+            # get_traceback(with_context=True) here: this is the M365 OAuth
+            # subsystem, whose frame-variable dumps leak the client_secret
+            # into Error Log (the standing P1).
+            frappe.log_error(
+                title="User Management: reset link email failed",
+                # `or` fallback matters: an empty message makes log_error fall
+                # back to the with_context frame dump — the leak path itself.
+                message=frappe.utils.cstr(e) or f"{type(e).__name__}: (no message)",
+            )
+        finally:
+            frappe.set_user(original_user)
+        # Outside the elevation: _audit_log stamps the Comment owner from the
+        # session actor — it must read the IT Head, not Administrator.
+        if email_sent:
+            _audit_log(email, "Reset link also emailed to the user")
+        else:
+            _audit_log(email, "Reset link email failed (outbound mail error); link shared by IT Head")
+        frappe.db.commit()
+
+    return {
+        "user": email,
+        "method": "link",
+        "reset_link": link,
+        "expires_in": _reset_link_expiry_label(),
+        "email_attempted": email_attempted,
+        "email_sent": email_sent,
+    }
 
 
 @frappe.whitelist()
