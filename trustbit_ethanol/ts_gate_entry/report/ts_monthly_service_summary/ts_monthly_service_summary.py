@@ -23,6 +23,9 @@ import frappe
 from frappe import _
 from frappe.utils import flt, getdate, strip_html
 
+from trustbit_ethanol.ts_gate_entry.report import report_utils as ru
+
+
 ROW_LIMIT = 5000
 IN_CHUNK = 1000
 
@@ -76,48 +79,10 @@ def get_columns():
 	]
 
 
-def _chunked(names):
-	names = sorted(names)
-	for i in range(0, len(names), IN_CHUNK):
-		yield tuple(names[i:i + IN_CHUNK])
-
-
-def _hop_readable(doctype):
-	return frappe.has_permission(doctype, "read")
-
-
-def _conf_match(doctype, alias):
-	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
-
-	conds = []
-	conf = confidential_sql_clause(alias, doctype=doctype)
-	if conf:
-		conds.append(conf.strip()[4:].strip())
-	match = frappe.build_match_conditions(doctype)
-	if match:
-		conds.append("(%s)" % match.replace(f"`tab{doctype}`", alias))
-	return conds
-
-
-def _contact_blob(row):
-	parts = []
-	addr = row.get("address_display") or ""
-	if addr:
-		addr = addr.replace("<br>", ", ").replace("<br/>", ", ").replace("<br />", ", ")
-		addr = " ".join(strip_html(addr).split()).strip(" ,")
-		if addr:
-			parts.append(addr)
-	for key in ("contact_display", "contact_mobile", "contact_email"):
-		val = (row.get(key) or "").strip()
-		if val and val not in parts:
-			parts.append(val)
-	return " · ".join(parts)
-
-
 def get_data(filters):
 	params = {}
 	ds = "mr.docstatus IN (0, 1)" if filters.get("include_draft") else "mr.docstatus = 1"
-	conds = [ds, "mr.material_request_type = 'Service Request'"] + _conf_match("Material Request", "mr")
+	conds = [ds, "mr.material_request_type = 'Service Request'"] + ru.conf_match_clauses("Material Request", "mr")
 	if filters.get("from_date"):
 		conds.append("mr.transaction_date >= %(from_date)s")
 		params["from_date"] = getdate(filters["from_date"])
@@ -146,8 +111,8 @@ def get_data(filters):
 
 	mr_names = {a["mr_no"] for a in anchors}
 	po_of_mr, po_meta = {}, {}
-	if mr_names and _hop_readable("Purchase Order"):
-		po_conds = ["po.docstatus = 1", "IFNULL(poi.material_request, '') != ''"] + _conf_match("Purchase Order", "po")
+	if mr_names and ru.hop_readable("Purchase Order"):
+		po_conds = ["po.docstatus = 1", "IFNULL(poi.material_request, '') != ''"] + ru.conf_match_clauses("Purchase Order", "po")
 		po_params = {}
 		if filters.get("supplier"):
 			po_conds.append("po.supplier = %(supplier)s")
@@ -155,7 +120,7 @@ def get_data(filters):
 		if filters.get("cost_center"):
 			po_conds.append("po.cost_center = %(cost_center)s")
 			po_params["cost_center"] = filters["cost_center"]
-		for chunk in _chunked(mr_names):
+		for chunk in ru.chunked(mr_names):
 			for x in frappe.db.sql(
 				f"""SELECT DISTINCT poi.material_request AS mr, po.name,
 					po.supplier_name, po.cost_center, po.transaction_date AS wo_date,
@@ -175,7 +140,7 @@ def get_data(filters):
 	# per (po, item_code): ordered from PO items, received from PR items
 	ordered, po_uom = {}, {}
 	if po_names:
-		for chunk in _chunked(po_names):
+		for chunk in ru.chunked(po_names):
 			for x in frappe.db.sql(
 				"""SELECT parent, item_code, IFNULL(SUM(stock_qty), 0) AS q, MAX(stock_uom) AS uom
 				FROM `tabPurchase Order Item` WHERE parent IN %(names)s
@@ -186,9 +151,9 @@ def get_data(filters):
 				ordered[(x["parent"], x["item_code"])] = flt(x["q"])
 				po_uom[(x["parent"], x["item_code"])] = x["uom"]
 	received = {}
-	if po_names and _hop_readable("Purchase Receipt"):
-		pr_conds = ["pr.docstatus = 1", "IFNULL(pri.purchase_order, '') != ''"] + _conf_match("Purchase Receipt", "pr")
-		for chunk in _chunked(po_names):
+	if po_names and ru.hop_readable("Purchase Receipt"):
+		pr_conds = ["pr.docstatus = 1", "IFNULL(pri.purchase_order, '') != ''"] + ru.conf_match_clauses("Purchase Receipt", "pr")
+		for chunk in ru.chunked(po_names):
 			for x in frappe.db.sql(
 				f"""SELECT pri.purchase_order AS po, pri.item_code, IFNULL(SUM(pri.stock_qty), 0) AS q
 				FROM `tabPurchase Receipt Item` pri
@@ -200,7 +165,7 @@ def get_data(filters):
 			):
 				received[(x["po"], x["item_code"])] = flt(x["q"])
 
-	names = _fullname_map({a["mr_owner"] for a in anchors})
+	names = ru.fullname_map({a["mr_owner"] for a in anchors})
 
 	supplier_set = bool(filters.get("supplier")) or bool(filters.get("cost_center"))
 	rows = []
@@ -222,7 +187,7 @@ def get_data(filters):
 				"workorder_id": po,
 				"service_request_id": a["mr_no"],
 				"supplier_name": m.get("supplier_name") or "",
-				"supplier_details": _contact_blob(m) if m else "",
+				"supplier_details": ru.contact_blob(m) if m else "",
 				"cost_center": m.get("cost_center") or "",
 				"wo_amount": flt(m.get("wo_amount")) if po else None,
 				"ordered_qty": oq,
@@ -244,22 +209,6 @@ def get_data(filters):
 	for i, r in enumerate(rows, start=1):
 		r["sr"] = i
 	return rows, truncated
-
-
-def _fullname_map(user_ids):
-	"""user_id -> full name, one bulk query (Lesson 168)."""
-	ids = sorted({u for u in user_ids if u})
-	if not ids:
-		return {}
-	out = {}
-	for chunk in _chunked(ids):
-		for x in frappe.db.sql(
-			"SELECT name, full_name FROM `tabUser` WHERE name IN %(ids)s",
-			{"ids": chunk},
-			as_dict=True,
-		):
-			out[x["name"]] = x["full_name"] or x["name"]
-	return out
 
 
 def _summary(rows, truncated):

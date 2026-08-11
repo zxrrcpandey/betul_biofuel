@@ -38,6 +38,8 @@ import frappe
 from frappe import _
 from frappe.utils import flt, getdate, strip_html
 
+from trustbit_ethanol.ts_gate_entry.report import report_utils as ru
+
 ROW_LIMIT = 5000
 _GST_KINDS = ("cgst", "sgst", "igst")
 
@@ -88,18 +90,9 @@ def get_columns():
 
 
 def get_data(filters):
-	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
-
 	params = {"limit": ROW_LIMIT + 1}
 	clauses = ["po.docstatus IN (0, 1)"] if filters.get("include_draft") else ["po.docstatus = 1"]
-
-	conf = confidential_sql_clause("po")
-	if conf:
-		clauses.append(conf.strip()[4:].strip())
-
-	match_cond = frappe.build_match_conditions("Purchase Order")
-	if match_cond:
-		clauses.append("(%s)" % match_cond.replace("`tabPurchase Order`", "po"))
+	clauses += ru.conf_match_clauses("Purchase Order", "po")
 
 	if filters.get("from_date"):
 		clauses.append("po.transaction_date >= %(from_date)s")
@@ -278,31 +271,23 @@ def _gst_by_item(po_names):
 # ------------------------------------------------------------------- helpers
 
 def _mr_owner_map(mr_names):
-	mrs = {m for m in mr_names if m}
-	if not mrs:
-		return {}
-	rows = frappe.db.sql(
-		"SELECT name, owner FROM `tabMaterial Request` WHERE name IN %(m)s",
-		{"m": tuple(mrs)}, as_dict=True,
-	)
+	"""mr_name -> owner, via the shared hop helper.
+
+	Was a bare `SELECT ... FROM tabMaterial Request WHERE name IN (...)` with
+	NO confidentiality clause and NO match conditions — a confidential MR's
+	creator name reached any viewer of this report. report_utils.visible_docs
+	applies the hop-readable gate, the confidentiality clause and the user's
+	match conditions; an MR the caller may not see simply drops out and its
+	MR Creator cell renders blank (blank-leg semantics).
+	"""
+	rows = ru.visible_docs("Material Request", "mr", {m for m in mr_names if m},
+	                       extra_cols=", mr.owner", docstatus=(0, 1))
 	return {r["name"]: r["owner"] for r in rows}
 
 
 def _fullname_map(user_ids):
-	"""user_id -> full name, in one query.
-
-	Deliberately raw SQL: operators frequently lack `User` read permission
-	(Lesson 168), and a creator display name is not confidential — it is
-	already surfaced on the PO/MR form itself.
-	"""
-	ids = sorted({u for u in user_ids if u})
-	if not ids:
-		return {}
-	rows = frappe.db.sql(
-		"SELECT name, full_name FROM `tabUser` WHERE name IN %(ids)s",
-		{"ids": tuple(ids)}, as_dict=True,
-	)
-	return {r["name"]: (r["full_name"] or r["name"]) for r in rows}
+	"""user_id -> full name (shared helper; see report_utils rule 4)."""
+	return ru.fullname_map(user_ids)
 
 
 def _summary(data, truncated):

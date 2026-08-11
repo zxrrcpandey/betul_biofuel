@@ -29,6 +29,9 @@ import frappe
 from frappe import _
 from frappe.utils import flt, getdate, strip_html
 
+from trustbit_ethanol.ts_gate_entry.report import report_utils as ru
+
+
 ROW_LIMIT = 5000
 IN_CHUNK = 1000
 
@@ -86,8 +89,6 @@ def get_columns(rows=None):
 
 
 def get_data(filters):
-	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
-
 	params = {
 		"from_date": getdate(filters["from_date"]),
 		"to_date": getdate(filters["to_date"]),
@@ -96,13 +97,7 @@ def get_data(filters):
 	clauses = [
 		"pi.docstatus = 1",
 		"pi.posting_date BETWEEN %(from_date)s AND %(to_date)s",
-	]
-	conf_pi = confidential_sql_clause("pi", doctype="Purchase Invoice")
-	if conf_pi:
-		clauses.append(conf_pi.strip()[4:].strip())
-	match_pi = frappe.build_match_conditions("Purchase Invoice")
-	if match_pi:
-		clauses.append("(%s)" % match_pi.replace("`tabPurchase Invoice`", "pi"))
+	] + ru.conf_match_clauses("Purchase Invoice", "pi")
 
 	if filters.get("company"):
 		clauses.append("pi.company = %(company)s")
@@ -154,42 +149,6 @@ def get_data(filters):
 	return rows, truncated
 
 
-def _chunked(names):
-	names = sorted(names)
-	for i in range(0, len(names), IN_CHUNK):
-		yield tuple(names[i:i + IN_CHUNK])
-
-
-def _visible(doctype, alias, names, extra_cols=""):
-	"""Names of submitted `doctype` rows this user may see, with optional extra
-	columns. Applies BOTH the confidentiality clause and match conditions,
-	alias-repointed. Empty input -> empty output (never emits IN ())."""
-	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
-
-	if not names:
-		return []
-	# A hop the user cannot read AT ALL renders blank (blank-leg semantics)
-	# instead of build_match_conditions throwing and killing the whole report.
-	if not frappe.has_permission(doctype, "read"):
-		return []
-	conds = [f"{alias}.docstatus = 1"]
-	conf = confidential_sql_clause(alias, doctype=doctype)
-	if conf:
-		conds.append(conf.strip()[4:].strip())
-	match = frappe.build_match_conditions(doctype)
-	if match:
-		conds.append("(%s)" % match.replace(f"`tab{doctype}`", alias))
-	out = []
-	for chunk in _chunked(names):
-		out += frappe.db.sql(
-			f"""SELECT {alias}.name{extra_cols} FROM `tab{doctype}` {alias}
-			WHERE {alias}.name IN %(names)s AND {" AND ".join(conds)}""",
-			{"names": chunk},
-			as_dict=True,
-		)
-	return out
-
-
 def _attach_chain(rows):
 	"""Backward chain: PI items -> PO/PR sets -> visible legs -> MR set."""
 	if not rows:
@@ -197,7 +156,7 @@ def _attach_chain(rows):
 	pi_names = [r["pi_no"] for r in rows]
 
 	po_of_pi, pr_of_pi = {}, {}
-	for chunk in _chunked(pi_names):
+	for chunk in ru.chunked(pi_names):
 		for x in frappe.db.sql(
 			"""SELECT parent, purchase_order, purchase_receipt
 			FROM `tabPurchase Invoice Item`
@@ -215,15 +174,15 @@ def _attach_chain(rows):
 	all_prs = set().union(*pr_of_pi.values()) if pr_of_pi else set()
 
 	# advance_paid is denominated in the PO's PARTY ACCOUNT currency.
-	po_rows = _visible("Purchase Order", "po", all_pos,
-	                   ", po.advance_paid, po.party_account_currency")
+	po_rows = ru.visible_docs("Purchase Order", "po", all_pos,
+	                        extra_cols=", po.advance_paid, po.party_account_currency")
 	visible_po = {x["name"]: x for x in po_rows}
-	visible_pr = {x["name"] for x in _visible("Purchase Receipt", "pr", all_prs)}
+	visible_pr = {x["name"] for x in ru.visible_docs("Purchase Receipt", "pr", all_prs)}
 
 	# PO -> MR, doc-level, over the VISIBLE POs only.
 	mr_of_po = {}
 	if visible_po:
-		for chunk in _chunked(visible_po.keys()):
+		for chunk in ru.chunked(visible_po.keys()):
 			for x in frappe.db.sql(
 				"""SELECT poi.parent AS po, poi.material_request AS mr
 				FROM `tabPurchase Order Item` poi
@@ -234,7 +193,7 @@ def _attach_chain(rows):
 			):
 				mr_of_po.setdefault(x.po, set()).add(x.mr)
 	all_mrs = set().union(*mr_of_po.values()) if mr_of_po else set()
-	visible_mr = {x["name"] for x in _visible("Material Request", "mr", all_mrs)}
+	visible_mr = {x["name"] for x in ru.visible_docs("Material Request", "mr", all_mrs)}
 
 	for r in rows:
 		pos = sorted(p for p in po_of_pi.get(r["pi_no"], ()) if p in visible_po)
@@ -266,7 +225,7 @@ def _attach_supplier_names(rows):
 			r["supplier"] = ""
 		return
 	names = {}
-	for chunk in _chunked(ids):
+	for chunk in ru.chunked(ids):
 		for x in frappe.db.sql(
 			"SELECT name, supplier_name FROM `tabSupplier` WHERE name IN %(ids)s",
 			{"ids": chunk},
@@ -293,7 +252,7 @@ def _summary_and_chart(rows, truncated):
 		for p in r.get("_po_set") or ():
 			po_advance.setdefault(p, 0.0)
 	if po_advance:
-		for chunk in _chunked(po_advance.keys()):
+		for chunk in ru.chunked(po_advance.keys()):
 			for x in frappe.db.sql(
 				"SELECT name, advance_paid FROM `tabPurchase Order` WHERE name IN %(n)s",
 				{"n": chunk}, as_dict=True,

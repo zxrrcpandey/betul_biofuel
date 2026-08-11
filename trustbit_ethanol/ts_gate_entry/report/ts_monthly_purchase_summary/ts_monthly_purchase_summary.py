@@ -34,6 +34,9 @@ import frappe
 from frappe import _
 from frappe.utils import add_months, flt, getdate
 
+from trustbit_ethanol.ts_gate_entry.report import report_utils as ru
+
+
 ROW_LIMIT = 5000
 
 
@@ -145,16 +148,9 @@ def _allowed_by_cc_month(filters, months):
 
 def _spend_by_cc_month(filters, months):
 	"""(cc -> [12 purchase values], cc -> [12 po-name-sets], unattributed_total)."""
-	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
-
 	conds = ["po.docstatus = 1", "po.company = %(company)s",
 	         "po.transaction_date >= %(fy_start)s", "po.transaction_date <= %(fy_end)s"]
-	conf = confidential_sql_clause("po")
-	if conf:
-		conds.append(conf.strip()[4:].strip())
-	match = frappe.build_match_conditions("Purchase Order")
-	if match:
-		conds.append("(%s)" % match.replace("`tabPurchase Order`", "po"))
+	conds += ru.conf_match_clauses("Purchase Order", "po")
 
 	rows = frappe.db.sql(
 		f"""SELECT COALESCE(NULLIF(poi.cost_center, ''), NULLIF(po.cost_center, '')) AS cc,

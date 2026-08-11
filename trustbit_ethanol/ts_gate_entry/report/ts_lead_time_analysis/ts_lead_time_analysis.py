@@ -30,6 +30,9 @@ import frappe
 from frappe import _
 from frappe.utils import getdate, strip_html
 
+from trustbit_ethanol.ts_gate_entry.report import report_utils as ru
+
+
 ROW_LIMIT = 5000
 IN_CHUNK = 1000
 
@@ -88,32 +91,10 @@ def get_columns():
 	]
 
 
-def _chunked(names):
-	names = sorted(names)
-	for i in range(0, len(names), IN_CHUNK):
-		yield tuple(names[i:i + IN_CHUNK])
-
-
-def _hop_readable(doctype):
-	"""A chain hop the user cannot read AT ALL renders blank (the plan's
-	blank-leg semantics) instead of build_match_conditions throwing
-	'No permission to read <doctype>' and killing the whole report — e.g. a
-	Purchase User without Purchase Invoice read must still get MR/PO/PR legs."""
-	return frappe.has_permission(doctype, "read")
-
-
 def _clauses(doctype, alias, extra=None):
-	"""Standard clause list for one hop: docstatus, confidentiality, match.
-	Callers must gate on _hop_readable() first."""
-	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
-
-	conds = [f"{alias}.docstatus = 1"]
-	conf = confidential_sql_clause(alias, doctype=doctype)
-	if conf:
-		conds.append(conf.strip()[4:].strip())
-	match = frappe.build_match_conditions(doctype)
-	if match:
-		conds.append("(%s)" % match.replace(f"`tab{doctype}`", alias))
+	"""Submitted-only clause list for one hop, via the shared helper.
+	Callers MUST gate on ru.hop_readable() first (report_utils rule 1)."""
+	conds = [f"{alias}.docstatus = 1"] + ru.conf_match_clauses(doctype, alias)
 	if extra:
 		conds += extra
 	return conds
@@ -158,13 +139,13 @@ def get_data(filters):
 	# MR -> PO
 	po_of_mr = {}
 	po_meta = {}
-	if mr_names and _hop_readable("Purchase Order"):
+	if mr_names and ru.hop_readable("Purchase Order"):
 		po_conds = _clauses("Purchase Order", "po", ["IFNULL(poi.material_request, '') != ''"])
 		po_params = {}
 		if filters.get("supplier"):
 			po_conds.append("po.supplier = %(supplier)s")
 			po_params["supplier"] = filters["supplier"]
-		for chunk in _chunked(mr_names):
+		for chunk in ru.chunked(mr_names):
 			for x in frappe.db.sql(
 				f"""SELECT DISTINCT poi.material_request AS mr, po.name,
 					po.transaction_date AS po_date, DATE(po.ts_approved_date) AS po_approved_date
@@ -181,9 +162,9 @@ def get_data(filters):
 	# PO -> PR
 	pr_of_po = {}
 	pr_meta = {}
-	if po_names and _hop_readable("Purchase Receipt"):
+	if po_names and ru.hop_readable("Purchase Receipt"):
 		pr_conds = _clauses("Purchase Receipt", "pr", ["IFNULL(pri.purchase_order, '') != ''"])
-		for chunk in _chunked(po_names):
+		for chunk in ru.chunked(po_names):
 			for x in frappe.db.sql(
 				f"""SELECT DISTINCT pri.purchase_order AS po, pr.name, pr.posting_date AS pr_date
 				FROM `tabPurchase Receipt Item` pri
@@ -199,10 +180,10 @@ def get_data(filters):
 	# PR -> PI (receipt-linked)
 	pi_of_pr = {}
 	pi_meta = {}
-	pi_ok = _hop_readable("Purchase Invoice")
+	pi_ok = ru.hop_readable("Purchase Invoice")
 	if pr_names and pi_ok:
 		pi_conds = _clauses("Purchase Invoice", "pi", ["IFNULL(pii.purchase_receipt, '') != ''"])
-		for chunk in _chunked(pr_names):
+		for chunk in ru.chunked(pr_names):
 			for x in frappe.db.sql(
 				f"""SELECT DISTINCT pii.purchase_receipt AS pr, pi.name, pi.posting_date AS pi_date
 				FROM `tabPurchase Invoice Item` pii
@@ -218,7 +199,7 @@ def get_data(filters):
 	pi_of_po = {}
 	if po_names and pi_ok:
 		pi_conds = _clauses("Purchase Invoice", "pi", ["IFNULL(pii.purchase_order, '') != ''"])
-		for chunk in _chunked(po_names):
+		for chunk in ru.chunked(po_names):
 			for x in frappe.db.sql(
 				f"""SELECT DISTINCT pii.purchase_order AS po, pi.name, pi.posting_date AS pi_date
 				FROM `tabPurchase Invoice Item` pii

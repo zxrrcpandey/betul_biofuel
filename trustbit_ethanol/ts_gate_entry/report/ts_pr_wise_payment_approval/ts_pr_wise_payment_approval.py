@@ -25,6 +25,9 @@ import frappe
 from frappe import _
 from frappe.utils import flt, getdate, strip_html
 
+from trustbit_ethanol.ts_gate_entry.report import report_utils as ru
+
+
 ROW_LIMIT = 5000
 IN_CHUNK = 1000
 SEP = ", "
@@ -87,32 +90,9 @@ def get_columns(rows=None):
 	]
 
 
-def _chunked(names):
-	names = sorted(names)
-	for i in range(0, len(names), IN_CHUNK):
-		yield tuple(names[i:i + IN_CHUNK])
-
-
-def _hop_readable(doctype):
-	return frappe.has_permission(doctype, "read")
-
-
-def _conf_match(doctype, alias):
-	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
-
-	conds = []
-	conf = confidential_sql_clause(alias, doctype=doctype)
-	if conf:
-		conds.append(conf.strip()[4:].strip())
-	match = frappe.build_match_conditions(doctype)
-	if match:
-		conds.append("(%s)" % match.replace(f"`tab{doctype}`", alias))
-	return conds
-
-
 def get_data(filters):
 	params = {}
-	conds = ["po.docstatus = 1"] + _conf_match("Purchase Order", "po")
+	conds = ["po.docstatus = 1"] + ru.conf_match_clauses("Purchase Order", "po")
 	if filters.get("from_date"):
 		conds.append("po.transaction_date >= %(from_date)s")
 		params["from_date"] = getdate(filters["from_date"])
@@ -207,11 +187,11 @@ def get_data(filters):
 
 def _pi_legs(po_names):
 	"""po -> [PI dicts], doc-level DISTINCT, submitted + visible only."""
-	if not po_names or not _hop_readable("Purchase Invoice"):
+	if not po_names or not ru.hop_readable("Purchase Invoice"):
 		return {}
-	conds = ["pi.docstatus = 1"] + _conf_match("Purchase Invoice", "pi")
+	conds = ["pi.docstatus = 1"] + ru.conf_match_clauses("Purchase Invoice", "pi")
 	out = {}
-	for chunk in _chunked(po_names):
+	for chunk in ru.chunked(po_names):
 		for x in frappe.db.sql(
 			f"""SELECT DISTINCT pii.purchase_order AS po, pi.name, pi.posting_date,
 				pi.bill_no, pi.bill_date, pi.outstanding_amount
@@ -233,7 +213,7 @@ def _advance_legs(po_names):
 	if not po_names:
 		return {}
 	per_pe = {}
-	for chunk in _chunked(po_names):
+	for chunk in ru.chunked(po_names):
 		for x in frappe.db.sql(
 			"""SELECT per.reference_name AS po, pe.name, pe.posting_date,
 				pe.reference_no, SUM(per.allocated_amount) AS allocated
@@ -265,7 +245,7 @@ def _schedule_summaries(po_names):
 	if not po_names:
 		return {}
 	out = {}
-	for chunk in _chunked(po_names):
+	for chunk in ru.chunked(po_names):
 		for x in frappe.db.sql(
 			"""SELECT parent, payment_term, invoice_portion FROM `tabPayment Schedule`
 			WHERE parenttype = 'Purchase Order' AND parent IN %(names)s
@@ -284,11 +264,11 @@ def _schedule_summaries(po_names):
 
 def _mr_owner_map(mr_names):
 	mrs = {m for m in mr_names if m}
-	if not mrs or not _hop_readable("Material Request"):
+	if not mrs or not ru.hop_readable("Material Request"):
 		return {}
-	conds = ["mr.docstatus IN (0, 1)"] + _conf_match("Material Request", "mr")
+	conds = ["mr.docstatus IN (0, 1)"] + ru.conf_match_clauses("Material Request", "mr")
 	out = {}
-	for chunk in _chunked(mrs):
+	for chunk in ru.chunked(mrs):
 		for x in frappe.db.sql(
 			f"""SELECT mr.name, mr.owner FROM `tabMaterial Request` mr
 			WHERE mr.name IN %(names)s AND {" AND ".join(conds)}""",
@@ -305,7 +285,7 @@ def _fullname_map(mr_owner):
 	if not ids:
 		return {}
 	names = {}
-	for chunk in _chunked(ids):
+	for chunk in ru.chunked(ids):
 		for x in frappe.db.sql(
 			"SELECT name, full_name FROM `tabUser` WHERE name IN %(ids)s",
 			{"ids": chunk},
