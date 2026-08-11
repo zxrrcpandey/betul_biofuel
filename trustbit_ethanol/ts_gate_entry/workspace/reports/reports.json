@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\": \"hdr_main\", \"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#0f766e,#10b981);padding:24px 28px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:22px;font-weight:700;'>Reports</div><div style='font-size:13px;opacity:0.85;margin-top:4px;'>Betul Biofuel \\u2014 Department-wise Reports Hub</div></div>\", \"col\": 12}}, {\"id\": \"sp_0\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_0\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #2563eb;padding-bottom:6px;'>Purchase</div>\", \"col\": 12}}, {\"id\": \"sc_0_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"PO Approval Date Wise\", \"col\": 4}}, {\"id\": \"sc_0_1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"MR Approval Date Wise\", \"col\": 4}}, {\"id\": \"sc_0_2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Open PO Report\", \"col\": 4}}, {\"id\": \"sc_0_3\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Pending MR\", \"col\": 4}}, {\"id\": \"sc_0_4\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"MR Report\", \"col\": 4}}, {\"id\": \"sc_0_5\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"PO Report\", \"col\": 4}}, {\"id\": \"sp_1\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_1\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #ea580c;padding-bottom:6px;'>Stores & Stock</div>\", \"col\": 12}}, {\"id\": \"sc_1_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Material Issue Ledger\", \"col\": 3}}, {\"id\": \"sc_1_1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Item - Warehouse Wise\", \"col\": 3}}, {\"id\": \"sc_1_2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Stock Balance\", \"col\": 3}}, {\"id\": \"sc_1_3\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Stock Ledger FIFO\", \"col\": 3}}, {\"id\": \"sp_2\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_2\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #7c3aed;padding-bottom:6px;'>Gate & Vehicle</div>\", \"col\": 12}}, {\"id\": \"sc_2_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Live Vehicle Tracker\", \"col\": 4}}, {\"id\": \"sc_2_1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Vehicle Turnaround\", \"col\": 4}}, {\"id\": \"sp_3\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_3\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #ca8a04;padding-bottom:6px;'>Accounts</div>\", \"col\": 12}}, {\"id\": \"sc_3_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Budget Dashboard\", \"col\": 4}}]",
+ "content": "[{\"id\": \"hdr_main\", \"type\": \"header\", \"data\": {\"text\": \"<div style='background:linear-gradient(135deg,#0f766e,#10b981);padding:24px 28px;border-radius:12px;margin:-8px -8px 16px;color:#fff;'><div style='font-size:22px;font-weight:700;'>Reports</div><div style='font-size:13px;opacity:0.85;margin-top:4px;'>Betul Biofuel \\u2014 Department-wise Reports Hub</div></div>\", \"col\": 12}}, {\"id\": \"sp_0\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_0\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #2563eb;padding-bottom:6px;'>Purchase</div>\", \"col\": 12}}, {\"id\": \"sc_0_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"PO Approval Date Wise\", \"col\": 4}}, {\"id\": \"sc_0_1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"MR Approval Date Wise\", \"col\": 4}}, {\"id\": \"sc_0_2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Open PO Report\", \"col\": 4}}, {\"id\": \"sc_0_3\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Pending MR\", \"col\": 4}}, {\"id\": \"sc_0_4\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"MR Report\", \"col\": 4}}, {\"id\": \"sc_0_5\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"PO Report\", \"col\": 4}}, {\"id\": \"sp_1\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_1\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #ea580c;padding-bottom:6px;'>Stores & Stock</div>\", \"col\": 12}}, {\"id\": \"sc_1_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Material Issue Ledger\", \"col\": 3}}, {\"id\": \"sc_1_1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Item - Warehouse Wise\", \"col\": 3}}, {\"id\": \"sc_1_2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Stock Balance\", \"col\": 3}}, {\"id\": \"sc_1_3\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Stock Ledger FIFO\", \"col\": 3}}, {\"id\": \"sp_2\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_2\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #7c3aed;padding-bottom:6px;'>Gate & Vehicle</div>\", \"col\": 12}}, {\"id\": \"sc_2_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Live Vehicle Tracker\", \"col\": 4}}, {\"id\": \"sc_2_1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Vehicle Turnaround\", \"col\": 4}}, {\"id\": \"sp_3\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"dh_3\", \"type\": \"header\", \"data\": {\"text\": \"<div style='font-size:16px;font-weight:600;color:#1e293b;border-bottom:2px solid #ca8a04;padding-bottom:6px;'>Accounts</div>\", \"col\": 12}}, {\"id\": \"sc_3_0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Budget Dashboard\", \"col\": 4}}, {\"id\": \"sc_3_1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Supplier Payment Status\", \"col\": 4}}]",
  "creation": "2026-06-24 00:00:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -160,9 +160,18 @@
    "link_type": "Report",
    "onboard": 0,
    "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Supplier Payment Status",
+   "link_to": "TS Supplier Payment Status",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
   }
  ],
- "modified": "2026-08-05 00:00:00",
+ "modified": "2026-08-12 00:00:01",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "Reports",
@@ -275,6 +284,14 @@
    "format": "{} report",
    "label": "Budget Dashboard",
    "link_to": "TS Budget Dashboard",
+   "type": "Report",
+   "doc_view": "Report Builder"
+  },
+  {
+   "color": "Yellow",
+   "format": "{} report",
+   "label": "Supplier Payment Status",
+   "link_to": "TS Supplier Payment Status",
    "type": "Report",
    "doc_view": "Report Builder"
   }
