@@ -19,17 +19,24 @@ import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import (
+    add_days,
     add_to_date,
     cint,
     cstr,
     format_datetime,
+    getdate,
     now_datetime,
     time_diff_in_hours,
+    today,
 )
 
 from trustbit_ethanol.ts_gate_entry.ts_my_approvals_api import (
     ROLE_STATUS_MAP,  # REUSE — the one authoritative role → status vocabulary
     _get_user_statuses,
+)
+from trustbit_ethanol.ts_gate_entry.ts_usage_report_api import (
+    DEPT_RULES,  # REUSE — the single role → department vocabulary; never restate
+    get_usage_report,
 )
 
 KILL_SWITCH_FIELD = "ts_exec_pwa_enabled"
@@ -81,11 +88,14 @@ _LIST_FIELDS = {
 
 def flag_on(field):
     """Fail-OPEN Singles read (L171/L172): only an explicit stored 0 disables.
-    Shared by www/exec.py and ts_exec_login_alert.py."""
+    Shared by www/exec.py, ts_exec_notifications and ts_exec_login_alert.
+    Reads the INDEPENDENT TS Exec App Settings doctype — every exec-PWA
+    switch was consolidated out of TS Settings (user decision 12 Aug 2026);
+    setup_exec_pwa._migrate_switch_values copies stored values across once."""
     try:
         rows = frappe.db.sql(
             """SELECT value FROM `tabSingles`
-               WHERE doctype = 'TS Settings' AND field = %s LIMIT 1""",
+               WHERE doctype = 'TS Exec App Settings' AND field = %s LIMIT 1""",
             (field,),
         )
     except Exception:
@@ -1153,3 +1163,247 @@ def get_document(doctype, docname):
         payload["approval_log"] = []
 
     return payload
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  SYSTEM USE — department-wise usage for the Usage tab (v2.40.0).
+#
+#  A gate + a fold over ts_usage_report_api.get_usage_report — that module is
+#  NOT edited (its byte-identity proof and Usage Report Viewer audience stay
+#  intact). This endpoint exists because calling the desk endpoint from the
+#  phone would (a) bypass _guard()/the PWA kill switch, and (b) ship a ~67 KB
+#  payload whose sessions block and inactive.* arrays contain every staff
+#  e-mail address — a roster of exactly the class v2.36.0 closed. The fold
+#  returns ~2 KB and ZERO e-mail addresses, names, or document references.
+#
+#  Design contract (mockup approved 12 Aug 2026, 6 screens):
+#  - counts of RECORDED actions only, never "hours worked";
+#  - a department with people whose work IS measured but recorded nothing is
+#    "idle" (signed in) or "absent" (nobody signed in) — two different states;
+#  - a department whose people recorded nothing this screen can count in the
+#    last 90 days is "blind" (teal): the measurement gap is OURS, not theirs.
+#    Data-driven — the day Purchase Invoice joins FLOW_MAP, Accounts stops
+#    being blind with no change here;
+#  - IT / Production / Asset & Returns have no primary members (rank-1
+#    Executive absorbs their role-holders) and are returned as folded teams —
+#    multi-membership counts that overlap the primary buckets and must NEVER
+#    be summed with them.
+# ══════════════════════════════════════════════════════════════════════════
+
+USAGE_KILL_SWITCH = "ts_exec_usage_enabled"  # field on TS Exec App Settings
+
+# Audience — user decision 12 Aug 2026: "IT Head shouldn't have access to this
+# app." CEO / MD / Administrator only, the OVERVIEW_ROLES class; deliberately
+# NARROWER than the desk report's ALLOWED_ROLES (which adds Super Admin and
+# Usage Report Viewer). Owned here, never borrowed (see OVERVIEW_ROLES note).
+USAGE_ROLES = frozenset(OVERVIEW_ROLES)  # independent copy — widening
+# OVERVIEW_ROLES later must be a deliberate choice for THIS audience too
+
+_USAGE_DAYS = (7, 30, 90)
+
+# The three buckets rank-order leaves empty on prod. Folded-team stats are
+# computed for exactly these; the primary list stays single-membership so the
+# hero total keeps reconciling to the row sum.
+_FOLDED_TEAMS = ("IT", "Production", "Asset & Returns")
+
+_USAGE_DOC_KEYS = ("entries", "amendments", "since_cancelled", "decisions", "flow_actions")
+
+
+def _usage_audience_gate():
+    if not (USAGE_ROLES & set(frappe.get_roles(frappe.session.user))):
+        frappe.throw(_("Not permitted."), frappe.PermissionError)
+
+
+def usage_visible():
+    """Should the Usage TAB render for this user? Nav affordance only — the
+    endpoint re-checks everything server-side. Fails CLOSED and NEVER raises
+    (called from www/exec.py, which also renders the Guest login screen)."""
+    try:
+        if frappe.session.user in (None, "", "Guest"):
+            return False
+        if not flag_on(USAGE_KILL_SWITCH):
+            return False
+        return bool(USAGE_ROLES & set(frappe.get_roles(frappe.session.user)))
+    except Exception:
+        frappe.clear_messages()
+        return False
+
+
+def _usage_inner(from_d, to_d):
+    """Call the desk report's function DIRECTLY (undecorated). Inside an HTTP
+    request the inner @rate_limit would otherwise share the outer endpoint's
+    redis key (rl:{cmd}:{ip}) and charge the SAME bucket once per inner call —
+    3 hits/request at days<90, cutting the real budget to a third
+    (frappe/rate_limiter.py:155). Its in-body _check_role still runs —
+    USAGE_ROLES ⊂ its ALLOWED_ROLES ∪ {Administrator}, so it can never fire
+    first past our own gate."""
+    fn = get_usage_report
+    while hasattr(fn, "__wrapped__"):
+        fn = fn.__wrapped__
+    return fn(from_date=from_d, to_date=to_d)
+
+
+def _fold_departments(user_rows):
+    """users[] → per-primary-bucket aggregate. Never sums across a None
+    (failed logins source): a department's logins become None, not 0."""
+    depts = {}
+    for u in user_rows:
+        d = depts.setdefault(u["dept"], {
+            "dept": u["dept"], "users": 0, "active": 0, "signed_in": 0,
+            "entries": 0, "amendments": 0, "since_cancelled": 0,
+            "decisions": 0, "flow_actions": 0, "logins": 0, "logins_na": False,
+        })
+        d["users"] += 1
+        acted = any(u.get(k) for k in _USAGE_DOC_KEYS) or bool(u.get("logins"))
+        if acted:
+            d["active"] += 1
+        if u.get("logins"):
+            d["signed_in"] += 1
+        for k in _USAGE_DOC_KEYS:
+            d[k] += u.get(k) or 0
+        if u.get("logins") is None:
+            d["logins_na"] = True
+        else:
+            d["logins"] += u["logins"]
+    for d in depts.values():
+        if d["logins_na"]:
+            d["logins"] = None
+    return depts
+
+
+@frappe.whitelist(methods=["POST"])
+@rate_limit(limit=30, seconds=60)
+def get_usage_departments(days=7):
+    """Department-wise system use for the Usage tab. READ-ONLY.
+
+    Two inner reads when days < 90 (selected window + a 90-day context window
+    that powers the measured/blind test and the "this is a change" line); one
+    when days == 90. ~300-600 ms warm on prod — a manual-refresh screen for
+    ≤3 accounts, uncached by design.
+    """
+    _guard()
+    if not flag_on(USAGE_KILL_SWITCH):
+        frappe.throw(_("System use is switched off."))
+    _usage_audience_gate()
+
+    days = cint(days)
+    if days not in _USAGE_DAYS:
+        frappe.throw(_("Invalid window."), frappe.ValidationError)
+
+    to_d = getdate(today())
+    inner = _usage_inner(add_days(to_d, -(days - 1)), to_d)
+    ctx90 = inner if days == 90 else _usage_inner(add_days(to_d, -89), to_d)
+
+    depts = _fold_departments(inner["users"])
+    doc90 = {}
+    for u in ctx90["users"]:
+        doc90[u["dept"]] = doc90.get(u["dept"], 0) + (u.get("entries") or 0) + (u.get("decisions") or 0)
+
+    prior = {}
+    for d in depts.values():
+        cur = d["entries"] + d["decisions"]
+        if cur > 0:
+            d["state"], d["measured"] = "ok", True
+        elif doc90.get(d["dept"], 0) == 0:
+            # Nothing this screen counts in 90 days: the gap is the screen's.
+            d["state"], d["measured"] = "blind", False
+        else:
+            d["measured"] = True
+            # logins None (source failed) reads as idle, never absent — an
+            # "absent" verdict must rest on evidence, not on a dead source.
+            d["state"] = "absent" if d["logins"] == 0 else "idle"
+            prior[d["dept"]] = doc90[d["dept"]]
+
+    # ── Folded teams: multi-membership over the three absorbed buckets ──────
+    folded = None
+    try:
+        rules = dict(DEPT_RULES)
+        team_roles = {t: rules[t] for t in _FOLDED_TEAMS}
+        all_roles = tuple({r for roles in team_roles.values() for r in roles})
+        by_user = {u["user"]: u for u in inner["users"]}
+        rows = frappe.db.sql(
+            """SELECT parent, role FROM `tabHas Role`
+               WHERE parenttype = 'User' AND role IN %(roles)s
+                 AND parent IN %(users)s""",
+            {"roles": all_roles, "users": tuple(by_user) or ("",)},
+        )
+        membership = {}
+        for parent, role in rows:
+            membership.setdefault(parent, set()).add(role)
+        md_holders = {
+            r[0] for r in frappe.db.sql(
+                """SELECT parent FROM `tabHas Role`
+                   WHERE parenttype = 'User' AND role = 'MD' AND parent IN %(users)s""",
+                {"users": tuple(by_user) or ("",)},
+            )
+        }
+        folded = []
+        for team in _FOLDED_TEAMS:
+            wanted = set(team_roles[team])
+            members = [by_user[u] for u, held in membership.items() if held & wanted]
+            entry = {
+                "team": team,
+                # On prod rank-order absorbs every holder today, but that is an
+                # observation, not a guarantee — a holder with no higher-ranked
+                # role keeps a primary row, and the UI must reconcile the two.
+                "primary_members": depts.get(team, {}).get("users", 0),
+                "people": len(members),
+                "active": sum(1 for m in members if any(m.get(k) for k in _USAGE_DOC_KEYS) or m.get("logins")),
+                "doc_actions": sum((m.get("entries") or 0) + (m.get("decisions") or 0) for m in members),
+                "logins": sum(m.get("logins") or 0 for m in members),
+            }
+            if team == "Production":
+                # ts_production_entry_enabled is read LIVE (0 on prod, may be
+                # 1 on demo); the
+                # Check may be unset → None (L171/172). Off unless explicitly 1.
+                entry["module_off"] = not bool(cint(frappe.db.get_single_value("TS Settings", "ts_production_entry_enabled") or 0))
+                # 28 of the team's 30d actions were the MD's own approvals on
+                # prod — shown untagged the MD reads his own work as someone
+                # else's, so the split ships with the number.
+                entry["md_own_decisions"] = sum(
+                    m.get("decisions") or 0 for m in members if m["user"] in md_holders
+                )
+            if team == "Asset & Returns":
+                # FLOW_MAP has no Return Item source at all — structural.
+                entry["unmeasured"] = True
+            folded.append(entry)
+    except Exception:
+        frappe.clear_messages()  # L276 — a caught exception still queues its message
+        _log_once("usage_folded", "Exec usage: folded-teams fold failed", frappe.get_traceback())
+        folded = None
+
+    cards = inner["cards"]
+    buckets = inner["inactive"]["buckets"]
+    signed_in_no_records = sum(
+        1 for u in inner["users"]
+        if u.get("logins") and not any(u.get(k) for k in _USAGE_DOC_KEYS)
+    )
+
+    failed = inner["meta"]["failed_sources"]
+    return {
+        "range": {"from": str(inner["meta"]["from_date"]), "to": str(inner["meta"]["to_date"]), "days": days},
+        "totals": {
+            "entries": cards["total_entries"],
+            "decisions": cards["total_decisions"],
+            "actions": cards["total_entries"] + cards["total_decisions"],
+            "logins": cards["total_logins"],
+            "active_users": cards["active_users"],
+            "total_users": len(inner["users"]),
+        },
+        # Ranked list order is decided client-side; ship deterministic order.
+        "departments": sorted(
+            depts.values(), key=lambda d: -(d["entries"] + d["decisions"])
+        ),
+        "folded_teams": folded,
+        "people": {
+            # COUNTS only — the e-mail lists behind these never leave the server.
+            "inactive_over_30d": len(buckets["over30"]),
+            "never_signed_in": len(buckets["never"]),
+            "signed_in_no_records": signed_in_no_records,
+        },
+        "prior_90d": prior,
+        "partial": bool(failed),
+        "failed_source_count": len(failed),
+        "logins_available": cards["total_logins"] is not None,
+        "generated_at": str(now_datetime()),
+    }

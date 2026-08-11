@@ -63,7 +63,7 @@ html = html.replace(
     // safe_render rejects the whole page as "Illegal template" (dunder guard).
     "<script>window.frappe = window.frappe || {};</script>",
     "<!-- csrf_token -->",
-    "<script>window.execEnv = { enabled: {{ exec_enabled }}, sw: {{ exec_sw }}, overview: {{ exec_overview }}, allowed: {{ exec_allowed }} };</script>",
+    "<script>window.execEnv = { enabled: {{ exec_enabled }}, sw: {{ exec_sw }}, overview: {{ exec_overview }}, allowed: {{ exec_allowed }}, usage: {{ exec_usage }} };</script>",
     "<!-- no-cache -->",
   ].join("\n    ")
 )
@@ -72,7 +72,7 @@ if (!html.includes("<!-- no-cache -->")) fail("no-cache marker missing after tra
 // Every execEnv key the app reads must be a Jinja placeholder here. www/exec.html
 // is GENERATED — hand-editing it looks like it works until the next build
 // silently reverts it, and the tab then never appears for anyone.
-for (const v of ["exec_enabled", "exec_sw", "exec_overview", "exec_allowed"]) {
+for (const v of ["exec_enabled", "exec_sw", "exec_overview", "exec_allowed", "exec_usage"]) {
   if (!html.includes(`{{ ${v} }}`)) fail(`execEnv placeholder {{ ${v} }} missing from exec.html`)
 }
 // frappe safe_render rejects the whole page as "Illegal template" if the
@@ -87,7 +87,7 @@ fs.rmSync(builtIndex) // never ship the raw shell under /assets
 // silently loses the property. It fails at RUNTIME, invisibly, and only for
 // the one class you got wrong. Literal palette colours (bg-black/45) are fine.
 {
-  const TOKENS = "brand|ink|surface|ok|warn|danger|info|blocked"
+  const TOKENS = "brand|ink|surface|ok|warn|danger|info|blocked|gap"
   const bad = []
   const walk = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

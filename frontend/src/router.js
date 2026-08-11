@@ -9,6 +9,7 @@ import Login from "./pages/Login.vue"
 import NotFound from "./pages/NotFound.vue"
 import Overview from "./pages/Overview.vue"
 import Settings from "./pages/Settings.vue"
+import Usage from "./pages/Usage.vue"
 
 export const router = createRouter({
   history: createWebHistory("/exec/"),
@@ -20,6 +21,12 @@ export const router = createRouter({
       name: "overview",
       component: Overview,
       meta: { auth: true, overview: true },
+    },
+    {
+      path: "/usage",
+      name: "usage",
+      component: Usage,
+      meta: { auth: true, usage: true },
     },
     { path: "/history", name: "history", component: History, meta: { auth: true } },
     { path: "/settings", name: "settings", component: Settings, meta: { auth: true } },
@@ -43,6 +50,9 @@ router.beforeEach(async (to) => {
   // a signed-out bookmark still lands on login, not silently on the inbox.
   // Not a security boundary — get_overview re-checks switch and audience.
   if (to.meta.overview && Number((window.execEnv || {}).overview) !== 1) {
+    return { name: "inbox" }
+  }
+  if (to.meta.usage && Number((window.execEnv || {}).usage) !== 1) {
     return { name: "inbox" }
   }
   return true

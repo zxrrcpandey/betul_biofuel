@@ -1,0 +1,111 @@
+{
+ "actions": [],
+ "creation": "2026-08-12 11:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "sec_app",
+  "ts_exec_pwa_enabled",
+  "ts_exec_pwa_sw_enabled",
+  "ts_exec_bell_enabled",
+  "ts_exec_login_alert_enabled",
+  "sec_tabs",
+  "ts_exec_today_enabled",
+  "ts_exec_usage_enabled",
+  "sec_push",
+  "ts_push_enabled",
+  "ts_push_dry_run",
+  "ts_push_preview_amounts"
+ ],
+ "fields": [
+  {
+   "fieldname": "sec_app",
+   "fieldtype": "Section Break",
+   "label": "App"
+  },
+  {
+   "description": "Master switch for the BBPL Approvals app. OFF = maintenance notice. Fail-open: unset counts as ON.",
+   "fieldname": "ts_exec_pwa_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Executive PWA (/exec)"
+  },
+  {
+   "description": "OFF = installed phones unregister their service worker on next launch (emergency cache disarm, no deploy). Fail-open.",
+   "fieldname": "ts_exec_pwa_sw_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Executive PWA Service Worker"
+  },
+  {
+   "description": "In-app alerts bell. Independent of the desk Notification Center switch. Fail-open.",
+   "fieldname": "ts_exec_bell_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Executive PWA Alerts Bell"
+  },
+  {
+   "description": "Bell to the executive's own account on every new sign-in. Fail-open.",
+   "fieldname": "ts_exec_login_alert_enabled",
+   "fieldtype": "Check",
+   "label": "Bell Alert on CEO/MD Sign-in"
+  },
+  {
+   "fieldname": "sec_tabs",
+   "fieldtype": "Section Break",
+   "label": "Tabs"
+  },
+  {
+   "description": "OFF removes the Overview tab and refuses its endpoint without touching the inbox. Fail-open.",
+   "fieldname": "ts_exec_today_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Executive Overview Tab"
+  },
+  {
+   "description": "OFF removes the department-wise Usage tab (CEO/MD only) and refuses its endpoint without touching the inbox or Overview. Fail-open.",
+   "fieldname": "ts_exec_usage_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Executive Usage Tab"
+  },
+  {
+   "fieldname": "sec_push",
+   "fieldtype": "Section Break",
+   "label": "Lock-Screen Push (fail-CLOSED)"
+  },
+  {
+   "description": "Fail-CLOSED: unset counts as OFF. Requires VAPID keys in site_config.json.",
+   "fieldname": "ts_push_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Lock-Screen Alerts (Web Push)"
+  },
+  {
+   "description": "ON = log what WOULD send, send nothing. Unset counts as ON (rehearse).",
+   "fieldname": "ts_push_dry_run",
+   "fieldtype": "Check",
+   "label": "Push Dry Run (log only, send nothing)"
+  },
+  {
+   "description": "OFF = document type + number only. Supplier and cost centre are NEVER included. Unset counts as OFF.",
+   "fieldname": "ts_push_preview_amounts",
+   "fieldtype": "Check",
+   "label": "Show Amount on Lock Screen"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-08-12 11:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Exec App Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Administrator",
+   "write": 1
+  }
+ ],
+ "quick_entry": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

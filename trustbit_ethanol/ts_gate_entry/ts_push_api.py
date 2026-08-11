@@ -64,7 +64,7 @@ def _flag_on_strict(field):
     try:
         rows = frappe.db.sql(
             """SELECT value FROM `tabSingles`
-               WHERE doctype = 'TS Settings' AND field = %s LIMIT 1""",
+               WHERE doctype = 'TS Exec App Settings' AND field = %s LIMIT 1""",
             (field,),
         )
     except Exception:
@@ -95,7 +95,7 @@ def dry_run_on():
     try:
         rows = frappe.db.sql(
             """SELECT value FROM `tabSingles`
-               WHERE doctype = 'TS Settings' AND field = %s LIMIT 1""",
+               WHERE doctype = 'TS Exec App Settings' AND field = %s LIMIT 1""",
             ("ts_push_dry_run",),
         )
     except Exception:

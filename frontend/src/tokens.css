@@ -47,4 +47,12 @@
   --exec-age-3: #d99404;
   --exec-age-4: #c2560c;
   --exec-age-5: #b91c1c;
+
+  /* "Measurement gap" state (Usage tab, v2.40): the screen cannot count this
+     team's work — the gap is ours, not theirs. Teal, hue 180: 150 deg from
+     warn-amber, 176 deg from danger-red, 44 deg from info-blue; 6.2:1 on
+     white. 17 deg from --exec-ok-text: never place this marker beside a
+     green success indicator. */
+  --exec-gap-text: #0a6a6a;
+  --exec-gap-bg: #dff0ef;
 }

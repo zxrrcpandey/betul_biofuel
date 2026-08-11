@@ -33,6 +33,7 @@ export default {
         danger: { text: "var(--exec-danger-text)", bg: "var(--exec-danger-bg)" },
         info: { text: "var(--exec-info-text)", bg: "var(--exec-info-bg)" },
         blocked: { text: "var(--exec-blocked-text)", bg: "var(--exec-blocked-bg)" },
+        gap: { text: "var(--exec-gap-text)", bg: "var(--exec-gap-bg)" },
       },
       minHeight: {
         row: "88px",

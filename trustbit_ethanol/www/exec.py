@@ -15,6 +15,7 @@ from trustbit_ethanol.ts_gate_entry.ts_exec_api import (
     exec_app_allowed,
     flag_on,
     overview_visible,
+    usage_visible,
 )
 
 # Never serve a Redis-cached shell pointing at an old bundle — the SPA
@@ -44,6 +45,9 @@ def get_context(context):
     # Safe to compute for Guest (returns 0) because login ends in a full
     # window.location navigation, which re-renders this shell for the real user.
     context.exec_overview = 1 if overview_visible() else 0
+    # Usage tab: kill switch AND audience (CEO/MD/Administrator — user decision
+    # 12 Aug 2026: IT Head excluded), resolved per user at render time.
+    context.exec_usage = 1 if usage_visible() else 0
 
     # App-access gate (v2.34.0). ⚠ GUEST MUST RENDER AS ALLOWED — this same
     # page serves the login screen, and denying Guest here would make signing
