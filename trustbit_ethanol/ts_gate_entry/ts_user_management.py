@@ -1357,3 +1357,144 @@ def on_user_update(doc, method):
         _announce_password_change(doc, via="link")
     elif password_set:
         _announce_password_change(doc, via="direct")
+
+
+# ── EXCEL EXPORT (v2.38.0) ──────────────────────────────────────────────────
+
+# Explicit allow-list: User is a CORE_DOCTYPE, so get_permitted_fields returns
+# EVERY column — this tuple is the ONLY disclosure boundary for the export.
+# Never widen it with credential-bearing fields (api_key, api_secret,
+# reset_password_key, new_password, social_logins, last_ip, restrict_ip).
+_EXPORT_USER_FIELDS = (
+    "name", "full_name", "mobile_no", "enabled", "last_active", "creation",
+)
+
+_EXPORT_HEADER = (
+    "Full Name", "Email (User ID)", "Mobile No", "Status", "Privileged",
+    "Protected Account", "Last Active", "Created On", "Role Count", "Roles",
+    "Restricted Doctype", "Restricted To", "Enforced On",
+    "Apply-To-All Flag (raw)", "Scope Mismatch", "Is Default", "Hide Descendants",
+)
+_EXPORT_WIDTHS = (22, 32, 14, 9, 10, 10, 18, 18, 10, 50, 18, 26, 20, 9, 9, 8, 8)
+
+
+@frappe.whitelist(methods=["POST"])
+def export_users_excel():
+    """One-sheet .xlsx audit export: every system user with profile, roles and
+    User Permission record restrictions — one row per user × restriction (a
+    user with none gets a single row with blank restriction cells).
+
+    Deliberately shows ALL held roles, not the page's ALLOWED_ROLES trim
+    (user-approved): this is an audit artifact for IT Heads, and hiding a
+    CEO's roles would render a misleading empty cell next to Privileged=Yes.
+    The ONLY write is one audit Comment on the actor's own User doc,
+    committed before the payload returns; nothing else is touched.
+    """
+    _require_post()
+    _check_it_head()
+
+    from frappe.utils.xlsxutils import make_xlsx
+
+    # get_all, NOT get_list: the app's user_list_query_conditions PQC hook
+    # would trim a get_list to the caller's own row.
+    users = frappe.get_all(
+        "User",
+        filters={
+            "user_type": "System User",
+            "name": ["not in", ["Administrator", "Guest"]],
+        },
+        fields=list(_EXPORT_USER_FIELDS),
+        order_by="full_name asc",
+        limit_page_length=0,
+    )
+    names = [u.name for u in users]
+
+    # One grouped query per source (not the page's per-user N+1 loop).
+    roles_by_user = {}
+    for r in frappe.get_all(
+        "Has Role",
+        filters={"parenttype": "User", "parent": ["in", names]},
+        fields=["parent", "role"],
+        limit_page_length=0,
+    ):
+        roles_by_user.setdefault(r.parent, []).append(r.role)
+
+    perms_by_user = {}
+    for p in frappe.get_all(
+        "User Permission",
+        filters={"user": ["in", names]},
+        fields=["user", "allow", "for_value", "applicable_for",
+                "apply_to_all_doctypes", "is_default", "hide_descendants"],
+        order_by="user asc, allow asc, for_value asc",
+        limit_page_length=0,
+    ):
+        perms_by_user.setdefault(p.user, []).append(p)
+
+    cint = frappe.utils.cint
+    protected_lower = [p.lower() for p in PROTECTED_USERS]
+    rows = [list(_EXPORT_HEADER)]
+    for u in users:
+        held = sorted(roles_by_user.get(u.name, []))
+        privileged = any(r in BLOCKED_ROLES for r in held)
+        # Mirrors get_users()/is_protected exactly (list membership OR any
+        # blocked role) so the sheet agrees with what the page renders.
+        protected = u.name.lower() in protected_lower or privileged
+        base = [
+            u.full_name or "",
+            u.name,
+            u.mobile_no or "",
+            "Active" if u.enabled else "Disabled",
+            "Yes" if privileged else "No",
+            "Yes" if protected else "No",
+            u.last_active or "",
+            u.creation or "",
+            len(held),
+            ", ".join(held),
+        ]
+        for p in (perms_by_user.get(u.name) or [None]):
+            if p is None:
+                rows.append(base + [""] * 7)
+                continue
+            # The permission engine branches ONLY on applicable_for
+            # (frappe/model/db_query.py) — when both are set, the
+            # apply_to_all_doctypes checkbox is decorative. "Enforced On"
+            # is what the engine honors; Scope Mismatch flags rows where
+            # the checkbox lies about it.
+            enforced = p.applicable_for or "All Document Types"
+            mismatch = "Yes" if (cint(p.apply_to_all_doctypes) and p.applicable_for) else ""
+            rows.append(base + [
+                p.allow or "",
+                p.for_value or "",
+                enforced,
+                cint(p.apply_to_all_doctypes),
+                mismatch,
+                cint(p.is_default),
+                cint(p.hide_descendants),
+            ])
+
+    def _inert(v):
+        # openpyxl types any str starting with "=" as TYPE_FORMULA (<f> in the
+        # sheet XML) — Excel/Sheets then EVALUATE it on open. "+", "-", "@"
+        # emit inline strings in xlsx and stay inert, so only "=" needs the
+        # apostrophe guard (guarding "-" would deface negative-looking values).
+        return "'" + v if isinstance(v, str) and v.startswith("=") else v
+
+    rows = [[_inert(c) for c in r] for r in rows]
+
+    content = make_xlsx(rows, "User Permissions",
+                        column_widths=list(_EXPORT_WIDTHS)).getvalue()
+
+    # Queryable audit trail: a bulk roster export is the most audit-worthy
+    # action on this page, so it gets a Comment on the ACTOR's own User doc
+    # (there is no single subject user), committed before the payload returns.
+    # No frappe.logger() call: site log level is ERROR (frappe.conf.logging
+    # unset), so .info() lines are silently dropped — measured, not assumed.
+    _audit_log(frappe.session.user, "Exported user permissions Excel",
+               details="{0} data rows".format(len(rows) - 1))
+    frappe.db.commit()
+
+    site_tag = (frappe.local.site or "site").split(".")[0]
+    frappe.local.response.filename = "TS_User_Permissions_{0}_{1}.xlsx".format(
+        site_tag, frappe.utils.nowdate())
+    frappe.local.response.filecontent = content
+    frappe.local.response.type = "download"

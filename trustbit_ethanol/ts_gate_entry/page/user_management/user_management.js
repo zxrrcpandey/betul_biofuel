@@ -36,6 +36,7 @@ frappe.pages["user-management"].on_page_load = function (wrapper) {
 
 	page.set_primary_action(__("+ New User"), () => _um_show_create_dialog(page), "es-line-add");
 	page.add_inner_button(__("Change My Password"), () => _um_change_own_password());
+	page.add_inner_button(__("Export to Excel"), () => _um_export_excel());
 
 	_um_load(page);
 };
@@ -674,6 +675,50 @@ function _um_show_link_dialog(opts) {
 	`);
 
 	d.show();
+}
+
+// ── EXCEL EXPORT ────────────────────────────────────────────────────
+
+function _um_export_excel() {
+	// fetch + Blob, NOT frappe.xcall — xcall JSON-parses the response and
+	// would corrupt the binary. Same closure as ts_material_issue_ledger.js.
+	// freeze() also guards against double-click while generating.
+	frappe.dom.freeze(__("Generating Excel..."));
+	fetch("/api/method/trustbit_ethanol.ts_gate_entry.ts_user_management.export_users_excel", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"X-Frappe-CSRF-Token": frappe.csrf_token,
+		},
+		body: "{}",
+	})
+		.then((res) => {
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			// Server names the file (site + date); fall back if the header
+			// is absent (some proxies strip Content-Disposition).
+			const dispo = res.headers.get("Content-Disposition") || "";
+			const m = dispo.match(/filename="?([^";]+)/);
+			const fname = m ? m[1] : `TS_User_Permissions_${frappe.datetime.get_today()}.xlsx`;
+			return res.blob().then((blob) => ({ blob, fname }));
+		})
+		.then(({ blob, fname }) => {
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = fname;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			URL.revokeObjectURL(url);
+		})
+		.catch((err) => {
+			frappe.msgprint({
+				title: __("Export Failed"),
+				message: __("Could not generate export: {0}", [frappe.utils.escape_html((err && err.message) || String(err))]),
+				indicator: "red",
+			});
+		})
+		.finally(() => frappe.dom.unfreeze());
 }
 
 // ── HELPERS ─────────────────────────────────────────────────────────
