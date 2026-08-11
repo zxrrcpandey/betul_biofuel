@@ -446,6 +446,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_notification_trail.after_migrate_notification_trail",
 	# v2.31.0 — Executive PWA: 3 kill-switch Custom Fields on TS Settings (idempotent)
 	"trustbit_ethanol.ts_gate_entry.setup_exec_pwa.after_migrate_exec_pwa",
+	# v2.39.0 — Delivery Note "Transport Details" section (Sales dispatch + TPIA batch capture)
+	"trustbit_ethanol.ts_gate_entry.setup_dn_transport.seed_dn_transport_fields",
 ]
 
 # Scheduled Tasks
