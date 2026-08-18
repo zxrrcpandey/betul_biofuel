@@ -2054,11 +2054,13 @@ def _send_approval_notification(doc, action, recipients, extra=None):
 			)
 
 	try:
+		# Queued send only — NEVER now=True here: this runs inside the approval
+		# request, and an SMTP outage would block the request until worker-kill
+		# (~120s per send; 18 Aug 2026 prod incident).
 		frappe.sendmail(
 			recipients=recipients,
 			subject=subject,
 			message=message,
-			now=True,
 			reference_doctype=doc.doctype,
 			reference_name=doc.name,
 		)
@@ -3069,7 +3071,6 @@ def check_approval_sla():
 				exceeding the {sla_hours}-hour CTL (Committed Time Limit).</p>
 				<p><a href="{frappe.utils.get_url()}/app/purchase-order/{esc(po_data.name)}">View PO</a></p>
 				""",
-				now=True,
 			)
 
 		if settings.approval_escalation_enabled:
@@ -3108,7 +3109,6 @@ def check_approval_sla():
 				exceeding the {sla_hours}-hour CTL (Committed Time Limit).</p>
 				<p><a href="{frappe.utils.get_url()}/app/material-request/{esc(mr_data.name)}">View MR</a></p>
 				""",
-				now=True,
 			)
 
 	frappe.db.commit()
