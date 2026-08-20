@@ -417,10 +417,12 @@ def reject_release(name, reason):
 
 @frappe.whitelist(methods=["POST"])
 def complete_single_distribution(name, distribution):
-	"""PM posts the by-product warehouse split for a Single-flow run paused at
-	'Awaiting Distribution'. FG is NOT split (standard FG warehouse); each
-	by-product's split must total EXACTLY its actual qty. One Manufacture SE posts
-	the split, then the normal chain tail (close WO, surplus, recon) completes.
+	"""PM posts the OUTPUT warehouse split for a Single-flow run paused at
+	'Awaiting Distribution'. The finished good IS splittable (23 Jul; a missing FG
+	row is synthesized at the default FG warehouse — v2.41.2 relies on this for
+	no-by-product BOMs); each item's split must total EXACTLY its actual qty. One
+	Manufacture SE posts the split, then the chain tail (close WO, surplus, recon)
+	completes.
 
 	Validation is the LOCKED Multiple-flow `_validate_distribution` (flow-agnostic:
 	item membership, qty>0, per-item exact totals, warehouse exists + same company)
@@ -515,10 +517,19 @@ def get_awaiting_distributions():
 	runs = frappe.get_all(DOCTYPE,
 		filters={"ts_variance_status": "Awaiting Distribution",
 		         "flow_type": ["!=", "Multiple"]},
-		fields=["name", "bom", "production_item", "production_item_name",
+		fields=["name", "bom", "work_order", "production_item", "production_item_name",
 		        "actual_produced_qty", "production_uom", "owner", "modified"],
 		order_by="modified desc", limit=20)
+	# v2.41.2 — the dialog pre-selects the default FG warehouse (JS cannot read
+	# TS Settings itself, L168); one read serves all rows
+	_fg_default = api._get_settings().get("fg_warehouse")
 	for r in runs:
+		r["fg_warehouse"] = _fg_default
+		# F-1 — a submitted Manufacture SE means the split is already FINAL: the
+		# dialog must warn instead of pretending a new split can apply
+		r["posted_se"] = frappe.db.get_value("Stock Entry",
+			{"work_order": r.work_order, "purpose": "Manufacture", "docstatus": 1},
+			"name")
 		r["byproducts"] = frappe.get_all("TS Production By-Product",
 			filters={"parent": r.name, "parenttype": DOCTYPE},
 			fields=["item_code", "item_name", "actual_qty", "uom", "target_warehouse"],
@@ -575,10 +586,11 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 	operator retries via complete_released_production() — RM is never re-transferred,
 	Job Cards are never double-completed, the Manufacture SE is never duplicated.
 
-	Post Distribution (23 Jul): a run flagged ts_byproduct_distribution pauses HERE
-	at 'Awaiting Distribution' (recoverable, like 'Released') instead of posting the
-	Manufacture SE — the PM then supplies the per-warehouse by-product split via
-	complete_single_distribution(), which re-enters this chain with bp_split set."""
+	Post Distribution (23 Jul; every BOM since v2.41.2): a run flagged
+	ts_byproduct_distribution pauses HERE at 'Awaiting Distribution' (recoverable,
+	like 'Released') instead of posting the Manufacture SE — the PM then supplies
+	the per-warehouse output split (finished good always; by-products when present)
+	via complete_single_distribution(), which re-enters with bp_split/fg_split."""
 	doc = frappe.get_doc(DOCTYPE, name)
 	wo_name = doc.work_order
 	company = frappe.db.get_value("Work Order", wo_name, "company")
@@ -588,24 +600,31 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 		if cint(doc.bom_with_operations):
 			wo_engine.auto_complete_job_cards(wo_name)
 
-		# 7b — opt-in by-product distribution pause. Only when no split was supplied
-		# yet, the run actually HAS by-products to split, and no Manufacture SE
-		# exists (an existing SE means a prior post crashed AFTER posting — the
-		# chain must finish, never pause behind an already-posted SE).
-		if (bp_split is None and cint(doc.get("ts_byproduct_distribution"))
-				and any(flt(b.actual_qty) > 0 for b in (doc.byproducts or []))
+		# 7b — opt-in OUTPUT distribution pause (v2.41.2: EVERY BOM — the finished
+		# good is always placeable; by-products join when present). Only when no
+		# split was supplied yet, the run actually HAS output to place, and no
+		# Manufacture SE exists (an existing SE means a prior post crashed AFTER
+		# posting — the chain must finish, never pause behind an already-posted SE).
+		# The output guard is load-bearing: a 0-qty run must never pause — the
+		# distribution validator requires per-row qty > 0 summing to the total,
+		# which is unsatisfiable at 0 (the run would strand at Awaiting Distribution).
+		_has_output = (flt(doc.actual_produced_qty) > 0
+		               or any(flt(b.actual_qty) > 0 for b in (doc.byproducts or [])))
+		if (bp_split is None and fg_split is None
+				and cint(doc.get("ts_byproduct_distribution")) and _has_output
 				and not frappe.db.exists("Stock Entry", {
 					"work_order": wo_name, "purpose": "Manufacture", "docstatus": 1})):
 			doc.db_set("ts_variance_status", "Awaiting Distribution", update_modified=False)
 			doc.add_comment("Comment", _(
-				"Paused for by-product distribution — the Production Manager splits "
-				"by-products across warehouses, then production completes."))
+				"Paused for output distribution — the Production Manager chooses the "
+				"finished good's warehouse(s) (and splits by-products, if any), then "
+				"production completes."))
 			try:
 				if doc.owner and doc.owner not in ("Administrator", "Guest"):
 					frappe.get_doc({
 						"doctype": "Notification Log", "for_user": doc.owner,
 						"type": "Alert", "document_type": DOCTYPE, "document_name": doc.name,
-						"subject": _("Distribute by-products — {0} awaits your split").format(doc.name),
+						"subject": _("Distribute output — {0} awaits your warehouse split").format(doc.name),
 					}).insert(ignore_permissions=True)
 			except Exception:
 				frappe.clear_messages()  # notification never blocks the flow (L238/276)
@@ -615,7 +634,7 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 				"ts_variance_status": "Awaiting Distribution",
 				"release_stock_entry": doc.release_stock_entry,
 				"message": _("Released. Run paused at 'Awaiting Distribution' — the "
-				             "Production Manager now posts the by-product split."),
+				             "Production Manager now posts the output distribution."),
 			}
 
 		# 8 — Manufacture SE (consumes WIP per BOM-scaled qty). Idempotent.
@@ -642,13 +661,29 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 			frappe.log_error(title="TS Production completion chain failed", message=f"{name}: {e}")
 		except Exception:
 			pass
+		# F-1 (20 Aug audit, both testers): if the Manufacture SE SUBMITTED before
+		# the failure, the checkpoint commit below makes that posting PERMANENT —
+		# the run must never disown it. Record the pointer + tell the operator the
+		# split is FINAL (the retry resumes with it; a new split cannot apply).
+		try:
+			_se = frappe.db.get_value("Stock Entry",
+				{"work_order": wo_name, "purpose": "Manufacture", "docstatus": 1}, "name")
+			if _se and not frappe.db.get_value(DOCTYPE, name, "linked_stock_entry"):
+				frappe.db.set_value(DOCTYPE, name, "linked_stock_entry", _se,
+				                    update_modified=False)
+				doc.add_comment("Comment", _(
+					"Completion failed AFTER Manufacture Stock Entry {0} was posted — "
+					"its output split is FINAL; retrying completes the run with that "
+					"split (a different one cannot be applied).").format(_se))
+		except Exception:
+			frappe.clear_messages()  # forensics never block the checkpoint (L238)
 		frappe.db.commit()  # persist the recoverable checkpoint + any partial Job-Card progress
 		_st = frappe.db.get_value(DOCTYPE, name, "ts_variance_status") or "Released"
 		frappe.throw(
 			_("The production could not be completed. The raw material is already in WIP, so the "
 			  "run is kept at '{0}' — fix the issue and retry ({1}). "
 			  "Details:").format(_st,
-			  _("re-post the by-product split") if _st == "Awaiting Distribution"
+			  _("re-post the output distribution") if _st == "Awaiting Distribution"
 			  else _("click 'Complete Production'"))
 			+ "<br><br>" + escape_html(str(e)),
 			title=_("Completion Failed — Retry"),

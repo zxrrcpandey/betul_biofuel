@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.6.3"; // 19 Aug — releaser-aware status badge + toast ("Pending Release — <who>") // per-BOM Releaser (v2.41.1: configured releaser replaces SM; zone visible to releasers) + SM card shows the per-BOM config source warehouse (v2.41)
+const PL_VERSION = "v1.6.4"; // 20 Aug — Post-Distribution for EVERY BOM (v2.41.2: FG placeable on all runs, dialog prefill + FG-warehouse preselect) // 19 Aug — releaser-aware displays (v2.41.1) + per-BOM source warehouse card (v2.41)
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -409,7 +409,7 @@ class ProductionLogging {
 					</table>
 					<label id="pl-bp-dist-wrap" style="display:none;align-items:flex-start;gap:10px;margin:10px 0 2px;padding:10px 12px;font-size:12.5px;line-height:1.45;cursor:pointer;border:1px solid var(--purple-bd);background:var(--purple-chip);border-radius:var(--radius-sm);color:var(--text);">
 						<input type="checkbox" id="pl-bp-dist" checked style="margin-top:3px;width:15px;height:15px;accent-color:#7c3aed;flex:0 0 auto;">
-						<span><b style="color:var(--purple-txt)">&#127981; Post-distribute by-products</b> — after the Store-Manager release, the run pauses so you can split each by-product across multiple warehouses (one Manufacture entry posts the split). Untick for the normal straight-through flow.</span>
+						<span><b style="color:var(--purple-txt)">&#127981; Post-distribute output</b> — after the release, the run pauses so you choose the warehouse(s) for the finished good and split each by-product (when the BOM has them) across multiple warehouses; one Manufacture entry posts it all. Untick for the straight-through flow (finished good goes to the default FG warehouse).</span>
 					</label>
 				</div>
 
@@ -1317,15 +1317,16 @@ class ProductionLogging {
 			<div class="pl-row violet">
 				<span class="pl-rid">${this.esc(r.name)}</span>
 				<span class="pl-rwhat">${this.esc(r.production_item_name || r.production_item)} · <b>${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</b>
-					<span class="dim">· finished + ${(r.byproducts || []).length} by-product(s) to place</span></span>
+					<span class="dim">· ${(r.byproducts || []).length ? `finished + ${(r.byproducts || []).length} by-product(s) to place` : "finished good — choose warehouse(s)"}</span></span>
 				<span class="pl-pill age">waiting ${this.age_of(r.modified) || "—"}</span>
+				${r.posted_se ? `<span class="pl-pill" style="background:var(--amber-bg,rgba(245,158,11,.14));color:var(--amber,#b45309);border:1px solid var(--amber-bd,rgba(245,158,11,.35));white-space:nowrap" title="A prior attempt already posted ${this.esc(r.posted_se)} — its split is final">&#9888; split already posted</span>` : ""}
 				<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>
-				<button class="btn btn-approve btn-sm btn-violet pl-sdist-btn" data-name="${this.esc(r.name)}">&#127981; Distribute Output</button>
+				<button class="btn btn-approve btn-sm btn-violet pl-sdist-btn" data-name="${this.esc(r.name)}">&#127981; ${r.posted_se ? "Complete Run" : "Distribute Output"}</button>
 			</div>
 			<div class="pl-xpand" style="display:none">
 				<span><b>${this.esc(r.production_item_name || r.production_item)}</b> (finished) — ${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")} to place</span>
 				${(r.byproducts || []).map((b) => `<span><b>${this.esc(b.item_name || b.item_code)}</b> — ${this.fmt1(b.actual_qty)} ${this.esc(b.uom || "")} to split</span>`).join("")}
-				<span><b>Note</b> choose the warehouse for the finished good AND each by-product — one line per warehouse, and every item must total exactly its produced quantity.</span>
+				<span><b>Note</b> ${(r.byproducts || []).length ? "choose the warehouse for the finished good AND each by-product — one line per warehouse, and every item must total exactly its produced quantity." : "choose the warehouse(s) for the finished good — one line per warehouse, totalling exactly the produced quantity."}</span>
 			</div>`;
 		$wrap.html(`
 			<div class="sec-title" id="pl-sec-sdist">
@@ -1414,8 +1415,15 @@ class ProductionLogging {
 				frappe.show_alert({ message: __("Nothing to distribute for this run."), indicator: "orange" });
 				return;
 			}
-			const wh_opts = warehouses.map((w) =>
-				`<option value="${frappe.utils.escape_html(w)}">${frappe.utils.escape_html(w)}</option>`).join("");
+			// v2.41.2 — the Finished block pre-selects the default FG warehouse
+			// (server-annotated r.fg_warehouse; JS cannot read TS Settings, L168).
+			// Multiple-flow docs carry no fg_warehouse => no preselect (unchanged).
+			const fg_def = doc.fg_warehouse || "";
+			const wh_opts_for = (sel) => {
+				const list = (sel && !warehouses.includes(sel)) ? [sel].concat(warehouses) : warehouses;
+				return list.map((w) =>
+					`<option value="${frappe.utils.escape_html(w)}"${w === sel ? " selected" : ""}>${frappe.utils.escape_html(w)}</option>`).join("");
+			};
 			const blocks = targets.map((t, ti) => `
 				<div class="pl-dist-block" data-ti="${ti}" style="border:1px solid ${t.line_type === "Finished" ? "#86efac" : "#93c5fd"};border-radius:8px;padding:10px 12px;margin-bottom:10px;">
 					<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -1425,8 +1433,8 @@ class ProductionLogging {
 					</div>
 					<div class="pl-dist-rows" data-ti="${ti}">
 						<div class="pl-dist-row" style="display:flex;gap:8px;margin-bottom:6px;">
-							<select class="form-control pl-dist-wh" style="flex:2">${wh_opts}</select>
-							<input type="number" min="0" step="any" class="form-control pl-dist-qty" placeholder="Qty" style="flex:1;text-align:right">
+							<select class="form-control pl-dist-wh" style="flex:2">${wh_opts_for(t.line_type === "Finished" ? fg_def : "")}</select>
+							<input type="number" min="0" step="any" class="form-control pl-dist-qty" placeholder="Qty" value="${t.target}" style="flex:1;text-align:right">
 							<button type="button" class="btn btn-xs pl-dist-del" style="flex:0">&times;</button>
 						</div>
 					</div>
@@ -1442,6 +1450,9 @@ class ProductionLogging {
 				primary_action: () => this.submit_distribution(d, doc, targets, single),
 			});
 			d.fields_dict.dist_html.$wrapper.html(
+				(doc.posted_se
+					? `<div style="font-size:12px;margin-bottom:8px;padding:8px 10px;border:1px solid var(--amber-bd,rgba(245,158,11,.35));background:var(--amber-bg,rgba(245,158,11,.12));border-radius:6px;">&#9888; <b>Manufacture entry ${this.esc(doc.posted_se)} is already posted</b> — a prior attempt failed after posting, so its output split is <b>final</b>. Posting here only COMPLETES the run; the values below cannot change where stock went.</div>`
+					: "") +
 				`<div style="font-size:12px;margin-bottom:8px;">Each item's split must total <b>exactly</b> its produced quantity — the button unlocks when everything balances.</div>` + blocks +
 				`<div id="pl-dist-summary" style="font-size:12px;font-weight:600;margin-top:4px;color:#b45309;">0 of ${targets.length} item(s) balanced</div>`);
 			const $w = d.fields_dict.dist_html.$wrapper;
@@ -1516,7 +1527,7 @@ class ProductionLogging {
 		d.hide();
 		this.busy = true;
 		this.start_progress({
-			title: single ? "Posting by-product split…" : "Posting distribution…",
+			title: single ? "Posting output distribution…" : "Posting distribution…",
 			subtitle: `${doc.name} · Awaiting Distribution → Completed`,
 			steps: [
 				{ label: "Validating the split (sum = produced)…", kind: "auto" },
@@ -1967,8 +1978,9 @@ class ProductionLogging {
 
 		// by-products (read-only, auto-scaled)
 		const $bp = this.$root.find("#pl-bp-body");
-		// Post-Distribution opt-in only makes sense when the BOM has by-products
-		this.$root.find("#pl-bp-dist-wrap").css("display", this.bp_state.length ? "flex" : "none");
+		// v2.41.2 — Post-Distribution is offered for EVERY BOM: the finished good
+		// is always placeable; by-products join the split when the BOM has them.
+		this.$root.find("#pl-bp-dist-wrap").css("display", "flex");
 		// Checked => the Warehouse COLUMN is HIDDEN entirely (the PM's later split
 		// decides warehouses); qty stays — the split must total the declared qty.
 		const dist_on = this.$root.find("#pl-bp-dist").is(":checked");
@@ -2127,8 +2139,9 @@ class ProductionLogging {
 			standard_batches: 1,
 			materials: materials,
 			byproducts: byproducts,
+			// v2.41.2 — every BOM may post-distribute (FG always; by-products if any)
 			ts_byproduct_distribution:
-				this.$root.find("#pl-bp-dist").is(":checked") && byproducts.length ? 1 : 0,
+				this.$root.find("#pl-bp-dist").is(":checked") ? 1 : 0,
 		};
 		if (multi) {
 			doc_payload.flow_type = "Multiple";
