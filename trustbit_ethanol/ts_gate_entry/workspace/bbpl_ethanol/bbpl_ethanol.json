@@ -263,6 +263,9 @@
   },
   {
    "role": "Stock Manager"
+  },
+  {
+   "role": "Purchase User"
   }
  ],
  "sequence_id": 0,
