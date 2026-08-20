@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "creation": "2026-08-19 14:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "bom",
+  "item",
+  "item_name",
+  "source_warehouse",
+  "cost_center",
+  "releaser_user",
+  "releaser_role"
+ ],
+ "fields": [
+  {
+   "fieldname": "bom",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "BOM",
+   "options": "BOM",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "bom.item",
+   "fieldname": "item",
+   "fieldtype": "Data",
+   "label": "Item",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "bom.item_name",
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Item Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Source Warehouse",
+   "link_filters": "[[\"Warehouse\",\"is_group\",\"=\",0]]",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Cost Center",
+   "link_filters": "[[\"Cost Center\",\"is_group\",\"=\",0]]",
+   "options": "Cost Center"
+  },
+  {
+   "description": "If set, ONLY this user releases this BOM's runs (the Role below is ignored). REPLACES the Stores Manager for this BOM; exempt from separation-of-duties on their own submissions. Must be an enabled System User with Production Entry access.",
+   "fieldname": "releaser_user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Releaser User",
+   "options": "User"
+  },
+  {
+   "description": "Used only when Releaser User is empty: any enabled holder of this role releases this BOM's runs (replacing the Stores Manager). Both empty = the Stores Manager releases as usual.",
+   "fieldname": "releaser_role",
+   "fieldtype": "Link",
+   "label": "Releaser Role",
+   "options": "Role"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-19 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Production BOM Config",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

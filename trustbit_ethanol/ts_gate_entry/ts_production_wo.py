@@ -40,21 +40,49 @@ RELEASE_PURPOSE = "Material Transfer for Manufacture"
 #  COST CENTRE RESOLUTION  (v2.21 UAT fix ② — department-wise via category)
 # ─────────────────────────────────────────────────────────────────────────
 
+def bom_config(bom, flow_type="Single"):
+	"""Per-BOM release override (TS Settings child table `ts_production_bom_configs`,
+	v2.41). SINGLE FLOW ONLY — Multiple/Connector runs and dept callers (no `bom` key /
+	flow_type "Multiple") get the empty dict, reducing every caller's chain to its
+	pre-v2.41 text. Reads the child table via frappe.db (NOT get_doc): the valuation
+	preflight runs as the real user before system_session and Operators lack
+	TS Settings read permission (L168)."""
+	empty = {"source_warehouse": None, "cost_center": None,
+	         "releaser_user": None, "releaser_role": None}
+	if not bom or (flow_type or "Single") != "Single":
+		return empty
+	row = frappe.db.get_value(
+		"TS Production BOM Config",
+		{"parent": "TS Settings", "parentfield": "ts_production_bom_configs", "bom": bom},
+		["source_warehouse", "cost_center", "releaser_user", "releaser_role"],
+		as_dict=True, order_by="idx asc")
+	if not row:
+		return empty
+	return {"source_warehouse": row.source_warehouse or None,
+	        "cost_center": row.cost_center or None,
+	        "releaser_user": row.releaser_user or None,
+	        "releaser_role": row.releaser_role or None}
+
+
 def resolve_production_cost_center(pe):
 	"""The authoritative cost centre for a production run's Stock Entries.
 
 	Department-wise (user decision): the run's main TS Production BOM Category
 	carries a `cost_center`. Resolution order:
+	  0. the per-BOM config row on TS Settings (v2.41, Single flow only);
 	  1. the connector's main (is_production=1) category cost_center;
 	  2. any active category whose BOM output item == the run's production item;
 	  3. TS Settings.ts_production_mr_cost_center (the existing MR fallback);
 	  4. the company's default cost centre.
 	Returns a cost-centre name (may be the company default) or None if even that
 	is unset — callers leave the SE row's own default in that case."""
-	cc = None
-	# 1) connector main category
+	# 0) per-BOM config (needs pe.bom + pe.flow_type in the caller's field list)
+	cc = bom_config(getattr(pe, "bom", None),
+	                getattr(pe, "flow_type", None) or "Single")["cost_center"]
+	# 1) connector main category — must not clobber step 0 (unreachable together
+	# today: bom_connector is Multiple-only; belt-and-suspenders for desk/DB edits)
 	conn = getattr(pe, "bom_connector", None)
-	if conn:
+	if not cc and conn:
 		main_cat = frappe.db.get_value("TS BOM Connector", conn, "main_category")
 		if main_cat:
 			cc = frappe.db.get_value("TS Production BOM Category", main_cat, "cost_center")
@@ -130,7 +158,9 @@ def create_and_submit_work_order(pe, settings, skip_transfer=0):
 	wip = settings.get("wip_warehouse")
 	fg = settings.get("fg_warehouse")
 	scrap = settings.get("byproduct_warehouse")
-	src_default = settings.get("release_source_warehouse") or wip
+	# v2.41 — a BOM listed in TS Settings' per-BOM config releases from ITS warehouse
+	cfg = bom_config(pe.bom, getattr(pe, "flow_type", None) or "Single")
+	src_default = cfg["source_warehouse"] or settings.get("release_source_warehouse") or wip
 
 	qty = flt(pe.actual_produced_qty)
 	if qty <= 0:
@@ -228,7 +258,11 @@ def build_draft_release_se(wo_name, settings, pe=None):
 	from erpnext.manufacturing.doctype.work_order.work_order import make_stock_entry
 
 	wo = frappe.get_doc("Work Order", wo_name)
-	src_default = settings.get("release_source_warehouse") or settings.get("wip_warehouse")
+	# v2.41 — same per-BOM override the WO builder used (pe absent => empty config)
+	cfg = (bom_config(getattr(pe, "bom", None), getattr(pe, "flow_type", None) or "Single")
+	       if pe is not None else {"source_warehouse": None, "cost_center": None})
+	src_default = (cfg["source_warehouse"]
+	               or settings.get("release_source_warehouse") or settings.get("wip_warehouse"))
 
 	# SUM duplicates (same item on 2+ BOM rows) so the RELEASE transfers the same total
 	# the WO consolidates + consumes — last-row-wins here would under-transfer to WIP and
@@ -653,8 +687,10 @@ def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None):
 			se.append("items", x)
 	_cap_byproduct_rates(se)  # keep FG cost >= 0 when by-products out-value the inputs
 	# v2.21 ② department-wise cost centre — resolve from the run linked to this WO
+	# (bom + flow_type feed the v2.41 per-BOM step 0 of the resolver)
 	_pe = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},
-	                     fields=["name", "bom_connector", "production_item", "company"], limit=1)
+	                     fields=["name", "bom", "flow_type", "bom_connector",
+	                             "production_item", "company"], limit=1)
 	if _pe:
 		apply_cost_center_to_se(se, resolve_production_cost_center(frappe._dict(_pe[0])))
 	se.flags.ignore_permissions = True
@@ -709,16 +745,31 @@ def auto_return_surplus(wo_name, settings):
 	Manufacture SE consumed the BOM-scaled qty. The per-item surplus is the leftover
 	WIP balance attributable to this run."""
 	wip = settings.get("wip_warehouse")
-	dest = settings.get("release_source_warehouse") or settings.get("wip_warehouse")
+	# v2.41 — surplus returns to the SAME warehouse it was released from: the per-BOM
+	# config warehouse when set (fetch the run FIRST; it also feeds the CC below).
+	_pe = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},
+	                     fields=["name", "bom", "flow_type", "bom_connector",
+	                             "production_item", "company"], limit=1)
+	cfg = (bom_config(_pe[0].bom, _pe[0].flow_type or "Single")
+	       if _pe else {"source_warehouse": None, "cost_center": None})
+	dest = (cfg["source_warehouse"]
+	        or settings.get("release_source_warehouse") or settings.get("wip_warehouse"))
 	if not wip or not dest or wip == dest:
 		# No distinct WIP/Stores pair to move between — nothing to return.
 		return None, []
 
 	wo = frappe.get_doc("Work Order", wo_name)
 	surplus = []
+	# Round each leftover to the stock float precision BEFORE the >0 test: a
+	# sub-precision residue (e.g. 0.0003 at precision 3) would build an SE row that
+	# rounds to 0.000 → "Qty in Stock UOM can not be zero" → the completion chain
+	# aborts at 'Released' with material stuck in WIP, and every retry fails the
+	# same way. Dust below stock precision CANNOT be moved by ERPNext at all, so
+	# skipping it is the only recoverable behavior (v2.41 audit find, pre-existing).
+	prec = cint(frappe.db.get_single_value("System Settings", "float_precision")) or 3
 	for ri in (wo.required_items or []):
-		leftover = flt(ri.transferred_qty) - flt(ri.consumed_qty)
-		if leftover > 1e-9:
+		leftover = flt(flt(ri.transferred_qty) - flt(ri.consumed_qty), prec)
+		if leftover > 0:
 			surplus.append({
 				"item_code": ri.item_code,
 				"qty": leftover,
@@ -739,9 +790,8 @@ def auto_return_surplus(wo_name, settings):
 			"s_warehouse": wip,          # surplus sits in WIP
 			"t_warehouse": dest,         # return to the Stores source warehouse
 		})
-	# v2.21 ② department-wise cost centre on the surplus-return rows too
-	_pe = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},
-	                     fields=["name", "bom_connector", "production_item", "company"], limit=1)
+	# v2.21 ② department-wise cost centre on the surplus-return rows too (the run was
+	# already fetched above for the v2.41 per-BOM destination)
 	if _pe:
 		apply_cost_center_to_se(se, resolve_production_cost_center(frappe._dict(_pe[0])))
 	se.flags.ignore_permissions = True

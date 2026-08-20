@@ -59,6 +59,30 @@ def _is_production_manager(user=None):
 	return ("Manufacturing Manager" in roles) or ("Manufacturing User" in roles)
 
 
+def _releaser_configured(cfg):
+	return bool((cfg or {}).get("releaser_user") or (cfg or {}).get("releaser_role"))
+
+
+def _can_release_cfg(cfg, user=None):
+	"""Identity gate for ONE run's Stores release (v2.41.1).
+
+	Recipient-row semantics (v2.21 UAT ⑤): a configured USER matches ONLY that
+	user; the ROLE fans out ONLY when no user is set. A configured releaser
+	REPLACES the Stores Manager for that BOM (strict — user decision 19 Aug 2026);
+	_is_admin stays the recovery hatch. No releaser configured => today's
+	Stores-Manager gate, byte-identical."""
+	user = user or frappe.session.user
+	if _is_admin(user):
+		return True
+	ru = (cfg or {}).get("releaser_user")
+	rr = (cfg or {}).get("releaser_role")
+	if ru:
+		return user == ru
+	if rr:
+		return rr in frappe.get_roles(user)
+	return _is_store_manager(user)
+
+
 # ─────────────────────────────────────────────────────────────────────────
 #  1) SUBMIT FOR RELEASE  (Production Manager)
 # ─────────────────────────────────────────────────────────────────────────
@@ -206,21 +230,53 @@ def approve_release(name):
 	api._require_enabled()
 	doc = frappe.get_doc(DOCTYPE, name)
 
-	if not (_is_store_manager() or _is_admin()):
+	# v2.41.1 — a BOM with a configured releaser is released by THAT identity
+	# (user-wins over role), not the Stores Manager; admin stays the recovery hatch.
+	cfg = wo_engine.bom_config(doc.bom, getattr(doc, "flow_type", None) or "Single")
+	if not _can_release_cfg(cfg):
+		who = cfg.get("releaser_user") or cfg.get("releaser_role")
+		if who:
+			frappe.throw(
+				_("Only {0} may release raw material for BOM {1} (TS Settings → "
+				  "BOM-wise Production Config).").format(
+					escape_html(who), escape_html(doc.bom or "")),
+				exc=frappe.PermissionError)
 		frappe.throw(_("Only a Stores Manager can approve the raw-material release."),
 					 exc=frappe.PermissionError)
-	frappe.has_permission(DOCTYPE, "write", doc=doc, throw=True)
+	# Named message instead of has_permission's empty PermissionError — a configured
+	# releaser without a Manufacturing/Stores role hits exactly this (live-data F-1).
+	if not frappe.has_permission(DOCTYPE, "write", doc=doc):
+		frappe.throw(
+			_("You are allowed to release this BOM, but your account has no write "
+			  "access to Production Entries — ask IT to add a Manufacturing or "
+			  "Stores role."),
+			exc=frappe.PermissionError)
 
 	if doc.ts_variance_status != "Pending Stores Release":
 		frappe.throw(_("Only a 'Pending Stores Release' entry can be approved (current status: {0}).").format(
 			doc.ts_variance_status))
 
 	# Separation of duties (creator != approver; admin bypass for recovery).
-	if doc.submitted_by == frappe.session.user and not _is_admin():
+	# v2.41.1 (user decision 19 Aug 2026): a CONFIGURED releaser is exempt — a
+	# one-person department may release its own submission; SoD stays in force
+	# for the default Stores-Manager gate.
+	if (doc.submitted_by == frappe.session.user and not _is_admin()
+			and not _releaser_configured(cfg)):
 		frappe.throw(
 			_("You submitted this run, so you cannot approve its release (separation of duties)."),
 			exc=frappe.PermissionError,
 		)
+	elif doc.submitted_by == frappe.session.user and _releaser_configured(cfg):
+		# Audit trail: record that SoD was WAIVED by the per-BOM releaser config —
+		# a later reviewer otherwise sees submitted_by == releaser unexplained.
+		try:
+			doc.add_comment("Comment",
+				_("Separation of duties waived: {0} is the configured releaser for "
+				  "BOM {1} (TS Settings → BOM-wise Production Config) and released "
+				  "their own run.").format(
+					escape_html(frappe.session.user), escape_html(doc.bom or "")))
+		except Exception:
+			frappe.clear_messages()  # best-effort, never blocks the release (L238)
 
 	# v2.21 (client request 13 Jul) — the Store Manager is the FINAL gate: every
 	# department must release its own material first. No-op when no slots exist.
@@ -484,10 +540,18 @@ def complete_released_production(name):
 	Completed."""
 	api._require_enabled()
 	doc = frappe.get_doc(DOCTYPE, name)
-	if not (_is_store_manager() or _is_admin()):
+	# v2.41.1 (user decision 19 Aug 2026): the configured releaser may ALSO retry a
+	# stuck run; the Stores Manager keeps recovery authority on every BOM.
+	_cfg = wo_engine.bom_config(doc.bom, getattr(doc, "flow_type", None) or "Single")
+	if not (_is_store_manager() or _can_release_cfg(_cfg)):
 		frappe.throw(_("Only a Stores Manager can complete a released production run."),
 					 exc=frappe.PermissionError)
-	frappe.has_permission(DOCTYPE, "write", doc=doc, throw=True)
+	if not frappe.has_permission(DOCTYPE, "write", doc=doc):
+		frappe.throw(
+			_("You are allowed to release this BOM, but your account has no write "
+			  "access to Production Entries — ask IT to add a Manufacturing or "
+			  "Stores role."),
+			exc=frappe.PermissionError)
 
 	if doc.ts_variance_status != "Released":
 		frappe.throw(_("Only a 'Released' entry can be completed (current status: {0}).").format(

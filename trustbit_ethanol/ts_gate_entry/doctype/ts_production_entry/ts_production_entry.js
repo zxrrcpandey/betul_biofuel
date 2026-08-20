@@ -59,11 +59,37 @@ function _ts_prod_banner(frm) {
 	if (frm.is_new()) return;
 	const s = frm.doc.ts_variance_status;
 	if (s === "Pending Stores Release") {
-		frm.set_intro(
-			__("Awaiting Stores Manager raw-material release. Work Order {0} created; the release Stock Entry {1} is a DRAFT (no stock moved yet).",
-				[frm.doc.work_order || "", frm.doc.release_stock_entry || ""]),
-			"orange"
-		);
+		// v2.41.1 — name the configured per-BOM releaser (display only; the stored
+		// status stays "Pending Stores Release"). Map fetched once per form.
+		const show = (who) => {
+			frm.set_intro(
+				who
+					? __("Awaiting raw-material release by {0} (configured releaser for this BOM). Work Order {1} created; the release Stock Entry {2} is a DRAFT (no stock moved yet).",
+						[frappe.utils.escape_html(who), frm.doc.work_order || "", frm.doc.release_stock_entry || ""])
+					: __("Awaiting Stores Manager raw-material release. Work Order {0} created; the release Stock Entry {1} is a DRAFT (no stock moved yet).",
+						[frm.doc.work_order || "", frm.doc.release_stock_entry || ""]),
+				"orange"
+			);
+			// The title pill is painted from the stored status — override it too so
+			// the whole form names the actual releaser (display only).
+			if (who && frm.page && frm.page.set_indicator) {
+				frm.page.set_indicator(
+					__("Pending Release — {0}", [frappe.utils.escape_html(who)]), "orange");
+			}
+		};
+		if (frm._ts_bom_releasers) {
+			show(frm._ts_bom_releasers[frm.doc.bom]);
+		} else {
+			show(null); // immediate default; upgraded async when the map arrives
+			frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.ts_production_api.get_production_settings",
+				callback: (r) => {
+					frm._ts_bom_releasers = (r.message || {}).bom_releasers || {};
+					const who = frm._ts_bom_releasers[frm.doc.bom];
+					if (who && frm.doc.ts_variance_status === "Pending Stores Release") show(who);
+				},
+			});
+		}
 	} else if (s === "Released") {
 		frm.set_intro(
 			__("Raw material RELEASED to WIP (Release SE {0}). Completing production — if this is stuck, click 'Complete Production' to retry.",

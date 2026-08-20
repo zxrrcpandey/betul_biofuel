@@ -127,7 +127,24 @@ def get_production_settings():
 		"release_source_warehouse": s["release_source_warehouse"],
 		"auto_return_surplus": s["auto_return_surplus"],
 		"wip_recon_tolerance_pct": flt(s["wip_recon_tolerance_pct"]) if s["wip_recon_tolerance_pct"] is not None else None,
+		# v2.41.1 display: {bom: releaser display label} so the page/form can say
+		# "Pending Release — <who>" instead of "Stores Manager" (stored status
+		# unchanged). Same permission-free L168 read surface as the rest.
+		"bom_releasers": _bom_releaser_labels(),
 	}
+
+
+def _bom_releaser_labels():
+	rows = frappe.get_all("TS Production BOM Config",
+		filters={"parent": "TS Settings", "parentfield": "ts_production_bom_configs"},
+		fields=["bom", "releaser_user", "releaser_role"], limit=0)
+	out = {}
+	for r in rows:
+		if r.releaser_user:
+			out[r.bom] = frappe.db.get_value("User", r.releaser_user, "full_name") or r.releaser_user
+		elif r.releaser_role:
+			out[r.bom] = r.releaser_role
+	return out
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -341,6 +358,12 @@ def _block_if_missing_valuation(doc, settings):
 	"""
 	wip = settings.get("wip_warehouse")
 	bywh = settings.get("byproduct_warehouse")
+	# v2.41 — the per-BOM config warehouse outranks the global release source here
+	# too, so valuation is checked where the release will actually pull from.
+	from trustbit_ethanol.ts_gate_entry import ts_production_wo as wo_engine
+	cfg_src = wo_engine.bom_config(
+		getattr(doc, "bom", None),
+		getattr(doc, "flow_type", None) or "Single")["source_warehouse"]
 	problems = []
 	seen = set()
 
@@ -362,7 +385,7 @@ def _block_if_missing_valuation(doc, settings):
 		# Consumed RM is released FROM the configured release source (Stores) and only
 		# then transferred into WIP, so its valuation lives at the release source at
 		# pre-flight time (WIP may be empty pre-release). Check the release source first.
-		s_wh = settings.get("release_source_warehouse") or row.source_warehouse or wip
+		s_wh = cfg_src or settings.get("release_source_warehouse") or row.source_warehouse or wip
 		# v2.21 dept release (13 Jul): a row the PM sourced from a department-CLAIMED
 		# warehouse is released FROM that warehouse (build_release_slots re-points it),
 		# so check valuation THERE — dept-produced items (steam, treated water) often

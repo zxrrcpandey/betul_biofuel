@@ -290,6 +290,30 @@ _PRODUCTION_SETTINGS_FIELDS = [
 						"listed, ONLY they (plus Super Admin / CEO / MD / System Manager / Administrator) "
 						"can run production."),
 	},
+	# v2.41 — per-BOM release source warehouse + cost centre (user request 19 Aug 2026:
+	# "configraable BOM wise Source Warehouse and Cost Center in TS Setting"; Single flow
+	# only). ts_production_authorized_users is the LAST field of the access section and
+	# anchors nothing else, so it is a safe section anchor (v2.21 anchor gotcha).
+	{
+		"fieldname": "ts_production_bom_config_section",
+		"label": "BOM-wise Production Config (Single Flow)",
+		"fieldtype": "Section Break",
+		"insert_after": "ts_production_authorized_users",
+		"collapsible": 0,
+	},
+	{
+		"fieldname": "ts_production_bom_configs",
+		"label": "BOM-wise Source Warehouse / Cost Center",
+		"fieldtype": "Table",
+		"options": "TS Production BOM Config",
+		"insert_after": "ts_production_bom_config_section",
+		"description": ("Optional per-BOM override for the Single-flow release. EMPTY = current "
+						"behavior (global Release Source Warehouse + the standard cost-centre "
+						"chain + Stores Manager releases). A blank field on a row falls back "
+						"individually. A configured Releaser (user wins over role) REPLACES the "
+						"Stores Manager for that BOM. Multiple/Connector-flow runs ignore this "
+						"table."),
+	},
 ]
 
 # Phase D — tag field on Material Request identifying the Multiple-flow auto-MRs
@@ -322,7 +346,7 @@ def _seed_mr_tag_field():
 
 
 def _seed_production_settings_fields():
-	"""Create the 3 Production-Logging TS Settings config fields as Custom Fields, ONLY
+	"""Create the Production-Logging TS Settings config fields as Custom Fields, ONLY
 	if not already present as a Doc/Custom field (has_field covers both) — so it never
 	duplicates a future committed DocField. Idempotent."""
 	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields

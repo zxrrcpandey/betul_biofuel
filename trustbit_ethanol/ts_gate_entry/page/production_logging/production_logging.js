@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.6.0"; // 23 Jul — Single-flow by-product Post Distribution (opt-in pause + PM split card) // 22 Jul — dept vote-to-delete card + by-product clear-restores-auto-scale // v2.21 Single-flow department release
+const PL_VERSION = "v1.6.3"; // 19 Aug — releaser-aware status badge + toast ("Pending Release — <who>") // per-BOM Releaser (v2.41.1: configured releaser replaces SM; zone visible to releasers) + SM card shows the per-BOM config source warehouse (v2.41)
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -273,12 +273,15 @@ class ProductionLogging {
 	// queue renders highest. (Release zone exists only for Store Managers,
 	// exactly as before — only the ORDER changes.)
 	zones_html() {
-		const release = this.is_store_mgr ? `
-			<div class="sec-title" id="pl-sec-release">
-				<span class="bar" style="background:var(--amber)"></span> The One Human Gate &mdash; Store Manager Raw-Material Release
+		// v2.41.1 — emitted for EVERYONE (hidden for non-SM until the server returns
+		// rows this caller may release; a configured per-BOM releaser gets the zone)
+		const relHide = this.is_store_mgr ? "" : ' style="display:none"';
+		const release = `
+			<div class="sec-title" id="pl-sec-release"${relHide}>
+				<span class="bar" style="background:var(--amber)"></span> The One Human Gate &mdash; Raw-Material Release
 				<span class="feas-tag tag-gate">&#128682; Awaiting approval</span>
 			</div>
-			<div id="pl-release-zone"></div>` : ``;
+			<div id="pl-release-zone"${relHide}></div>`;
 		// v2.21 ① Multiple-flow direct-release zone (SM only)
 		const mrelease = this.is_store_mgr ? `<div id="pl-multi-release-wrap"></div>` : ``;
 		// v2.21 (13 Jul) Single-flow department release zone (any user; server filters)
@@ -306,9 +309,9 @@ class ProductionLogging {
 		if ((this._n_dept || 0) > 0) acts.push({
 			n: this._n_dept, cls: "amber", target: "#pl-dept-wrap",
 			l: "Add Production", s: "department" + (this._n_dept > 1 ? "s" : "") + " waiting on you" });
-		if (this.is_store_mgr && (this._n_rel || 0) > 0) acts.push({
+		if ((this._n_rel || 0) > 0) acts.push({
 			n: this._n_rel, cls: "green", target: "#pl-sec-release",
-			l: "Release", s: "material release" + (this._n_rel > 1 ? "s" : "") + " awaiting Store Manager" });
+			l: "Release", s: "material release" + (this._n_rel > 1 ? "s" : "") + " awaiting you" });
 		if ((this._n_deptrel || 0) > 0) acts.push({
 			n: this._n_deptrel, cls: "amber", target: "#pl-sec-deptrel",
 			l: "Release (Dept)", s: "department release" + (this._n_deptrel > 1 ? "s" : "") + " awaiting your actual qty" });
@@ -644,7 +647,7 @@ class ProductionLogging {
 	reload_data() {
 		if (this.is_store_mgr) this.load_multi_releases();
 		this.load_log();
-		if (this.is_store_mgr) this.load_pending_releases();
+		this.load_pending_releases(); // v2.41.1 — server filters per caller (releasers too)
 		this.load_dept_context();  // Phase C — server decides visibility (kill switch + recipients)
 		this.load_my_release_slots(); // v2.21 (13 Jul) — Single-flow department release
 		this.load_my_cascade_votes(); // 22 Jul — department vote-to-delete card
@@ -1716,6 +1719,11 @@ class ProductionLogging {
 		if (r.ts_variance_status === "Pending Stores Release" && pend.length) {
 			return `<span class="badge b-pending" title="Waiting on: ${this.esc(pend.join(", "))}"><span class="bdot"></span>Pending Department Release</span>`;
 		}
+		// v2.41.1 — a BOM with a configured releaser waits on THEM, not Stores
+		const rl = ((this.settings || {}).bom_releasers || {})[r.bom];
+		if (r.ts_variance_status === "Pending Stores Release" && rl) {
+			return `<span class="badge b-pending" title="Configured releaser (TS Settings → BOM-wise Production Config)"><span class="bdot"></span>Pending Release — ${this.esc(rl)}</span>`;
+		}
 		return this.badge(r.ts_variance_status);
 	}
 	var_cell(v) {
@@ -1762,9 +1770,24 @@ class ProductionLogging {
 	render_release_zone(rows) {
 		const $z = this.$root.find("#pl-release-zone");
 		if (!$z.length) return;
-		// count only runs whose departments have ALL released (the gated ones are shown
-		// as "waiting", not actionable) — 14 Jul UX fix
-		this._n_rel = rows.filter((r) => !((r.pending_departments || []).length)).length;
+		const $t = this.$root.find("#pl-sec-release");
+		// v2.41.1 — a non-SM caller (configured per-BOM releaser) sees the zone only
+		// when the server returned rows they can release; the server is authoritative.
+		if (!this.is_store_mgr) {
+			if (!rows.some((r) => r.can_release)) {
+				this._n_rel = 0;
+				this.update_actions();
+				$z.empty().hide();
+				$t.hide();
+				return;
+			}
+			$z.show();
+			$t.show();
+		}
+		// count only runs whose departments have ALL released AND that this caller
+		// may release (gated / other-releaser rows show as info, not actionable)
+		this._n_rel = rows.filter((r) =>
+			!((r.pending_departments || []).length) && r.can_release !== false).length;
 		this.update_actions();
 		if (!rows.length) {
 			$z.html(
@@ -1779,14 +1802,19 @@ class ProductionLogging {
 		const week_ago = frappe.datetime.add_days(frappe.datetime.now_date(), -7);
 		const row = (r) => {
 			const itemName = r.production_item_name || r.production_item || "—";
+			// v2.41 — a BOM configured in TS Settings releases from ITS warehouse
+			const rsrc = r.release_source || src;
 			const gatedBy = r.pending_departments || [];
 			const gated = gatedBy.length > 0;
+			const noAuth = r.can_release === false; // v2.41.1 — another identity releases this BOM
 			const action = gated
 				? `<span class="pl-pill" style="background:var(--amber-bg,rgba(245,158,11,.14));color:var(--amber,#b45309);border:1px solid var(--amber-bd,rgba(245,158,11,.35));white-space:nowrap">&#8987; Waiting: ${this.esc(gatedBy.join(", "))}</span>`
+				: noAuth
+				? `<span class="pl-pill" style="background:var(--amber-bg,rgba(245,158,11,.14));color:var(--amber,#b45309);border:1px solid var(--amber-bd,rgba(245,158,11,.35));white-space:nowrap">&#128274; Releaser: ${this.esc(r.releaser_label || "—")}</span>`
 				: `<button class="btn btn-approve btn-sm pl-approve-btn" data-name="${this.esc(r.name)}">` +
 				  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Release</button>`;
 			return (
-				`<div class="pl-row ${gated ? "amber" : "green"}">` +
+				`<div class="pl-row ${gated || noAuth ? "amber" : "green"}">` +
 				`<span class="pl-rid">${this.esc(r.name)}</span>` +
 				`<span class="pl-rwhat">${this.esc(itemName)} · <b>${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</b>` +
 				` <span class="dim">· ${this.esc(r.bom || "—")} · from ${this.esc(r.submitted_by || r.owner || "—")}</span></span>` +
@@ -1800,7 +1828,9 @@ class ProductionLogging {
 				`<span><b>Updated</b> ${this.esc(frappe.datetime.str_to_user(r.modified))}</span>` +
 				(gated
 					? `<span><b>Waiting for departments</b> ${this.esc(gatedBy.join(", "))} must release their own material first — then this run becomes releasable.</span>`
-					: `<span><b>On Release</b> the system submits the Material Transfer (${this.esc(src)} &rarr; ${this.esc(wip)}), runs Job Cards, posts the Manufacture Stock Entry and closes the Work Order — no further clicks.</span>`) +
+					: noAuth
+					? `<span><b>Releaser</b> ${this.esc(r.releaser_label || "—")} is configured for this BOM (TS Settings &rarr; BOM-wise Production Config) — only they (or an administrator) can release it.</span>`
+					: `<span><b>On Release</b> the system submits the Material Transfer (${this.esc(rsrc)} &rarr; ${this.esc(wip)}), runs Job Cards, posts the Manufacture Stock Entry and closes the Work Order — no further clicks.</span>`) +
 				`</div>`
 			);
 		};
@@ -2129,19 +2159,21 @@ class ProductionLogging {
 						this.advance_progress(4);
 						const awaiting_depts = m.ts_variance_status === "Awaiting Department Production";
 						const sf_depts = (m.department_categories || []);
+						// v2.41.1 — name the configured per-BOM releaser in the toast
+						const relWho = ((this.settings || {}).bom_releasers || {})[doc.bom] || null;
 						this.finish_progress({
 							doneStatus: multi
 								? (awaiting_depts
 									? "Submitted ✓ — departments notified to Add Production"
 									: "Submitted ✓ — Material Request routed to Store Manager")
-								: (sf_depts.length ? "Submitted ✓ — Pending Department Release (" + sf_depts.join(", ") + ")" : "Submitted ✓ — Pending Store Manager release"),
+								: (sf_depts.length ? "Submitted ✓ — Pending Department Release (" + sf_depts.join(", ") + ")" : (relWho ? "Submitted ✓ — Pending Release by " + relWho : "Submitted ✓ — Pending Store Manager release")),
 							onDone: () => {
 								frappe.show_alert({
 									message: multi
 										? (awaiting_depts
 											? __("Submitted {0} — {1} department(s) notified. The Store-Manager release fires automatically when all add their production.", [doc.name, (m.department_entries || []).length])
 											: __("Submitted {0} — Material Request {1} awaits Store Manager release.", [doc.name, m.material_request || ""]))
-										: (sf_depts.length ? __("Submitted {0} — {1} department(s) must release first, then the Store Manager releases the rest.", [doc.name, sf_depts.length]) : __("Submitted {0} — pending Store Manager release.", [doc.name])),
+										: (sf_depts.length ? __("Submitted {0} — {1} department(s) must release first, then the Store Manager releases the rest.", [doc.name, sf_depts.length]) : (relWho ? __("Submitted {0} — pending release by {1}.", [doc.name, this.esc(relWho)]) : __("Submitted {0} — pending Store Manager release.", [doc.name]))),
 									indicator: "green",
 								});
 								this.reset_after_submit();

@@ -277,12 +277,15 @@ def get_store_release_queue():
 	the SM-last gate would only block (14 Jul UX fix)."""
 	from trustbit_ethanol.ts_gate_entry import ts_production_dept as dept
 	roles = set(frappe.get_roles())
-	if not (dept._is_admin() or {"Stores Manager", "Manufacturing Manager",
-	        "Manufacturing User", "PM", "Grain PM", "CEO", "MD"} & roles):
+	audience = bool(dept._is_admin() or {"Stores Manager", "Manufacturing Manager",
+	                "Manufacturing User", "PM", "Grain PM", "CEO", "MD"} & roles)
+	# v2.41.1 — a configured per-BOM releaser is admitted too, but sees ONLY the
+	# rows they can release (narrowed at the return, no read widening).
+	if not audience and not _is_configured_releaser():
 		return []  # only the release-zone audience may enumerate the queue
 	runs = frappe.get_all(RUN_DOCTYPE,
 		filters={"ts_variance_status": "Pending Stores Release"},
-		fields=["name", "bom", "production_item", "production_item_name",
+		fields=["name", "bom", "flow_type", "production_item", "production_item_name",
 		        "actual_produced_qty", "production_uom", "work_order",
 		        "release_stock_entry", "submitted_by", "owner", "modified"],
 		order_by="modified desc", limit=20)
@@ -295,9 +298,39 @@ def get_store_release_queue():
 	pend = {}
 	for sl in slots:
 		pend.setdefault(sl.production_entry, []).append(sl.category)
+	from trustbit_ethanol.ts_gate_entry import ts_production_wo as wo_engine
+	from trustbit_ethanol.ts_gate_entry import ts_production_release as rel
+	# A releaser without TS Production Entry write would see a Release button that
+	# dead-ends on the write check (code-tester FIND-2) — fold it into can_release
+	# so the button never renders. One check; it does not vary per row.
+	caller_can_write = frappe.has_permission(RUN_DOCTYPE, "write")
 	for r in runs:
 		r["pending_departments"] = pend.get(r.name, [])
-	return runs
+		# v2.41 — per-BOM release source, so the SM card names the REAL source
+		# warehouse instead of the global Stores label (queue = Single-flow only)
+		cfg = wo_engine.bom_config(r.bom, r.get("flow_type") or "Single")
+		r["release_source"] = cfg["source_warehouse"]
+		# v2.41.1 — per-caller release authority + who the configured releaser is
+		r["can_release"] = bool(rel._can_release_cfg(cfg) and caller_can_write)
+		ru, rr = cfg["releaser_user"], cfg["releaser_role"]
+		r["releaser_label"] = ((frappe.db.get_value("User", ru, "full_name") or ru)
+		                       if ru else (rr or None))
+	return runs if audience else [r for r in runs if r["can_release"]]
+
+
+def _is_configured_releaser(user=None):
+	"""True when ANY BOM config row names this user (or, on user-empty rows, one
+	of their roles) as releaser — admits them to the release-queue audience
+	(v2.41.1). Parameterized; mirrors the _user_categories row semantics."""
+	user = user or frappe.session.user
+	roles = tuple(frappe.get_roles(user)) or ("",)
+	return bool(frappe.db.sql("""
+		SELECT 1 FROM `tabTS Production BOM Config`
+		WHERE parent = 'TS Settings' AND parentfield = 'ts_production_bom_configs'
+		  AND (releaser_user = %(user)s
+		       OR (IFNULL(releaser_user, '') = '' AND releaser_role IN %(roles)s))
+		LIMIT 1
+	""", {"user": user, "roles": roles}))
 
 
 @frappe.whitelist()

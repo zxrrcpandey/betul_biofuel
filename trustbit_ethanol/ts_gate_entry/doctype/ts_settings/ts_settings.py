@@ -8,6 +8,7 @@ class TSSettings(Document):
 	def validate(self):
 		self._validate_pre_post_dated()
 		self._validate_cascade_delete_settings()
+		self._validate_bom_configs()
 
 	def on_update(self):
 		self._sync_buying_allow_multiple_items()
@@ -149,3 +150,44 @@ class TSSettings(Document):
 						pre_from, max_days, min_allowed
 					)
 				)
+
+	def _validate_bom_configs(self):
+		"""v2.41 per-BOM production config (Single-flow release source + cost centre).
+
+		Frappe does NOT run child-doctype controllers on a parent Settings save, so
+		each row's TSProductionBOMConfig.validate() is invoked explicitly here —
+		remove this loop and every row-level check goes inert.
+
+		Change-gated per Lesson 170 — but has_value_changed() is unreliable for a
+		Table field (child Document lists never compare equal), so the gate compares
+		a value signature instead: an unrelated Settings save must never start
+		throwing on pre-existing rows (e.g. a warehouse that became department-
+		claimed after the row was saved)."""
+		rows = self.get("ts_production_bom_configs") or []
+
+		# The duplicate scan ALWAYS runs (cheap, and a duplicate is wrong no matter
+		# when it appeared): the REST child-PUT path re-saves the parent AFTER the
+		# child row is already in the DB, so the change gate below would skip it.
+		seen = {}
+		for row in rows:
+			if row.bom and row.bom in seen:
+				frappe.throw(
+					_("Rows #{0} and #{1} both configure BOM {2} — keep exactly one "
+					  "row per BOM.").format(
+						seen[row.bom], row.idx, frappe.utils.escape_html(row.bom)),
+					title=_("Duplicate BOM Config"))
+			if row.bom:
+				seen[row.bom] = row.idx
+
+		def _sig(rowlist):
+			return [(r.get("bom"), r.get("source_warehouse"), r.get("cost_center"),
+			         r.get("releaser_user"), r.get("releaser_role"))
+			        for r in (rowlist or [])]
+
+		if not self.is_new():
+			before = self.get_doc_before_save()
+			if before and _sig(before.get("ts_production_bom_configs")) == _sig(rows):
+				return
+
+		for row in rows:
+			row.validate()
