@@ -326,7 +326,11 @@ function _show_ts_banner(frm, key, html, bgColor, borderColor) {
 	">${html}</div>`;
 
 	// Insert after form-dashboard-section (always exists, Frappe doesn't touch children we add)
-	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section");
+	// .first() is load-bearing: v15 forms carry FIVE .form-dashboard-section nodes
+	// (progress/heatmap/graph/stats/links) and jQuery .after() on a multi-element
+	// set inserts one copy per node — seen live on MR Connections tab: 5 banners.
+	// Same fix as po_approval.js / ts_budget_override_approval.js (v2.29.4).
+	const $dashboard = $(frm.page.wrapper).find(".form-dashboard-section").first();
 	if ($dashboard.length) {
 		$dashboard.after(banner);
 	}
