@@ -146,7 +146,8 @@ fixtures = [
 
 # Override standard DocType dashboards to show TS connections
 override_doctype_dashboards = {
-	"Purchase Order": "trustbit_ethanol.ts_gate_entry.dashboard_overrides.get_data_for_purchase_order"
+	"Purchase Order": "trustbit_ethanol.ts_gate_entry.dashboard_overrides.get_data_for_purchase_order",
+	"Request for Quotation": "trustbit_ethanol.ts_gate_entry.dashboard_overrides.get_data_for_request_for_quotation"
 }
 
 # v2.9.14.4 — Patch ERPNext PurchaseInvoice to allow update_stock=1 on Returns
@@ -205,7 +206,24 @@ on_session_creation = [
 
 # Doc Events — PO lifecycle hooks for approval state management
 doc_events = {
+	# v2.42.0 — supplier-PORTAL quotes bypass the RFQ->SQ mapper (create_rfq_items
+	# hand-copies an 11-field allowlist), so fill the dimensions from the MR there.
+	# No-op on the normal mapper path.
+	"Supplier Quotation": {
+		"before_validate": "trustbit_ethanol.ts_gate_entry.setup_rfq_dimensions.sq_inherit_mr_dimensions",
+	},
+	# v2.42.0 — the MR carries its project in the header field ts_project, which the
+	# ERPNext mapper cannot see (it reads the native item-level `project`), so the
+	# project never reached the RFQ. Fill it here; cost_center already same-name copies.
+	"Request for Quotation": {
+		"before_validate": "trustbit_ethanol.ts_gate_entry.setup_rfq_dimensions.rfq_inherit_mr_dimensions",
+	},
 	"Purchase Order": {
+		# v2.42.0 — Supplier Quotation has no ts_project field, so the
+		# MR->RFQ->SQ->PO route arrives with native `project` set but ts_project
+		# (the visible field; native is hidden by Property Setter) EMPTY. Mirror it.
+		# MUST stay before_validate so po_before_save's own mirror then no-ops.
+		"before_validate": "trustbit_ethanol.ts_gate_entry.setup_rfq_dimensions.po_inherit_project",
 		# v2.10.0 — list-form (Lesson 247): cancel cascade now also drops any Pending budget-override doc.
 		"on_cancel": [
 			"trustbit_ethanol.ts_gate_entry.ts_po_approval.po_on_cancel",
@@ -363,6 +381,16 @@ override_whitelisted_methods = {
 		"trustbit_ethanol.ts_gate_entry.ts_notification_trail.mark_as_read",
 	"frappe.desk.doctype.notification_log.notification_log.mark_all_as_read":
 		"trustbit_ethanol.ts_gate_entry.ts_notification_trail.mark_all_as_read",
+	# v2.42.0 — fill the MR dimensions into the mapper's RETURN value so the NEW
+	# unsaved form already shows Cost Center + Project. The before_validate hooks
+	# stay as the safety net for REST / supplier-portal / hand-linked rows.
+	# Both wrappers delegate to core unchanged and persist nothing.
+	"erpnext.stock.doctype.material_request.material_request.make_request_for_quotation":
+		"trustbit_ethanol.ts_gate_entry.setup_rfq_dimensions.make_request_for_quotation",
+	"erpnext.buying.doctype.request_for_quotation.request_for_quotation.make_supplier_quotation_from_rfq":
+		"trustbit_ethanol.ts_gate_entry.setup_rfq_dimensions.make_supplier_quotation_from_rfq",
+	"erpnext.buying.doctype.supplier_quotation.supplier_quotation.make_purchase_order":
+		"trustbit_ethanol.ts_gate_entry.setup_rfq_dimensions.make_purchase_order",
 }
 
 # Setup custom fields on Purchase Receipt, Purchase Order, Material Request, Company, Item Group, Brand
@@ -449,6 +477,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_exec_pwa.after_migrate_exec_pwa",
 	# v2.39.0 — Delivery Note "Transport Details" section (Sales dispatch + TPIA batch capture)
 	"trustbit_ethanol.ts_gate_entry.setup_dn_transport.seed_dn_transport_fields",
+	# v2.42.0 — RFQ Item cost_center: restores the MR -> RFQ -> SQ -> PO dimension chain
+	"trustbit_ethanol.ts_gate_entry.setup_rfq_dimensions.seed_rfq_dimension_fields",
 ]
 
 # Scheduled Tasks
