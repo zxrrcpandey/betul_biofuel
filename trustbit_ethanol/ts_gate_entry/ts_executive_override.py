@@ -254,7 +254,11 @@ def _get_current_step_approver_users(doc):
 	if not current_step:
 		return []
 
-	return get_cc_users_for_step(cc_config, int(current_step)) or []
+	# v2.46: thread the assigned route so purpose-scoped MRs resolve recipients
+	# by ROLE (str form is fine — _purpose_role_for_step handles a route name)
+	return get_cc_users_for_step(
+		cc_config, int(current_step), route=doc.get("ts_mr_approval_route")
+	) or []
 
 
 def _send_override_email(doctype, docname, edited_by, edited_by_role, changed_fields, recipients):

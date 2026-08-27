@@ -108,12 +108,12 @@ def get_submit_target(doctype, docname=None):
 		doc = frappe.get_doc("Material Request", docname)
 		cost_center = _get_mr_cost_center(doc)
 		if cost_center:
-			route = _find_mr_route(cost_center)
+			route = _find_mr_route(cost_center, doc.material_request_type)
 			if route:
 				route_doc = frappe.get_doc("TS MR Approval Route", route)
 				steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
 				if steps:
-					target = _get_target_step_for_mr(steps, frappe.session.user, cost_center)
+					target = _get_target_step_for_mr(steps, frappe.session.user, cost_center, route=route_doc)
 					return {"target_label": target.role_label or target.role}
 		return {"target_label": "Department Head"}
 
@@ -500,7 +500,7 @@ def resume_mr(docname, comment=""):
 	cc_config = get_cc_config(cost_center)
 	recipients = []
 	if cc_config:
-		recipients = get_cc_users_for_step(cc_config, held_step_order)
+		recipients = get_cc_users_for_step(cc_config, held_step_order, route=route_doc)
 	if not recipients:
 		recipients = _get_role_users(held_step.role)
 
@@ -1191,7 +1191,7 @@ def _submit_mr_for_approval(doc):
 	if _maybe_divert_mr_for_budget(doc, from_state="Draft"):
 		return "Pending Budget Override"
 
-	route_name = _find_mr_route(cost_center)
+	route_name = _find_mr_route(cost_center, doc.material_request_type)
 	if not route_name:
 		frappe.throw(_("No MR approval route configured for Cost Center: {0}").format(cost_center))
 
@@ -1199,7 +1199,7 @@ def _submit_mr_for_approval(doc):
 	steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
 
 	# Self-skip (role-based) + CC config skip (no Reviewer for step)
-	target = _get_target_step_for_mr(steps, frappe.session.user, cost_center)
+	target = _get_target_step_for_mr(steps, frappe.session.user, cost_center, route=route_doc)
 	next_state = f"Pending {target.role_label or target.role}"
 
 	# Track if self-skip was impossible (single-step route where submitter has the role)
@@ -1223,7 +1223,7 @@ def _submit_mr_for_approval(doc):
 	cc_config = get_cc_config(cost_center)
 	recipients = []
 	if cc_config:
-		recipients = get_cc_users_for_step(cc_config, target.step_order)
+		recipients = get_cc_users_for_step(cc_config, target.step_order, route=route_doc)
 	if not recipients:
 		recipients = _get_role_users(target.role)
 
@@ -1332,7 +1332,7 @@ def _approve_mr(doc, comment=""):
 		cc_config = get_cc_config(cost_center)
 		recipients = []
 		if cc_config:
-			recipients = get_cc_users_for_step(cc_config, next_step.step_order)
+			recipients = get_cc_users_for_step(cc_config, next_step.step_order, route=route_doc)
 		if not recipients:
 			recipients = _get_role_users(next_step.role)
 
@@ -1549,14 +1549,14 @@ def _resubmit_mr(doc):
 		return {"status": "resubmitted", "next_state": "Pending Budget Override"}
 
 	cost_center = _get_mr_cost_center(doc)
-	route_name = _find_mr_route(cost_center)
+	route_name = _find_mr_route(cost_center, doc.material_request_type)
 	if not route_name:
 		frappe.throw(_("No MR approval route configured for Cost Center: {0}").format(cost_center))
 
 	route_doc = frappe.get_doc("TS MR Approval Route", route_name)
 	steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
 
-	target = _get_target_step_for_mr(steps, frappe.session.user, cost_center)
+	target = _get_target_step_for_mr(steps, frappe.session.user, cost_center, route=route_doc)
 	next_state = f"Pending {target.role_label or target.role}"
 
 	_log_mr_action(doc, "Resubmitted", "Revised", next_state,
@@ -1576,7 +1576,7 @@ def _resubmit_mr(doc):
 	cc_config = get_cc_config(cost_center)
 	recipients = []
 	if cc_config:
-		recipients = get_cc_users_for_step(cc_config, target.step_order)
+		recipients = get_cc_users_for_step(cc_config, target.step_order, route=route_doc)
 	if not recipients:
 		recipients = _get_role_users(target.role)
 	_send_approval_notification(doc, "mr_pending", recipients,
@@ -1684,13 +1684,64 @@ def _get_mr_cost_center(doc):
 	return None
 
 
-def _find_mr_route(cost_center):
-	"""Find the TS MR Approval Route for this Cost Center."""
+def _rgp_routing_enabled():
+	"""v2.46 RGP A1 (decision O-2) — purpose-aware MR routing is armed only while
+	TS Settings.ts_rgp_enabled = 1. Fail-CLOSED (L171/172: unset Singles Check
+	reads None ⇒ 0 ⇒ routing behaves exactly as pre-v2.46).
+	Reads tabSingles DIRECTLY: get_single_value THROWS on a site where the
+	Custom Field is absent (seeder not yet run), and the caught throw would
+	still leave a red popup in message_log on every MR submit (security M-1).
+	"""
+	try:
+		val = frappe.db.sql(
+			"""SELECT value FROM `tabSingles`
+			   WHERE doctype = 'TS Settings' AND field = 'ts_rgp_enabled' LIMIT 1"""
+		)
+		return bool(val) and cint(val[0][0]) == 1
+	except Exception:
+		frappe.clear_messages()
+		return False
+
+
+def _find_mr_route(cost_center, purpose=None):
+	"""Find the TS MR Approval Route for this Cost Center.
+
+	v2.46 RGP A1 — two-pass, purpose-aware (flag-gated, decision O-2):
+	Pass 1 (only when a purpose is given AND ts_rgp_enabled=1): an active route
+	whose applies_to_purpose matches. A route WITH cost_centers rows must contain
+	this CC; a route with NO cost_centers rows is a company-wide wildcard for the
+	purpose (enumeration is impossible — _validate_cost_centers forbids a CC on
+	two active routes, and every CC is already claimed). Explicit-CC match
+	outranks wildcard; name breaks ties (the old LIMIT 1 had no ORDER BY).
+	Pass 2 (fallback = legacy behaviour): the original CC-membership lookup,
+	restricted to blank-purpose routes so a purpose route can never capture
+	other purposes, with a deterministic ORDER BY added.
+	"""
+	if purpose and _rgp_routing_enabled():
+		result = frappe.db.sql("""
+			SELECT r.name
+			FROM `tabTS MR Approval Route` r
+			LEFT JOIN `tabTS MR Route Cost Center` cc
+				ON cc.parent = r.name AND cc.cost_center = %(cc)s
+			WHERE r.is_active = 1
+			  AND r.applies_to_purpose = %(purpose)s
+			  AND (cc.cost_center IS NOT NULL
+			       OR NOT EXISTS (
+			           SELECT 1 FROM `tabTS MR Route Cost Center` x
+			           WHERE x.parent = r.name))
+			ORDER BY (cc.cost_center IS NULL) ASC, r.name ASC
+			LIMIT 1
+		""", {"cc": cost_center, "purpose": purpose}, as_dict=True)
+		if result:
+			return result[0].name
+
 	result = frappe.db.sql("""
 		SELECT r.name
 		FROM `tabTS MR Approval Route` r
 		INNER JOIN `tabTS MR Route Cost Center` cc ON cc.parent = r.name
 		WHERE cc.cost_center = %s AND r.is_active = 1
+		  AND IFNULL(r.applies_to_purpose, '') = ''
+		ORDER BY r.name ASC
 		LIMIT 1
 	""", cost_center, as_dict=True)
 
@@ -1719,11 +1770,13 @@ def _get_target_step_with_skip(steps, user):
 	return steps[-1]
 
 
-def _get_target_step_for_mr(steps, user, cost_center):
+def _get_target_step_for_mr(steps, user, cost_center, route=None):
 	"""Get target step for MR with both role-based self-skip AND CC config skip.
 	Skips steps where:
 	  1. User has the step's role (self-skip), OR
 	  2. CC config has no Reviewer/approver for that step (no HOD = skip)
+	v2.46: `route` is threaded through so purpose-scoped routes match CC rows by
+	ROLE (heterogeneous per-CC step numbering — see _purpose_role_for_step).
 	"""
 	if not steps:
 		frappe.throw(_("No approval steps configured"))
@@ -1739,7 +1792,7 @@ def _get_target_step_for_mr(steps, user, cost_center):
 		# Check 2: CC config skip — if CC config exists and has NO users for this step,
 		# skip it (e.g., Civil CC has no Reviewer/HOD → skip Dept Head step)
 		if cc_config and step.action_type == "Review":
-			step_users = get_cc_approvers_for_step(cc_config, step.step_order)
+			step_users = get_cc_approvers_for_step(cc_config, step.step_order, route=route)
 			if not step_users:
 				continue
 
@@ -1868,13 +1921,13 @@ def _validate_user_can_act_on_mr(doc):
 	cost_center = _get_mr_cost_center(doc)
 	cc_config = get_cc_config(cost_center)
 	if cc_config:
-		cc_approvers = get_cc_approvers_for_step(cc_config, current_step_order)
+		cc_approvers = get_cc_approvers_for_step(cc_config, current_step_order, route=route)
 		if cc_approvers and frappe.session.user not in cc_approvers:
 			# Allow higher-level override: check if user is approver at ANY higher step
 			all_higher_approvers = []
 			for step in steps:
 				if step.step_order > current_step_order:
-					all_higher_approvers.extend(get_cc_approvers_for_step(cc_config, step.step_order))
+					all_higher_approvers.extend(get_cc_approvers_for_step(cc_config, step.step_order, route=route))
 			if frappe.session.user not in all_higher_approvers:
 				frappe.throw(_("You are not configured as an approver for {0} at this step").format(cost_center))
 
@@ -2369,7 +2422,7 @@ def _get_mr_approval_context(doc, settings):
 				current_step_obj = next((s for s in steps if s.step_order == current_step), None)
 
 				if current_step_obj:
-					can_act = _check_user_can_act(steps, current_step, user_roles, cc_config, effective_mr_self_block)
+					can_act = _check_user_can_act(steps, current_step, user_roles, cc_config, effective_mr_self_block, route=route_doc)
 
 					if can_act:
 						if current_step_obj.action_type == "Review":
@@ -2388,7 +2441,7 @@ def _get_mr_approval_context(doc, settings):
 				held_step_order = cint(doc.ts_mr_held_at_step) if hasattr(doc, "ts_mr_held_at_step") else current_step
 				steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
 				user_roles = frappe.get_roles(frappe.session.user)
-				can_act = _check_user_can_act(steps, held_step_order, user_roles, cc_config, effective_mr_self_block)
+				can_act = _check_user_can_act(steps, held_step_order, user_roles, cc_config, effective_mr_self_block, route=route_doc)
 				if can_act:
 					ctx["can_resume"] = True
 
@@ -2398,8 +2451,9 @@ def _get_mr_approval_context(doc, settings):
 	return ctx
 
 
-def _check_user_can_act(steps, current_step_order, user_roles, cc_config, effective_self_block):
-	"""Check if current user can act at the given step, considering role + CC config + self-block."""
+def _check_user_can_act(steps, current_step_order, user_roles, cc_config, effective_self_block, route=None):
+	"""Check if current user can act at the given step, considering role + CC config + self-block.
+	v2.46: `route` threads purpose-scoped role-matching into the CC lookups."""
 	if effective_self_block:
 		return False
 
@@ -2414,12 +2468,12 @@ def _check_user_can_act(steps, current_step_order, user_roles, cc_config, effect
 
 	# CC config check
 	if cc_config:
-		cc_approvers = get_cc_approvers_for_step(cc_config, current_step_order)
+		cc_approvers = get_cc_approvers_for_step(cc_config, current_step_order, route=route)
 		if cc_approvers and frappe.session.user not in cc_approvers:
 			# Check higher steps
 			for step in steps:
 				if step.step_order > current_step_order:
-					higher_approvers = get_cc_approvers_for_step(cc_config, step.step_order)
+					higher_approvers = get_cc_approvers_for_step(cc_config, step.step_order, route=route)
 					if frappe.session.user in higher_approvers:
 						return True
 			return False
@@ -3208,14 +3262,14 @@ def _assign_route_and_first_step(doc):
 
 	if doc.doctype == "Material Request":
 		cost_center = _get_mr_cost_center(doc)
-		route_name = _find_mr_route(cost_center)
+		route_name = _find_mr_route(cost_center, doc.material_request_type)
 		if not route_name:
 			frappe.throw(
 				_("No MR approval route configured for Cost Center: {0}").format(cost_center)
 			)
 		route_doc = frappe.get_doc("TS MR Approval Route", route_name)
 		steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
-		target = _get_target_step_for_mr(steps, originator, cost_center)
+		target = _get_target_step_for_mr(steps, originator, cost_center, route=route_doc)
 		next_state = f"Pending {target.role_label or target.role}"
 		self_skip_impossible = (
 			target == steps[0]
@@ -3241,7 +3295,7 @@ def _assign_route_and_first_step(doc):
 		cc_config = get_cc_config(cost_center)
 		recipients = []
 		if cc_config:
-			recipients = get_cc_users_for_step(cc_config, target.step_order)
+			recipients = get_cc_users_for_step(cc_config, target.step_order, route=route_doc)
 		if not recipients:
 			recipients = _get_role_users(target.role)
 		_send_approval_notification(

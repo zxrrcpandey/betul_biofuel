@@ -279,28 +279,74 @@ def get_cc_config(cost_center):
 	return None
 
 
-def get_cc_users_for_step(cc_config, step_order):
+def _purpose_role_for_step(route, step_order):
+	"""v2.46 RGP A1 — for a PURPOSE-scoped route, translate step_order → the step's role.
+
+	Config rows in TS CC Approval User carry a bare step_order numbered to that
+	CC's OWN legacy route (conventions differ per CC: 1=Stock User/2=Dept Head/3=AVP
+	on most, 1=CEO on CAPEX, 1=DH/2=AVP/3=CEO on CPU/WTP, …). A purpose route is a
+	single company-wide chain, so step-number matching would resolve the WRONG rows
+	on any CC whose convention differs. For purpose routes we therefore match config
+	rows by ROLE, not step number — verified 28 Aug 2026: every can_approve row on
+	both servers uses the exact role strings (Department Head / AVP / CEO / GPM).
+
+	Returns the role to match on, or None ⇒ legacy step_order matching applies.
+	`route` may be a TS MR Approval Route doc or name (or None).
+
+	DELIBERATELY independent of the ts_rgp_enabled kill switch (security L-1):
+	the switch gates route SELECTION only. An MR already routed onto a purpose
+	route must keep role-matched approver/notify semantics even if the flag is
+	turned off mid-flight — otherwise its in-chain allow-lists silently flip
+	back to step-number matching. Do NOT "fix" this by adding a flag check.
+	"""
+	if not route:
+		return None
+	if isinstance(route, str):
+		if not frappe.get_cached_value("TS MR Approval Route", route, "applies_to_purpose"):
+			return None
+		route = frappe.get_cached_doc("TS MR Approval Route", route)
+	elif not route.get("applies_to_purpose"):
+		return None
+	for step in route.approval_steps:
+		if cint(step.step_order) == cint(step_order):
+			return step.role
+	return None
+
+
+def get_cc_users_for_step(cc_config, step_order, route=None):
 	"""Get users from CC config for a specific step who should be notified.
 	Returns empty list if no users found (caller should fall back to role-based).
+	`route` (optional): when it is a purpose-scoped route, rows are matched by the
+	step's ROLE instead of step_order (see _purpose_role_for_step). Legacy routes
+	and route=None behave exactly as before.
 	"""
 	if not cc_config:
 		return []
+	role = _purpose_role_for_step(route, step_order)
 	users = []
 	for row in cc_config.users:
-		if cint(row.step_order) == cint(step_order) and row.gets_notified:
+		if role:
+			if row.role == role and row.gets_notified:
+				users.append(row.user)
+		elif cint(row.step_order) == cint(step_order) and row.gets_notified:
 			users.append(row.user)
 	return users
 
 
-def get_cc_approvers_for_step(cc_config, step_order):
+def get_cc_approvers_for_step(cc_config, step_order, route=None):
 	"""Get users from CC config who can approve at a specific step.
 	Returns empty list if no approvers configured (means: no CC restriction for this step).
+	`route` (optional): purpose-scoped routes match by ROLE — see _purpose_role_for_step.
 	"""
 	if not cc_config:
 		return []
+	role = _purpose_role_for_step(route, step_order)
 	users = []
 	for row in cc_config.users:
-		if cint(row.step_order) == cint(step_order) and row.can_approve:
+		if role:
+			if row.role == role and row.can_approve:
+				users.append(row.user)
+		elif cint(row.step_order) == cint(step_order) and row.can_approve:
 			users.append(row.user)
 	return users
 

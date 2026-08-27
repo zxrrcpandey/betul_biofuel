@@ -101,7 +101,7 @@ def _step1_role_for(source_doc):
             primary_cc = source_doc.get("cost_center") or (
                 source_doc.items[0].cost_center if source_doc.get("items") else None
             )
-            route = _find_mr_route(primary_cc) if primary_cc else None
+            route = _find_mr_route(primary_cc, source_doc.get("material_request_type")) if primary_cc else None
             if not route:
                 return None, None
             route_doc = frappe.get_doc("TS MR Approval Route", route)

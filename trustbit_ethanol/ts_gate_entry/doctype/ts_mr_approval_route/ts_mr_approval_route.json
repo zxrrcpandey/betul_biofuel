@@ -7,6 +7,7 @@
  "field_order": [
   "route_name",
   "is_active",
+  "applies_to_purpose",
   "column_break_1",
   "description",
   "cost_centers_section",
@@ -31,6 +32,15 @@
    "fieldtype": "Check",
    "label": "Is Active",
    "default": "1"
+  },
+  {
+   "fieldname": "applies_to_purpose",
+   "fieldtype": "Select",
+   "label": "Applies to Purpose",
+   "options": "\nPurchase\nMaterial Transfer\nMaterial Issue\nManufacture\nCustomer Provided\nService Request",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Leave BLANK for a normal cost-centre route (default). When set, Material Requests of this purpose use THIS route instead of the cost centre's route — armed only while TS Settings › Enable RGP is ON (v2.46 RGP). A purpose route with no Cost Centers rows applies company-wide."
   },
   {
    "fieldname": "column_break_1",
@@ -68,7 +78,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-03-17 00:00:00",
+ "modified": "2026-08-28 00:00:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS MR Approval Route",

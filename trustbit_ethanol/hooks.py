@@ -481,6 +481,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_rfq_dimensions.seed_rfq_dimension_fields",
 	# v2.43.1 — CEO/MD read-only access to the audit trail (Version / Activity Log / Comment / View Log / Access Log)
 	"trustbit_ethanol.ts_gate_entry.setup_activity_trail_perms.seed_activity_trail_permissions",
+	# v2.46.0 — RGP Phase A1: ts_rgp_enabled kill switch + "RGP Service" purpose route (flag-gated routing, O-2)
+	"trustbit_ethanol.ts_gate_entry.setup_rgp.setup_rgp",
 ]
 
 # Scheduled Tasks
