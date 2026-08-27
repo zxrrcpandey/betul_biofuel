@@ -6,7 +6,7 @@
      C — Approved Direct PO (new, no token)
    ═══════════════════════════════════════════════════════════════════ */
 
-const SR_VERSION = "v6.12-2026-08-06-pre-grn-exit-release";
+const SR_VERSION = "v6.13-2026-08-27-grain-wait-tiers";
 const SR_API = "trustbit_ethanol.ts_gate_entry.stores_receiving_api";
 console.log("[stores-receiving]", SR_VERSION, "loaded");
 
@@ -160,7 +160,9 @@ async function _sr_load_grain() {
 		}
 		_sr_reapply_filter();
 	} catch (e) {
-		// Non-allow-listed users / errors: hide the section silently.
+		// Only real errors land here — non-allow-listed users get [] from the
+		// server and take the empty-list branch above. Log before hiding (L311).
+		console.error("[stores-receiving] Section G failed to load/render", e);
 		$("#sr-badge-g").hide();
 		$("#sr-section-g").hide();
 	}
@@ -179,7 +181,7 @@ function _sr_render_section_g() {
 			<td><span class="sr-status sr-warn">${_sr_esc(r.material)}</span></td>
 			<td class="sr-num">${format_number(r.net_weight || 0, null, 0)}</td>
 			<td>${_sr_grain_status_badge(r)}</td>
-			<td>${_sr_age(r.age_hours)}</td>
+			<td><span class="sr-wait ${_sr_wait_tier(r.age_hours)}">${_sr_age(r.age_hours)}</span></td>
 			<td><button class="btn btn-xs btn-warning sr-link-grain" data-token="${_sr_esc(r.token)}" data-vehicle="${_sr_esc(r.vehicle)}" data-material="${_sr_esc(r.material)}" data-net="${_sr_esc(r.net_weight || 0)}">Link PO</button>${_sr_grain_release_btn(r)}</td>
 		</tr>`),
 		'</tbody></table>'
@@ -204,6 +206,23 @@ function _sr_grain_status_badge(r) {
 	}
 	if (Number(r.released)) return '<span class="sr-status sr-ok">Exit released</span>';
 	return '<span class="sr-status sr-muted">Awaiting exit</span>';
+}
+
+// v2.45.0 — ageing tier for the Section G "Waiting" pill (user-approved 27 Aug
+// 2026: >=3d moderate, >=5d severe, >=7d danger/flashing). Tiers derive from
+// the SAME Math.round(h/24) figure _sr_age() prints, so the label and the
+// colour can never disagree on adjacent rows (a "7d" that flashes next to a
+// "7d" that doesn't). Number(null) is 0 → null/absent ages render tier-less,
+// identical to a fresh row. Section G only — the _sr_age() calls in Sections
+// A/B/D and the search card stay bare.
+function _sr_wait_tier(h) {
+	const hours = Number(h);
+	if (!isFinite(hours)) return "";
+	const days = Math.round(hours / 24);
+	if (days >= 7) return "sr-wait-dgr";
+	if (days >= 5) return "sr-wait-sev";
+	if (days >= 3) return "sr-wait-mod";
+	return "";
 }
 
 function _sr_grain_release_btn(r) {
@@ -1110,6 +1129,16 @@ const SR_CSS = `
 .sr-source-c { background:#dcfce7; color:#166534; }
 [data-theme="dark"] .sr-source-b { background:rgba(30,64,175,0.2); color:#93c5fd; }
 [data-theme="dark"] .sr-source-c { background:rgba(22,101,52,0.2); color:#86efac; }
+/* v2.45.0 — Section G "Waiting" ageing pill (tier-less = transparent, looks like today) */
+.sr-wait { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
+.sr-wait-mod { background:#fef3c7; color:#92400e; }
+.sr-wait-sev { background:#ffedd5; color:#9a3412; }
+.sr-wait-dgr { background:#fee2e2; color:#991b1b; font-weight:700; animation:sr-flash 1.6s ease-in-out infinite; }
+@keyframes sr-flash { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+@media (prefers-reduced-motion: reduce) { .sr-wait-dgr { animation:none; } }
+[data-theme="dark"] .sr-wait-mod { background:rgba(217,119,6,0.2); color:#fcd34d; }
+[data-theme="dark"] .sr-wait-sev { background:rgba(234,88,12,0.22); color:#fdba74; }
+[data-theme="dark"] .sr-wait-dgr { background:rgba(239,68,68,0.2); color:#fca5a5; }
 
 /* ── Token Search (v6.2) ─────────────────────────────────────────── */
 .sr-search { margin: -4px 0 18px; }

@@ -47,6 +47,8 @@ TEMPLATE_EVENT_KEYS = (
 	"reminder_l3",
 	"reminder_generic",
 	"grain_po_pending_link",
+	# v2.45.0 — daily digest to the grain linkers (2 variables: count, oldest-days)
+	"grain_po_link_daily_digest",
 )
 
 # Field -> doctype mapping used by the one-time legacy migration.

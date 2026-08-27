@@ -519,6 +519,11 @@ scheduler_events = {
 		"0 9 * * 1": [
 			"trustbit_ethanol.ts_gate_entry.ts_qc_sla_scheduler.weekly_qc_email",
 		],
+		# v2.45.0 — grain PO-link daily digest at 09:00 site time (NOT the "daily"
+		# bucket, which fires at midnight). Distinct from "0 9 * * 1" above (weekly).
+		"0 9 * * *": [
+			"trustbit_ethanol.ts_gate_entry.ts_grain_defer.remind_grain_awaiting_po_link",
+		],
 		# v2.29.0 — Notification Trail: monthly evidence archive (private CSV;
 		# extends the audit trail beyond core clear_old_logs' 180-day deletion)
 		"0 2 1 * *": [

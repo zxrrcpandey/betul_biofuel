@@ -138,7 +138,6 @@ def get_section_g():
         """
         SELECT t.name AS token, t.vehicle_number AS vehicle,
                ge.ts_material_type AS material, t.wb_tare_time AS tare_time,
-               TIMESTAMPDIFF(MINUTE, t.wb_tare_time, NOW()) / 60.0 AS age_hours,
                t.status AS status,
                IFNULL(t.ts_pre_grn_exit_approved, 0) AS released
         FROM `tabTS Token` t
@@ -156,7 +155,13 @@ def get_section_g():
         """,
         as_dict=True,
     )
+    # v2.45.0 — age in PYTHON, not SQL NOW(): the MySQL session runs UTC while
+    # wb_tare_time is site time, so the old TIMESTAMPDIFF read ~5.5 h low and
+    # the new waiting tiers fired late. Same clock as Sections A/B/D and the
+    # 09:00 digest (which was already Python-side and disagreed with this).
+    from trustbit_ethanol.ts_gate_entry.stores_receiving_api import _age_hours
     for r in rows:
+        r["age_hours"] = _age_hours(r["tare_time"])
         wb = frappe.db.get_value(
             "TS Weighbridge Log",
             {"token_number": r["token"], "docstatus": ["<", 2]},
@@ -667,6 +672,159 @@ def maybe_notify_grain_pending(token_name):
     except Exception:
         try:
             frappe.log_error(title="grain_defer notify", message=frappe.get_traceback())
+            frappe.clear_messages()
+        except Exception:
+            pass
+
+
+# v2.45.0 — daily "still awaiting PO link" reminder (user-approved 27 Aug 2026).
+# Days before a grain truck enters the daily digest. The Section G UI tiers
+# (3d/5d/7d) live client-side in stores_receiving.js; BOTH sides derive the
+# day figure with the same half-up rounding (_days here == Math.round there,
+# same Python clock since get_section_g's v2.45.0 fix), so a truck enters the
+# digest on exactly the morning its pill turns amber.
+GRAIN_LINK_REMINDER_DAYS = 3
+_DIGEST_SUBJECT_PREFIX = "Grain trucks awaiting PO link"
+_DIGEST_TEMPLATE_KEY = "grain_po_link_daily_digest"
+# 20h (not 24h) so scheduler drift can never skip a day (emit_stuck_approval_bells doctrine).
+_DIGEST_WINDOW_HOURS = 20
+_DIGEST_MAX_ROWS = 10
+
+
+def remind_grain_awaiting_po_link():
+    """Daily 09:00 digest (hooks.py cron "0 9 * * *"): ONE bell per store-team
+    linker listing every grain truck that has waited >= GRAIN_LINK_REMINDER_DAYS
+    for its PO link, plus ONE best-effort WhatsApp digest. Row filter mirrors
+    get_section_g (a strict subset — it adds wb_tare_time IS NOT NULL), so the
+    digest never names a truck the dashboard doesn't show; day figures use the
+    same half-up rounding as the dashboard label, so bell and screen always
+    print the same "Nd". Ages computed in PYTHON with now_datetime() — the MySQL
+    session runs UTC while values are stored in site time (same doctrine as
+    escalate_overdue_released_trucks). Repeats daily until the PO is linked:
+    dedupe is log-derived per recipient (Notification Log subject-prefix within
+    _DIGEST_WINDOW_HOURS) — no new Token field, no migrate. Fully fail-soft —
+    never raises. Confidentiality-safe: token / vehicle / material / days only —
+    never PO, supplier, amount, or net weight."""
+    try:
+        if not _feature_enabled():
+            return
+        from frappe.utils import add_to_date, time_diff_in_hours
+        rows = frappe.db.sql(
+            """
+            SELECT t.name AS token, t.vehicle_number AS vehicle,
+                   ge.ts_material_type AS material, t.wb_tare_time AS tare_time
+            FROM `tabTS Token` t
+            JOIN `tabTS Gate Entry` ge
+              ON ge.token_number = t.name AND ge.docstatus = 1
+            WHERE (t.status = 'Tare Weighed'
+                   OR (IFNULL(t.ts_pre_grn_exit_approved, 0) = 1
+                       AND t.status IN ('Plant Exited', 'Campus Exited')))
+              AND t.docstatus <> 2
+              AND t.entry_type = 'Material'
+              AND (t.purchase_receipt IS NULL OR t.purchase_receipt = '')
+              AND ge.ts_po_deferred = 1
+              AND t.wb_tare_time IS NOT NULL
+            ORDER BY t.wb_tare_time ASC
+            LIMIT 200
+            """,
+            as_dict=True,
+        )
+        # Half-up rounding, matching the dashboard's Math.round(h/24) exactly
+        # (int(x + 0.5), NOT Python round() which is round-half-even).
+        def _days(tare):
+            return int(time_diff_in_hours(now_datetime(), tare) / 24 + 0.5)
+
+        due = [r for r in rows if _days(r.tare_time) >= GRAIN_LINK_REMINDER_DAYS]
+        if not due:
+            return
+
+        # Recipients = the grain-linker allow-list (the only store users who can
+        # open Section G and act), enabled accounts only. Read-only reuse of
+        # _STORE_TEAM — widening it is a MAIZE_PO_CONFIDENTIAL change, never a
+        # digest-side edit.
+        from trustbit_ethanol.ts_gate_entry.ts_confidential_po import _STORE_TEAM
+        recipients = frappe.get_all(
+            "User", filters={"name": ["in", sorted(_STORE_TEAM)], "enabled": 1},
+            pluck="name",
+        )
+        if not recipients:
+            return
+
+        oldest_days = _days(due[0].tare_time)
+        # Prefix stays UNtranslated: the dedupe LIKE below matches it literally,
+        # so a translated subject would silently disable the once-per-day guard.
+        subject = "{0} — {1} pending (oldest {2}d)".format(
+            _DIGEST_SUBJECT_PREFIX, len(due), oldest_days)
+        lines = []
+        for r in due[:_DIGEST_MAX_ROWS]:
+            days = _days(r.tare_time)
+            lines.append(
+                "<tr><td>{0}</td><td>{1}</td><td>{2}</td><td><b>{3}d</b></td></tr>".format(
+                    escape_html(r.token), escape_html(r.vehicle or ""),
+                    escape_html(r.material or "Grain"), days))
+        more = len(due) - _DIGEST_MAX_ROWS
+        body = _(
+            "These grain trucks are still waiting for their Purchase Order to be "
+            "linked:<br><br>"
+            "<table border='1' cellpadding='4' cellspacing='0'>"
+            "<tr><th>Token</th><th>Vehicle</th><th>Material</th><th>Waiting</th></tr>"
+            "{0}</table>{1}<br>Open the Stores Receiving Dashboard → Grain — "
+            "Awaiting PO Link to link the PO and create the GRN."
+        ).format("".join(lines), _("<br>… and {0} more.").format(more) if more > 0 else "")
+
+        # Per-recipient daily dedupe — keyed per user, so a new/re-enabled
+        # recipient still gets today's digest even if others were already sent.
+        window_start = add_to_date(now_datetime(), hours=-_DIGEST_WINDOW_HOURS)
+        already = set(frappe.get_all(
+            "Notification Log",
+            filters={
+                "for_user": ["in", recipients],
+                "subject": ["like", _DIGEST_SUBJECT_PREFIX + "%"],
+                "creation": [">=", window_start],
+            },
+            pluck="for_user",
+        ))
+        for user in recipients:
+            if user in already:
+                continue
+            try:
+                frappe.get_doc({
+                    "doctype": "Notification Log",
+                    "subject": subject,
+                    "email_content": body,
+                    "for_user": user,
+                    "type": "Alert",
+                    "document_type": "TS Token",
+                    "document_name": due[0].token,
+                    "from_user": "Administrator",
+                }).insert(ignore_permissions=True)
+            except Exception:
+                frappe.clear_messages()
+
+        # WhatsApp digest (best-effort, once per day): inert until the
+        # grain_po_link_daily_digest template row is enabled + recipients have
+        # ts_whatsapp_number/opt-in. Dedupe via TS WhatsApp Log (any attempt,
+        # even Skipped, counts — run_whatsapp_escalations doctrine).
+        try:
+            if not frappe.get_all(
+                "TS WhatsApp Log",
+                filters={"template_key": _DIGEST_TEMPLATE_KEY,
+                         "creation": [">=", window_start]},
+                limit=1,
+            ):
+                from trustbit_ethanol.ts_gate_entry.ts_whatsapp import send_template
+                send_template(
+                    recipients,
+                    _DIGEST_TEMPLATE_KEY,
+                    variables=[str(len(due)), "{0}d".format(oldest_days)],
+                    ref_doctype="TS Token",
+                    ref_name=due[0].token,
+                )
+        except Exception:
+            frappe.clear_messages()
+    except Exception:
+        try:
+            frappe.log_error(title="grain link daily digest", message=frappe.get_traceback())
             frappe.clear_messages()
         except Exception:
             pass
