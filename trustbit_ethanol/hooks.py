@@ -479,6 +479,8 @@ after_migrate = [
 	"trustbit_ethanol.ts_gate_entry.setup_dn_transport.seed_dn_transport_fields",
 	# v2.42.0 — RFQ Item cost_center: restores the MR -> RFQ -> SQ -> PO dimension chain
 	"trustbit_ethanol.ts_gate_entry.setup_rfq_dimensions.seed_rfq_dimension_fields",
+	# v2.43.1 — CEO/MD read-only access to the audit trail (Version / Activity Log / Comment / View Log / Access Log)
+	"trustbit_ethanol.ts_gate_entry.setup_activity_trail_perms.seed_activity_trail_permissions",
 ]
 
 # Scheduled Tasks
