@@ -1,4 +1,4 @@
-# TS Tally Export — v2.43.0
+# TS Tally Export — v2.44
 # Script Report that previews ONE of the three sheets of the client's Tally
 # import workbook (Pmt Receipt <- Payment Entry, JV <- Journal Entry,
 # Sales <- Sales Invoice). The row-builders below are positional lists in the
@@ -40,6 +40,11 @@ SHEET_ORDER = ["Pmt Receipt", "JV", "Sales"]
 SHEET_DT = {"Pmt Receipt": "Payment Entry", "JV": "Journal Entry", "Sales": "Sales Invoice"}
 ROW_LIMIT = 5000  # preview only; the export has its own cap
 
+# Plain-language onboarding notice shown above the report until this date
+# (6 months from the 27 Aug 2026 go-live, at the user's request) — then it
+# disappears on its own; delete the block after that.
+NOTICE_UNTIL = "2027-02-28"
+
 PMT_TYPE = {"Receive": "Receipt", "Pay": "Payment", "Internal Transfer": "Contra"}
 JV_TYPE = {"Journal Entry": "Journal", "Debit Note": "Debit Note", "Credit Note": "Credit Note",
 	"Contra Entry": "Contra", "Bank Entry": "Payment", "Cash Entry": "Payment"}
@@ -63,7 +68,19 @@ def execute(filters=None):
 	truncated = len(rows) > ROW_LIMIT
 	if truncated:
 		rows = rows[:ROW_LIMIT]
-	return get_columns(sheet), rows, None, None, _summary(rows, notes, truncated)
+	return get_columns(sheet), rows, _notice(), None, _summary(rows, notes, truncated)
+
+
+def _notice():
+	if getdate() > getdate(NOTICE_UNTIL):
+		return None
+	return _(
+		"<b>Please note (till 28-02-2027):</b> Right now only <b>Journal Entries (JV sheet)</b> "
+		"are recorded in ERPNext. Payments and Sales Invoices are not entered in ERPNext yet, "
+		"so the <b>Pmt Receipt</b> and <b>Sales</b> sheets will be empty. "
+		"If your downloaded file has no data, it simply means there are no entries for the "
+		"selected dates — try an older date range. This is <b>not an error</b>."
+	)
 
 
 def get_columns(sheet):

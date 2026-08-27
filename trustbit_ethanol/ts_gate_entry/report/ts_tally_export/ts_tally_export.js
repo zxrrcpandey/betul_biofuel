@@ -1,4 +1,4 @@
-// TS Tally Export — v2.43.0
+// TS Tally Export — v2.44
 // Previews one sheet of the client's Tally import workbook; the toolbar button
 // exports all three sheets (Pmt Receipt / JV / Sales) as one .xlsx.
 // fetch + Blob, NOT frappe.xcall — xcall JSON-parses the response and would

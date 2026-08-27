@@ -1,4 +1,4 @@
-# TS Tally Export — .xlsx endpoint (v2.43.0)
+# TS Tally Export — .xlsx endpoint (v2.44)
 # Builds ALL THREE template sheets (Pmt Receipt / JV / Sales) from the report's own
 # row-builders and returns one workbook. Read-only: no DB write of any kind.
 import json
