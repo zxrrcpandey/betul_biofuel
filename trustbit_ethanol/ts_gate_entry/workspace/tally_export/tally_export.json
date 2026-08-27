@@ -1,0 +1,42 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"te_h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Tally Export</b></span>\",\"col\":12}},{\"id\":\"te_p1\",\"type\":\"paragraph\",\"data\":{\"text\":\"Open <b>TS Tally Export</b>, pick a company and date range, then click <b>Export to Tally (Excel)</b> to download the Pmt Receipt / JV / Sales workbook.\",\"col\":12}},{\"id\":\"te_s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"TS Tally Export\",\"col\":3}},{\"id\":\"te_s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Journal Entry\",\"col\":3}},{\"id\":\"te_s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Payment Entry\",\"col\":3}},{\"id\":\"te_s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Sales Invoice\",\"col\":3}},{\"id\":\"te_sp\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"te_c1\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}},{\"id\":\"te_c2\",\"type\":\"card\",\"data\":{\"card_name\":\"Vouchers\",\"col\":4}}]",
+ "creation": "2026-08-22 00:00:01",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "color-monthly-rank",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Tally Export",
+ "links": [
+  {"hidden": 0, "label": "Reports", "link_type": "Report", "onboard": 0, "type": "Card Break"},
+  {"hidden": 0, "is_query_report": 1, "label": "TS Tally Export", "link_to": "TS Tally Export", "link_type": "Report", "onboard": 1, "report_ref_doctype": "Journal Entry", "type": "Link"},
+  {"hidden": 0, "label": "Vouchers", "link_type": "DocType", "onboard": 0, "type": "Card Break"},
+  {"hidden": 0, "label": "Journal Entry", "link_to": "Journal Entry", "link_type": "DocType", "onboard": 0, "type": "Link"},
+  {"hidden": 0, "label": "Payment Entry", "link_to": "Payment Entry", "link_type": "DocType", "onboard": 0, "type": "Link"},
+  {"hidden": 0, "label": "Sales Invoice", "link_to": "Sales Invoice", "link_type": "DocType", "onboard": 0, "type": "Link"}
+ ],
+ "modified": "2026-08-22 00:00:04",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "Tally Export",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "roles": [
+  {"role": "Accounts Manager"},
+  {"role": "Accounts User"},
+  {"role": "System Manager"}
+ ],
+ "sequence_id": 2.5,
+ "shortcuts": [
+  {"color": "Blue", "label": "TS Tally Export", "link_to": "TS Tally Export", "report_ref_doctype": "Journal Entry", "type": "Report"},
+  {"doc_view": "List", "label": "Journal Entry", "link_to": "Journal Entry", "type": "DocType"},
+  {"doc_view": "List", "label": "Payment Entry", "link_to": "Payment Entry", "type": "DocType"},
+  {"doc_view": "List", "label": "Sales Invoice", "link_to": "Sales Invoice", "type": "DocType"}
+ ],
+ "title": "Tally Export"
+}
