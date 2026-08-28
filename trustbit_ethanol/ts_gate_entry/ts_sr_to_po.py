@@ -75,6 +75,34 @@ def _map_service_request(mr, target_doc=None, args=None):
 			title=_("Cannot Create Purchase Order"),
 		)
 
+	# v2.47.0 RGP A2 (decision D3): a Service MR with an OPEN Returnable Gate
+	# Pass may not convert to a Work Order until every linked pass is closed
+	# (Verified - Closed / Closed Short / Cancelled). Zero linked RGPs = allow
+	# (decision O-4: on-site services never send material out). Both endpoints
+	# funnel through here, so this is the single authoritative gate.
+	from trustbit_ethanol.ts_gate_entry.doctype.ts_returnable_gate_pass.ts_returnable_gate_pass import (
+		OPEN_STATUSES as _RGP_OPEN,
+	)
+	# ignore_permissions is EXPLICIT (predictor D3-3): this is a business
+	# invariant, not user-scoped data — the lock must hold even for a caller
+	# role with no read on the RGP doctype. Deliberately NOT flag-gated: an
+	# open pass locks the WO regardless of ts_rgp_enabled (see ts_rgp.py —
+	# lifecycle endpoints stay usable when the flag is off, so open passes
+	# can always be closed out; only CREATION is flag-gated).
+	_open_rgps = frappe.get_all(
+		"TS Returnable Gate Pass",
+		filters={"material_request": mr.name, "status": ("in", _RGP_OPEN)},
+		pluck="name",
+		ignore_permissions=True,
+	)
+	if _open_rgps:
+		frappe.throw(
+			_("Work Order conversion is locked: Returnable Gate Pass {0} against "
+			  "{1} is still open. Verify the return (or close it short) first.")
+			.format(", ".join(_open_rgps), mr.name),
+			title=_("RGP Open — Work Order Locked"),
+		)
+
 	original_type = mr.material_request_type
 
 	frappe.db.set_value(

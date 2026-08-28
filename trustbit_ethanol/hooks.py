@@ -173,7 +173,9 @@ doctype_list_js = {
 # Inject JS into standard DocTypes for approval buttons
 doctype_js = {
 	"Purchase Order": "public/js/po_approval.js",
-	"Material Request": "public/js/mr_approval.js",
+	# v2.47.0 — LIST form, mr_approval.js FIRST (L298: string re-assignment
+	# would overwrite; concat order = order in the embedded __js)
+	"Material Request": ["public/js/mr_approval.js", "public/js/rgp_mr_button.js"],
 	"Purchase Receipt": "public/js/pr_pi_columns.js",
 	"Purchase Invoice": "public/js/pr_pi_columns.js",
 	# v2.16.5 — header Cost Center / Project cascade to item rows

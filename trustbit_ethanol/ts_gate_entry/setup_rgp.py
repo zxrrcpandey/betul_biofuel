@@ -42,6 +42,98 @@ def setup_rgp():
 	"""Idempotent — safe on every migrate (hooks.py after_migrate)."""
 	_create_rgp_settings_fields()
 	_seed_rgp_route()
+	_apply_rgp_report_roles()
+	_add_stores_workspace_shortcut()
+	_grant_transport_picker_to_stores()
+
+
+# v2.47.0 user-walkthrough finding (28 Aug 2026): the RGP `transporter` Link
+# targets TS Transport Master, which Stores roles cannot pick from — the same
+# gap Sales had before v2.39.0. Mirror of setup_dn_transport's
+# _grant_transport_master_picker_access, with all its documented gotchas:
+# select-only (search_fields to the picker, no form/bank/PAN click-through);
+# add_permission dedup keys on (parent, role, permlevel) not ptype; a fresh
+# Custom DocPerm row inherits field DEFAULTS (read/export can land 1), so the
+# update loop zeroes every grantable right except select on every migrate.
+_RGP_TM_PICKER_ROLES = ("Stores User", "Stores Manager")
+
+
+def _grant_transport_picker_to_stores():
+	try:
+		from frappe.permissions import add_permission, update_permission_property
+
+		zeroed = ("read", "write", "create", "delete", "report", "export",
+			"print", "email", "share")
+		for role in _RGP_TM_PICKER_ROLES:
+			if not frappe.db.exists("Role", role):
+				continue
+			add_permission("TS Transport Master", role, ptype="select")
+			for ptype in zeroed:
+				update_permission_property("TS Transport Master", role, 0, ptype, 0)
+		frappe.clear_cache(doctype="TS Transport Master")
+	except Exception:
+		frappe.log_error(title="RGP Setup: transport picker grant failed",
+			message=frappe.get_traceback())
+		frappe.clear_messages()
+
+
+# Report roles are NOT synced by migrate (L281) — apply via ORM, filtered to
+# roles that exist on the target server (L290: a missing role name is a silent
+# no-op in fixtures but a hard link error in a child row).
+RGP_REPORT_NAME = "TS Open RGP Register"
+RGP_REPORT_ROLES = (
+	"System Manager", "IT Head", "Stores Manager", "Stores User",
+	"CEO", "MD", "Purchase Manager", "Purchase User",
+	"Accounts Manager", "Department Head", "AVP",
+)
+
+
+def _apply_rgp_report_roles():
+	try:
+		if not frappe.db.exists("Report", RGP_REPORT_NAME):
+			return
+		report = frappe.get_doc("Report", RGP_REPORT_NAME)
+		existing = {r.role for r in (report.roles or [])}
+		changed = False
+		for role in RGP_REPORT_ROLES:
+			if role in existing or not frappe.db.exists("Role", role):
+				continue
+			report.append("roles", {"role": role})
+			changed = True
+		if changed:
+			report.flags.ignore_permissions = True
+			report.save()
+	except Exception:
+		frappe.log_error(title="RGP Setup: report roles failed",
+			message=frappe.get_traceback())
+		frappe.clear_messages()
+
+
+def _add_stores_workspace_shortcut():
+	"""Idempotent shortcut on the Stores workspace (L173: migrate does not
+	sync workspace shortcuts). ignore_links guards against dangling rows on a
+	target workspace (the prod BBPL Ethanol precedent)."""
+	try:
+		ws_name = frappe.db.get_value("Workspace", {"name": "Stores"}, "name") \
+			or frappe.db.get_value("Workspace", {"title": "Stores"}, "name")
+		if not ws_name:
+			return
+		ws = frappe.get_doc("Workspace", ws_name)
+		if any((s.label or "") == "Returnable Gate Pass" for s in (ws.shortcuts or [])):
+			return
+		ws.append("shortcuts", {
+			"type": "DocType",
+			"label": "Returnable Gate Pass",
+			"link_to": "TS Returnable Gate Pass",
+			"color": "Orange",
+		})
+		ws.flags.ignore_permissions = True
+		ws.flags.ignore_links = True
+		ws.save()
+	except Exception:
+		frappe.log_error(title="RGP Setup: workspace shortcut failed",
+			message=frappe.get_traceback())
+		frappe.clear_messages()
 
 
 def _create_rgp_settings_fields():

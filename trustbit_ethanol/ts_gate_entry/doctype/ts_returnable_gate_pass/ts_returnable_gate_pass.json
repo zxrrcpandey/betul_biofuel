@@ -1,0 +1,874 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-08-28 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "field_order": [
+  "naming_series",
+  "status",
+  "is_overdue",
+  "column_break_status",
+  "challan_date",
+  "expected_return_date",
+  "company",
+  "cost_center",
+  "source_section",
+  "material_request",
+  "requested_by",
+  "column_break_source",
+  "reason",
+  "remarks",
+  "vendor_section",
+  "supplier",
+  "supplier_name",
+  "column_break_vendor",
+  "supplier_address",
+  "supplier_address_display",
+  "supplier_gstin",
+  "is_interstate",
+  "gst_section",
+  "goods_type",
+  "itc04_reportable",
+  "column_break_gst",
+  "sec143_due_date",
+  "sec143_alarm_date",
+  "transport_section",
+  "vehicle_number",
+  "transporter",
+  "driver_name",
+  "column_break_transport",
+  "lr_number",
+  "eway_bill_required",
+  "eway_bill_no",
+  "eway_bill_date",
+  "items_section",
+  "items",
+  "totals_section",
+  "total_qty_out",
+  "total_taxable_value",
+  "column_break_totals",
+  "total_qty_returned",
+  "total_balance",
+  "issue_section",
+  "issue_photo_1",
+  "issue_photo_2",
+  "column_break_issue",
+  "issued_by",
+  "issued_at",
+  "gate_out_section",
+  "g2_out_by",
+  "g2_out_at",
+  "g2_out_remark",
+  "column_break_gate_out",
+  "g1_out_by",
+  "g1_out_at",
+  "g1_out_remark",
+  "gate_in_section",
+  "g1_in_by",
+  "g1_in_at",
+  "g1_in_remark",
+  "column_break_gate_in",
+  "g2_in_by",
+  "g2_in_at",
+  "g2_in_remark",
+  "returns_section",
+  "returns",
+  "return_photo_1",
+  "return_photo_2",
+  "column_break_returns",
+  "verified_by",
+  "verified_at",
+  "gate_entry_in",
+  "close_short_section",
+  "close_short_requested_by",
+  "close_short_requested_at",
+  "close_short_reason",
+  "column_break_close_short",
+  "close_short_approved_by",
+  "close_short_approved_at",
+  "close_short_qty",
+  "trail_section",
+  "rgp_log",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "RGP-.YY.-.#####",
+   "default": "RGP-.YY.-.#####",
+   "reqd": 1,
+   "no_copy": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nIssued\nOut of Plant\nAt Vendor\nPartially Returned\nReturned\nVerified - Closed\nClosed Short\nCancelled",
+   "default": "Draft",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "is_overdue",
+   "fieldtype": "Check",
+   "label": "Overdue",
+   "default": "0",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "challan_date",
+   "fieldtype": "Date",
+   "label": "Challan Date",
+   "reqd": 1,
+   "set_only_once": 1,
+   "no_copy": 1,
+   "description": "Rule 55 challan date \u2014 the Section 143 return clock counts from this date."
+  },
+  {
+   "fieldname": "expected_return_date",
+   "fieldtype": "Date",
+   "label": "Expected Return Date",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Defaults to challan date + 7 days; drives overdue tracking."
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "fetch_from": "material_request.cost_center",
+   "fetch_if_empty": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "source_section",
+   "fieldtype": "Section Break",
+   "label": "Source Indent"
+  },
+  {
+   "fieldname": "material_request",
+   "fieldtype": "Link",
+   "label": "Material Request",
+   "options": "Material Request",
+   "reqd": 1,
+   "set_only_once": 1,
+   "in_standard_filter": 1,
+   "description": "Approved Service Request indent this pass is issued against."
+  },
+  {
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "label": "Requested By",
+   "options": "User",
+   "fetch_from": "material_request.owner",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Select",
+   "label": "Purpose of Movement",
+   "options": "Repair\nCalibration\nJob Work\nTesting\nDemo/Trial\nOther",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "vendor_section",
+   "fieldtype": "Section Break",
+   "label": "Vendor"
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Vendor",
+   "options": "Supplier",
+   "in_standard_filter": 1,
+   "description": "Mandatory at Submit (enforced in before_submit) \u2014 a draft stub from Create RGP starts without it."
+  },
+  {
+   "fieldname": "supplier_name",
+   "fieldtype": "Data",
+   "label": "Vendor Name",
+   "fetch_from": "supplier.supplier_name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_vendor",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "supplier_address",
+   "fieldtype": "Link",
+   "label": "Vendor Address",
+   "options": "Address"
+  },
+  {
+   "fieldname": "supplier_address_display",
+   "fieldtype": "Small Text",
+   "label": "Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supplier_gstin",
+   "fieldtype": "Data",
+   "label": "Vendor GSTIN",
+   "fetch_from": "supplier_address.gstin",
+   "read_only": 1
+  },
+  {
+   "fieldname": "is_interstate",
+   "fieldtype": "Check",
+   "label": "Inter-State Movement",
+   "read_only": 1,
+   "description": "Derived from vendor vs company GSTIN state. Inter-state job-work movement needs an e-way bill irrespective of value."
+  },
+  {
+   "fieldname": "gst_section",
+   "fieldtype": "Section Break",
+   "label": "GST / Statutory",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "goods_type",
+   "fieldtype": "Select",
+   "label": "Goods Type (Sec 143)",
+   "options": "Inputs\nCapital Goods\nMoulds/Dies/Jigs/Fixtures/Tools",
+   "default": "Inputs",
+   "reqd": 1,
+   "description": "Inputs must return within 1 year, capital goods within 3 years of the challan date; moulds/dies/jigs/fixtures/tools are exempt."
+  },
+  {
+   "fieldname": "itc04_reportable",
+   "fieldtype": "Check",
+   "label": "ITC-04 Reportable (Job Work)",
+   "default": "0"
+  },
+  {
+   "fieldname": "column_break_gst",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sec143_due_date",
+   "fieldtype": "Date",
+   "label": "Sec 143 Return Deadline",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec143_alarm_date",
+   "fieldtype": "Date",
+   "label": "Sec 143 Alarm From",
+   "read_only": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "transport_section",
+   "fieldtype": "Section Break",
+   "label": "Transport",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "vehicle_number",
+   "fieldtype": "Data",
+   "label": "Vehicle Number"
+  },
+  {
+   "fieldname": "transporter",
+   "fieldtype": "Link",
+   "label": "Transporter",
+   "options": "TS Transport Master"
+  },
+  {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Driver Name"
+  },
+  {
+   "fieldname": "column_break_transport",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lr_number",
+   "fieldtype": "Data",
+   "label": "LR Number"
+  },
+  {
+   "fieldname": "eway_bill_required",
+   "fieldtype": "Check",
+   "label": "E-Way Bill Required",
+   "read_only": 1,
+   "description": "Derived: value above \u20b950,000 or inter-state movement."
+  },
+  {
+   "fieldname": "eway_bill_no",
+   "fieldtype": "Data",
+   "label": "E-Way Bill No"
+  },
+  {
+   "fieldname": "eway_bill_date",
+   "fieldtype": "Date",
+   "label": "E-Way Bill Date"
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "TS RGP Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "total_qty_out",
+   "fieldtype": "Float",
+   "label": "Total Qty Out",
+   "read_only": 1,
+   "allow_on_submit": 1,
+   "no_copy": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "total_taxable_value",
+   "fieldtype": "Currency",
+   "label": "Total Taxable Value",
+   "read_only": 1,
+   "allow_on_submit": 1,
+   "no_copy": 1,
+   "default": "0",
+   "permlevel": 1,
+   "description": "Permlevel 1: hidden from gate staff on desk/REST/report surfaces. DELIBERATE BOUNDARY (DEFECT-7 decision 28 Aug 2026): the printed Rule 55 challan MUST state the taxable value by statute, so the print path carries it for every role with print access \u2014 do not 'fix' the challan to mask it."
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_qty_returned",
+   "fieldtype": "Float",
+   "label": "Total Qty Returned",
+   "read_only": 1,
+   "allow_on_submit": 1,
+   "no_copy": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "total_balance",
+   "fieldtype": "Float",
+   "label": "Balance Outstanding",
+   "read_only": 1,
+   "allow_on_submit": 1,
+   "no_copy": 1,
+   "in_list_view": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "issue_section",
+   "fieldtype": "Section Break",
+   "label": "Issue",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "issue_photo_1",
+   "fieldtype": "Attach Image",
+   "label": "Issue Photo 1",
+   "description": "Mandatory before the pass can be issued."
+  },
+  {
+   "fieldname": "issue_photo_2",
+   "fieldtype": "Attach Image",
+   "label": "Issue Photo 2"
+  },
+  {
+   "fieldname": "column_break_issue",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "issued_by",
+   "fieldtype": "Link",
+   "label": "Issued By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "issued_at",
+   "fieldtype": "Datetime",
+   "label": "Issued At",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "gate_out_section",
+   "fieldtype": "Section Break",
+   "label": "Gate Endorsement \u2014 OUT",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "g2_out_by",
+   "fieldtype": "Link",
+   "label": "G2 Out By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "g2_out_at",
+   "fieldtype": "Datetime",
+   "label": "G2 Out At",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "g2_out_remark",
+   "fieldtype": "Data",
+   "label": "G2 Out Remark",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "column_break_gate_out",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "g1_out_by",
+   "fieldtype": "Link",
+   "label": "G1 Out By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "g1_out_at",
+   "fieldtype": "Datetime",
+   "label": "G1 Out At",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "g1_out_remark",
+   "fieldtype": "Data",
+   "label": "G1 Out Remark",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "gate_in_section",
+   "fieldtype": "Section Break",
+   "label": "Gate Endorsement \u2014 IN",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "g1_in_by",
+   "fieldtype": "Link",
+   "label": "G1 In By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "g1_in_at",
+   "fieldtype": "Datetime",
+   "label": "G1 In At",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "g1_in_remark",
+   "fieldtype": "Data",
+   "label": "G1 In Remark",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "column_break_gate_in",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "g2_in_by",
+   "fieldtype": "Link",
+   "label": "G2 In By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "g2_in_at",
+   "fieldtype": "Datetime",
+   "label": "G2 In At",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "g2_in_remark",
+   "fieldtype": "Data",
+   "label": "G2 In Remark",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "returns_section",
+   "fieldtype": "Section Break",
+   "label": "Returns & Verification"
+  },
+  {
+   "fieldname": "returns",
+   "fieldtype": "Table",
+   "label": "Return Lots",
+   "options": "TS RGP Return Line",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1,
+   "description": "Appended by the Record Return action \u2014 one row per item per lot."
+  },
+  {
+   "fieldname": "return_photo_1",
+   "fieldtype": "Attach Image",
+   "label": "Return Photo 1",
+   "allow_on_submit": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "return_photo_2",
+   "fieldtype": "Attach Image",
+   "label": "Return Photo 2",
+   "allow_on_submit": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "column_break_returns",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "verified_by",
+   "fieldtype": "Link",
+   "label": "Verified By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "verified_at",
+   "fieldtype": "Datetime",
+   "label": "Verified At",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "gate_entry_in",
+   "fieldtype": "Link",
+   "label": "Return Gate Entry",
+   "options": "TS Gate Entry",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "close_short_section",
+   "fieldtype": "Section Break",
+   "label": "Close Short",
+   "collapsible": 1,
+   "depends_on": "eval:doc.close_short_requested_by || doc.status=='Closed Short'"
+  },
+  {
+   "fieldname": "close_short_requested_by",
+   "fieldtype": "Link",
+   "label": "Close-Short Requested By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "close_short_requested_at",
+   "fieldtype": "Datetime",
+   "label": "Requested At",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "close_short_reason",
+   "fieldtype": "Small Text",
+   "label": "Close-Short Reason",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "column_break_close_short",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "close_short_approved_by",
+   "fieldtype": "Link",
+   "label": "Close-Short Approved By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "close_short_approved_at",
+   "fieldtype": "Datetime",
+   "label": "Approved At",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "close_short_qty",
+   "fieldtype": "Float",
+   "label": "Qty Written Off",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "trail_section",
+   "fieldtype": "Section Break",
+   "label": "Activity Trail",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "rgp_log",
+   "fieldtype": "Table",
+   "label": "Pass Trail",
+   "options": "TS Approval Log",
+   "read_only": 1,
+   "no_copy": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "TS Returnable Gate Pass",
+   "read_only": 1,
+   "no_copy": 1,
+   "print_hide": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-28 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Returnable Gate Pass",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "role": "System Manager",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "role": "IT Head",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "role": "Stores Manager",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "submit": 1,
+   "role": "Stores User",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "read": 1,
+   "role": "G2 Gate Operator"
+  },
+  {
+   "read": 1,
+   "role": "G1 Security"
+  },
+  {
+   "read": 1,
+   "role": "Department Head",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "read": 1,
+   "role": "AVP",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "read": 1,
+   "role": "CEO",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "read": 1,
+   "role": "MD",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "read": 1,
+   "role": "Purchase User",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "read": 1,
+   "role": "Purchase Manager",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager",
+   "report": 1,
+   "export": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "IT Head"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Stores Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Stores User"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "CEO"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "MD"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Purchase Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Purchase User"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Department Head"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "AVP"
+  }
+ ],
+ "search_fields": "material_request,supplier_name,status",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "title_field": "supplier_name",
+ "track_changes": 1
+}

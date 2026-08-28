@@ -1,0 +1,187 @@
+{
+ "actions": [],
+ "creation": "2026-08-28 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "item_code",
+  "item_name",
+  "description",
+  "gst_hsn_code",
+  "uom",
+  "column_break_qty",
+  "qty_out",
+  "qty_returned",
+  "balance_qty",
+  "column_break_value",
+  "rate",
+  "amount",
+  "serial_section",
+  "is_serialized",
+  "serial_no_out",
+  "column_break_serial",
+  "condition_out",
+  "asset",
+  "warehouse",
+  "mr_item_ref"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "fetch_from": "item_code.item_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "gst_hsn_code",
+   "fieldtype": "Data",
+   "label": "HSN Code",
+   "fetch_from": "item_code.gst_hsn_code",
+   "fetch_if_empty": 1
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM",
+   "fetch_from": "item_code.stock_uom",
+   "fetch_if_empty": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_qty",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "qty_out",
+   "fieldtype": "Float",
+   "label": "Qty Out",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "qty_returned",
+   "fieldtype": "Float",
+   "label": "Qty Returned",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "default": "0",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "balance_qty",
+   "fieldtype": "Float",
+   "label": "Balance",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "default": "0",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "column_break_value",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "label": "Rate (Taxable Value / Unit)",
+   "permlevel": 1,
+   "description": "Challan value per the agreed valuation policy. Permlevel 1: hidden from gate staff on desk/REST/report; the PRINTED Rule 55 challan legitimately carries it (statutory) \u2014 deliberate boundary, see total_taxable_value."
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "read_only": 1,
+   "no_copy": 1,
+   "default": "0",
+   "permlevel": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "serial_section",
+   "fieldtype": "Section Break",
+   "label": "Serial / Condition"
+  },
+  {
+   "fieldname": "is_serialized",
+   "fieldtype": "Check",
+   "label": "Serialized",
+   "fetch_from": "item_code.has_serial_no",
+   "read_only": 1
+  },
+  {
+   "fieldname": "serial_no_out",
+   "fieldtype": "Small Text",
+   "label": "Serial No (Out)",
+   "mandatory_depends_on": "eval:doc.is_serialized",
+   "description": "Required for serialized items \u2014 the same serial must return."
+  },
+  {
+   "fieldname": "column_break_serial",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "condition_out",
+   "fieldtype": "Select",
+   "label": "Condition Out",
+   "options": "\nGood\nDamaged\nNeeds Repair\nBeyond Repair",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Mandatory at Submit (enforced in before_submit)."
+  },
+  {
+   "fieldname": "asset",
+   "fieldtype": "Link",
+   "label": "Asset",
+   "options": "Asset"
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Warehouse",
+   "options": "Warehouse",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "mr_item_ref",
+   "fieldtype": "Data",
+   "label": "MR Item Ref",
+   "read_only": 1,
+   "hidden": 1,
+   "no_copy": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-28 00:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS RGP Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
+}
