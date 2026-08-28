@@ -45,6 +45,13 @@ def setup_rgp():
 	_apply_rgp_report_roles()
 	_add_stores_workspace_shortcut()
 	_grant_transport_picker_to_stores()
+	_add_gate_workspace_shortcuts()
+
+
+def _add_gate_workspace_shortcuts():
+	"""Phase B (v2.48.0): the guards work from their gate workspaces."""
+	for ws_title in ("G1 Security Gate", "G2 Gate Operations"):
+		_add_rgp_workspace_shortcut(ws_title)
 
 
 # v2.47.0 user-walkthrough finding (28 Aug 2026): the RGP `transporter` Link
@@ -110,26 +117,58 @@ def _apply_rgp_report_roles():
 
 
 def _add_stores_workspace_shortcut():
-	"""Idempotent shortcut on the Stores workspace (L173: migrate does not
-	sync workspace shortcuts). ignore_links guards against dangling rows on a
-	target workspace (the prod BBPL Ethanol precedent)."""
+	_add_rgp_workspace_shortcut("Stores")
+
+
+def _add_rgp_workspace_shortcut(ws_title):
+	"""Idempotent RGP shortcut on one workspace (L173: migrate does not sync
+	shortcuts). Security L-2 (28 Aug): the child ROW alone does not render in
+	v15 — the workspace draws from its `content` JSON, so a matching
+	`shortcut` block must exist too (a row without one is a silent no-op).
+	ignore_links guards against dangling rows (prod BBPL Ethanol precedent).
+	Per-workspace try/except so one failure cannot starve the others (L-3)."""
+	import json as _json
 	try:
-		ws_name = frappe.db.get_value("Workspace", {"name": "Stores"}, "name") \
-			or frappe.db.get_value("Workspace", {"title": "Stores"}, "name")
+		ws_name = frappe.db.get_value("Workspace", {"title": ws_title}, "name") \
+			or frappe.db.get_value("Workspace", {"name": ws_title}, "name")
 		if not ws_name:
 			return
 		ws = frappe.get_doc("Workspace", ws_name)
-		if any((s.label or "") == "Returnable Gate Pass" for s in (ws.shortcuts or [])):
-			return
-		ws.append("shortcuts", {
-			"type": "DocType",
-			"label": "Returnable Gate Pass",
-			"link_to": "TS Returnable Gate Pass",
-			"color": "Orange",
-		})
-		ws.flags.ignore_permissions = True
-		ws.flags.ignore_links = True
-		ws.save()
+		changed = False
+		if not any((s.label or "") == "Returnable Gate Pass" for s in (ws.shortcuts or [])):
+			ws.append("shortcuts", {
+				"type": "DocType",
+				"label": "Returnable Gate Pass",
+				"link_to": "TS Returnable Gate Pass",
+				"color": "Orange",
+			})
+			changed = True
+		try:
+			blocks = _json.loads(ws.content or "[]")
+		except Exception:
+			# Security #6: NEVER reset a workspace whose content fails to
+			# parse — replacing the whole layout with one shortcut block would
+			# destroy the page. Skip the content edit; the row alone is inert
+			# but harmless.
+			frappe.log_error(title="RGP Setup: workspace content unparseable",
+				message=f"{ws_name}: content JSON invalid — shortcut block skipped")
+			blocks = None
+		if blocks is not None and not any(
+			b.get("type") == "shortcut"
+			and (b.get("data") or {}).get("shortcut_name") == "Returnable Gate Pass"
+			for b in blocks
+		):
+			blocks.append({
+				"id": f"rgp-shortcut-{frappe.scrub(ws_title)}",
+				"type": "shortcut",
+				"data": {"shortcut_name": "Returnable Gate Pass", "col": 3},
+			})
+			ws.content = _json.dumps(blocks)
+			changed = True
+		if changed:
+			ws.flags.ignore_permissions = True
+			ws.flags.ignore_links = True
+			ws.save()
 	except Exception:
 		frappe.log_error(title="RGP Setup: workspace shortcut failed",
 			message=frappe.get_traceback())
@@ -156,6 +195,19 @@ def _create_rgp_settings_fields():
 						"Master switch for the RGP feature. While OFF (default), MR routing "
 						"is exactly the pre-v2.46 behaviour and every purpose-scoped route "
 						"is ignored. Turn ON only after the RGP rollout is announced."
+					),
+				},
+				{
+					"fieldname": "ts_rgp_out_warehouse",
+					"fieldtype": "Link",
+					"options": "Warehouse",
+					"label": "RGP Out-for-Repair Warehouse",
+					"insert_after": "ts_rgp_enabled",
+					"description": (
+						"D4 stock leg (optional): when set, stock items on a pass are "
+						"Material-Transferred here at the G1 exit and transferred back "
+						"as return lots are credited. Leave BLANK for register-only "
+						"tracking (no ledger movement)."
 					),
 				},
 			]

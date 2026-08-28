@@ -70,6 +70,18 @@ function ts_rgp_indicator(frm, ctx) {
 	let label = ctx.status;
 	let color = colors[ctx.status] || "grey";
 	if (ctx.status === "Returned") label = __("Returned — Awaiting Verification");
+	// Walkthrough feedback (28 Aug): once gate-IN stamps exist the material is
+	// physically back, but the enum stays until Stores credits the return —
+	// surface the arrival state in the label so "At Vendor" doesn't mislead.
+	if (["Out of Plant", "At Vendor", "Partially Returned"].includes(ctx.status)) {
+		if (frm.doc.g2_in_by) {
+			label = __("{0} · Inside Plant — awaiting Stores", [ctx.status]);
+			color = "blue";
+		} else if (frm.doc.g1_in_by) {
+			label = __("{0} · Arrived at Campus Gate", [ctx.status]);
+			color = "blue";
+		}
+	}
 	if (!TS_RGP_TERMINAL.includes(ctx.status)) {
 		if (ctx.overdue_days > 0) {
 			label = `${ctx.status} · ${__("Overdue")} ${ctx.overdue_days}d`;
@@ -89,7 +101,12 @@ function ts_rgp_banner(frm, ctx) {
 	const fmt = (d) => frappe.datetime.str_to_user(d);
 	let text = "", bg = "", border = "";
 
-	if (open && ctx.months_out >= 10 && ctx.sec143_due_date) {
+	if (open && frm.doc.g2_in_by && ctx.balance > 0
+		&& ["Out of Plant", "At Vendor", "Partially Returned"].includes(ctx.status)) {
+		text = __("Material is back inside the plant (G2 inward {0}) — record the return to credit it. / सामग्री संयंत्र में वापस आ गई है — वापसी दर्ज करें।",
+			[frappe.datetime.str_to_user(frm.doc.g2_in_at)]);
+		bg = "#ddedeb"; border = "#0e6e68";
+	} else if (open && ctx.months_out >= 10 && ctx.sec143_due_date) {
 		text = __("Out for {0} months — the GST Section 143 limit falls on {1}.",
 			[ctx.months_out, fmt(ctx.sec143_due_date)]);
 		bg = "#fef2f2"; border = "#dc2626";
@@ -183,6 +200,40 @@ function ts_rgp_buttons(frm, ctx) {
 		}, __("More"));
 	}
 
+	// ── Phase B: gate endorsement buttons (guard-facing, one confirm each) ──
+	if (ctx.can_g2_out) {
+		frm.add_custom_button(__("G2 · Endorse OUT"), () => {
+			frappe.confirm(
+				__("Material verified against the pass at the plant gate? / संयंत्र गेट पर सामग्री का पास से मिलान हो गया?"),
+				() => ts_rgp_gate_post(frm, "rgp_gate_out", "G2")
+			);
+		}).addClass("btn-warning");
+	}
+	if (ctx.can_g1_out) {
+		frm.add_custom_button(__("G1 · Final Exit OUT"), () => {
+			frappe.confirm(
+				__("Allow the material to leave the campus? / सामग्री को परिसर से बाहर जाने दें?"),
+				() => ts_rgp_gate_post(frm, "rgp_gate_out", "G1")
+			);
+		}).addClass("btn-warning");
+	}
+	if (ctx.can_g1_in) {
+		frm.add_custom_button(__("G1 · Endorse IN"), () => {
+			frappe.confirm(
+				__("Record material arriving back at the campus gate? / परिसर गेट पर सामग्री की वापसी दर्ज करें?"),
+				() => ts_rgp_gate_post(frm, "rgp_gate_in", "G1")
+			);
+		});
+	}
+	if (ctx.can_g2_in) {
+		frm.add_custom_button(__("G2 · Endorse IN"), () => {
+			frappe.confirm(
+				__("Record material arriving back inside the plant? Stores will then verify. / संयंत्र में सामग्री की वापसी दर्ज करें?"),
+				() => ts_rgp_gate_post(frm, "rgp_gate_in", "G2")
+			);
+		});
+	}
+
 	if (frm.doc.docstatus === 1 && ctx.status !== "Cancelled") {
 		frm.add_custom_button(__("Print Challan"), () => {
 			const url = frappe.urllib.get_full_url(
@@ -198,6 +249,33 @@ function ts_rgp_buttons(frm, ctx) {
 			frappe.set_route("Form", "Material Request", frm.doc.material_request);
 		}, __("View"));
 	}
+}
+
+function ts_rgp_gate_post(frm, method, checkpoint) {
+	frappe.call({
+		method: `trustbit_ethanol.ts_gate_entry.ts_rgp_gate.${method}`,
+		args: { rgp: frm.doc.name, checkpoint: checkpoint },
+		freeze: true,
+		freeze_message: __("Endorsing…"),
+		callback(r) {
+			// Walkthrough finding (28 Aug): gate-IN changes no status by
+			// design, so a silent success read as "nothing happened" —
+			// always confirm the endorsement explicitly.
+			const m = r.message || {};
+			let msg;
+			if (method === "rgp_gate_out") {
+				msg = __("{0} exit endorsed ✓ — status: {1}", [checkpoint, m.status]);
+			} else if (m.stamped) {
+				msg = __("{0} inward recorded ✓ (status stays {1} — Stores credits the return)",
+					[checkpoint, m.status]);
+			} else {
+				msg = __("{0} inward recorded for an additional lot ✓ (first stamp kept)",
+					[checkpoint]);
+			}
+			frappe.show_alert({ message: msg, indicator: "green" }, 6);
+			frm.reload_doc();
+		},
+	});
 }
 
 function ts_rgp_post(frm, method, args) {

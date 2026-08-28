@@ -31,6 +31,11 @@ RGP_DOCTYPE = "TS Returnable Gate Pass"
 
 STORES_ROLES = {"Stores User", "Stores Manager", "IT Head", "System Manager"}
 CLOSE_SHORT_APPROVER_ROLES = {"CEO", "System Manager"}
+# Gate role sets + inward statuses live HERE and are imported by ts_rgp_gate
+# (security L-1: single source — the reverse import would be circular)
+G2_GATE_ROLES = {"G2 Gate Operator", "IT Head", "System Manager"}
+G1_GATE_ROLES = {"G1 Security", "IT Head", "System Manager"}
+GATE_IN_OK_STATUSES = ("Out of Plant", "At Vendor", "Partially Returned")
 
 # Statuses from which a return lot may be recorded. "Issued"/"Out of Plant"
 # included deliberately: Phase B's gate endorsement is not deployed yet, and
@@ -71,7 +76,8 @@ def _locked_doc(name):
 	earlier reads — the gated columns must ride IN the FOR UPDATE statement)."""
 	rows = frappe.db.sql(
 		"""SELECT status, total_balance, docstatus,
-		          close_short_requested_by, close_short_approved_by
+		          close_short_requested_by, close_short_approved_by,
+		          g2_out_by, g1_out_by, g1_in_by, g2_in_by
 		   FROM `tabTS Returnable Gate Pass` WHERE name = %s FOR UPDATE""",
 		name, as_dict=True,
 	)
@@ -84,6 +90,12 @@ def _locked_doc(name):
 	doc.docstatus = cint(locked.docstatus)
 	doc.close_short_requested_by = locked.close_short_requested_by
 	doc.close_short_approved_by = locked.close_short_approved_by
+	# Phase B gate endpoints gate on these (M-3: every gated field rides
+	# in the locking read)
+	doc.g2_out_by = locked.g2_out_by
+	doc.g1_out_by = locked.g1_out_by
+	doc.g1_in_by = locked.g1_in_by
+	doc.g2_in_by = locked.g2_in_by
 	return doc
 
 
@@ -158,6 +170,15 @@ def get_rgp_context(rgp):
 		"can_reject_close_short": bool(roles & CLOSE_SHORT_APPROVER_ROLES)
 			and doc.docstatus == 1 and close_short_pending
 			and status not in ("Verified - Closed", "Closed Short", "Cancelled"),
+		# Phase B — gate endorsement abilities (shared sets, L-1)
+		"can_g2_out": bool(roles & G2_GATE_ROLES)
+			and doc.docstatus == 1 and status == "Issued" and not doc.g2_out_by,
+		"can_g1_out": bool(roles & G1_GATE_ROLES)
+			and doc.docstatus == 1 and status == "Out of Plant" and not doc.g1_out_by,
+		"can_g1_in": bool(roles & G1_GATE_ROLES)
+			and doc.docstatus == 1 and status in GATE_IN_OK_STATUSES,
+		"can_g2_in": bool(roles & G2_GATE_ROLES)
+			and doc.docstatus == 1 and status in GATE_IN_OK_STATUSES,
 	}
 
 
@@ -203,6 +224,7 @@ def create_rgp_from_mr(mr):
 			"description": item.get("description"),
 			"uom": item.get("stock_uom") or item.get("uom"),
 			"qty_out": flt(item.qty),
+			"warehouse": item.get("warehouse"),  # D4 stock-leg source
 			"mr_item_ref": item.name,
 		})
 	rgp.insert()  # normal perms — Stores holds create
@@ -293,11 +315,11 @@ def record_rgp_return(rgp, lines):
 			frappe.throw(
 				_("Row {0} ({1}): returning {2} but only {3} is outstanding.")
 				.format(row.idx, row.item_code, qty, row.balance_qty))
-		condition = (line.get("condition_in") or "").strip()
+		condition = frappe.utils.cstr(line.get("condition_in")).strip()
 		if not condition:
 			frappe.throw(_("Row {0}: Condition In is mandatory before the "
 				"return is credited (D6).").format(row.idx))
-		photo = (line.get("return_photo") or "").strip()
+		photo = frappe.utils.cstr(line.get("return_photo")).strip()
 		if not photo:
 			frappe.throw(_("Row {0}: a return photo is mandatory before the "
 				"return is credited (D6).").format(row.idx))
@@ -310,7 +332,7 @@ def record_rgp_return(rgp, lines):
 			frappe.throw(_("Row {0}: invalid photo reference — upload the "
 				"photo through the dialog.").format(row.idx))
 		if cint(row.is_serialized):
-			serial_in = (line.get("serial_no_in") or "").strip()
+			serial_in = frappe.utils.cstr(line.get("serial_no_in")).strip()
 			serial_out = (row.serial_no_out or "").strip()
 			if serial_in != serial_out:
 				frappe.throw(
@@ -322,10 +344,10 @@ def record_rgp_return(rgp, lines):
 			"rgp_item_row": row.name,
 			"item_code": row.item_code,
 			"qty": qty,
-			"serial_no_in": (line.get("serial_no_in") or "").strip(),
+			"serial_no_in": frappe.utils.cstr(line.get("serial_no_in")).strip(),
 			"condition_in": condition,
 			"return_photo": photo,
-			"remark": (line.get("remark") or "")[:140],
+			"remark": frappe.utils.cstr(line.get("remark"))[:140],
 			"received_by": frappe.session.user,
 		})
 
@@ -336,6 +358,25 @@ def record_rgp_return(rgp, lines):
 	finally:
 		doc.flags.ts_approval_workflow_call = False
 
+	# D4 stock leg — reverse ledger move for the credited lot (same
+	# transaction; a failure rolls the lot credit back too). No-op when the
+	# out-warehouse is unset or the lot has no stock items.
+	# Security HIGH-1 (28 Aug): ONLY when the G1 out-transfer actually ran —
+	# an early return on a pass that never left (Issued / Out of Plant) has
+	# nothing in the repair warehouse to reverse; moving anyway would conjure
+	# phantom stock. g1_out_by is the same "stock is at the repair warehouse"
+	# predicate approve_close_short uses.
+	se_name = None
+	if doc.g1_out_by:
+		from trustbit_ethanol.ts_gate_entry.ts_rgp_stock import make_return_transfer
+		# Security M-2: accumulate duplicate row_name lines — last-wins would
+		# credit the register for the sum but move only the last lot's qty.
+		qty_by_row = {}
+		for l in lines:
+			rn = l.get("row_name")
+			qty_by_row[rn] = qty_by_row.get(rn, 0) + flt(l.get("qty"))
+		se_name = make_return_transfer(doc, qty_by_row)
+
 	# Side effects committed; NOW flip status (L288).
 	doc.reload()
 	new_state = "Returned" if flt(doc.total_balance) <= 0 else "Partially Returned"
@@ -343,9 +384,14 @@ def record_rgp_return(rgp, lines):
 	lot_summary = ", ".join(
 		f"{flt(l.get('qty'))} × {items_by_name[l.get('row_name')].item_code}"
 		for l in lines)
+	if se_name:
+		lot_summary += _(" — stock returned via {0}").format(se_name)
+	elif not doc.g1_out_by:
+		lot_summary += _(" — register-only lot (no G1 exit stamp)")
 	_rgp_log(doc, "Returned", from_state, new_state,
 		comment=_("Lot received: {0}").format(lot_summary))
-	return {"status": new_state, "balance": flt(doc.total_balance)}
+	return {"status": new_state, "balance": flt(doc.total_balance),
+		"stock_entry": se_name}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -387,7 +433,7 @@ def request_close_short(rgp, reason):
 	_require_role(STORES_ROLES)
 	frappe.has_permission(RGP_DOCTYPE, doc=rgp, ptype="write", throw=True)
 
-	reason = (reason or "").strip()
+	reason = frappe.utils.cstr(reason).strip()
 	if len(reason) < 10:
 		frappe.throw(_("A close-short reason of at least 10 characters is required."))
 
@@ -439,7 +485,8 @@ def reject_close_short(rgp, reason=""):
 		"close_short_reason": None,
 	}, update_modified=True)
 	_rgp_log(doc, "Rejected", doc.status, doc.status,
-		comment=_("Close-short REJECTED by CEO: {0}").format((reason or "")[:200]))
+		comment=_("Close-short REJECTED by CEO: {0}").format(
+			frappe.utils.cstr(reason)[:200]))
 	_bell([requester],
 		_("RGP {0}: close-short request rejected — keep chasing the balance")
 			.format(doc.name),
@@ -473,8 +520,14 @@ def approve_close_short(rgp):
 		"close_short_qty": flt(doc.total_balance),
 	}, update_modified=True)
 	doc.db_set("status", "Closed Short", update_modified=True)
+	from trustbit_ethanol.ts_gate_entry.ts_rgp_stock import rgp_out_warehouse
+	stranded = ""
+	if rgp_out_warehouse() and doc.g1_out_by:
+		stranded = _(" Any stock-item balance remains in {0} — write it off "
+			"via a deliberate Stock Entry.").format(rgp_out_warehouse())
 	_rgp_log(doc, "Closed Short", from_state, "Closed Short",
-		comment=_("Balance {0} written off by CEO approval.").format(doc.total_balance))
+		comment=_("Balance {0} written off by CEO approval.{1}")
+			.format(doc.total_balance, stranded))
 	_bell(
 		[doc.requested_by, doc.owner, doc.close_short_requested_by],
 		_("RGP {0} closed SHORT — balance {1} written off")
