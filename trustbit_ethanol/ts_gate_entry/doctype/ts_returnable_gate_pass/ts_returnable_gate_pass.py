@@ -19,12 +19,22 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, add_months, add_years, cint, flt, getdate
 
-# Shared with ts_rgp.record_rgp_return (M-1/R-3): charset allow-list — File
-# names can legitimately carry spaces/parens but never quotes/angle brackets.
-# N-3: "/" is deliberately EXCLUDED from the filename class — Frappe uploads
-# write flat into files/ (File.folder is a doc attribute, not a URL segment),
-# so a path-bearing URL is never legitimate here. Do not relax.
-_RETURN_PHOTO_RE = re.compile(r"^/(private/)?files/[A-Za-z0-9._ ()\-]+$")
+# Shared with ts_rgp.record_rgp_return (M-1/R-3): DENY-list — File.set_file_name
+# strips only "/" (frappe file.py:414), so quotes/angle brackets can survive into
+# a genuine file_url and must be blocked. Everything else a real upload can carry
+# is allowed: commas, "&", "+", spaces, parens, non-ASCII (Devanagari) filenames.
+# Was an allow-list [A-Za-z0-9._ ()-] until 3 Sep 2026 — it rejected the perfectly
+# valid "/files/71ZQjdvguTL._AC_UF1000,1000_QL80_.jpg" purely for the comma, which
+# BRICKED the whole pass: _validate_returns() runs from validate() AND
+# before_update_after_submit, so one bad row blocked every later save, not just
+# that return. A narrower allow-list is not "safer" here — it is an outage.
+# N-3: "/" stays EXCLUDED — Frappe uploads write flat into files/ (File.folder is
+# a doc attribute, not a URL segment), so a path-bearing URL is never legitimate.
+# Bidi overrides (U+202A-202E, U+2066-2069) are denied too: never legitimate in a
+# filename, and they spoof the displayed extension.
+# The substantive gate remains the File-row existence check at both call sites.
+_RETURN_PHOTO_RE = re.compile(
+	r"^/(private/)?files/[^/\\<>\"'`\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]+$")
 
 from trustbit_ethanol.ts_gate_entry.ts_po_approval import _block_gate_field_tampering
 
