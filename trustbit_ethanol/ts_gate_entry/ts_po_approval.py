@@ -1290,9 +1290,15 @@ def _approve_mr(doc, comment=""):
 			"ts_mr_approved_date": now_datetime(),
 		}, update_modified=True)
 
-		# Submit the MR (docstatus 0 → 1)
+		# Submit the MR (docstatus 0 → 1). v2.52.0: the flag is the ONLY thing
+		# mr_before_submit_block_direct accepts (payload status strings are
+		# forgeable); set it on the reloaded instance, L176 try/finally.
 		doc.reload()
-		doc.submit()
+		doc.flags.ts_approval_workflow_call = True
+		try:
+			doc.submit()
+		finally:
+			doc.flags.pop("ts_approval_workflow_call", None)
 
 		# Notify owner + CC Notify Only users (Purchase team for MR→PO conversion)
 		mr_approved_recipients = [doc.owner]
@@ -1883,6 +1889,26 @@ def _validate_user_can_act_on_po(doc):
 	frappe.throw(_("You don't have permission to act on this PO at this step"))
 
 
+def _mr_actionable_steps(steps, current_step_order):
+	"""v2.52.0 Strict Step — route steps whose ROLE may act while the MR sits at
+	`current_step_order`.
+
+	Default (every row after deploy): the current step plus every later step — the
+	deliberate "higher-level override" (a CEO/AVP can act at a lower step). When the
+	CURRENT step row is ticked `strict_step` (TS MR Approval Step Check, configured
+	per route by IT Head/CEO/MD), only that row is returned: later-step roles get no
+	buttons (_check_user_can_act) and the API refuses (_validate_user_can_act_on_mr)
+	until the step clears. The in_avp_deputy bypass runs BEFORE this in the validator
+	and is untouched. `.get()` so a route loaded before the column exists degrades to
+	today's behaviour instead of raising (fail-open = production parity).
+	"""
+	cur = cint(current_step_order)
+	current = next((s for s in steps if cint(s.step_order) == cur), None)
+	if current is not None and cint(current.get("strict_step")):
+		return [current]
+	return [s for s in steps if cint(s.step_order) >= cur]
+
+
 def _validate_user_can_act_on_mr(doc):
 	"""Validate user has a role that can act on the MR at its current step.
 	If CC config exists, also validate user is in the config for this step.
@@ -1908,13 +1934,16 @@ def _validate_user_can_act_on_mr(doc):
 		current_step_order = cint(doc.ts_mr_current_step)
 	user_roles = frappe.get_roles(frappe.session.user)
 
-	# Standard role check (>= for higher-level override)
-	role_ok = False
-	for step in steps:
-		if step.step_order >= current_step_order and step.role in user_roles:
-			role_ok = True
-			break
+	# Role check: current + later steps (higher-level override), or ONLY the current
+	# step when it is ticked Strict Step (v2.52.0 — see _mr_actionable_steps)
+	actionable = _mr_actionable_steps(steps, current_step_order)
+	role_ok = any(step.role in user_roles for step in actionable)
 	if not role_ok:
+		if len(actionable) == 1 and cint(actionable[0].get("strict_step")):
+			frappe.throw(_("Step {0} ({1}) is a Strict Step: only that role can act while this MR is pending here.").format(
+				actionable[0].step_order,
+				frappe.utils.escape_html(actionable[0].role_label or actionable[0].role or ""),
+			))
 		frappe.throw(_("You don't have permission to act on this MR at this step"))
 
 	# CC config check — if config exists, verify user is mapped for this step
@@ -1923,9 +1952,10 @@ def _validate_user_can_act_on_mr(doc):
 	if cc_config:
 		cc_approvers = get_cc_approvers_for_step(cc_config, current_step_order, route=route)
 		if cc_approvers and frappe.session.user not in cc_approvers:
-			# Allow higher-level override: check if user is approver at ANY higher step
+			# Higher-level override: approver at ANY later step. `actionable` is just the
+			# current step when it is strict, so there is no fallback then (v2.52.0).
 			all_higher_approvers = []
-			for step in steps:
+			for step in actionable:
 				if step.step_order > current_step_order:
 					all_higher_approvers.extend(get_cc_approvers_for_step(cc_config, step.step_order, route=route))
 			if frappe.session.user not in all_higher_approvers:
@@ -2402,6 +2432,11 @@ def _get_mr_approval_context(doc, settings):
 		# v2.31.0 — PO context exposes held_by; MR previously omitted it, so the
 		# PWA's hold banner could never name the holder (ui-designer 6a).
 		"held_by": (doc.ts_mr_held_by if hasattr(doc, "ts_mr_held_by") else "") or "",
+		# v2.52.0 Strict Step — which step gates the user (held step when On Hold) and
+		# whether it is strict, so the form can explain missing buttons instead of
+		# silently hiding them.
+		"current_step_strict": False,
+		"current_step_role": "",
 		"approval_chain": [],
 	}
 
@@ -2415,6 +2450,15 @@ def _get_mr_approval_context(doc, settings):
 			# CC config for user-level validation
 			cost_center = _get_mr_cost_center(doc)
 			cc_config = get_cc_config(cost_center)
+
+			# v2.52.0 — the gating step: the held step for On Hold, else the current one
+			_gate_order = current_step
+			if is_on_hold and hasattr(doc, "ts_mr_held_at_step") and cint(doc.ts_mr_held_at_step):
+				_gate_order = cint(doc.ts_mr_held_at_step)
+			_gate_step = next((s for s in route_doc.approval_steps if cint(s.step_order) == cint(_gate_order)), None)
+			if _gate_step is not None:
+				ctx["current_step_strict"] = bool(cint(_gate_step.get("strict_step")))
+				ctx["current_step_role"] = _gate_step.role_label or _gate_step.role or ""
 
 			if is_pending:
 				steps = sorted(route_doc.approval_steps, key=lambda s: s.step_order)
@@ -2457,12 +2501,9 @@ def _check_user_can_act(steps, current_step_order, user_roles, cc_config, effect
 	if effective_self_block:
 		return False
 
-	# Standard role check (>= for higher-level override)
-	role_ok = False
-	for step in steps:
-		if step.step_order >= current_step_order and step.role in user_roles:
-			role_ok = True
-			break
+	# Role check: current + later steps, or ONLY the current step when strict (v2.52.0)
+	actionable = _mr_actionable_steps(steps, current_step_order)
+	role_ok = any(step.role in user_roles for step in actionable)
 	if not role_ok:
 		return False
 
@@ -2470,8 +2511,8 @@ def _check_user_can_act(steps, current_step_order, user_roles, cc_config, effect
 	if cc_config:
 		cc_approvers = get_cc_approvers_for_step(cc_config, current_step_order, route=route)
 		if cc_approvers and frappe.session.user not in cc_approvers:
-			# Check higher steps
-			for step in steps:
+			# Check later steps — none when the current step is strict (v2.52.0)
+			for step in actionable:
 				if step.step_order > current_step_order:
 					higher_approvers = get_cc_approvers_for_step(cc_config, step.step_order, route=route)
 					if frappe.session.user in higher_approvers:
@@ -2987,9 +3028,13 @@ def mr_before_submit_block_direct(doc, method=None):
 	State-based guard:
 	- Material Transfer + Material Issue: bypass (they have their own Stores
 	  Workflow at ts_mr_transfer.handle_before_save and explicit submit endpoints).
-	- ts_mr_route set AND ts_mr_status='Approved': legitimate _approve_mr Final
-	  Approve path — sets the route + flips status to 'Approved' via db_set
-	  BEFORE doc.submit(), so this guard sees the legit state and passes.
+	- ts_mr_route set AND ts_mr_status='Approved' AND doc.flags.ts_approval_workflow_call
+	  (v2.52.0): legitimate _approve_mr Final Approve path — sets the route + flips
+	  status to 'Approved' via db_set, reload()s, sets the flag, then doc.submit().
+	  The flag is required because on a submit action frappe runs only validate +
+	  before_submit (never before_save, so the L162 tamper guard is not in play) and
+	  frappe.client.submit / savedocs / insert(docstatus=1) build the doc from the
+	  CALLER'S payload — a forged status/route used to pass this gate.
 	- Else: throw with bilingual guidance pointing the user at the
 	  'Submit for Approval' button.
 	"""
@@ -3002,14 +3047,21 @@ def mr_before_submit_block_direct(doc, method=None):
 		return  # Stores Workflow has its own submit chain
 	route = (doc.get("ts_mr_route") or doc.get("ts_mr_approval_route") or "").strip()
 	status = (doc.get("ts_mr_status") or "").strip()
-	if route and status == "Approved":
-		return  # _approve_mr Final Approve path — set state first then submit
+	# v2.52.0 — only the engine's own submit passes (_approve_mr sets the flag on the
+	# instance it reloaded from the DB). Deliberately NO Administrator / System Manager
+	# exemption: the ERPNext auto-reorder scheduler runs as Administrator and does
+	# insert()+submit() on an unrouted Purchase MR — today it is (correctly) refused and
+	# logged by reorder_item; an exemption would strand such MRs at docstatus 1.
+	# Console repair: db_set state -> doc.reload() -> doc.flags.ts_approval_workflow_call
+	# = True -> doc.submit().
+	if doc.flags.get("ts_approval_workflow_call") and route and status == "Approved":
+		return  # _approve_mr Final Approve path — set state, reload, flag, then submit
 	frappe.throw(
 		_(
 			"Direct submission of Material Requests is not allowed. "
 			"Please use the <b>Submit for Approval</b> button so this MR "
 			"enters the proper approval chain. (Status: {0}, Route: {1})"
-		).format(status or "—", route or "—"),
+		).format(frappe.utils.escape_html(status or "—"), frappe.utils.escape_html(route or "—")),
 		title=_("Use Submit for Approval"),
 	)
 

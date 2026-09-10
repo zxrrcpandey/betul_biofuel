@@ -177,6 +177,18 @@ def get_user_pending(email):
 
 	# MRs where user's role appears in current step, filtered by CC config
 	# Note: Material Request has no grand_total column — sum from child items
+	# v2.52.0 Strict Step — a route step ticked `strict_step` admits only its own role
+	# while the MR is pending there (ts_po_approval._mr_actionable_steps), so only that
+	# row may satisfy the EXISTS. Column-guarded so this panel cannot fail with an
+	# unknown-column error if the code runs before the migrate that adds the column.
+	mr_strict_sql = ""
+	if frappe.db.has_column("TS MR Approval Step", "strict_step"):
+		mr_strict_sql = (
+			"AND (s.step_order = IFNULL(mr.ts_mr_current_step, 1) "
+			"OR IFNULL((SELECT cs.strict_step FROM `tabTS MR Approval Step` cs "
+			"WHERE cs.parent = mr.ts_mr_approval_route AND cs.parenttype = 'TS MR Approval Route' "
+			"AND cs.step_order = IFNULL(mr.ts_mr_current_step, 1) ORDER BY cs.idx LIMIT 1), 0) = 0)"
+		)
 	mr_rows = frappe.db.sql("""
 		SELECT mr.name, mr.cost_center,
 		       (SELECT IFNULL(SUM(mri.amount), 0) FROM `tabMaterial Request Item` mri WHERE mri.parent = mr.name) as grand_total,
@@ -190,6 +202,7 @@ def get_user_pending(email):
 		    SELECT 1 FROM `tabTS MR Approval Step` s
 		    WHERE s.parent = mr.ts_mr_approval_route
 		      AND s.step_order >= IFNULL(mr.ts_mr_current_step, 1)
+		      """ + mr_strict_sql + """
 		      AND s.role IN %(roles)s
 		  )
 		  AND mr.ts_mr_submitted_by != %(email)s

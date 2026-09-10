@@ -142,7 +142,7 @@ function _afe_render_shell() {
 				<div class="afe-explain-grid">
 					<div class="afe-explain-card"><strong>CC Config Gap</strong><p>You have the role but aren't in the CC Approval Config user list for that cost center — system skips you.</p></div>
 					<div class="afe-explain-card"><strong>Self-Submit Skip</strong><p>You submitted the doc yourself, so your own step is auto-skipped (prevents self-approval).</p></div>
-					<div class="afe-explain-card"><strong>Higher-Level Override</strong><p>You CAN act because you hold a higher step's role, but you aren't auto-notified unless it's your current step.</p></div>
+					<div class="afe-explain-card"><strong>Higher-Level Override</strong><p>You CAN act because you hold a higher step's role, but you aren't auto-notified unless it's your current step. Exception (MR only): a route step ticked <em>Strict Step</em> admits only its own role until that step clears. Strict applies only while the MR is pending at that step; it does not override self-skip or the no-approver skip at submit.</p></div>
 				</div>
 			</div>
 		</div>
@@ -595,7 +595,7 @@ const AFE_EXPLAINERS = {
 	"higher-level": {
 		tabLabel: "Higher-Level Override",
 		title: "Higher-Level Override — seniors can act at any step",
-		desc: "A user whose role appears at a HIGHER step can also act at the CURRENT step. Lets CEO/MD jump in and approve without waiting for PM review.",
+		desc: "A user whose role appears at a HIGHER step can also act at the CURRENT step. Lets CEO/MD jump in and approve without waiting for PM review. Exception (MR only): a route step ticked Strict Step admits only its own role until that step clears — later-step roles get no buttons and the API refuses.",
 		scenario: "<strong>Scenario:</strong> PO is at Step 1 (PM Review) for a ₹4L Store purchase. CEO opens it and wants to approve directly.",
 		before: {
 			label: "Only exact-step role can act",

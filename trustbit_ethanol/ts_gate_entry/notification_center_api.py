@@ -430,6 +430,20 @@ def _pending_approvals(doctype, user, roles, sla_hours):
     step_tbl = "tabTS PO Approval Step" if is_po else "tabTS MR Approval Step"
     conf_sql = confidential_sql_clause("d", user=user, doctype=doctype) if is_po else ""
 
+    # v2.52.0 Strict Step — an MR route step ticked `strict_step` admits only its own
+    # role while the MR is pending there (ts_po_approval._mr_actionable_steps), so only
+    # that row may satisfy the EXISTS. Column-guarded: if this code ever runs before the
+    # migrate that adds the column, the predicate is simply omitted (today's behaviour)
+    # instead of the whole pending list failing with an unknown-column error.
+    strict_sql = ""
+    if not is_po and frappe.db.has_column("TS MR Approval Step", "strict_step"):
+        strict_sql = (
+            "AND (s.step_order = IFNULL(d.{step_f}, 1) "
+            "OR IFNULL((SELECT cs.strict_step FROM `{step_tbl}` cs "
+            "WHERE cs.parent = d.{rule_f} AND cs.parenttype = 'TS MR Approval Route' "
+            "AND cs.step_order = IFNULL(d.{step_f}, 1) ORDER BY cs.idx LIMIT 1), 0) = 0)"
+        ).format(step_f=step_f, rule_f=rule_f, step_tbl=step_tbl)
+
     rows = frappe.db.sql(
         """SELECT d.name, d.modified{cc}
            FROM `{tbl}` d
@@ -440,6 +454,7 @@ def _pending_approvals(doctype, user, roles, sla_hours):
                SELECT 1 FROM `{step_tbl}` s
                WHERE s.parent = d.{rule_f}
                  AND s.step_order >= IFNULL(d.{step_f}, 1)
+                 {strict}
                  AND s.role IN %(roles)s)
              AND d.{submitted_f} != %(user)s
              {conf}
@@ -448,7 +463,8 @@ def _pending_approvals(doctype, user, roles, sla_hours):
             tbl=tbl, status_f=status_f, rule_f=rule_f, step_f=step_f,
             step_tbl=step_tbl, submitted_f=submitted_f, conf=conf_sql,
             cap=_PENDING_SOURCE_CAP,
-            cc=", d.cost_center" if not is_po else ""),
+            cc=", d.cost_center" if not is_po else "",
+            strict=strict_sql),
         {"roles": tuple(role_list), "user": user}, as_dict=True)
 
     if not is_po:

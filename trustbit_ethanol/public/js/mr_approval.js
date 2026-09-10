@@ -206,6 +206,21 @@ function _render_mr_status(frm, ctx) {
 			"#fffbeb", "#f59e0b"
 		);
 	}
+
+	// v2.52.0 Strict Step — explain the missing buttons to later-step roles instead of
+	// hiding them silently. Same .ts-banner container pattern (MR_BANNERS lock: never
+	// set_headline). Removed first so it disappears when the step is unticked or clears.
+	$(frm.page.wrapper).find('.ts-banner[data-key="strict-step"]').remove();
+	const can_act_here = ctx.can_review || ctx.can_final_approve || ctx.can_revise
+		|| ctx.can_reject || ctx.can_hold || ctx.can_resume;
+	if ((ctx.is_pending || ctx.is_on_hold) && ctx.current_step_strict && !can_act_here) {
+		const role = frappe.utils.escape_html(ctx.current_step_role || "");
+		_show_ts_banner(frm, "strict-step",
+			`<span style="color: #7c3aed; font-weight: 600;">🔒 ${__("Strict Step")}</span> — `
+			+ __("Only {0} can act at this step; later approval levels wait until it clears.", [role]),
+			"#f5f3ff", "#7c3aed"
+		);
+	}
 }
 
 function _hide_standard_submit(frm, ctx) {
