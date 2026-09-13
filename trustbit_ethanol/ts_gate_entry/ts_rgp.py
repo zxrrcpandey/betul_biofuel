@@ -233,7 +233,8 @@ def create_rgp_from_mr(mr):
 
 @frappe.whitelist(methods=["POST"])
 def issue_rgp(rgp):
-	"""Draft (submitted) → Issued. Photo + e-way preconditions enforced here."""
+	"""Draft (submitted) → Issued. E-way precondition enforced here; the issue
+	photo is OPTIONAL since 12 Sep 2026 (IT Head request) — advisory note only."""
 	_require_post()
 	_require_role(STORES_ROLES)
 	frappe.has_permission(RGP_DOCTYPE, doc=rgp, ptype="write", throw=True)
@@ -244,12 +245,16 @@ def issue_rgp(rgp):
 	if (doc.status or "Draft") != "Draft":
 		frappe.throw(_("Only a submitted Draft pass can be issued (status: {0}).")
 			.format(doc.status))
-	if not (doc.issue_photo_1 or "").strip():
-		frappe.throw(_("Issue Photo 1 is mandatory before the pass is issued (D6)."))
 	if cint(doc.eway_bill_required) and not (doc.eway_bill_no or "").strip():
 		frappe.throw(
 			_("An e-way bill number is required (value above ₹50,000 or "
 			  "inter-state movement) before this pass can be issued."))
+	if not (doc.issue_photo_1 or "").strip():
+		# D6 evidence downgraded from hard gate to advisory (IT Head, 12 Sep 2026);
+		# the field is allow_on_submit so the photo can still be attached later.
+		# AFTER the e-way throw, so a blocked issue never claims it was issued.
+		frappe.msgprint(_("Issued without an issue photo — you can attach one "
+			"on the pass later."), indicator="orange", alert=True)
 
 	# Live-data finding (28 Aug 2026): a pass created earlier carries its
 	# CREATION day as challan_date (set_only_once). Rule 55 — the challan
