@@ -134,6 +134,10 @@ def get_section_g():
     from trustbit_ethanol.ts_gate_entry.ts_confidential_po import user_sees_confidential
     if not user_sees_confidential("Purchase Order"):
         return []
+    # LIMIT is a safety bound, NOT a page size: the dashboard pages this list in
+    # the browser and its search box only sees rows returned here. The old cap
+    # of 200 silently hid the newest trucks once the queue passed it (prod, 13
+    # Oct 2026: 207 waiting, 7 unreachable — Section G is the only Link-PO entry).
     rows = frappe.db.sql(
         """
         SELECT t.name AS token, t.vehicle_number AS vehicle,
@@ -151,7 +155,7 @@ def get_section_g():
           AND (t.purchase_receipt IS NULL OR t.purchase_receipt = '')
           AND ge.ts_po_deferred = 1
         ORDER BY t.wb_tare_time ASC
-        LIMIT 200
+        LIMIT 2000
         """,
         as_dict=True,
     )

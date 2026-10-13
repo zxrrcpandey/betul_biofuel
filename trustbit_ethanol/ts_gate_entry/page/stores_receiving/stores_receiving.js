@@ -6,7 +6,7 @@
      C — Approved Direct PO (new, no token)
    ═══════════════════════════════════════════════════════════════════ */
 
-const SR_VERSION = "v6.13-2026-08-27-grain-wait-tiers";
+const SR_VERSION = "v6.14-2026-10-13-grain-paging";
 const SR_API = "trustbit_ethanol.ts_gate_entry.stores_receiving_api";
 console.log("[stores-receiving]", SR_VERSION, "loaded");
 
@@ -193,6 +193,48 @@ function _sr_render_section_g() {
 	});
 	$("#sr-g-body .sr-grain-release").on("click", function () {
 		_sr_pre_grn_release_start($(this), $(this).data("token"));
+	});
+	_sr_g_paginate();
+}
+
+// v6.14 — Section G paging. The grain queue can run to hundreds of rows, so only
+// SR_G_PAGE_SIZE show at a time. Client-side ON PURPOSE: every row stays in the
+// DOM, so the search box (_sr_apply_filter) still finds a truck on any page — an
+// active search suspends paging. Never page this list on the server: a row that
+// is not loaded cannot be found, and Section G is the only Link-PO entry point.
+const SR_G_PAGE_SIZE = 50;
+let _sr_g_page = 1;
+
+function _sr_g_paginate() {
+	const $rows = $("#sr-g-body tr[data-search]");
+	const total = $rows.length;
+	const pages = Math.ceil(total / SR_G_PAGE_SIZE);
+	$("#sr-g-body .sr-pager").remove();
+	if (pages <= 1 || String(_sr_search_q || "").trim()) {
+		$rows.removeClass("sr-page-hidden");
+		return;
+	}
+	_sr_g_page = Math.min(Math.max(_sr_g_page, 1), pages);
+	const start = (_sr_g_page - 1) * SR_G_PAGE_SIZE;
+	$rows.each(function (i) {
+		$(this).toggleClass("sr-page-hidden", i < start || i >= start + SR_G_PAGE_SIZE);
+	});
+	// Same pager above AND below the table: the list is oldest-first, so a
+	// bottom-only pager would leave today's trucks looking absent from the queue.
+	const pager = `<div class="sr-pager">
+		<button class="btn btn-xs btn-default" data-step="-1" aria-label="Previous page"${_sr_g_page <= 1 ? " disabled" : ""}>‹ Prev</button>
+		<span>Showing ${start + 1}–${Math.min(start + SR_G_PAGE_SIZE, total)} of ${total} · Page ${_sr_g_page} of ${pages}</span>
+		<button class="btn btn-xs btn-default" data-step="1" aria-label="Next page"${_sr_g_page >= pages ? " disabled" : ""}>Next ›</button>
+	</div>`;
+	$("#sr-g-body").prepend(pager).append(pager);
+	$("#sr-g-body .sr-pager button").on("click", function () {
+		const step = Number($(this).data("step"));
+		_sr_g_page += step;
+		_sr_g_paginate();
+		// The pagers were rebuilt — hand keyboard focus to the same button on the top one.
+		const $top = $("#sr-g-body .sr-pager").first();
+		($top.find(`button[data-step="${step}"]:enabled`)[0] || $top.find("button:enabled")[0])?.focus({ preventScroll: true });
+		frappe.utils.scroll_to("#sr-section-g", !window.matchMedia("(prefers-reduced-motion: reduce)").matches, 10);
 	});
 }
 
@@ -914,6 +956,10 @@ function _sr_apply_filter(q) {
 	const $result = $("#sr-result");
 	const $meta = $("#sr-search-meta");
 
+	// Section G paging yields to search (un-paged while a query is active,
+	// re-paged once it is cleared) so a match on any page is shown.
+	_sr_g_paginate();
+
 	if (!query) {
 		$("#sr-container tr[data-search]").removeClass("sr-row-hidden");
 		$("#sr-container tr.sr-item-row").removeClass("sr-row-hidden");
@@ -1155,6 +1201,8 @@ const SR_CSS = `
 [data-theme="dark"] .sr-search-bar:focus-within { border-color:#60a5fa; box-shadow:0 0 0 3px rgba(96,165,250,0.18); }
 [data-theme="dark"] .sr-search-clear:hover { background:#111827; }
 .sr-row-hidden { display:none !important; }
+.sr-page-hidden { display:none !important; }
+.sr-pager { display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; padding:10px 14px; font-size:12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .sr-section-filtered-empty { display:none !important; }
 .sr-result { margin-top:14px; }
 .sr-result-fallback { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; background: var(--fg-color, #f8fafc); border:1px dashed var(--border-color, #cbd5e1); border-radius:10px; padding:14px 16px; }
@@ -1207,6 +1255,9 @@ const SR_CSS = `
      scroll horizontally on phones instead of wrapping/cramping the buttons. */
   .sr-body { overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .sr-table { min-width:720px; }
+  .sr-pager { position:sticky; left:0; }
+  .sr-pager > span { order:-1; flex:1 0 100%; text-align:center; }
+  .sr-pager .btn { min-height:40px; min-width:96px; }
   .sr-table td:last-child { white-space:nowrap; }
   .sr-table td:last-child .btn { margin-bottom:2px; }
 }
