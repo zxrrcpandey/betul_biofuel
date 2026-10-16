@@ -141,11 +141,16 @@ def remind_rgp_overdue():
 		due = _overdue_rows()
 		if not due:
 			return
-		recipients = set(_stores_recipients())
+		# v2.59.0 — the groups ticked in TS Notification Audience (default: the
+		# store team + each pass's requester). _stores_recipients() stays for Sec 143.
+		from trustbit_ethanol.ts_gate_entry.ts_notification_routing import (
+			audience_ticks, team_recipients)
+		ticks = audience_ticks("rgp_overdue")
+		recipients = set(team_recipients("rgp_overdue")) if "team" in ticks else set()
 		for r in due:
 			owner = frappe.db.get_value(
 				"TS Returnable Gate Pass", r.name, "requested_by")
-			if owner and frappe.db.get_value("User", owner, "enabled"):
+			if "raised_by" in ticks and owner and frappe.db.get_value("User", owner, "enabled"):
 				recipients.add(owner)
 		recipients = sorted(recipients)
 		if not recipients:

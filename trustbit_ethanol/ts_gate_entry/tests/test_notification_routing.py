@@ -270,7 +270,7 @@ def run():
 		# Routing must never change who is ASSIGNED as department head.
 		_route("Department Head", [dh[0]])
 		assert sorted(mi._get_role_users("Department Head")) == sorted(dh), "assignment lookup must stay unrouted"
-		assert mi.role_recipients("Department Head") == [dh[0]]
+		assert nr.role_recipients("Department Head") == [dh[0]]
 		_unroute("Department Head")
 	test("wiring: inspection department-head ASSIGNMENT lookup stays unrouted", t_department_head_untouched)
 
@@ -354,7 +354,7 @@ def run():
 	test("pending actions: an MR whose cost centre names the user stays", t_pending_mr_cc_named)
 
 	def t_pending_unchanged_without_rows():
-		frappe.db.delete("TS Notification Routing User")
+		frappe.db.delete("TS Notification Routing User", {"parenttype": "TS Notification Routing"})
 		frappe.db.delete("TS Notification Routing")
 		u = holders[0]
 		assert nc.routed_out_roles(u, frappe.get_roles(u)) == set()

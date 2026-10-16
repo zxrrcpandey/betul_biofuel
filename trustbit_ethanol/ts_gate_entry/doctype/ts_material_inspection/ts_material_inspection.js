@@ -13,13 +13,21 @@ frappe.ui.form.on("TS Material Inspection", {
 			frm.page.set_indicator(__(frm.doc.status), color_map[frm.doc.status] || "grey");
 		}
 
+		// v2.59.0 — decisions go through the buttons below; the server refuses a
+		// plain save for anyone but System Manager.
+		if (!frm.is_new() && !frappe.user.has_role("System Manager")) {
+			frm.disable_save();
+		}
+
 		// Lock items table fields based on status
 		let is_actionable = frm.doc.status === "Pending Inspection" || frm.doc.status === "On Hold";
 
 		if (!frm.is_new() && is_actionable) {
-			// Check if user can inspect
+			// v2.59.0 — the server decides (requester, the heads it is shared
+			// with, IT Head, System Manager).
 			let user = frappe.session.user;
-			let can_inspect = (
+			let onload = frm.doc.__onload || {};
+			let can_inspect = onload.can_inspect !== undefined ? onload.can_inspect : (
 				user === frm.doc.requester ||
 				user === frm.doc.department_head ||
 				frappe.user.has_role("IT Head") ||

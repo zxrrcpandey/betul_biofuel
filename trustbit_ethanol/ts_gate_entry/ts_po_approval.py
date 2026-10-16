@@ -1301,15 +1301,14 @@ def _approve_mr(doc, comment=""):
 			doc.flags.pop("ts_approval_workflow_call", None)
 
 		# Notify owner + CC Notify Only users (Purchase team for MR→PO conversion)
-		mr_approved_recipients = [doc.owner]
-		cost_center = _get_mr_cost_center(doc)
-		cc_config = get_cc_config(cost_center)
+		notify_only = []
+		cc_config = get_cc_config(_get_mr_cost_center(doc))
 		if cc_config:
 			notify_only = get_cc_notify_only_users(cc_config)
-			mr_approved_recipients.extend(notify_only)
-		# Also notify all Purchase Users + Purchase Head for MR→PO conversion
-		purchase_users = _get_role_users("Purchase Manager") + _get_role_users("Purchase User")
-		mr_approved_recipients.extend(purchase_users)
+		# v2.59.0 — the groups ticked in TS Notification Audience (default: owner +
+		# notify-only + Purchase Manager/User). audience() never raises.
+		from trustbit_ethanol.ts_gate_entry.ts_notification_routing import audience
+		mr_approved_recipients = audience("mr_approved", raised_by=doc.owner, cc_notify=notify_only)
 		_send_approval_notification(doc, "mr_approved", mr_approved_recipients,
 			extra={"approved_by": role_display})
 		_send_post_approval_notification(doc, "mr_approval")

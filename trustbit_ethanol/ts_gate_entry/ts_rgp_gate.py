@@ -131,14 +131,11 @@ def rgp_gate_in(rgp, checkpoint, remark=""):
 
 	if checkpoint == "G2" and not already:
 		# material is back inside the plant — tell the store to verify.
-		# FIRST arrival only (tester OBS-5: every lot re-belled 20 users);
-		# both stores roles, enabled users only (security round-B note)
-		recipients = frappe.db.sql_list(
-			"""SELECT DISTINCT hr.parent FROM `tabHas Role` hr
-			   JOIN `tabUser` u ON u.name = hr.parent AND u.enabled = 1
-			   WHERE hr.parenttype = 'User'
-			     AND hr.role IN ('Stores User', 'Stores Manager')
-			   ORDER BY hr.parent LIMIT 30""")
+		# FIRST arrival only (tester OBS-5: every lot re-belled 20 users).
+		# v2.59.0 — the groups ticked in TS Notification Audience (default: the
+		# store team, enabled holders of Stores User / Stores Manager).
+		from trustbit_ethanol.ts_gate_entry.ts_notification_routing import audience
+		recipients = audience("rgp_back_at_gate", raised_by=doc.get("requested_by"))
 		_bell(
 			recipients,
 			_("RGP {0}: material arrived at the plant gate — record the "

@@ -1,26 +1,81 @@
-import frappe
-from frappe.model.document import Document
-from frappe.utils import now_datetime, flt, get_fullname
+import re
 
-from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients
+import frappe
+from frappe import _
+from frappe.model.document import Document
+from frappe.utils import cstr, escape_html, now_datetime, flt, get_fullname
+from frappe.utils.html_utils import sanitize_html
+
+from trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config import (
+	get_cc_config,
+	get_cc_notify_only_users,
+)
+from trustbit_ethanol.ts_gate_entry.ts_notification_routing import audience
+
+# v2.59.0 — the only fields an inspector's form may send to the buttons below.
+DECISION_FIELDS = ("item_status", "approved_qty", "held_qty", "rejected_qty", "remark")
+
+
+def _require_post():
+	"""methods=["POST"] is not checked on every route: GET /api/resource/...?run_method=
+	runs a whitelisted method after a read check, without CSRF. Re-assert it here.
+	No request (scheduler, console, tests) stays allowed."""
+	req = getattr(frappe.local, "request", None)
+	if req is not None and req.method != "POST":
+		raise frappe.PermissionError
+
+
+def _clean_text(value):
+	"""db_set() / db_update() skip the HTML cleaning a normal save applies, so clean
+	here whenever a browser could read markup in the text (a tag, comment or CDATA,
+	closed or not) — also when it parses as JSON, which sanitize_html() would let
+	through. Other text (e.g. "moisture > 14%") is returned unchanged."""
+	value = cstr(value)
+	return sanitize_html(value, always_sanitize=bool(re.search(r"<[!?/a-zA-Z]", value)))
 
 
 class TSMaterialInspection(Document):
+	def onload(self):
+		self.set_onload("can_inspect", self._can_inspect())
+
 	def validate(self):
+		# v2.59.0 — requesters and heads hold write through a share (the grid
+		# must be editable), so a plain save is closed to them: decisions go
+		# only through the buttons, which start again from the database.
+		if not self.is_new() and frappe.session.user != "Administrator" \
+				and "System Manager" not in frappe.get_roles():
+			frappe.throw(_("Record the inspection with the Approve All, Reject All or Submit Item-wise button."))
 		self._validate_item_quantities()
+
+	def _reload_for_decision(self, keep_decisions=False):
+		"""v2.59.0 — run_doc_method builds this document from the browser's copy:
+		reload it, keeping at most the per-item decisions on the stored rows."""
+		decisions = {d.name: {f: d.get(f) for f in DECISION_FIELDS}
+			for d in self.items if d.name} if keep_decisions else {}
+		self.reload()
+		for item in self.items:
+			item.update(decisions.get(item.name, {}))
+			if item.remark:
+				item.remark = _clean_text(item.remark)
 
 	def _validate_item_quantities(self):
 		for item in self.items:
-			total = flt(item.approved_qty) + flt(item.held_qty) + flt(item.rejected_qty)
-			if total > 0 and total != flt(item.received_qty):
+			# Compare at the field's precision: 10.1 + 0.2 is 10.299999999999999 in floats.
+			p = item.precision("received_qty")
+			if min(flt(item.approved_qty, p), flt(item.held_qty, p), flt(item.rejected_qty, p)) < 0:
+				frappe.throw(f"Item {item.item_code}: quantities cannot be negative")
+			total = flt(flt(item.approved_qty) + flt(item.held_qty) + flt(item.rejected_qty), p)
+			if total > 0 and total != flt(item.received_qty, p):
 				frappe.throw(
 					f"Item {item.item_code}: Approved ({item.approved_qty}) + Held ({item.held_qty}) "
 					f"+ Rejected ({item.rejected_qty}) = {total}, but received qty is {item.received_qty}"
 				)
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def approve_all(self):
 		"""Approve all items in full."""
+		_require_post()
+		self._reload_for_decision()
 		if self.status not in ("Pending Inspection", "On Hold"):
 			frappe.throw(f"Cannot approve from status '{self.status}'")
 
@@ -43,9 +98,12 @@ class TSMaterialInspection(Document):
 		self._notify_stores("Approved", "All items have been approved for GRN.")
 		frappe.msgprint("All items approved", indicator="green")
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def reject_all(self, reason=""):
 		"""Reject all items."""
+		_require_post()
+		reason = _clean_text(reason)
+		self._reload_for_decision()
 		if self.status not in ("Pending Inspection", "On Hold"):
 			frappe.throw(f"Cannot reject from status '{self.status}'")
 
@@ -69,12 +127,14 @@ class TSMaterialInspection(Document):
 			"inspection_time": now_datetime()
 		})
 
-		self._notify_stores("Rejected", f"All items rejected. Reason: {reason}")
+		self._notify_stores("Rejected", f"All items rejected. Reason: {escape_html(reason)}")
 		frappe.msgprint("All items rejected", indicator="red")
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def submit_itemwise(self):
 		"""Submit item-wise inspection decisions."""
+		_require_post()
+		self._reload_for_decision(keep_decisions=True)
 		if self.status not in ("Pending Inspection", "On Hold"):
 			frappe.throw(f"Cannot submit inspection from status '{self.status}'")
 
@@ -82,9 +142,11 @@ class TSMaterialInspection(Document):
 
 		# Validate all items have been decided
 		for item in self.items:
-			if item.item_status == "Pending":
+			if item.item_status not in ("Approved", "Held", "Rejected"):
 				frappe.throw(f"Item {item.item_code} is still Pending. Please set a status for all items.")
 			self._validate_item_row(item)
+		self._validate_item_quantities()
+		for item in self.items:
 			item.db_update()
 
 		# Determine overall status
@@ -127,20 +189,25 @@ class TSMaterialInspection(Document):
 			if not flt(item.held_qty):
 				item.held_qty = flt(item.received_qty)
 
+	def _can_inspect(self):
+		"""Requester, their heads (stored + shared), IT Head or System Manager."""
+		user = frappe.session.user
+		if {"IT Head", "System Manager"} & set(frappe.get_roles(user)):
+			return True
+		return user in (self.requester, *_inspection_heads(self.name, self.requester, self.department_head))
+
 	def _check_inspection_permission(self):
 		"""Only requester, HOD, IT Head, or System Manager can inspect."""
-		user = frappe.session.user
-		allowed_users = {self.requester, self.department_head}
-		allowed_roles = {"IT Head", "System Manager"}
-		if user not in allowed_users and not allowed_roles.intersection(set(frappe.get_roles())):
+		if not self._can_inspect():
 			frappe.throw("You do not have permission to inspect these items")
 
 	def _notify_stores(self, status, message):
-		"""Notify stores/G2 about the inspection result."""
-		# v2.58.0 — role-wide recipients, narrowed by TS Notification Routing.
-		stores_users = role_recipients("Stores User")
-		g2_users = role_recipients("G2 Gate Operator")
-		recipients = list(set(stores_users + g2_users))
+		"""Tell the groups ticked for "inspection result" (default: Stores + G2)."""
+		cc_config = _mr_cc_config(self.material_request)
+		recipients = audience(
+			"inspection_result", raised_by=self.requester,
+			dept_heads=_inspection_heads(self.name, self.requester, self.department_head),
+			cc_notify=get_cc_notify_only_users(cc_config) if cc_config else [])
 		if recipients:
 			_send_inspection_notification(
 				self, recipients,
@@ -181,8 +248,9 @@ def create_material_inspection(gate_entry_name):
 	if not requester and ge.purchase_order:
 		requester = frappe.db.get_value("Purchase Order", ge.purchase_order, "owner")
 
-	# Find HOD — user with Department Head role in the requester's department
-	department_head = _find_department_head(requester)
+	# v2.59.0 — heads: Department Head approvers on the MR cost centre's config
+	heads = _department_heads(mr_name, requester)
+	department_head = heads[0] if heads else None
 
 	# Get supplier name
 	supplier_name = ""
@@ -221,18 +289,15 @@ def create_material_inspection(gate_entry_name):
 		})
 
 	insp.insert(ignore_permissions=True)
+	_share_with_inspectors(insp.name, [requester, *heads])
 	frappe.db.commit()
 
 	# Send 1st notification
-	recipients = []
-	if requester:
-		recipients.append(requester)
-	if department_head:
-		recipients.append(department_head)
+	recipients = audience("inspection_request", raised_by=requester, dept_heads=heads)
 
 	if recipients:
 		_send_inspection_notification(
-			insp, list(set(recipients)),
+			insp, recipients,
 			f"Material Inspection Required — {insp.name}",
 			f"Non-Raw Material items received at G2 against PO {ge.purchase_order or ''}. "
 			f"Please inspect and approve/reject in ERP before GRN is created."
@@ -274,16 +339,12 @@ def check_inspection_sla():
 		# Check if next stage notification is due
 		if current_stage < 4 and hours_elapsed >= sla_hours[current_stage]:
 			next_stage = current_stage + 1
-			recipients = []
-			if insp.requester:
-				recipients.append(insp.requester)
-			if insp.department_head:
-				recipients.append(insp.department_head)
-
-			# 4th notification also goes to IT Head
-			if next_stage == 4:
-				it_head_users = role_recipients("IT Head")
-				recipients.extend(it_head_users)
+			# v2.59.0 — the groups ticked in TS Notification Audience (the final
+			# notice also goes to IT Head by default).
+			recipients = audience(
+				"inspection_final" if next_stage == 4 else "inspection_request",
+				raised_by=insp.requester,
+				dept_heads=_inspection_heads(insp.name, insp.requester, insp.department_head))
 
 			stage_labels = {
 				2: "Reminder",
@@ -320,12 +381,12 @@ def check_inspection_sla():
 
 			if recipients:
 				_send_inspection_notification_raw(
-					list(set(recipients)), subject, message, insp.name
+					recipients, subject, message, insp.name
 				)
 				# Bell channel for SLA stages 2-4 — email alone is dead (no SMTP
 				# on either server), so without this the reminders reach nobody.
 				from trustbit_ethanol.ts_gate_entry.ts_notification_coverage import _coverage_bell
-				_coverage_bell(list(set(recipients)), subject,
+				_coverage_bell(recipients, subject,
 					"TS Material Inspection", insp.name, body=message)
 
 	frappe.db.commit()
@@ -340,6 +401,57 @@ def get_inspection_status_for_token(token_name):
 		as_dict=True
 	)
 	return insp
+
+
+def _mr_cc_config(mr_name):
+	"""Active approval config of the MR's cost centre (header, else first item).
+	Checked for existence first: get_cc_config's get_doc would otherwise leave a
+	"not found" message on the inspector's or gate operator's screen."""
+	if not mr_name:
+		return None
+	cost_center = frappe.db.get_value("Material Request", mr_name, "cost_center") or frappe.db.get_value(
+		"Material Request Item", {"parent": mr_name}, "cost_center", order_by="idx asc")
+	if not cost_center or not frappe.db.exists("TS CC Approval Config", cost_center):
+		return None
+	return get_cc_config(cost_center)
+
+
+def _department_heads(mr_name, requester):
+	"""v2.59.0 — enabled Department Head approvers (Reviewer / Final Approver) on
+	the MR cost centre's approval config; else the Employee lookup."""
+	cc_config = _mr_cc_config(mr_name)
+	users = [r.user for r in (cc_config.users if cc_config else []) if r.user and r.role == "Department Head"
+		and r.action_type in ("Reviewer", "Final Approver")]
+	enabled = set(frappe.get_all("User", filters={"name": ["in", users], "enabled": 1}, pluck="name")) if users else set()
+	heads = [u for u in dict.fromkeys(users) if u in enabled and u != requester]
+	if not heads:
+		head = _find_department_head(requester)
+		heads = [head] if head and head != requester else []
+	return heads
+
+
+def _inspection_heads(name, requester, department_head):
+	"""The stored head plus every head the inspection is shared with for writing."""
+	shared = frappe.get_all("DocShare", filters={"share_doctype": "TS Material Inspection",
+		"share_name": name, "write": 1}, pluck="user", order_by="creation asc") if name else []
+	return [u for u in dict.fromkeys([department_head, *shared]) if u and u != requester]
+
+
+def _share_with_inspectors(name, users):
+	"""v2.59.0 — the requester and heads can open and decide the inspection
+	whatever their roles (on prod only CEO/MD/IT Head/System Manager hold the
+	doctype). notify=0: the inspection notice already tells them."""
+	from frappe.share import add_docshare
+
+	for user in dict.fromkeys(u for u in users if u and u not in ("Administrator", "Guest")):
+		queued = len(frappe.local.message_log)
+		try:
+			add_docshare("TS Material Inspection", name, user, read=1, write=1,
+				flags={"ignore_share_permission": True}, notify=0)
+		except Exception:
+			frappe.log_error(title="Material inspection share failed", message=frappe.get_traceback()[:2000])
+			# Drop only this share's messages: the Gate Entry submit's own stay.
+			del frappe.local.message_log[queued:]
 
 
 def _find_department_head(user):

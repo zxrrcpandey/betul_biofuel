@@ -1,0 +1,63 @@
+{
+ "actions": [],
+ "creation": "2026-10-16 18:00:00",
+ "description": "Who receives each notification, and the accounts kept off role-wide notifications.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "events_section",
+  "events",
+  "skip_section",
+  "skip_accounts"
+ ],
+ "fields": [
+  {
+   "description": "Tick the groups that receive each notification. Untick a group to stop sending it to them. Notifications where someone has to act (MR approved, pass back at the gate) still reach the Team when nobody else ticked holds a team role.",
+   "fieldname": "events_section",
+   "fieldtype": "Section Break",
+   "label": "Who Gets Each Notification"
+  },
+  {
+   "fieldname": "events",
+   "fieldtype": "Table",
+   "label": "Notifications",
+   "options": "TS Notification Audience Event"
+  },
+  {
+   "description": "Shared admin and IT accounts. They stop getting every notification sent to everyone holding a role, approval requests for their roles included, but still get anything that names them: documents they raised and approval steps assigned to them by name. Their approval rights do not change.",
+   "fieldname": "skip_section",
+   "fieldtype": "Section Break",
+   "label": "Skip List"
+  },
+  {
+   "fieldname": "skip_accounts",
+   "fieldtype": "Table MultiSelect",
+   "label": "Accounts Kept Off Role-Wide Notifications",
+   "options": "TS Notification Routing User"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-16 18:00:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Notification Audience",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "IT Head",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

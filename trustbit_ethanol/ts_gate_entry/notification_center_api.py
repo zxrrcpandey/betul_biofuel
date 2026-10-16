@@ -9,7 +9,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, cint, now_datetime, time_diff_in_hours
+from frappe.utils import add_to_date, cint, cstr, now_datetime, time_diff_in_hours
 from frappe.utils import format_datetime, get_url_to_form, strip_html
 
 # v2.29.0 accountability trail — fail-soft stamp writers (no import cycle:
@@ -510,13 +510,19 @@ def _mr_cc_allows(row, user):
 
 
 def _pending_inspections(user):
-    rows = frappe.get_all(
-        "TS Material Inspection",
-        filters={"status": "Pending Inspection"},
-        or_filters={"requester": user, "department_head": user},
-        fields=["name", "created_time"], limit_page_length=_PENDING_SOURCE_CAP)
+    # v2.59.0 — also the heads an inspection is shared with for writing, and
+    # only inspections the user can open.
+    rows = frappe.db.sql(
+        """SELECT i.name, i.created_time FROM `tabTS Material Inspection` i
+           WHERE i.status = 'Pending Inspection'
+             AND (i.requester = %(user)s OR i.department_head = %(user)s
+                  OR i.name IN (SELECT s.share_name FROM `tabDocShare` s
+                                WHERE s.share_doctype = 'TS Material Inspection'
+                                  AND s.user = %(user)s AND s.write = 1))
+           ORDER BY i.modified DESC LIMIT {cap}""".format(cap=_PENDING_SOURCE_CAP),
+        {"user": user}, as_dict=True)
     return [_item("Inspection", "TS Material Inspection", r.name, r.created_time)
-            for r in rows]
+            for r in rows if frappe.has_permission("TS Material Inspection", "read", doc=r.name, user=user)]
 
 
 def _pending_grain_ds(roles):
@@ -600,12 +606,63 @@ def get_whatsapp_log(start=0, page_length=20):
 # ═══════════════════════════════════════════════════════════════════════
 
 def after_migrate_notification_center():
-    for fn in (_seed_settings_field, _seed_workspace_shortcut):
+    for fn in (_seed_settings_field, _seed_workspace_shortcut, _seed_notification_audience,
+               _seed_inspection_result_readers):
         try:
             fn()
         except Exception:
             frappe.log_error(title="notification center seeder: {0}".format(fn.__name__),
                              message=frappe.get_traceback()[:2000])
+
+
+def _seed_notification_audience():
+    """v2.59.0 — one TS Notification Audience row per code event. Insert-only:
+    an existing row keeps the admin's ticks; only its code-owned label, team
+    roles and applicable columns are refreshed."""
+    from trustbit_ethanol.ts_gate_entry.ts_notification_routing import AUDIENCE_DOCTYPE, COLUMNS, EVENTS
+
+    if not frappe.db.exists("DocType", AUDIENCE_DOCTYPE):
+        return
+    doc = frappe.get_single(AUDIENCE_DOCTYPE)
+    have = {r.event: r for r in doc.events}
+    changed = False
+    for key, spec in EVENTS.items():
+        code = {"event_label": spec["label"], "team_roles": ", ".join(spec.get("team_roles", ())),
+                "applies": ",".join(spec["applies"])}
+        row = have.get(key)
+        if not row:
+            doc.append("events", dict(code, event=key, **{c: int(c in spec["default"]) for c in COLUMNS}))
+            changed = True
+        elif any(cstr(row.get(f)) != v for f, v in code.items()):
+            row.update(code)
+            changed = True
+    if changed:
+        doc.save(ignore_permissions=True)
+
+
+INSPECTION_RESULT_READERS = ("Stores User", "G2 Gate Operator")
+
+
+def _seed_inspection_result_readers():
+    """v2.59.0 — the inspection-result bell goes to Stores User and G2 Gate
+    Operator, whom TS Material Inspection's own permissions let read it; the
+    Custom DocPerm rows seeded on 2 Apr 2026 replaced those (L169). Give both
+    roles read back. Upsert, read only: never adds write, never removes a row."""
+    from frappe.permissions import add_permission, update_permission_property
+
+    doctype = "TS Material Inspection"
+    for role in INSPECTION_RESULT_READERS:
+        if not frappe.db.exists("Role", role):
+            continue
+        row = {"parent": doctype, "role": role, "permlevel": 0, "if_owner": 0}
+        if not frappe.db.exists("Custom DocPerm", row):
+            # add_permission() runs setup_custom_perms() first (L169) and returns a
+            # name only for a row it created — those carry Custom DocPerm's default
+            # export=1, which these roles do not get.
+            if add_permission(doctype, role, 0):
+                update_permission_property(doctype, role, 0, "export", 0)
+        elif not cint(frappe.db.get_value("Custom DocPerm", row, "read")):
+            update_permission_property(doctype, role, 0, "read", 1)
 
 
 def _seed_settings_field():

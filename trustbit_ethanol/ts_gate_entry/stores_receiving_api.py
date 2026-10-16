@@ -208,6 +208,12 @@ def _get_inspection_gate_enabled():
 	return bool(cint(rows[0][0]))
 
 
+def _inspection_blocks_grn(insp_label, gate_enabled):
+	"""v2.59.0 — a Rejected inspection blocks the GRN whatever the setting says,
+	as TS Token.create_grn already does; other states only while the gate is on."""
+	return insp_label == "Rejected" or (gate_enabled and insp_label not in INSPECTION_PASS_STATES)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  READ ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════
@@ -408,7 +414,7 @@ def _classify_receivable(tok, ge, insp_label):
 		_released = pre_grn_exit_released(tok["name"])
 	if status == STATUS_TARE_WEIGHED or _released:
 		# Inspection gate applies only to non-Raw-Material purpose in path A.
-		if tok.get("purpose") != "Raw Material" and gate_enabled and insp_label not in INSPECTION_PASS_STATES:
+		if tok.get("purpose") != "Raw Material" and _inspection_blocks_grn(insp_label, gate_enabled):
 			return no("Inspection is '{0}' — needs Quality approval before receiving.".format(insp_label))
 		if _released:
 			return {"receivable": True, "grn_path": "A",
@@ -421,7 +427,7 @@ def _classify_receivable(tok, ge, insp_label):
 	if (ge.get("material_flow") or "") == FLOW_NON_RM and cint(ge.get("requires_weighing") or 0) == 0:
 		if status in _TERMINAL_TOKEN_STATUSES and not _released_non_rm_exit(tok):
 			return no("Token status '{0}' does not allow GRN creation.".format(status))
-		if gate_enabled and insp_label not in INSPECTION_PASS_STATES:
+		if _inspection_blocks_grn(insp_label, gate_enabled):
 			return no("Inspection is '{0}' — needs Quality approval before receiving.".format(insp_label))
 		return {"receivable": True, "grn_path": "B",
 				"reason": "Ready to receive (Non-RM, no weighing)."}
@@ -768,7 +774,7 @@ def create_grn_for_weighed_token(token_name, manual_qty_per_po=None):
 	if token.purpose != "Raw Material":
 		block_on_insp = _get_inspection_gate_enabled()
 		insp_label = _get_inspection_status_label(token.name)
-		if block_on_insp and insp_label not in INSPECTION_PASS_STATES:
+		if _inspection_blocks_grn(insp_label, block_on_insp):
 			frappe.throw(_(
 				"GRN blocked — Material Inspection is '{0}'. "
 				"Ask Quality Lab to approve before receiving. "
@@ -1135,7 +1141,7 @@ def create_grn_for_non_weighing_token(token_name):
 	if insp_doc:
 		inspection_id = getattr(insp_doc, "name", None) or (insp_doc.get("name") if isinstance(insp_doc, dict) else None)
 
-	if block_on_insp and insp_label not in INSPECTION_PASS_STATES:
+	if _inspection_blocks_grn(insp_label, block_on_insp):
 		frappe.throw(_(
 			"GRN blocked — Material Inspection is '{0}'. "
 			"Ask Quality Lab to approve before receiving. "

@@ -13,6 +13,7 @@ from trustbit_ethanol.ts_gate_entry.ts_notification_routing import (
 	_ticked_users,
 	narrow,
 	role_holders,
+	skip_accounts,
 )
 
 
@@ -31,12 +32,15 @@ def execute(filters=None):
 			fields=["role", "routing_mode", "ticked_count"])
 	}
 	enabled = frappe.db.get_value("User", user, "enabled")
+	skip = skip_accounts()
 
 	data = []
 	for role in roles:
 		row = routing.get(role)
 		holders = role_holders(role)
-		notified = narrow(role, holders)
+		routed = narrow(role, holders)
+		# Same rule as role_recipients(): the skip list never leaves a role with nobody.
+		notified = [u for u in routed if u not in skip] or routed
 		if len(notified) < len(holders):
 			who = _("{0} of {1} holders").format(len(notified), len(holders))
 		elif len(holders) < 2:
@@ -58,6 +62,10 @@ def execute(filters=None):
 				reason = _("Ticked.")
 			else:
 				reason = _("No ticked user still holds the role, so every holder is notified until the row is fixed.")
+		if user in skip and user in routed:
+			gets = user in notified
+			reason = _("On the skip list in Notification Audience, so this role's role-wide notifications go to the other holders.") if not gets \
+				else _("On the skip list, but every other holder is skipped too, so this account is still notified.")
 		if not enabled:
 			gets, reason = False, _("User is disabled.")
 		data.append({
