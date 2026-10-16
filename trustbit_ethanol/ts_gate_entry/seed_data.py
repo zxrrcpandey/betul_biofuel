@@ -258,4 +258,9 @@ PROPERTY_SETTERS = [
 	{"doc_type": "TS Weighbridge Log", "field_name": "naming_series", "property": "options", "property_type": "Text", "value": "BBPL-WB-.YYYY.-.#####", "doctype_or_field": "DocField"},
 	{"doc_type": "Supplier", "field_name": "supplier_type", "property": "options", "property_type": "Text", "value": "Company\nIndividual\nPartnership\nHUF\nFirm\nPerson\nArtificial & Judicial Person", "doctype_or_field": "DocField"},
 	{"doc_type": "Customer", "field_name": "customer_type", "property": "options", "property_type": "Text", "value": "Company\nIndividual\nPartnership\nHUF\nFirm\nPerson\nArtificial & Judicial Person", "doctype_or_field": "DocField"},
+	# Item photos upload as public by default (attach.js reads df.make_attachment_public; the user can
+	# still tick Private). A private photo added before the MR's first save stays linked to the draft
+	# name, so only its uploader can read it and the BBPL MR/PO PDF fails for everyone else (Lesson 428 C).
+	{"doc_type": "Material Request Item", "field_name": "custom_item_image", "property": "make_attachment_public", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
+	{"doc_type": "Purchase Order Item", "field_name": "custom_item_image", "property": "make_attachment_public", "property_type": "Check", "value": "1", "doctype_or_field": "DocField"},
 ]
