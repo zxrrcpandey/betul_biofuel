@@ -2,6 +2,8 @@ import frappe
 from frappe.model.document import Document
 from frappe.utils import now_datetime, flt, get_fullname
 
+from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients
+
 
 class TSMaterialInspection(Document):
 	def validate(self):
@@ -135,8 +137,9 @@ class TSMaterialInspection(Document):
 
 	def _notify_stores(self, status, message):
 		"""Notify stores/G2 about the inspection result."""
-		stores_users = _get_role_users("Stores User")
-		g2_users = _get_role_users("G2 Gate Operator")
+		# v2.58.0 — role-wide recipients, narrowed by TS Notification Routing.
+		stores_users = role_recipients("Stores User")
+		g2_users = role_recipients("G2 Gate Operator")
 		recipients = list(set(stores_users + g2_users))
 		if recipients:
 			_send_inspection_notification(
@@ -279,7 +282,7 @@ def check_inspection_sla():
 
 			# 4th notification also goes to IT Head
 			if next_stage == 4:
-				it_head_users = _get_role_users("IT Head")
+				it_head_users = role_recipients("IT Head")
 				recipients.extend(it_head_users)
 
 			stage_labels = {

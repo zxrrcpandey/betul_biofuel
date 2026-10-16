@@ -1,0 +1,117 @@
+{
+ "actions": [],
+ "autoname": "field:role",
+ "creation": "2026-10-16 06:00:00",
+ "description": "Choose which holders of a role receive that role's role-wide notifications. A role with no row notifies every holder.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "routing_section",
+  "role",
+  "routing_mode",
+  "column_break_1",
+  "ticked_count",
+  "notes",
+  "users_section",
+  "holders_html",
+  "users"
+ ],
+ "fields": [
+  {
+   "fieldname": "routing_section",
+   "fieldtype": "Section Break",
+   "label": "Routing"
+  },
+  {
+   "bold": 1,
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Role",
+   "options": "Role",
+   "reqd": 1,
+   "set_only_once": 1,
+   "unique": 1
+  },
+  {
+   "default": "All role holders",
+   "description": "All role holders: everyone with the role is notified (the behaviour without routing). Selected users only: only the users ticked below are notified; the others keep the role and can still open and act on documents.",
+   "fieldname": "routing_mode",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Routing",
+   "options": "All role holders\nSelected users only",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "ticked_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Ticked Users",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Notes (why this list)"
+  },
+  {
+   "description": "Only role-wide notifications are narrowed. People named on the document itself (creator, requester, cost-centre approver, approval chain, @mention) are always notified. If no ticked user still holds the role, every holder is notified again.",
+   "fieldname": "users_section",
+   "fieldtype": "Section Break",
+   "label": "Who Receives This Role's Notifications"
+  },
+  {
+   "fieldname": "holders_html",
+   "fieldtype": "HTML",
+   "label": "Role Holders"
+  },
+  {
+   "fieldname": "users",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Ticked Users",
+   "options": "TS Notification Routing User"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-16 10:50:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS Notification Routing",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IT Head",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "role",
+ "track_changes": 1
+}

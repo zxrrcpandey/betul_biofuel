@@ -566,13 +566,10 @@ def cancel_budget_override(name, reason):
 
 
 def _role_users(role):
-    """Return active enabled users holding a role."""
-    return frappe.get_all(
-        "Has Role",
-        filters={"role": role, "parenttype": "User"},
-        fields=["parent"],
-        pluck="parent",
-    )
+    """Return active enabled users holding a role — v2.58.0: narrowed by TS
+    Notification Routing (and now really enabled-only, as documented)."""
+    from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients
+    return role_recipients(role)
 
 
 def _approver_recipients():

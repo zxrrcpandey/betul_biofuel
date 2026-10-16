@@ -196,20 +196,10 @@ def get_grain_manager_recipients():
 	"""Return enabled User emails holding Grain Manager role.
 
 	Pure role-driven (no hardcoded recipients — feedback_over_engineering_audit Rule 6).
+	v2.58.0 — narrowed by TS Notification Routing.
 	"""
-	role_users = frappe.get_all(
-		"Has Role",
-		filters={"role": "Grain Manager", "parenttype": "User"},
-		pluck="parent",
-	)
-	if not role_users:
-		return []
-	enabled = frappe.get_all(
-		"User",
-		filters={"name": ["in", role_users], "enabled": 1},
-		pluck="name",
-	)
-	return [u for u in enabled if u and u not in ("Administrator", "Guest")]
+	from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients
+	return role_recipients("Grain Manager")
 
 
 def notify_grain_manager_for_qi(qi_doc):

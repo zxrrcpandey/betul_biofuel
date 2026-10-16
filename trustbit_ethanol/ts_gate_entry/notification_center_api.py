@@ -15,6 +15,7 @@ from frappe.utils import format_datetime, get_url_to_form, strip_html
 # v2.29.0 accountability trail — fail-soft stamp writers (no import cycle:
 # ts_notification_trail's own imports are frappe-only at module level)
 from trustbit_ethanol.ts_gate_entry.ts_notification_trail import stamp_read, stamp_shown
+from trustbit_ethanol.ts_gate_entry.ts_notification_routing import routed_out_roles
 
 KILL_SWITCH_FIELD = "ts_notification_center_enabled"
 WORKSPACE_NAME = "BBPL Ethanol"
@@ -360,18 +361,22 @@ def get_pending_actions(category="all", start=0, page_length=50):
     _guard()
     user = frappe.session.user
     roles = set(frappe.get_roles(user))
+    # v2.58.0 — a role routed away from this user (TS Notification Routing)
+    # stops feeding its role-wide queues here, exactly as it stops the bells.
+    routed_out = routed_out_roles(user, roles)
+    narrowed = roles - routed_out
     sla_hours = cint(frappe.db.get_single_value("TS Settings", "approval_sla_hours")) or 0
     category = category if category in _PENDING_CATEGORIES else "all"
     start = max(cint(start), 0)
     page_length = min(max(cint(page_length) or 50, 1), 50)
 
     items = []
-    items += _pending_approvals("Purchase Order", user, roles, sla_hours)
-    items += _pending_approvals("Material Request", user, roles, sla_hours)
+    items += _pending_approvals("Purchase Order", user, narrowed, sla_hours)
+    items += _pending_approvals("Material Request", user, roles, sla_hours, routed_out)
     items += _pending_inspections(user)
-    items += _pending_grain_ds(roles)
-    items += _pending_budget(roles)
-    items += _pending_production(roles)
+    items += _pending_grain_ds(narrowed)
+    items += _pending_budget(narrowed)
+    items += _pending_production(narrowed)
     # Overdue first, then longest-waiting first — what needs action floats up.
     items.sort(key=lambda x: (0 if x["overdue"] else 1, -x["age_hours"]))
 
@@ -412,11 +417,13 @@ def _hours_display(hours):
     return "{0}d".format(int(hours / 24))
 
 
-def _pending_approvals(doctype, user, roles, sla_hours):
+def _pending_approvals(doctype, user, roles, sla_hours, routed_out=frozenset()):
     """POs/MRs where the session user's role sits at/after the current step.
     SAFE rewrite of the get_user_pending structure: self-scoped (no user
     param), confidential_sql_clause injected, per-doc has_permission drop,
-    and the payload carries NO supplier/amount/cost-center."""
+    and the payload carries NO supplier/amount/cost-center.
+    `routed_out` (MR only): roles routed away from the user — they no longer
+    qualify a role-only MR, but an MR whose cost centre names the user stays."""
     from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
     role_list = [r for r in roles if r not in ("All", "Guest", "Desk User")]
     if not role_list:
@@ -444,8 +451,7 @@ def _pending_approvals(doctype, user, roles, sla_hours):
             "AND cs.step_order = IFNULL(d.{step_f}, 1) ORDER BY cs.idx LIMIT 1), 0) = 0)"
         ).format(step_f=step_f, rule_f=rule_f, step_tbl=step_tbl)
 
-    rows = frappe.db.sql(
-        """SELECT d.name, d.modified{cc}
+    query = """SELECT d.name, d.modified{cc}
            FROM `{tbl}` d
            WHERE d.docstatus = 0
              AND d.{status_f} LIKE 'Pending%%'
@@ -464,11 +470,18 @@ def _pending_approvals(doctype, user, roles, sla_hours):
             step_tbl=step_tbl, submitted_f=submitted_f, conf=conf_sql,
             cap=_PENDING_SOURCE_CAP,
             cc=", d.cost_center" if not is_po else "",
-            strict=strict_sql),
-        {"roles": tuple(role_list), "user": user}, as_dict=True)
+            strict=strict_sql)
+    rows = frappe.db.sql(query, {"roles": tuple(role_list), "user": user}, as_dict=True)
 
     if not is_po:
         rows = [r for r in rows if _mr_cc_allows(r, user)]
+        narrowed = [r for r in role_list if r not in routed_out]
+        if len(narrowed) < len(role_list):
+            via_role = {r.name for r in frappe.db.sql(
+                query, {"roles": tuple(narrowed), "user": user}, as_dict=True)} if narrowed else set()
+            # Rows that passed _mr_cc_allows under an active CC config name this user personally.
+            rows = [r for r in rows if r.name in via_role or frappe.db.exists(
+                "TS CC Approval Config", {"cost_center": r.cost_center, "is_active": 1})]
 
     out = []
     for r in rows:

@@ -902,16 +902,10 @@ def _send_budget_notification(doc, action, recipients, extra=None):
 
 
 def _get_role_users(role):
-	"""Get all active users with a specific role."""
-	return frappe.db.sql_list("""
-		SELECT DISTINCT hr.parent
-		FROM `tabHas Role` hr
-		INNER JOIN `tabUser` u ON u.name = hr.parent
-		WHERE hr.role = %s
-			AND hr.parenttype = 'User'
-			AND u.enabled = 1
-			AND hr.parent != 'Administrator'
-	""", role)
+	"""Get all active users with a specific role — notification recipients
+	only, so v2.58.0 narrows them by TS Notification Routing."""
+	from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients
+	return role_recipients(role)
 
 
 # ═══════════════════════════════════════════════════════════════════════

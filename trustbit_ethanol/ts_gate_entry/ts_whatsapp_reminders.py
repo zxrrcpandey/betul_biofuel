@@ -100,7 +100,38 @@ def _stage_recipients(row, stage, is_po, step_field, rule_field):
 	if not step or not step.get("role"):
 		return _leadership()
 	users = _role_users(step["role"])
+	if users and not is_po:
+		users = _keep_cc_named(row, step["role"], target_order, rule_name, users)
 	return users or _leadership()
+
+
+def _keep_cc_named(row, role, step_order, route_name, users):
+	"""v2.58.0 — Notification Routing narrows a step role's broadcast, but an
+	MR's cost-centre approvers for that step are addressed personally: keep the
+	ones who hold the role. With no routing row `users` is already every holder,
+	so nothing is added."""
+	holders = None
+	try:
+		from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_holders
+		holders = role_holders(role)
+		if len(users) >= len(holders):
+			return users
+		from trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config import (
+			get_cc_config,
+			get_cc_users_for_step,
+		)
+		cost_center = frappe.db.get_value("Material Request", row.get("name"), "cost_center") or frappe.db.get_value(
+			"Material Request Item", {"parent": row.get("name")}, "cost_center", order_by="idx asc")
+		cc_config = get_cc_config(cost_center)
+		if not cc_config:
+			return users
+		route = frappe.get_cached_doc("TS MR Approval Route", route_name)
+		held = set(holders)
+		named = [u for u in get_cc_users_for_step(cc_config, step_order, route=route) if u in held]
+		return users + [u for u in dict.fromkeys(named) if u not in users]
+	except Exception:
+		# Fail open: a lookup error must not cost a cost-centre approver the reminder.
+		return holders or users
 
 
 def _steps(rule_name, is_po):
@@ -121,16 +152,9 @@ def _next_order(steps, current):
 
 
 def _role_users(role):
-	if not role:
-		return []
-	return frappe.db.sql_list(
-		"""SELECT DISTINCT hr.parent
-		   FROM `tabHas Role` hr
-		   INNER JOIN `tabUser` u ON u.name = hr.parent
-		   WHERE hr.role = %s AND hr.parenttype = 'User'
-		     AND u.enabled = 1 AND hr.parent NOT IN ('Administrator', 'Guest')""",
-		role,
-	)
+	# v2.58.0 — role-wide recipients, narrowed by TS Notification Routing.
+	from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients
+	return role_recipients(role)
 
 
 def _leadership():

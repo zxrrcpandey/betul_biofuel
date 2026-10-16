@@ -728,15 +728,10 @@ def _create_system_notification(for_user, subject, mr_name, content=None):
 
 
 def _notify_stores_managers_system(mr_name):
-	"""Send in-app notification to all active Stores Manager users."""
-	recipients = frappe.db.sql_list("""
-		SELECT DISTINCT u.name
-		FROM `tabUser` u
-		INNER JOIN `tabHas Role` hr ON hr.parent = u.name
-		WHERE hr.role = 'Stores Manager'
-		  AND u.enabled = 1
-		  AND u.name NOT IN ('Administrator', 'Guest')
-	""")
+	"""Send in-app notification to all active Stores Manager users
+	(v2.58.0: narrowed by TS Notification Routing)."""
+	from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients
+	recipients = role_recipients("Stores Manager")
 	if not recipients:
 		return
 	doc = frappe.db.get_value("Material Request", mr_name,
@@ -783,15 +778,10 @@ def _notify_creator_system(mr_name, action, stock_entry=None, reason=None):
 # ─────────────────────────────────────────────────────────────────────────
 
 def _notify_stores_managers(mr_name):
-	"""Email all active Stores Manager users that an MR is pending approval."""
-	recipients = frappe.db.sql_list("""
-		SELECT DISTINCT u.name
-		FROM `tabUser` u
-		INNER JOIN `tabHas Role` hr ON hr.parent = u.name
-		WHERE hr.role = 'Stores Manager'
-		  AND u.enabled = 1
-		  AND u.name NOT IN ('Administrator', 'Guest')
-	""")
+	"""Email all active Stores Manager users that an MR is pending approval
+	(v2.58.0: narrowed by TS Notification Routing, same list as the bell)."""
+	from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients
+	recipients = role_recipients("Stores Manager")
 	if not recipients:
 		return
 
