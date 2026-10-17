@@ -605,13 +605,7 @@ def _mr_class(r, user, cur, later, by_role, deputy, cfgs):
     from trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config import (
         get_cc_approvers_for_step,
     )
-    cc = r.cost_center
-    if cc not in cfgs:
-        # Same lookup as get_cc_config(), existence first: get_doc on a missing
-        # name would queue a "not found" message for the user.
-        active = cc and cint(frappe.db.get_value("TS CC Approval Config", cc, "is_active"))
-        cfgs[cc] = frappe.get_doc("TS CC Approval Config", cc) if active else None
-    cfg = cfgs[cc]
+    cfg = _mr_cfg(r.cost_center, cfgs)  # same lookup as get_cc_config()
     named = get_cc_approvers_for_step(cfg, cur, route=r.rule) if cfg else []
     if not named:
         return by_role, named
@@ -685,6 +679,149 @@ def _pending_production(roles, role_why):
         fields=["name", "modified"], limit_page_length=_PENDING_SOURCE_CAP)
     return [_item("Production", "TS Production Entry", r.name, r.modified, cls)
             for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  My Requests (v2.62.0) — the session user's own Material Requests
+# ═══════════════════════════════════════════════════════════════════════
+
+_MY_STATES = ("approval", "late", "back", "decided", "draft")
+_MY_DECIDED_DAYS = 14  # approved in the last 14 days
+_MY_RECENT_DAYS = 30   # sent back / not sent: changed in the last 30 days
+_MY_CAP = 500
+_MY_WHO_SHOWN = 3
+
+
+@frappe.whitelist()
+def get_my_requests(state="approval", start=0, page_length=50):
+    """v2.62.0 — Material Requests the session user raised or submitted, and
+    where each one is: who it waits on now (the people whose "Assigned to me"
+    holds it), since when, and whether it is past the approval target; plus the
+    ones sent back, approved in the last 14 days, or not sent for approval yet.
+    Self-scoped (no user param), read-only."""
+    _guard()
+    user = frappe.session.user
+    state = state if state in _MY_STATES else "approval"
+    start = max(cint(start), 0)
+    page_length = cint(page_length)
+    page_length = 50 if page_length <= 0 else min(page_length, 50)
+    sla = cint(frappe.db.get_single_value("TS Settings", "approval_sla_hours")) or 0
+    now = now_datetime()
+    rows = frappe.db.sql(
+        """SELECT d.name, d.docstatus, IFNULL(d.ts_mr_status, '') AS status,
+                  IFNULL(d.ts_mr_current_step, 1) AS step, d.ts_mr_approval_route AS rule,
+                  d.ts_mr_held_by AS held_by, d.ts_mr_approved_by AS approved_by,
+                  d.ts_mr_approved_date AS approved_date, d.modified,
+                  COALESCE(NULLIF(d.cost_center, ''), (SELECT i.cost_center FROM `tabMaterial Request Item` i
+                    WHERE i.parent = d.name AND IFNULL(i.cost_center, '') != '' ORDER BY i.idx LIMIT 1)) AS cost_center
+           FROM `tabMaterial Request` d
+           WHERE (d.owner = %(user)s OR d.ts_mr_submitted_by = %(user)s)
+             AND ((d.docstatus = 0 AND (d.ts_mr_status LIKE 'Pending%%' OR d.ts_mr_status = 'On Hold'))
+               OR (d.docstatus = 0 AND IFNULL(d.ts_mr_status, '') IN ('', 'Not Submitted', 'Revised', 'Rejected')
+                   AND d.modified >= %(recent)s)
+               OR (d.docstatus = 1 AND d.ts_mr_approved_date >= %(decided)s))
+           ORDER BY d.modified DESC
+           LIMIT {cap}""".format(cap=_MY_CAP),
+        {"user": user, "recent": add_to_date(now, days=-_MY_RECENT_DAYS),
+         "decided": add_to_date(now, days=-_MY_DECIDED_DAYS)}, as_dict=True)
+    rows = [r for r in rows if frappe.has_permission("Material Request", "read", doc=r.name, user=user)]
+
+    last = {}
+    if rows:
+        for lg in frappe.db.sql(
+                """SELECT parent, action, action_by, action_by_name, action_date, comment
+                   FROM `tabTS Approval Log` WHERE parenttype = 'Material Request'
+                     AND parentfield = 'ts_mr_log' AND parent IN %(p)s
+                   ORDER BY action_date, idx""", {"p": tuple(r.name for r in rows)}, as_dict=True):
+            last[lg.parent] = lg
+    steps = {}
+    routes = tuple({r.rule for r in rows if r.rule})
+    if routes:
+        strict_col = ("IFNULL(strict_step, 0)" if frappe.db.has_column("TS MR Approval Step", "strict_step")
+                      else "0")
+        for s in frappe.db.sql(
+                "SELECT parent, step_order, role, {0} AS strict_step FROM `tabTS MR Approval Step` "
+                "WHERE parent IN %(p)s ORDER BY parent, idx".format(strict_col), {"p": routes}, as_dict=True):
+            steps.setdefault(s.parent, []).append(s)
+
+    items, cfgs = [], {}
+    counts = dict.fromkeys(_MY_STATES, 0)
+    for r in rows:
+        lg = last.get(r.name)
+        if r.docstatus == 1:
+            st, since, who, label = "decided", r.approved_date, [r.approved_by], "approved"
+        elif r.status.startswith("Pending") or r.status == "On Hold":
+            st, since = "approval", (lg.action_date if lg else None) or r.modified
+            who, label = _my_waiting_on(r, steps, cfgs)
+            who = [u for u in who if u != user]
+            if not who and label == "with":
+                label = "nobody"
+        elif r.status in ("Revised", "Rejected"):
+            st, since = "back", (lg.action_date if lg else None) or r.modified
+            who, label = ([lg.action_by] if lg else []), "back"
+        else:
+            st, since, who, label = "draft", r.modified, [], "draft"
+        hours = time_diff_in_hours(now, since) if since else 0
+        late = 1 if (st == "approval" and r.status != "On Hold" and sla and hours >= sla) else 0
+        counts[st] += 1
+        counts["late"] += late
+        items.append({"doc_name": r.name, "route": _route_of("Material Request", r.name),
+                      "status": r.status, "state": st, "late": late, "who_label": label, "who": who,
+                      "note": (cstr(strip_html(lg.comment or ""))[:160] if (st == "back" and lg) else ""),
+                      "cost_center": r.cost_center or "",
+                      "age_display": _hours_display(hours),
+                      "since_display": format_datetime(since, "dd MMM yyyy, HH:mm") if since else "",
+                      "_since": str(get_datetime(since)) if since else ""})
+
+    # Waiting longest first while in approval; most recent first otherwise.
+    shown = [it for it in items if (it["late"] if state == "late" else it["state"] == state)]
+    shown.sort(key=lambda x: (x["_since"], x["doc_name"]), reverse=state not in ("approval", "late"))
+    page = shown[start:start + page_length]
+    names = {u for it in page for u in it["who"] if u}
+    users = {u.name: u for u in frappe.get_all(
+        "User", filters={"name": ["in", list(names)]}, fields=["name", "full_name", "enabled"])} if names else {}
+    for it in items:
+        it.pop("_since")
+    for it in page:
+        ppl = [cstr(users[u].full_name or u) for u in it["who"] if u in users
+               and (users[u].enabled or it["who_label"] != "with")]
+        if not ppl and it["who_label"] == "with":
+            it["who_label"] = "nobody"
+        it["who"], it["who_more"] = ppl[:_MY_WHO_SHOWN], max(len(ppl) - _MY_WHO_SHOWN, 0)
+    return {"items": page, "total": len(shown), "state": state, "counts": counts, "sla_hours": sla}
+
+
+def _mr_cfg(cc, cfgs):
+    """The active TS CC Approval Config for a cost centre, memoised; existence
+    first — get_doc on a missing name queues a "not found" message."""
+    if cc not in cfgs:
+        active = cc and cint(frappe.db.get_value("TS CC Approval Config", cc, "is_active"))
+        cfgs[cc] = frappe.get_doc("TS CC Approval Config", cc) if active else None
+    return cfgs[cc]
+
+
+def _my_waiting_on(r, steps, cfgs):
+    """(users, label) a pending MR waits on: the holder for On Hold, the CEO
+    for a budget override, else the current step's named approvers or — when
+    the cost centre names none — its role's recipients (Notification Routing
+    and the skip list applied), exactly as the approver's "Assigned to me"."""
+    from trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config import (
+        get_cc_approvers_for_step,
+    )
+    if r.status == "On Hold":
+        return ([r.held_by] if r.held_by else []), "held"
+    if r.status == "Pending Budget Override":
+        return role_recipients("CEO"), "budget"
+    cur, rs = cint(r.step), steps.get(r.rule, [])
+    current = next((s for s in rs if cint(s.step_order) == cur), None)
+    if not current:
+        return [], "with"
+    cfg = _mr_cfg(r.cost_center, cfgs)
+    named = get_cc_approvers_for_step(cfg, cur, route=r.rule) if cfg else []
+    if named:
+        return list(named), "with"
+    roles = [current.role] if cint(current.strict_step) else [s.role for s in rs if cint(s.step_order) == cur]
+    return list(dict.fromkeys(u for role in roles for u in role_recipients(role))), "with"
 
 
 # ═══════════════════════════════════════════════════════════════════════

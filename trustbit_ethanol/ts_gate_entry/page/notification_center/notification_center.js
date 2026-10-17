@@ -8,7 +8,7 @@
    Every section renders fail-soft WITH console.error (Lesson 311).
    ═══════════════════════════════════════════════════════════════════ */
 
-const NC_VERSION = "v2.60-2026-10-17";
+const NC_VERSION = "v2.62-2026-10-17";
 const NC_API = "trustbit_ethanol.ts_gate_entry.notification_center_api";
 /* Decorative WhatsApp glyph, inlined so it needs no asset build and survives
    offline/CSP. Kept OUTSIDE #nc-wa-toggle — that button is re-rendered with
@@ -44,6 +44,8 @@ let _nc_state = {
 	wa: { rows: [], total: 0, opted_in: false, loaded: false },
 	filters: { category: "all", unread: 0, days: "30", start: 0, page_length: 20, search: "" },
 	pfilters: { category: "all", start: 0, page_length: 50, scope: "assigned" },
+	mine: { items: [], total: 0, counts: {}, sla_hours: 0 },
+	mfilters: { state: "approval", start: 0, page_length: 50 },
 };
 let _nc_search_t = null;
 
@@ -73,7 +75,8 @@ function _nc_reload() {
 async function _nc_load_all() {
 	_nc_state.pfilters.start = 0;
 	_nc_state.filters.start = 0;
-	await Promise.allSettled([_nc_load_pending(false), _nc_load_notifs(false)]);
+	_nc_state.mfilters.start = 0;
+	await Promise.allSettled([_nc_load_pending(false), _nc_load_notifs(false), _nc_load_mine(false)]);
 	// S3 is pre-opened, so load it on first paint too — and keep refreshing it on
 	// reload unless the user has collapsed the section.
 	if (_nc_wa_expanded()) _nc_load_wa();
@@ -117,10 +120,16 @@ function _nc_render_shell() {
 			</div>
 		</div>
 		<div class="nc-cols">
-			<section class="nc-section">
-				<h3>${__("My Pending Actions")}</h3>
-				<div id="nc-s1-body"><div class="nc-skel"></div><div class="nc-skel"></div></div>
-			</section>
+			<div class="nc-col">
+				<section class="nc-section">
+					<h3>${__("My Pending Actions")}</h3>
+					<div id="nc-s1-body"><div class="nc-skel"></div><div class="nc-skel"></div></div>
+				</section>
+				<section class="nc-section">
+					<h3>${__("My Requests")}</h3>
+					<div id="nc-s4-body"><div class="nc-skel"></div></div>
+				</section>
+			</div>
 			<div class="nc-col">
 				<section class="nc-section">
 					<h3>${__("My Notifications")} <span class="nc-badge nc-badge-unread" id="nc-s2-unread" aria-live="polite" style="display:none;"></span><span id="nc-s2-controls"></span></h3>
@@ -242,6 +251,93 @@ function _nc_render_pending() {
 		$("#nc-s1-body").html(`<div class="nc-error">${__("Couldn't render pending actions.")}</div>`);
 	}
 }
+/* ── My Requests (v2.62.0) — the user's own Material Requests ──────── */
+let _nc_mtok = 0;
+async function _nc_load_mine(append) {
+	const tok = ++_nc_mtok;
+	try {
+		const data = await _nc_call("get_my_requests", _nc_state.mfilters);
+		if (tok !== _nc_mtok) return;
+		if (append) data.items = _nc_state.mine.items.concat(data.items);
+		_nc_state.mine = data;
+		_nc_render_mine();
+	} catch (e) {
+		console.error(e);
+		if (tok !== _nc_mtok) return;
+		$("#nc-s4-body").html(`<div class="nc-error">${__("Couldn't load your requests.")} <button class="btn btn-xs btn-default nc-retry">${__("Retry")}</button></div>`);
+		$("#nc-s4-body .nc-retry").on("click", () => _nc_load_mine(false));
+	}
+}
+function _nc_mine_state(st) {
+	if (_nc_state.mfilters.state === st) return;
+	_nc_state.mfilters.state = st;
+	_nc_state.mfilters.start = 0;
+	_nc_load_mine(false);
+}
+function _nc_mine_who(it) {
+	const names = (it.who || []).map(_nc_esc).join(", ")
+		+ (it.who_more ? " " + __("+{0} more", [it.who_more]) : "");
+	switch (it.who_label) {
+		case "with": return __("With {0}", [names]);
+		case "held": return names ? __("On hold by {0}", [names]) : __("On hold");
+		case "budget": return names ? __("Waiting for the CEO's budget decision: {0}", [names]) : __("Waiting for the CEO's budget decision");
+		case "nobody": return __("Nobody is set to approve this step. Tell the IT team.");
+		case "back": return (it.status === "Rejected" ? __("Rejected") : __("Sent back to you")) + (names ? " " + __("by {0}", [names]) : "");
+		case "approved": return names ? __("Approved by {0}", [names]) : __("Approved");
+		default: return __("Not sent for approval yet");
+	}
+}
+function _nc_render_mine() {
+	try {
+		const refocus = $(document.activeElement).closest(".nc-chip").data("mstate");
+		const m = _nc_state.mine, c = m.counts || {}, st = _nc_state.mfilters.state;
+		if (!((c.approval || 0) + (c.back || 0) + (c.decided || 0) + (c.draft || 0))) {
+			$("#nc-s4-body").html(`<div class="nc-empty">
+				<div class="nc-empty-title">${__("You have no open requests")}</div>
+				<div class="nc-empty-sub">${__("Material Requests you raise show here while they are in approval, and for 14 days after they are approved.")}</div></div>`);
+			return;
+		}
+		const chips = [["approval", __("In approval")], ["late", __("Past target")], ["back", __("Sent back")],
+			["decided", __("Approved, last 14 days")], ["draft", __("Not sent")]]
+			.filter(([k]) => k === "approval" || k === st || c[k])
+			.map(([k, label]) => `<button type="button" class="nc-chip ${st === k ? "nc-chip-on" : ""}" aria-pressed="${st === k}" data-mstate="${k}">${_nc_esc(label)} · ${format_number(c[k] || 0, null, 0)}</button>`).join("");
+		const help = st === "late" ? __("Waiting longer than the {0}-hour approval target.", [m.sla_hours])
+			: st === "approval" ? __("Who each request waits on now, and since when.") : "";
+		const status_of = it => it.state === "decided" ? __("Approved") : it.state === "draft" ? __("Draft") : __(it.status);
+		const rows = (m.items || []).map(it => `
+			<div class="nc-pending-row nc-mine-row nc-cat-MR">
+				<div class="nc-mine-main">
+					<div class="nc-mine-line">
+						<a href="${_nc_esc(it.route)}" class="nc-doclink">${_nc_esc(it.doc_name)}</a>
+						<span class="nc-mr-status">${_nc_esc(status_of(it))}</span>
+						<span class="nc-why">${_nc_mine_who(it)}${it.note ? ` — “${_nc_esc(it.note)}”` : ""}</span>
+					</div>
+					<div class="nc-mine-line">
+						<span class="nc-age ${it.late ? "nc-overdue" : ""}">${it.state === "approval" ? `${__("waiting")} ${_nc_esc(it.age_display)}` : `${_nc_esc(it.age_display)} ${__("ago")}`}${it.since_display ? ` · <span class="nc-since">${_nc_esc(it.since_display)}</span>` : ""}${it.late ? ` <span class="nc-tag-overdue">${__("past target")}</span>` : ""}</span>
+					</div>
+				</div>
+				<a href="${_nc_esc(it.route)}" class="nc-open">${__("Open")}</a>
+			</div>`).join("");
+		const body = rows ? `<div class="nc-pending-list">${rows}</div>`
+			: `<div class="nc-empty"><div class="nc-empty-sub">${__("Nothing here.")}</div></div>`;
+		const foot = (m.items || []).length < (m.total || 0) ? `<div class="nc-s1-foot">
+			<span class="nc-showing">${__("Showing {0} of {1}", [format_number(m.items.length, null, 0), format_number(m.total, null, 0)])}</span>
+			<button class="nc-loadmore" id="nc-mine-more">${__("Load more")}</button></div>` : "";
+		$("#nc-s4-body").html(`<div class="nc-chipstrip" role="group" aria-label="${__("Which requests")}">${chips}</div>
+			${help ? `<div class="nc-scope-help">${help}</div>` : ""}${body}${foot}`);
+		const $chips = $("#nc-s4-body .nc-chip").on("click", function () { _nc_mine_state($(this).data("mstate")); });
+		if (refocus) $chips.filter(`[data-mstate="${refocus}"]`).trigger("focus");
+		$("#nc-mine-more").on("click", function () {
+			$(this).prop("disabled", true).html(`<span class="nc-spin" aria-hidden="true"></span> ${__("Loading…")}`);
+			_nc_state.mfilters.start += _nc_state.mfilters.page_length;
+			_nc_load_mine(true);
+		});
+	} catch (e) {
+		console.error(e);
+		$("#nc-s4-body").html(`<div class="nc-error">${__("Couldn't show your requests.")}</div>`);
+	}
+}
+
 function _nc_paint_pending_badge(count) {
 	// Spell the badge out — a bare "137 pending" doesn't say pending WHAT.
 	const label = count === 1 ? __("Pending Action") : __("Pending Actions");
@@ -517,9 +613,17 @@ const NC_CSS = `
 .nc-scope-btn:focus-visible{outline:2px solid var(--primary,#3b82f6);outline-offset:1px;}
 .nc-scope-help{font-size:12px;color:var(--text-muted);margin:0 0 10px;}
 .nc-overdue{color:#b45309;}
-.nc-tag-overdue{background:#fef3c7;color:#92400e;border-radius:8px;font-size:10px;font-weight:600;padding:1px 6px;}
+.nc-tag-overdue{white-space:nowrap;background:#fef3c7;color:#92400e;border-radius:8px;font-size:10px;font-weight:600;padding:1px 6px;}
 .nc-since{color:var(--text-color);}
 .nc-since-label{color:#2563eb;}
+/* My Requests rows: text (what + who, then age) on the left, Open in its own
+   right-hand column, centred — never pushed onto a line of its own */
+.nc-pending-row.nc-mine-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 12px;}
+.nc-mine-main{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.nc-mine-line{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;min-width:0;}
+.nc-mine-row .nc-open{margin-left:0;align-self:center;}
+.nc-mr-status{font-size:11px;font-weight:600;color:#0e7490;background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;padding:1px 7px;white-space:nowrap;}
+[data-theme="dark"] .nc-mr-status{color:#67e8f9;background:rgba(14,116,144,.25);border-color:#155e75;}
 .nc-open{white-space:nowrap;font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;text-decoration:none;flex:none;margin-left:auto;}
 .nc-open:hover{background:#bfdbfe;color:#1e3a8a;text-decoration:none;}
 
