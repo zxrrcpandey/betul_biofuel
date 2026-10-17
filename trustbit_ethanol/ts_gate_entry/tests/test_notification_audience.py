@@ -17,6 +17,9 @@ Covers:
      a Rejected inspection blocks the Stores dashboard GRN whatever the setting
   7. RGP overdue digest: Team ticked = one full digest; unticked = own passes
   8. Routing Check report shows the skip list; access = IT Head / System Manager
+  9. v2.60.0 Pending Actions: "Assigned to me" / "Open to my roles" — every PO/MR
+     listed exactly when the approval check lets the user act, Assigned = waits on
+     the user at the current step, Administrator never gets role-wide items
 
 Usage (same shape as test_regression.py):
     cd /home/frappe/frappe-bench/sites && sudo -u frappe env FRAPPE_SITE=<site> \
@@ -30,7 +33,7 @@ import re
 import sys
 
 import frappe
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
 SITE = os.environ.get("FRAPPE_SITE") or "betulbiofuel.mkasystem.com"
 MI = "TS Material Inspection"
@@ -277,9 +280,9 @@ def run():
 		a = skip_one(role4)
 		assert rr(role4) == [u for u in routed if u != a], rr(role4)
 		assert a in nr.audience("inspection_request", raised_by=a), "a person named on the document is never skipped"
-		assert nr.routed_out_roles(a, [role4]) == set(), "the skip list does not touch Pending Actions"
+		assert nca._role_why_fn(a)(role4)[0] == "skip", "Pending Actions moves the role's items to Open"
 		reset()
-	test("skip list: role-wide lists drop the account; by-name and Pending Actions unchanged", t_skip_subtracts)
+	test("skip list: role-wide lists drop the account; by-name kept; Pending Actions says why", t_skip_subtracts)
 
 	def t_skip_never_empty():
 		if not role4:
@@ -609,6 +612,9 @@ def run():
 		assert doc.name in {i["doc_name"] for i in nca._pending_inspections(head)}
 		assert doc.name in {i["doc_name"] for i in nca._pending_inspections(req)}
 		assert doc.name not in {i["doc_name"] for i in nca._pending_inspections(other)}, "a read-only share is not a head"
+		basis = {u: next(i for i in nca._pending_inspections(u) if i["doc_name"] == doc.name) for u in (req, head)}
+		assert (basis[req]["scope"], basis[req]["basis"]) == ("assigned", "raised"), basis[req]
+		assert (basis[head]["scope"], basis[head]["basis"]) == ("assigned", "head"), basis[head]
 	test("inspection: Pending Actions lists it for the requester and the shared heads", t_pending_actions)
 
 	# ── 7. RGP overdue digest ─────────────────────────────────────────────────
@@ -666,6 +672,202 @@ def run():
 			assert "raised_by" in nr.audience_ticks("inspection_result")
 			reset()
 	test("access: IT Head / System Manager only; an IT-Head-only user can save ticks", t_access)
+
+	# ── 9. Pending Actions: Assigned to me / Open to my roles (v2.60.0) ─────────
+	from trustbit_ethanol.ts_gate_entry import ts_po_approval as tpa
+
+	def pa(user):
+		"""Every item of both lists for `user`, paged 50 at a time, plus the counts."""
+		frappe.set_user(user)
+		try:
+			out, counts = {}, None
+			for scope in ("assigned", "open"):
+				start, total = 0, 1
+				while start < total:
+					r = nca.get_pending_actions(scope=scope, start=start, page_length=50)
+					counts, total = r["counts"], r["total"]
+					assert r["scope"] == scope and total == counts[scope], r
+					for it in r["items"]:
+						key = (it["doc_type"], it["doc_name"])
+						assert key not in out, f"{user}: {key} listed twice"
+						assert it["scope"] == scope, it
+						out[key] = it
+					start += 50
+			return out, counts
+		finally:
+			frappe.set_user("Administrator")
+
+	users = frappe.get_all("User", filters={"enabled": 1, "user_type": "System User",
+		"name": ["not in", ["Administrator", "Guest"]]}, pluck="name")
+	listed = {}
+
+	def t_pa_lists():
+		listed.update({u: pa(u)[0] for u in users})
+		assigned_basis, open_basis = {"named", "role", "raised", "head", "unassigned"}, {
+			"later", "named_later", "routing", "skip", "admin", "deputy"}
+		for u, items in listed.items():
+			for it in items.values():
+				assert it["basis"] in (assigned_basis if it["scope"] == "assigned" else open_basis), (u, it)
+				assert it["why"], (u, it)
+		if not any(listed.values()):
+			raise Skip("nobody has a pending item on this site")
+	test("pending: two lists, no item twice, every row says why, counts = list totals, paging complete", t_pa_lists)
+
+	def t_pa_matches_approval_check():
+		if len(listed) != len(users):
+			raise Skip("the lists were not built (see the test above)")
+		checks = 0
+		for dt, status_f, rule_f, sub_f, validate in (
+				("Material Request", "ts_mr_status", "ts_mr_approval_route", "ts_mr_submitted_by",
+				 tpa._validate_user_can_act_on_mr),
+				("Purchase Order", "ts_approval_status", "ts_approval_rule", "ts_submitted_by",
+				 tpa._validate_user_can_act_on_po)):
+			for name in frappe.get_all(dt, filters={"docstatus": 0, status_f: ["like", "Pending%"],
+					rule_f: ["is", "set"]}, pluck="name", order_by="modified desc", limit=40):
+				doc = frappe.get_doc(dt, name)
+				for u in users:
+					frappe.set_user(u)
+					try:
+						validate(doc)
+						can = True
+					except frappe.ValidationError:
+						can = False
+					finally:
+						frappe.clear_messages()
+						frappe.set_user("Administrator")
+					# The approve step refuses the creator and the submitter unless
+					# self-skip was impossible (_approve_mr / _validate_not_self_approving).
+					own = u in (doc.owner, doc.get(sub_f)) and not cint(doc.get(
+						"ts_self_skip_impossible" if dt == "Purchase Order" else "ts_mr_self_skip_impossible"))
+					can = can and not own and frappe.has_permission(dt, "read", doc=name, user=u)
+					it = listed[u].get((dt, name))
+					if it and it["basis"] == "deputy":
+						assert doc.get(status_f) == "Pending AVP" and "CEO" in frappe.get_roles(u), it
+						continue
+					assert bool(it) == can, f"{u} · {name}: listed={bool(it)}, approval check allows={can}"
+					checks += 1
+		if not checks:
+			raise Skip("no pending PO/MR on this site")
+	test("pending: a PO/MR is listed exactly when the approval check lets the user act", t_pa_matches_approval_check)
+
+	def t_pa_assigned_is_current_step():
+		n = 0
+		for u, items in listed.items():
+			roles = set(frappe.get_roles(u))
+			for (dt, name), it in items.items():
+				if dt not in ("Purchase Order", "Material Request") or it["scope"] != "assigned":
+					continue
+				doc = frappe.get_doc(dt, name)
+				po = dt == "Purchase Order"
+				rule = frappe.get_doc("TS PO Approval Rule" if po else "TS MR Approval Route",
+					doc.ts_approval_rule if po else doc.ts_mr_approval_route)
+				cur = doc.ts_current_step if po else doc.ts_mr_current_step
+				cur = 1 if cur is None else cur  # as the query reads it: IFNULL(step, 1); 0 stays 0
+				now = {s.role for s in rule.approval_steps if s.step_order == cur}
+				if it["basis"] == "unassigned":
+					assert po is False or not any(rr(r) for r in now), (u, name, now)  # PO: no step role has anyone
+				elif it["basis"] == "named":
+					cfg = get_cc_config(tpa._get_mr_cost_center(doc))
+					from trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config import (
+						get_cc_approvers_for_step)
+					assert u in get_cc_approvers_for_step(cfg, cur, route=rule), (u, name)
+				else:
+					assert any(r in roles and u in rr(r) for r in now), (u, name, now)
+				n += 1
+		if not n:
+			raise Skip("no assigned PO/MR on this site")
+	test("pending: Assigned = named for the current step, or holds its role and is notified for it", t_pa_assigned_is_current_step)
+
+	def t_pa_administrator():
+		items, counts = pa("Administrator")
+		by_role = [i for i in items.values() if i["scope"] == "assigned" and i["basis"] == "role"]
+		assert not by_role, by_role[:3]
+		assert all(i["basis"] in ("named", "raised", "head") for i in items.values() if i["scope"] == "assigned")
+		assert counts["assigned"] + counts["open"] == len(items)
+	test("pending: Administrator gets only items that name it in Assigned", t_pa_administrator)
+
+	def t_pa_default_all():
+		u = max(listed, key=lambda x: len(listed[x]), default=None) if listed else None
+		if not u or not listed[u]:
+			raise Skip("nobody has a pending item on this site")
+		frappe.set_user(u)
+		try:
+			r = nca.get_pending_actions(page_length=50)  # a page script cached before v2.60.0
+		finally:
+			frappe.set_user("Administrator")
+		assert r["scope"] == "all" and r["total"] == len(listed[u]) == sum(r["counts"].values()), r["counts"]
+	test("pending: no scope (old page script) returns both lists together", t_pa_default_all)
+
+	def t_pa_nobody_assigned():
+		# A PO whose current-step role nobody holds counts for everyone who can act.
+		rows = frappe.db.sql("""SELECT d.name, d.ts_approval_rule AS rule, IFNULL(d.ts_current_step, 1) AS step,
+				d.ts_submitted_by AS sub, d.owner FROM `tabPurchase Order` d
+			WHERE d.docstatus = 0 AND d.ts_approval_status LIKE 'Pending%%' AND d.ts_approval_rule IS NOT NULL
+			ORDER BY d.modified DESC LIMIT 20""", as_dict=True)
+		for row in rows:
+			steps = frappe.get_all("TS PO Approval Step", filters={"parent": row.rule},
+				fields=["name", "step_order", "role"])
+			now = [s for s in steps if s.step_order == row.step]
+			now_roles = {s.role for s in now}
+			u = next((h for s in steps if s.step_order > row.step for h in rr(s.role)
+				if h not in (row.sub, row.owner) and not set(frappe.get_roles(h)) & now_roles
+				and frappe.has_permission("Purchase Order", "read", doc=row.name, user=h)), None)
+			if not now or not u:
+				continue
+			ghost = "TS Test Nobody " + frappe.generate_hash(length=6)
+			frappe.get_doc({"doctype": "Role", "role_name": ghost, "desk_access": 1}).insert(ignore_permissions=True)
+			try:
+				for s in now:
+					frappe.db.set_value("TS PO Approval Step", s.name, "role", ghost, update_modified=False)
+				frappe.set_user(u)
+				got = {i["doc_name"]: i["basis"] for i in nca.get_pending_actions(
+					scope="assigned", category="PO", page_length=50)["items"]}
+			finally:
+				frappe.set_user("Administrator")
+				for s in now:
+					frappe.db.set_value("TS PO Approval Step", s.name, "role", s.role, update_modified=False)
+			assert got.get(row.name) == "unassigned", (u, row.name, got.get(row.name))
+			return
+		raise Skip("no pending PO with a later-step holder who can read it")
+	test("pending: a step whose role nobody holds counts for everyone who can act", t_pa_nobody_assigned)
+
+	def t_pa_step_gap_stays_open():
+		# A current step with no step row (a gap in the route) stays Open for later-step holders.
+		rows = frappe.db.sql("""SELECT d.name, d.ts_approval_rule AS rule, IFNULL(d.ts_current_step, 1) AS step,
+				d.ts_submitted_by AS sub, d.owner FROM `tabPurchase Order` d
+			WHERE d.docstatus = 0 AND d.ts_approval_status LIKE 'Pending%%' AND d.ts_approval_rule IS NOT NULL
+			ORDER BY d.modified DESC LIMIT 20""", as_dict=True)
+		for row in rows:
+			steps = frappe.get_all("TS PO Approval Step", filters={"parent": row.rule},
+				fields=["name", "step_order", "role"])
+			now = [s for s in steps if s.step_order == row.step]
+			u = next((h for s in steps if s.step_order > row.step for h in rr(s.role)
+				if h not in (row.sub, row.owner)
+				and frappe.has_permission("Purchase Order", "read", doc=row.name, user=h)), None)
+			if not now or not u:
+				continue
+			try:
+				for s in now:
+					frappe.db.set_value("TS PO Approval Step", s.name, "step_order", 0, update_modified=False)
+				frappe.set_user(u)
+				got = {}
+				for sc in ("assigned", "open"):
+					got[sc], start = {}, 0
+					while True:
+						p = nca.get_pending_actions(scope=sc, category="PO", start=start, page_length=50)
+						got[sc].update({i["doc_name"]: i["basis"] for i in p["items"]})
+						start += 50
+						if start >= p["total"]:
+							break
+			finally:
+				frappe.set_user("Administrator")
+				for s in now:
+					frappe.db.set_value("TS PO Approval Step", s.name, "step_order", s.step_order, update_modified=False)
+			assert row.name not in got["assigned"], (u, row.name, got["assigned"].get(row.name))
+			assert got["open"].get(row.name) not in (None, "unassigned"), (u, row.name, got["open"].get(row.name))
+			return
+		raise Skip("no pending PO with a later-step holder who can read it")
+	test("pending: a gap in the route (no row at the current step) stays Open", t_pa_step_gap_stays_open)
 
 	frappe.db.rollback()
 	frappe.clear_cache(doctype=MI)  # the permission seeder test cached rows the rollback removed

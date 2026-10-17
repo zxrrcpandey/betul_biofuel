@@ -9,13 +9,13 @@
 
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, cint, cstr, now_datetime, time_diff_in_hours
+from frappe.utils import add_to_date, cint, cstr, get_datetime, now_datetime, time_diff_in_hours
 from frappe.utils import format_datetime, get_url_to_form, strip_html
 
 # v2.29.0 accountability trail — fail-soft stamp writers (no import cycle:
 # ts_notification_trail's own imports are frappe-only at module level)
 from trustbit_ethanol.ts_gate_entry.ts_notification_trail import stamp_read, stamp_shown
-from trustbit_ethanol.ts_gate_entry.ts_notification_routing import routed_out_roles
+from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients, skip_accounts
 
 KILL_SWITCH_FIELD = "ts_notification_center_enabled"
 WORKSPACE_NAME = "BBPL Ethanol"
@@ -351,34 +351,48 @@ def latest_unread():
 _CARD_LABELS = {"PO": "PO Approvals", "MR": "MR Approvals", "Inspection": "Inspections",
                 "Production": "Production", "Budget": "Budget", "Other": "Post-Dated"}
 _PENDING_CATEGORIES = ("all", "PO", "MR", "Inspection", "Production", "Budget", "Other")
-# Per-source ceiling — high enough that "showing X of N" is honest for any real
-# personal queue, bounded so a runaway role can't build an unbounded list.
-_PENDING_SOURCE_CAP = 200
+_PENDING_SCOPES = ("all", "assigned", "open")
+# Per-source ceiling. It cuts BEFORE items are classified, so it sits far above
+# any real queue (prod's largest is ~350) — a lower one would silently hide the
+# newest items (L441); bounded so a runaway role can't build an unbounded list.
+_PENDING_SOURCE_CAP = 1000
 
 
 @frappe.whitelist()
-def get_pending_actions(category="all", start=0, page_length=50):
+def get_pending_actions(category="all", start=0, page_length=50, scope="all"):
+    """v2.60.0 — everything the user can act on, in two lists: "assigned" (it
+    waits on them: named on it, or holding the current step's role without being
+    left out by Notification Routing or the skip list; the badge counts these)
+    and "open" (their roles can act, but it waits on someone else). Each item
+    says why. "all" (the default, for a page script cached before v2.60.0)
+    returns both lists together."""
     _guard()
     user = frappe.session.user
     roles = set(frappe.get_roles(user))
-    # v2.58.0 — a role routed away from this user (TS Notification Routing)
-    # stops feeding its role-wide queues here, exactly as it stops the bells.
-    routed_out = routed_out_roles(user, roles)
-    narrowed = roles - routed_out
+    role_why = _role_why_fn(user)
     sla_hours = cint(frappe.db.get_single_value("TS Settings", "approval_sla_hours")) or 0
     category = category if category in _PENDING_CATEGORIES else "all"
+    scope = scope if scope in _PENDING_SCOPES else "all"
     start = max(cint(start), 0)
-    page_length = min(max(cint(page_length) or 50, 1), 50)
+    page_length = cint(page_length)
+    page_length = 50 if page_length <= 0 else min(page_length, 50)
 
     items = []
-    items += _pending_approvals("Purchase Order", user, narrowed, sla_hours)
-    items += _pending_approvals("Material Request", user, roles, sla_hours, routed_out)
+    items += _pending_approvals("Purchase Order", user, roles, sla_hours, role_why)
+    items += _pending_approvals("Material Request", user, roles, sla_hours, role_why)
     items += _pending_inspections(user)
-    items += _pending_grain_ds(narrowed)
-    items += _pending_budget(narrowed)
-    items += _pending_production(narrowed)
-    # Overdue first, then longest-waiting first — what needs action floats up.
-    items.sort(key=lambda x: (0 if x["overdue"] else 1, -x["age_hours"]))
+    items += _pending_grain_ds(roles, role_why)
+    items += _pending_budget(roles, role_why)
+    items += _pending_production(roles, role_why)
+    # Longest-waiting first, on the stored timestamp (not the clock-derived age
+    # or overdue flag, which move between two "Load more" calls); the name breaks
+    # ties, so paging never repeats or skips an item.
+    items.sort(key=lambda x: (x.pop("_since"), x["doc_type"], x["doc_name"]))
+    counts = {"assigned": 0, "open": 0}
+    for it in items:
+        counts[it["scope"]] += 1
+    if scope != "all":
+        items = [it for it in items if it["scope"] == scope]
 
     # Cards count the FULL per-category set (not the visible page) so the
     # numbers stay honest even when the list below is paginated/filtered.
@@ -395,18 +409,59 @@ def get_pending_actions(category="all", start=0, page_length=50):
     total = len(filtered)
     return {"cards": [cards[k] for k in order],
             "items": filtered[start:start + page_length],
-            "total": total, "category": category}
+            "total": total, "category": category, "scope": scope, "counts": counts}
 
 
-def _item(category, doc_type, doc_name, since_dt, overdue_after=0):
+def _role_why_fn(user):
+    """Per request: role → None when the role's role-wide items are this user's
+    (the user is among its recipients — Notification Routing and the skip list,
+    exactly as for the bells), else (basis, reason). Administrator never gets
+    role-wide items."""
+    memo, on_skip = {}, user in skip_accounts()
+
+    def why(role):
+        if role not in memo:
+            if user == "Administrator":
+                memo[role] = ("admin", _("The Administrator account gets only items that name it"))
+            elif user in role_recipients(role):
+                memo[role] = None
+            elif on_skip:
+                memo[role] = ("skip", _("Your account is on the skip list"))
+            else:
+                memo[role] = ("routing", _("Notification Routing sends {0} items to selected people").format(role))
+        return memo[role]
+    return why
+
+
+def _by_role(held, role_why, mine=None, later_step=None):
+    """(scope, basis, why) for an item the user reaches through a role. `held` =
+    the user's roles that act on it now: "assigned" when one of them is the user's
+    (`mine` names it; default: the role's queue), else "open" with the reason;
+    none held now → their role acts at `later_step`."""
+    mine = mine or _("Waiting in the {0} queue")
+    reason = None
+    for role in held:
+        why = role_why(role)
+        if why is None:
+            return "assigned", "role", mine.format(role)
+        reason = reason or why
+    if reason:
+        return ("open",) + reason
+    return "open", "later", _("One of your roles acts later, at step {0}").format(later_step)
+
+
+def _item(category, doc_type, doc_name, since_dt, cls, overdue_after=0):
     """since_dt = when the doc started waiting (modified/created). Server
-    computes age AND the exact date so the client never date-maths (L311)."""
+    computes age AND the exact date so the client never date-maths (L311).
+    cls = (scope, basis, why) — v2.60.0."""
     age_hours = time_diff_in_hours(now_datetime(), since_dt) if since_dt else 0
     return {"category": category, "doc_type": doc_type, "doc_name": doc_name,
+            "scope": cls[0], "basis": cls[1], "why": cls[2],
             "age_hours": round(age_hours, 1), "age_display": _hours_display(age_hours),
             "since_display": format_datetime(since_dt, "dd MMM yyyy, HH:mm") if since_dt else "",
             "overdue": 1 if (overdue_after and age_hours >= overdue_after) else 0,
-            "route": _route_of(doc_type, doc_name)}
+            "route": _route_of(doc_type, doc_name),
+            "_since": str(get_datetime(since_dt)) if since_dt else ""}  # sort key, dropped before sending
 
 
 def _hours_display(hours):
@@ -417,13 +472,15 @@ def _hours_display(hours):
     return "{0}d".format(int(hours / 24))
 
 
-def _pending_approvals(doctype, user, roles, sla_hours, routed_out=frozenset()):
-    """POs/MRs where the session user's role sits at/after the current step.
-    SAFE rewrite of the get_user_pending structure: self-scoped (no user
-    param), confidential_sql_clause injected, per-doc has_permission drop,
-    and the payload carries NO supplier/amount/cost-center.
-    `routed_out` (MR only): roles routed away from the user — they no longer
-    qualify a role-only MR, but an MR whose cost centre names the user stays."""
+def _pending_approvals(doctype, user, roles, sla_hours, role_why):
+    """POs/MRs the session user can act on, by the approval check's own rule: a
+    role at the current or a later step (only the current one at a Strict Step)
+    and, for an MR, the cost-centre config (_mr_class). SAFE rewrite of the
+    get_user_pending structure: self-scoped (no user param),
+    confidential_sql_clause injected, per-doc has_permission drop, and the
+    payload carries NO supplier/amount/cost-center.
+    v2.60.0 — each item is classified: assigned only when it waits on the user
+    at its CURRENT step."""
     from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause
     role_list = [r for r in roles if r not in ("All", "Guest", "Desk User")]
     if not role_list:
@@ -434,6 +491,7 @@ def _pending_approvals(doctype, user, roles, sla_hours, routed_out=frozenset()):
     step_f = "ts_current_step" if is_po else "ts_mr_current_step"
     rule_f = "ts_approval_rule" if is_po else "ts_mr_approval_route"
     submitted_f = "ts_submitted_by" if is_po else "ts_mr_submitted_by"
+    skip_f = "ts_self_skip_impossible" if is_po else "ts_mr_self_skip_impossible"
     step_tbl = "tabTS PO Approval Step" if is_po else "tabTS MR Approval Step"
     conf_sql = confidential_sql_clause("d", user=user, doctype=doctype) if is_po else ""
 
@@ -451,7 +509,13 @@ def _pending_approvals(doctype, user, roles, sla_hours, routed_out=frozenset()):
             "AND cs.step_order = IFNULL(d.{step_f}, 1) ORDER BY cs.idx LIMIT 1), 0) = 0)"
         ).format(step_f=step_f, rule_f=rule_f, step_tbl=step_tbl)
 
-    query = """SELECT d.name, d.modified{cc}
+    # An MR's cost centre as the approval check reads it: the header, else the
+    # first item's (ts_po_approval._get_mr_cost_center).
+    cc_sql = "" if is_po else (
+        ", COALESCE(NULLIF(d.cost_center, ''), (SELECT i.cost_center FROM `tabMaterial Request Item` i"
+        " WHERE i.parent = d.name AND IFNULL(i.cost_center, '') != '' ORDER BY i.idx LIMIT 1)) AS cost_center")
+    query = """SELECT d.name, d.modified, d.{status_f} AS status,
+                  IFNULL(d.{step_f}, 1) AS step, d.{rule_f} AS rule{cc}
            FROM `{tbl}` d
            WHERE d.docstatus = 0
              AND d.{status_f} LIKE 'Pending%%'
@@ -462,58 +526,109 @@ def _pending_approvals(doctype, user, roles, sla_hours, routed_out=frozenset()):
                  AND s.step_order >= IFNULL(d.{step_f}, 1)
                  {strict}
                  AND s.role IN %(roles)s)
-             AND d.{submitted_f} != %(user)s
+             AND (IFNULL(d.{skip_f}, 0) = 1
+                  OR (IFNULL(d.{submitted_f}, '') != %(user)s AND d.owner != %(user)s))
              {conf}
            ORDER BY d.modified ASC
            LIMIT {cap}""".format(
             tbl=tbl, status_f=status_f, rule_f=rule_f, step_f=step_f,
-            step_tbl=step_tbl, submitted_f=submitted_f, conf=conf_sql,
+            step_tbl=step_tbl, submitted_f=submitted_f, skip_f=skip_f, conf=conf_sql,
             cap=_PENDING_SOURCE_CAP,
-            cc=", d.cost_center" if not is_po else "",
+            cc=cc_sql,
             strict=strict_sql)
     rows = frappe.db.sql(query, {"roles": tuple(role_list), "user": user}, as_dict=True)
+    if not rows:
+        return []
 
-    if not is_po:
-        rows = [r for r in rows if _mr_cc_allows(r, user)]
-        narrowed = [r for r in role_list if r not in routed_out]
-        if len(narrowed) < len(role_list):
-            via_role = {r.name for r in frappe.db.sql(
-                query, {"roles": tuple(narrowed), "user": user}, as_dict=True)} if narrowed else set()
-            # Rows that passed _mr_cc_allows under an active CC config name this user personally.
-            rows = [r for r in rows if r.name in via_role or frappe.db.exists(
-                "TS CC Approval Config", {"cost_center": r.cost_center, "is_active": 1})]
+    strict_col = "IFNULL(strict_step, 0)" if strict_sql else "0"
+    steps = {}
+    for s in frappe.db.sql(
+            "SELECT parent, step_order, role, {0} AS strict_step FROM `{1}` WHERE parent IN %(p)s "
+            "ORDER BY parent, idx".format(strict_col, step_tbl), {"p": tuple({r.rule for r in rows})},
+            as_dict=True):
+        steps.setdefault(s.parent, []).append(s)
+    deputy = False
+    if not is_po and "CEO" in roles:
+        from trustbit_ethanol.ts_gate_entry.ts_avp_deputy import _is_deputy_mode_enabled
+        deputy = _is_deputy_mode_enabled()
 
-    out = []
+    out, cfgs, memo = [], {}, {}
     for r in rows:
+        cur, rs = cint(r.step), steps.get(r.rule, [])
+        # As _mr_actionable_steps: the first row at the current step decides strictness.
+        current = next((s for s in rs if cint(s.step_order) == cur), None)
+        strict = bool(current and cint(current.strict_step))
+        later = [] if strict else sorted({cint(s.step_order) for s in rs if cint(s.step_order) > cur})
+        mine_later = [cint(s.step_order) for s in rs if cint(s.step_order) in later and s.role in roles]
+        now_roles = [current.role] if strict else [s.role for s in rs if cint(s.step_order) == cur]
+        cls = _by_role([x for x in now_roles if x in roles], role_why,
+                       _("You hold the current step's role: {0}"), min(mine_later or [0]))
+        named = []
+        if not is_po:
+            cls, named = _mr_class(r, user, cur, later, cls, deputy, cfgs)
+            if not cls:
+                continue
         # Per-doc permission drop (L297/L224) — confidential POs the user
-        # cannot read never appear, even by name.
+        # cannot read never appear, even by name. After the cheap filters: it
+        # loads the document.
         if not frappe.has_permission(doctype, "read", doc=r.name, user=user):
             continue
-        out.append(_item("PO" if is_po else "MR", doctype, r.name, r.modified,
+        if (cls[0] == "open" and user != "Administrator" and (named or now_roles)
+                and not _anyone_now(named, now_roles, memo)):
+            # Nobody is waited on at this step: it counts for everyone who can act.
+            # A step with no row at all (a gap in the route) stays Open.
+            cls = ("assigned", "unassigned", _("Nobody is assigned to this step; you can act on it"))
+        out.append(_item("PO" if is_po else "MR", doctype, r.name, r.modified, cls,
                          overdue_after=sla_hours))
     return out
 
 
-def _mr_cc_allows(row, user):
-    """CC-config filter (same semantics as the approval route): if the MR's
-    cost center has an active config, the user must be a Reviewer/Final
-    Approver in it; no config = role-only fallback."""
-    cc_config = frappe.db.get_value(
-        "TS CC Approval Config", {"cost_center": row.cost_center, "is_active": 1}, "name")
-    if not cc_config:
-        return True
-    return bool(frappe.db.sql(
-        """SELECT 1 FROM `tabTS CC Approval User`
-           WHERE parent = %s AND user = %s
-             AND action_type IN ('Reviewer', 'Final Approver') LIMIT 1""",
-        (cc_config, user)))
+def _anyone_now(named, now_roles, memo):
+    """Is anyone waited on at the current step: an enabled named approver when
+    the cost centre names some, else a recipient of the step's role?"""
+    def has(key, fn):
+        if key not in memo:
+            memo[key] = bool(fn())
+        return memo[key]
+    if named:
+        return any(has(("user", u), lambda u=u: frappe.db.get_value("User", u, "enabled")) for u in named)
+    return any(has(("role", x), lambda x=x: role_recipients(x)) for x in now_roles)
+
+
+def _mr_class(r, user, cur, later, by_role, deputy, cfgs):
+    """The approval check's cost-centre rule (_validate_user_can_act_on_mr): when
+    the MR's config names approvers for the current step, only they, or someone
+    named for a later step, can act; otherwise the role decides (`by_role`).
+    Returns (class, the approvers named for the current step); class None = the
+    user cannot act. The CEO can act at Pending AVP while AVP deputy mode is on,
+    whatever the config says."""
+    from trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config import (
+        get_cc_approvers_for_step,
+    )
+    cc = r.cost_center
+    if cc not in cfgs:
+        # Same lookup as get_cc_config(), existence first: get_doc on a missing
+        # name would queue a "not found" message for the user.
+        active = cc and cint(frappe.db.get_value("TS CC Approval Config", cc, "is_active"))
+        cfgs[cc] = frappe.get_doc("TS CC Approval Config", cc) if active else None
+    cfg = cfgs[cc]
+    named = get_cc_approvers_for_step(cfg, cur, route=r.rule) if cfg else []
+    if not named:
+        return by_role, named
+    if user in named:
+        return ("assigned", "named", _("Named approver for this cost centre at this step")), named
+    if any(user in get_cc_approvers_for_step(cfg, s, route=r.rule) for s in later):
+        return ("open", "named_later", _("Named approver for this cost centre at a later step")), named
+    if deputy and r.status == "Pending AVP":
+        return ("open", "deputy", _("Waiting for the AVP; you can act as AVP deputy")), named
+    return None, named
 
 
 def _pending_inspections(user):
     # v2.59.0 — also the heads an inspection is shared with for writing, and
-    # only inspections the user can open.
+    # only inspections the user can open. All of them name the user (v2.60.0).
     rows = frappe.db.sql(
-        """SELECT i.name, i.created_time FROM `tabTS Material Inspection` i
+        """SELECT i.name, i.created_time, i.requester FROM `tabTS Material Inspection` i
            WHERE i.status = 'Pending Inspection'
              AND (i.requester = %(user)s OR i.department_head = %(user)s
                   OR i.name IN (SELECT s.share_name FROM `tabDocShare` s
@@ -521,43 +636,54 @@ def _pending_inspections(user):
                                   AND s.user = %(user)s AND s.write = 1))
            ORDER BY i.modified DESC LIMIT {cap}""".format(cap=_PENDING_SOURCE_CAP),
         {"user": user}, as_dict=True)
-    return [_item("Inspection", "TS Material Inspection", r.name, r.created_time)
+    raised = ("assigned", "raised", _("You raised the request"))
+    head = ("assigned", "head", _("You head the department it belongs to"))
+    return [_item("Inspection", "TS Material Inspection", r.name, r.created_time,
+                  raised if r.requester == user else head)
             for r in rows if frappe.has_permission("TS Material Inspection", "read", doc=r.name, user=user)]
 
 
-def _pending_grain_ds(roles):
-    if "Grain Manager" not in roles:
+
+def _pending_grain_ds(roles, role_why):
+    if "Grain Manager" not in roles or not frappe.has_permission("TS Deduction Suggestion", "read"):
         return []
+    cls = _by_role(["Grain Manager"], role_why)
     rows = frappe.get_all("TS Deduction Suggestion", filters={"docstatus": 0},
                           fields=["name", "creation"], limit_page_length=_PENDING_SOURCE_CAP)
-    return [_item("Inspection", "TS Deduction Suggestion", r.name, r.creation)
+    return [_item("Inspection", "TS Deduction Suggestion", r.name, r.creation, cls)
             for r in rows]
 
 
-def _pending_budget(roles):
+def _pending_budget(roles, role_why):
+    # Role-wide queues list only doctypes the user can read (an MD-only user
+    # holds the role but cannot open a Post Dated Entry Request).
     out = []
-    if "CEO" in roles:
+    if "CEO" in roles and frappe.has_permission("TS Budget Proposal", "read"):
+        cls = _by_role(["CEO"], role_why)
         for r in frappe.get_all("TS Budget Proposal", filters={"status": "Pending CEO"},
                                 fields=["name", "modified"], limit_page_length=_PENDING_SOURCE_CAP):
-            out.append(_item("Budget", "TS Budget Proposal", r.name, r.modified))
-    if roles & {"CEO", "MD", "Managing Director"}:
+            out.append(_item("Budget", "TS Budget Proposal", r.name, r.modified, cls))
+    held = [r for r in ("CEO", "MD", "Managing Director") if r in roles]
+    if held and frappe.has_permission("TS Post Dated Entry Request", "read"):
+        cls = _by_role(held, role_why)
         for r in frappe.get_all("TS Post Dated Entry Request",
                                 filters={"status": "Pending Approval"},
                                 fields=["name", "modified"], limit_page_length=_PENDING_SOURCE_CAP):
-            out.append(_item("Other", "TS Post Dated Entry Request", r.name, r.modified))
+            out.append(_item("Other", "TS Post Dated Entry Request", r.name, r.modified, cls))
     return out
 
 
-def _pending_production(roles):
-    if "Stores Manager" not in roles:
+def _pending_production(roles, role_why):
+    if "Stores Manager" not in roles or not frappe.has_permission("TS Production Entry", "read"):
         return []
     if not cint(frappe.db.get_single_value("TS Settings", "ts_production_entry_enabled") or 0):
         return []
+    cls = _by_role(["Stores Manager"], role_why)
     rows = frappe.get_all(
         "TS Production Entry",
         filters={"ts_variance_status": ["in", ["Pending Stores Release", "Pending Material Request"]]},
         fields=["name", "modified"], limit_page_length=_PENDING_SOURCE_CAP)
-    return [_item("Production", "TS Production Entry", r.name, r.modified)
+    return [_item("Production", "TS Production Entry", r.name, r.modified, cls)
             for r in rows]
 
 

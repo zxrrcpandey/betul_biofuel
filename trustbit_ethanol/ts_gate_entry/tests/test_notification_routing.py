@@ -301,10 +301,17 @@ def run():
 	# ── 5. My Pending Actions ────────────────────────────────────────────────
 	from trustbit_ethanol.ts_gate_entry import notification_center_api as nc
 
-	def _pending(user, category):
+	def _pending(user, category, scope="assigned"):
+		"""v2.60.0 — doc_name → basis in one of the two lists (default Assigned), every page."""
 		frappe.set_user(user)
 		try:
-			return {i["doc_name"] for i in nc.get_pending_actions(category=category, page_length=50)["items"]}
+			out, start = {}, 0
+			while True:
+				r = nc.get_pending_actions(category=category, start=start, page_length=50, scope=scope)
+				out.update({i["doc_name"]: i["basis"] for i in r["items"]})
+				start += 50
+				if start >= r["total"]:
+					return out
 		finally:
 			frappe.set_user("Administrator")
 
@@ -324,13 +331,14 @@ def run():
 					continue
 				other = next(x for x in hs if x != u)
 				_route(r, [other])
-				after = _pending(u, "PO")
+				after, moved = _pending(u, "PO"), _pending(u, "PO", "open")
 				_unroute(r)
-				assert after == set(), f"{u} still sees {after} after {r} was routed away"
+				assert not after, f"{u} still has {after} assigned after {r} was routed away"
+				assert all(moved.get(n) == "routing" for n in before), "they move to Open, saying why"
 				assert _pending(u, "PO") == before, "unrouting restores the queue"
 				return
 		raise Skip("no pending PO for a single-step-role user")
-	test("pending actions: a routed-out role no longer feeds the PO queue", t_pending_po)
+	test("pending actions: a routed-out role's POs move from Assigned to Open", t_pending_po)
 
 	def t_pending_mr_cc_named():
 		rows = frappe.db.sql(
@@ -342,7 +350,7 @@ def run():
 		for row in rows:
 			before = _pending(row.user, "MR")
 			hs = nr.role_holders(row.role)
-			if row.name not in before or len(hs) < 2:
+			if before.get(row.name) != "named" or len(hs) < 2:
 				continue
 			other = next(x for x in hs if x != row.user)
 			_route(row.role, [other])
@@ -357,7 +365,7 @@ def run():
 		frappe.db.delete("TS Notification Routing User", {"parenttype": "TS Notification Routing"})
 		frappe.db.delete("TS Notification Routing")
 		u = holders[0]
-		assert nc.routed_out_roles(u, frappe.get_roles(u)) == set()
+		assert nr.routed_out_roles(u, frappe.get_roles(u)) == set()
 	test("pending actions: no routing rows → nothing routed out", t_pending_unchanged_without_rows)
 
 	# ── 6. access ────────────────────────────────────────────────────────────

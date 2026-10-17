@@ -8,7 +8,7 @@
    Every section renders fail-soft WITH console.error (Lesson 311).
    ═══════════════════════════════════════════════════════════════════ */
 
-const NC_VERSION = "v2.12-2026-07-30";
+const NC_VERSION = "v2.60-2026-10-17";
 const NC_API = "trustbit_ethanol.ts_gate_entry.notification_center_api";
 /* Decorative WhatsApp glyph, inlined so it needs no asset build and survives
    offline/CSP. Kept OUTSIDE #nc-wa-toggle — that button is re-rendered with
@@ -39,11 +39,11 @@ frappe.pages["notification-center"].on_page_load = function (wrapper) {
 frappe.pages["notification-center"].refresh = () => _nc_reload();
 
 let _nc_state = {
-	pending: { cards: [], items: [], total: 0 },
+	pending: { cards: [], items: [], total: 0, counts: { assigned: 0, open: 0 } },
 	notifs: { rows: [], total: 0, unread_total: 0, category_counts: {} },
 	wa: { rows: [], total: 0, opted_in: false, loaded: false },
 	filters: { category: "all", unread: 0, days: "30", start: 0, page_length: 20, search: "" },
-	pfilters: { category: "all", start: 0, page_length: 50 },
+	pfilters: { category: "all", start: 0, page_length: 50, scope: "assigned" },
 };
 let _nc_search_t = null;
 
@@ -138,15 +138,18 @@ function _nc_render_shell() {
 }
 
 /* ── Section 1 ──────────────────────────────────────────────────── */
+let _nc_ptok = 0;
 async function _nc_load_pending(append) {
+	const tok = ++_nc_ptok;
 	try {
 		const data = await _nc_call("get_pending_actions", _nc_state.pfilters);
+		if (tok !== _nc_ptok) return; // a newer switch / filter / refresh superseded this call
 		if (append) data.items = _nc_state.pending.items.concat(data.items);
 		_nc_state.pending = data;
 		_nc_render_pending();
 	} catch (e) {
 		console.error(e);
-		$("#nc-s1-body").html(`<div class="nc-error">${__("Couldn't load your pending actions.")}</div>`);
+		if (tok === _nc_ptok) $("#nc-s1-body").html(`<div class="nc-error">${__("Couldn't load your pending actions.")}</div>`);
 	}
 }
 function _nc_pending_filter(cat) {
@@ -156,18 +159,51 @@ function _nc_pending_filter(cat) {
 	_nc_state.pfilters.start = 0;
 	_nc_load_pending(false);
 }
+function _nc_pending_scope(scope) {
+	if (_nc_state.pfilters.scope === scope) return;
+	_nc_state.pfilters.scope = scope;
+	_nc_state.pfilters.category = "all";
+	_nc_state.pfilters.start = 0;
+	_nc_load_pending(false);
+}
 function _nc_render_pending() {
 	try {
+		const refocus = $(document.activeElement).closest(".nc-scope-btn").data("scope");
 		const p = _nc_state.pending;
-		const grand = (p.cards || []).reduce((s, c) => s + (c.count || 0), 0);
-		_nc_paint_pending_badge(grand);
-		if (!grand) {
+		// A server older than this script sends no counts: treat its one list as Assigned.
+		const counts = p.counts || { assigned: (p.cards || []).reduce((s, c) => s + (c.count || 0), 0), open: 0 };
+		const scope = _nc_state.pfilters.scope;
+		// v2.60.0 — the badge counts only what waits on you ("Assigned to me").
+		_nc_paint_pending_badge(counts.assigned || 0);
+		if (!counts.assigned && !counts.open) {
 			$("#nc-s1-body").html(`
 				<div class="nc-empty nc-empty-ok">
 					<div class="nc-empty-glyph" aria-hidden="true">✓</div>
 					<div class="nc-empty-title">${__("You're all caught up")}</div>
 					<div class="nc-empty-sub">${__("Nothing is waiting on you right now.")}</div>
 				</div>`);
+			return;
+		}
+		const tabs = `<div class="nc-scope" role="group" aria-label="${__("Which items")}">${
+			[["assigned", __("Assigned to me")], ["open", __("Open to my roles")]].map(([k, label]) => `
+			<button type="button" class="nc-scope-btn ${scope === k ? "nc-scope-on" : ""}" aria-pressed="${scope === k}" data-scope="${k}">${_nc_esc(label)} <span class="nc-scope-n">${format_number(counts[k] || 0, null, 0)}</span></button>`).join("")}
+		</div>
+		<div class="nc-scope-help">${scope === "assigned"
+			? __("Waiting on you: you raised it, you head it, you are the approver named for this step, or you hold the current step's role.")
+			: __("Your roles can act on these, but they wait on someone else. Each row says why.")}</div>`;
+		const bind_tabs = () => {
+			const $b = $("#nc-s1-body .nc-scope-btn").on("click", function () { _nc_pending_scope($(this).data("scope")); });
+			if (refocus) $b.filter(`[data-scope="${refocus}"]`).trigger("focus");
+		};
+		if (!counts[scope]) {
+			const sub = scope === "assigned"
+				? (counts.open === 1 ? __("1 item is open to your roles.")
+					: __("{0} items are open to your roles.", [format_number(counts.open || 0, null, 0)]))
+				: __("Nothing else is open to your roles.");
+			$("#nc-s1-body").html(`${tabs}<div class="nc-empty nc-empty-ok">
+				<div class="nc-empty-title">${scope === "assigned" ? __("Nothing is waiting on you right now.") : __("Nothing here")}</div>
+				<div class="nc-empty-sub">${sub}</div></div>`);
+			bind_tabs();
 			return;
 		}
 		const pcat = _nc_state.pfilters.category;
@@ -180,6 +216,7 @@ function _nc_render_pending() {
 			<div class="nc-pending-row nc-cat-${_nc_esc(it.category)}">
 				${_nc_pill(it.category)}
 				<a href="${_nc_esc(it.route)}" class="nc-doclink">${_nc_esc(it.doc_name)}</a>
+				${it.why ? `<span class="nc-why">${_nc_esc(it.why)}</span>` : ""}
 				<span class="nc-age ${it.overdue ? "nc-overdue" : ""}">${__("waiting")} ${_nc_esc(it.age_display)}${it.since_display ? ` · <span class="nc-since-label">${__("since")}</span> <span class="nc-since">${_nc_esc(it.since_display)}</span>` : ""}${it.overdue ? ` <span class="nc-tag-overdue">${__("overdue")}</span>` : ""}</span>
 				<a href="${_nc_esc(it.route)}" class="nc-open">${__("Open")}</a>
 			</div>`).join("");
@@ -188,7 +225,8 @@ function _nc_render_pending() {
 			${p.items.length < (p.total || 0) ? `<button class="nc-loadmore" id="nc-pend-more">${__("Load more")}</button>` : ""}
 			${pcat !== "all" ? `<button class="nc-loadmore" id="nc-pend-all">${__("Show all")}</button>` : ""}
 		</div>`;
-		$("#nc-s1-body").html(`<ul class="nc-cards">${cards}</ul><div class="nc-pending-list">${rows}</div>${foot}`);
+		$("#nc-s1-body").html(`${tabs}<ul class="nc-cards">${cards}</ul><div class="nc-pending-list">${rows}</div>${foot}`);
+		bind_tabs();
 		$("#nc-s1-body .nc-card").on("click", function () { _nc_pending_filter($(this).data("pcat")); });
 		$("#nc-s1-body .nc-card").on("keydown", function (e) {
 			if (e.key === "Enter" || e.key === " ") { e.preventDefault(); _nc_pending_filter($(this).data("pcat")); }
@@ -465,11 +503,19 @@ const NC_CSS = `
 
 /* ── S1 pending rows (card-like) ────────────────────────────────── */
 .nc-pending-list{display:flex;flex-direction:column;gap:4px;}
-.nc-pending-row{display:flex;align-items:center;gap:10px;padding:6px 12px;border:1px solid var(--border-color,#e2e8f0);border-left-width:3px;border-left-color:var(--border-color,#e2e8f0);border-radius:10px;background:var(--card-bg,#fff);transition:box-shadow .12s;}
+.nc-pending-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 12px;border:1px solid var(--border-color,#e2e8f0);border-left-width:3px;border-left-color:var(--border-color,#e2e8f0);border-radius:10px;background:var(--card-bg,#fff);transition:box-shadow .12s;}
 .nc-pending-row:hover{box-shadow:0 2px 8px rgba(15,23,42,.07);}
 .nc-doclink{font-weight:600;color:var(--text-color);text-decoration:none;}
 .nc-doclink:hover{text-decoration:underline;}
 .nc-age{font-size:12px;color:var(--text-muted);}
+.nc-why{font-size:12px;color:var(--text-color);flex:1 1 160px;min-width:0;}
+.nc-scope{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:10px;background:var(--subtle-fg,#eef0f2);margin-bottom:6px;}
+.nc-scope-btn{min-height:36px;border:0;border-radius:8px;padding:6px 14px;font:inherit;font-size:13px;color:var(--text-color);background:transparent;cursor:pointer;}
+.nc-scope-on{background:var(--card-bg,#fff);font-weight:700;box-shadow:0 1px 2px rgba(15,23,42,.12);}
+.nc-scope-n{color:var(--text-muted);font-weight:600;}
+.nc-scope-on .nc-scope-n{color:#1e40af;}
+.nc-scope-btn:focus-visible{outline:2px solid var(--primary,#3b82f6);outline-offset:1px;}
+.nc-scope-help{font-size:12px;color:var(--text-muted);margin:0 0 10px;}
 .nc-overdue{color:#b45309;}
 .nc-tag-overdue{background:#fef3c7;color:#92400e;border-radius:8px;font-size:10px;font-weight:600;padding:1px 6px;}
 .nc-since{color:var(--text-color);}
@@ -569,6 +615,9 @@ const NC_CSS = `
 .nc-chip:focus-visible,.nc-markread:focus-visible,.nc-open:focus-visible,.nc-loadmore:focus-visible,.nc-notif-main:focus-visible,.nc-doclink:focus-visible,.nc-collapse:focus-visible,.nc-retry:focus-visible{outline:2px solid var(--primary,#3b82f6);outline-offset:2px;border-radius:8px;}
 
 /* ═══ DARK MODE ═══════════════════════════════════════════════════ */
+[data-theme="dark"] .nc-scope{background:#111827;box-shadow:inset 0 0 0 1px #374151;}
+[data-theme="dark"] .nc-scope-on{background:#374151;}
+[data-theme="dark"] .nc-scope-on .nc-scope-n{color:#93c5fd;}
 [data-theme="dark"] .nc-section{background:#1f2937;border-color:#374151;}
 [data-theme="dark"] .nc-bell-chip{background:#111827;border-color:#374151;}
 [data-theme="dark"] .nc-card{background:#111827;border-color:#374151;}
@@ -636,6 +685,7 @@ const NC_CSS = `
 	.nc-search{font-size:16px;height:36px;width:100%;}
 	.nc-markread{min-width:44px;min-height:44px;}
 	.nc-open{min-height:40px;display:inline-flex;align-items:center;}
-	.nc-pending-row{flex-wrap:wrap;}
+	.nc-scope{display:flex;}
+	.nc-scope-btn{flex:1 1 0;min-height:44px;padding:6px 8px;}
 }
 `;

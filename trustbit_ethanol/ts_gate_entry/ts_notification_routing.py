@@ -80,7 +80,8 @@ def role_recipients(role):
 
 def routed_out_roles(user, roles):
     """Roles among `roles` whose role-wide notifications do NOT reach `user`.
-    Routing only: the skip list governs notifications, not work queues."""
+    Routing only, without the skip list. Pending Actions no longer uses this
+    (v2.60.0 classifies items with role_recipients)."""
     roles = [r for r in (roles or []) if r and r not in AUTOMATIC_ROLES]
     if not roles:
         return set()
