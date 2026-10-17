@@ -14,5 +14,7 @@ frappe.ui.form.on("TS Notification Audience", {
 	refresh(frm) {
 		frm.set_df_property("events", "cannot_add_rows", true);
 		frm.set_df_property("events", "cannot_delete_rows", true);
+		// v2.61.0 — heads and notify-only people are edited on their own page.
+		frm.add_custom_button(__("Assign people"), () => frappe.set_route("assign-people"));
 	},
 });

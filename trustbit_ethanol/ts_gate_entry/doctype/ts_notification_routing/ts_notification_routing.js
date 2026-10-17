@@ -14,6 +14,9 @@ frappe.ui.form.on("TS Notification Routing", {
 		frm.fields_dict.role.df.ignore_link_validation = 1;
 	},
 	refresh(frm) {
+		// The form swaps in a per-document copy of each field on refresh, which
+		// drops the flag set in setup — set it on the copy the control now uses.
+		frm.set_df_property("role", "ignore_link_validation", 1);
 		ts_nr_load(frm);
 	},
 	role(frm) {

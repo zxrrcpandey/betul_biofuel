@@ -52,7 +52,10 @@ class TSMaterialInspection(Document):
 		reload it, keeping at most the per-item decisions on the stored rows."""
 		decisions = {d.name: {f: d.get(f) for f in DECISION_FIELDS}
 			for d in self.items if d.name} if keep_decisions else {}
+		# L362: two people deciding at once — the status gate reads the row through the lock.
+		status = frappe.db.get_value(self.doctype, self.name, "status", for_update=True)
 		self.reload()
+		self.status = status
 		for item in self.items:
 			item.update(decisions.get(item.name, {}))
 			if item.remark:

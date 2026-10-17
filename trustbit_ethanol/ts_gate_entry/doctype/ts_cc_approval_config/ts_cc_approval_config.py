@@ -359,14 +359,27 @@ def get_cc_creators(cc_config):
 
 
 def get_cc_notify_only_users(cc_config):
-	"""Get users who should be notified on final approval (Notify Only type only)."""
+	"""Get users who should be notified on final approval (Notify Only type only).
+	v2.61.0 — plus the enabled people listed for this cost centre on the Assign
+	People page (TS Notification Audience), kept off the config so they get no
+	cost-centre User Permission."""
 	if not cc_config:
 		return []
 	users = []
 	for row in cc_config.users:
 		if row.action_type == "Notify Only" and row.gets_notified:
 			users.append(row.user)
-	return users
+	try:
+		users += frappe.db.sql_list(
+			"""SELECT p.user FROM `tabTS Notification CC Person` p
+			   INNER JOIN `tabUser` u ON u.name = p.user AND u.enabled = 1
+			     AND u.user_type = 'System User' AND u.name NOT IN ('Administrator', 'Guest')
+			   WHERE p.parenttype = 'TS Notification Audience' AND p.cost_center = %s
+			   ORDER BY p.idx""",
+			cc_config.get("cost_center") or cc_config.name)
+	except Exception:
+		pass  # table not migrated yet: the config's own rows only
+	return list(dict.fromkeys(users))
 
 
 @frappe.whitelist()
