@@ -81,7 +81,7 @@
    "doc_view": "List",
    "label": "Pending Tare",
    "link_to": "TS Weighbridge Log",
-   "stats_filter": "[[\"TS Weighbridge Log\",\"unloading_complete\",\"=\",1],[\"TS Weighbridge Log\",\"tare_weight\",\"=\",0]]",
+   "stats_filter": "[[\"TS Weighbridge Log\",\"status\",\"=\",\"Awaiting Tare Weight\"],[\"TS Weighbridge Log\",\"creation\",\"Timespan\",\"last 7 days\"]]",
    "type": "DocType"
   },
   {
@@ -89,7 +89,7 @@
    "doc_view": "List",
    "label": "Completed WB Today",
    "link_to": "TS Weighbridge Log",
-   "stats_filter": "[[\"TS Weighbridge Log\",\"status\",\"=\",\"Completed\"]]",
+   "stats_filter": "[[\"TS Weighbridge Log\",\"status\",\"=\",\"Completed\"],[\"TS Weighbridge Log\",\"tare_weight_time\",\"Timespan\",\"today\"]]",
    "type": "DocType"
   }
  ],
