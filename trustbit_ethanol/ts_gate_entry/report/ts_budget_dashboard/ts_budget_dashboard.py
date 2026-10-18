@@ -1,3 +1,5 @@
+import json
+
 import frappe
 from frappe import _
 from frappe.utils import flt
@@ -68,6 +70,20 @@ def get_data(filters, view=VIEW_PIPELINE):
 	if not company:
 		company = frappe.defaults.get_global_default("company")
 
+	# Optional Cost Center filter (MultiSelectList → list; blank = all).
+	cost_centers = (filters.get("cost_center") if filters else None) or []
+	if isinstance(cost_centers, str) and cost_centers.strip().startswith("["):
+		try:
+			cost_centers = json.loads(cost_centers)
+		except ValueError:
+			cost_centers = []
+	if isinstance(cost_centers, str):
+		cost_centers = [c.strip() for c in cost_centers.split(",") if c.strip()]
+	elif not isinstance(cost_centers, list):
+		cost_centers = []
+	cost_centers = [str(c) for c in cost_centers]
+	cc_cond = " AND b.cost_center IN %(ccs)s" if cost_centers else ""
+
 	# Get budgets
 	budgets = frappe.db.sql("""
 		SELECT
@@ -76,9 +92,9 @@ def get_data(filters, view=VIEW_PIPELINE):
 			SUM(ba.budget_amount) as annual_budget
 		FROM `tabBudget` b
 		INNER JOIN `tabBudget Account` ba ON ba.parent = b.name
-		WHERE b.fiscal_year = %s AND b.company = %s AND b.docstatus = 1
+		WHERE b.fiscal_year = %(fy)s AND b.company = %(company)s AND b.docstatus = 1{cc_cond}
 		GROUP BY b.cost_center, b.monthly_distribution
-	""", (fiscal_year, company), as_dict=True)
+	""".format(cc_cond=cc_cond), {"fy": fiscal_year, "company": company, "ccs": tuple(cost_centers)}, as_dict=True)
 
 	if not budgets:
 		return []

@@ -6,7 +6,7 @@
      C — Approved Direct PO (new, no token)
    ═══════════════════════════════════════════════════════════════════ */
 
-const SR_VERSION = "v6.14-2026-10-13-grain-paging";
+const SR_VERSION = "v6.15-2026-10-17-grain-supplier-filter";
 const SR_API = "trustbit_ethanol.ts_gate_entry.stores_receiving_api";
 console.log("[stores-receiving]", SR_VERSION, "loaded");
 
@@ -355,6 +355,9 @@ function _sr_open_link_grain_dialog(token, vehicle, material, net) {
 			</div>
 		</div>
 		<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+			<div><label style="font-size:11px;color:var(--text-muted);font-weight:600">Supplier (optional)</label><br>
+				<input type="text" id="grain-supplier" list="grain-supplier-list" class="form-control" style="min-width:220px" placeholder="${__("Type or pick — all suppliers")}" autocomplete="off">
+				<datalist id="grain-supplier-list"></datalist></div>
 			<div><label style="font-size:11px;color:var(--text-muted);font-weight:600">PO Number (optional)</label><br>
 				<input type="text" id="grain-po-id" class="form-control" style="min-width:170px" placeholder="e.g. 00505"></div>
 			<div><label style="font-size:11px;color:var(--text-muted);font-weight:600">PO Date (optional)</label><br>
@@ -378,7 +381,8 @@ function _sr_open_link_grain_dialog(token, vehicle, material, net) {
 		const po_date = $b.find("#grain-po-date").val();
 		$b.find("#grain-results").html('<div class="sr-empty">Searching…</div>');
 		try {
-			const r = await frappe.call({ method: `${GRAIN_API}.get_grain_purchase_orders`, args: { po_id: po_id, po_date: po_date } });
+			const supplier = String($b.find("#grain-supplier").val() || "").trim();
+			const r = await frappe.call({ method: `${GRAIN_API}.get_grain_purchase_orders`, args: { po_id: po_id, po_date: po_date, supplier: supplier } });
 			const pos = r.message || [];
 			if (!pos.length) { $b.find("#grain-results").html('<div class="sr-empty">No matching grain Purchase Orders found.</div>'); return; }
 			const rows = pos.map(p => {
@@ -445,6 +449,14 @@ function _sr_open_link_grain_dialog(token, vehicle, material, net) {
 		}
 	}
 	$b.find("#grain-search-btn").on("click", doSearch);
+	// Typeable supplier box: pick from the list or type part of a name, then Enter.
+	$b.find("#grain-supplier").on("change", doSearch)
+		.on("keydown", e => { if (e.key === "Enter") { e.preventDefault(); doSearch(); } });
+	frappe.call({ method: `${GRAIN_API}.get_grain_po_suppliers` }).then(r => {
+		const opts = (r.message || []).map(s =>
+			`<option value="${_sr_esc(s.supplier_name || s.supplier)}"></option>`).join("");
+		$b.find("#grain-supplier-list").html(opts);
+	});
 	$b.find("#grain-confirm").on("change", function () {
 		if ($(this).is(":checked") && selected_po) dlg.enable_primary_action(); else dlg.disable_primary_action();
 	});

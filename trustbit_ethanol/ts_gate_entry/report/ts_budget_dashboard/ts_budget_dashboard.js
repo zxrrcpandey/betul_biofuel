@@ -25,6 +25,18 @@ frappe.query_reports["TS Budget Dashboard"] = {
 			reqd: 1,
 		},
 		{
+			// Type to search; pick one or several. Blank = all cost centres.
+			fieldname: "cost_center",
+			label: __("Cost Center"),
+			fieldtype: "MultiSelectList",
+			options: "Cost Center",
+			get_data(txt) {
+				return frappe.db.get_link_options("Cost Center", txt, {
+					company: frappe.query_report.get_filter_value("company"),
+				});
+			},
+		},
+		{
 			fieldname: "month",
 			label: __("Month (blank = full year)"),
 			fieldtype: "Select",

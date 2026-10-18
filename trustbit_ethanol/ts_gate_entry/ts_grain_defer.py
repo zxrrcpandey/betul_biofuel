@@ -177,7 +177,30 @@ def get_section_g():
 
 
 @frappe.whitelist()
-def get_grain_purchase_orders(po_id=None, po_date=None, **kwargs):
+def get_grain_po_suppliers():
+    """Supplier dropdown for the Link-Grain-PO dialog: only suppliers that have an
+    open grain PO. Same confidential allow-list gate as the PO search below."""
+    from trustbit_ethanol.ts_gate_entry.ts_confidential_po import (
+        user_sees_confidential, MAIZE_COST_CENTER,
+    )
+    if not user_sees_confidential("Purchase Order"):
+        return []
+    return frappe.get_all(
+        "Purchase Order",
+        filters={
+            "docstatus": 1,
+            "status": ["not in", ["Closed", "Cancelled", "Completed"]],
+            "per_received": ["<", 100],
+            "cost_center": MAIZE_COST_CENTER,
+        },
+        fields=["supplier", "supplier_name"],
+        group_by="supplier, supplier_name",
+        order_by="supplier_name asc",
+    )
+
+
+@frappe.whitelist()
+def get_grain_purchase_orders(po_id=None, po_date=None, supplier=None, **kwargs):
     """PO search for the Link-Grain-PO dialog — SCOPED to grain (the maize/rice/dorb
     cost center) so a non-grain PO (e.g. a Capex fixed-asset PO in 'Nos', which has
     no weighbridge conversion) can never be picked. Confidential + allow-list gated:
@@ -197,13 +220,20 @@ def get_grain_purchase_orders(po_id=None, po_date=None, **kwargs):
         filters["name"] = ["like", "%{0}%".format(po_id)]
     if po_date:
         filters["transaction_date"] = po_date
+    # Typed supplier text: exact supplier ID, or any part of the supplier name.
+    or_filters = None
+    if supplier:
+        or_filters = {"supplier": supplier,
+                      "supplier_name": ["like", "%{0}%".format(supplier)]}
     pos = frappe.get_all(
         "Purchase Order",
         filters=filters,
+        or_filters=or_filters,
         fields=["name", "supplier", "supplier_name", "transaction_date",
                 "total_qty", "grand_total", "per_received"],
         order_by="transaction_date desc",
-        limit=20,
+        # One supplier's open POs are listed in full; the unfiltered list stays at 20.
+        limit=200 if supplier else 20,
     )
     if pos:
         # Item names + rates for the dialog list — same allow-listed audience

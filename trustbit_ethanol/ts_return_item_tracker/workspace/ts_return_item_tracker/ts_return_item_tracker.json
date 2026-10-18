@@ -7,7 +7,7 @@
  "for_user": "",
  "hide_custom": 0,
  "idx": 0,
- "icon": "color-review-points",
+ "icon": "customization",
  "is_hidden": 0,
  "label": "TS Return Item Tracker",
  "links": [
@@ -23,7 +23,7 @@
   {"hidden": 0, "label": "TS Return Item Maintenance Log", "link_to": "TS Return Item Maintenance Log", "link_type": "DocType", "type": "Link"},
   {"hidden": 0, "label": "TS Return Item Settings", "link_to": "TS Return Item Settings", "link_type": "DocType", "type": "Link"}
  ],
- "modified": "2026-04-04 00:00:00",
+ "modified": "2026-10-18 02:20:00",
  "modified_by": "Administrator",
  "module": "TS Return Item Tracker",
  "name": "TS Return Item Tracker",

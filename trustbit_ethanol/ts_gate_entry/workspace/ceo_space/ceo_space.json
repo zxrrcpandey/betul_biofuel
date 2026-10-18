@@ -1,0 +1,137 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"h0\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>CEO Space</b></span>\",\"col\":12}},{\"id\":\"h1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h6\\\"><b>Waiting for me</b></span>\",\"col\":12}},{\"id\":\"s1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Overrides\",\"col\":4}},{\"id\":\"s2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Purchase Orders\",\"col\":4}},{\"id\":\"s3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Material Requests\",\"col\":4}},{\"id\":\"h2\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h6\\\"><b>Dashboards</b></span>\",\"col\":12}},{\"id\":\"s4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Dashboard\",\"col\":4}},{\"id\":\"s5\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"CEO Wall Display\",\"col\":4}},{\"id\":\"s6\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Control Matrix\",\"col\":4}},{\"id\":\"h3\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h6\\\"><b>Budget</b></span>\",\"col\":12}},{\"id\":\"s7\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"All Budget Overrides\",\"col\":4}},{\"id\":\"s8\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Proposals\",\"col\":4}},{\"id\":\"s9\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Budget Dashboard\",\"col\":4}},{\"id\":\"h4\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h6\\\"><b>Reports</b></span>\",\"col\":12}},{\"id\":\"s10\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"MR to Pay\",\"col\":3}},{\"id\":\"s11\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Monthly Purchase Summary\",\"col\":3}},{\"id\":\"s12\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"PO Report\",\"col\":3}},{\"id\":\"s13\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Open PO Report\",\"col\":3}}]",
+ "creation": "2026-10-17 23:30:00",
+ "custom_blocks": [],
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "color-review-points",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "CEO Space",
+ "links": [],
+ "modified": "2026-10-18 02:10:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "CEO Space",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [
+  {
+   "role": "CEO"
+  },
+  {
+   "role": "System Manager"
+  }
+ ],
+ "sequence_id": 0.5,
+ "shortcuts": [
+  {
+   "color": "Red",
+   "doc_view": "List",
+   "format": "{} Pending",
+   "label": "Budget Overrides",
+   "link_to": "TS Budget Override Approval",
+   "stats_filter": "[[\"TS Budget Override Approval\",\"status\",\"=\",\"Pending CEO\"],[\"TS Budget Override Approval\",\"docstatus\",\"=\",1]]",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "format": "{} Pending",
+   "label": "Purchase Orders",
+   "link_to": "Purchase Order",
+   "stats_filter": "[[\"Purchase Order\",\"ts_approval_status\",\"=\",\"Pending CEO\"],[\"Purchase Order\",\"docstatus\",\"=\",0]]",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "format": "{} Pending",
+   "label": "Material Requests",
+   "link_to": "Material Request",
+   "stats_filter": "[[\"Material Request\",\"ts_mr_status\",\"=\",\"Pending CEO\"],[\"Material Request\",\"docstatus\",\"=\",0]]",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "label": "CEO Dashboard",
+   "link_to": "ceo-dashboard",
+   "type": "Page"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "label": "CEO Wall Display",
+   "link_to": "ceo-wall-display",
+   "type": "Page"
+  },
+  {
+   "color": "Yellow",
+   "doc_view": "",
+   "label": "Budget Control Matrix",
+   "link_to": "budget-control-matrix",
+   "type": "Page"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "All Budget Overrides",
+   "link_to": "TS Budget Override Approval",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Budget Proposals",
+   "link_to": "TS Budget Proposal",
+   "type": "DocType"
+  },
+  {
+   "color": "Yellow",
+   "doc_view": "",
+   "label": "Budget Dashboard",
+   "link_to": "TS Budget Dashboard",
+   "report_ref_doctype": "Budget",
+   "type": "Report"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "MR to Pay",
+   "link_to": "TS MR to Pay",
+   "report_ref_doctype": "Material Request",
+   "type": "Report"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "Monthly Purchase Summary",
+   "link_to": "TS Monthly Purchase Summary",
+   "report_ref_doctype": "Purchase Order",
+   "type": "Report"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "PO Report",
+   "link_to": "TS PO Report",
+   "report_ref_doctype": "Purchase Order",
+   "type": "Report"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "Open PO Report",
+   "link_to": "TS Open PO Report",
+   "report_ref_doctype": "Purchase Order",
+   "type": "Report"
+  }
+ ],
+ "title": "CEO Space"
+}
