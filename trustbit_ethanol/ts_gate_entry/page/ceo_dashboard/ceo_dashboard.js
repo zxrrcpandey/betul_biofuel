@@ -1,569 +1,356 @@
+// CEO Dashboard (v2.64.0 redesign) — data from ts_dashboard_ceo.get_ceo_overview.
+// The older get_ceo_dashboard method still feeds the CEO Wall Display; leave it.
+// Colours are Frappe CSS variables only, so the page follows light/dark theme.
+
+const CEO_D_METHOD = "trustbit_ethanol.ts_gate_entry.ts_dashboard_ceo.get_ceo_overview";
+const CEO_D_CATS = { Grain: "--blue-600", Coal: "--gray-600", Store: "--orange-500", Capex: "--purple-500", Other: "--gray-400" };
+
+const CEO_D_CSS = `
+.ceo-d{--ceo-gap:32px;color:var(--text-color);padding:8px 0 40px;display:flex;flex-direction:column;gap:var(--ceo-gap)}
+.ceo-d *{box-sizing:border-box}
+.ceo-d a{color:inherit;text-decoration:none}
+.ceo-d a:focus-visible,.ceo-d button:focus-visible{outline:2px solid var(--blue-600);outline-offset:2px}
+.ceo-d-busy .ceo-d-body{opacity:.6;transition:opacity .2s}
+.ceo-d-body{display:flex;flex-direction:column;gap:var(--ceo-gap)}
+.ceo-d-ctx{font-size:12px;color:var(--text-muted)}
+.ceo-d-banner{padding:10px 14px;border-radius:var(--border-radius-md);font-size:13px}
+.ceo-d-banner.err{background:var(--alert-bg-danger);color:var(--alert-text-danger)}
+.ceo-d-banner.info{background:var(--alert-bg-info);color:var(--alert-text-info)}
+.ceo-d-banners:empty{display:none}
+.ceo-d-retry{min-height:44px}
+.ceo-d-sec{display:flex;flex-direction:column;gap:12px;min-width:0}
+.ceo-d-sh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.ceo-d-sh h2{margin:0;font-size:16px;font-weight:600;color:var(--heading-color)}
+.ceo-d-cap{font-size:12px;color:var(--text-muted)}
+.ceo-d-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:var(--border-radius-md);padding:16px;min-width:0}
+.ceo-d-card.dash{border-style:dashed;background:transparent}
+a.ceo-d-card:hover,.ceo-d-row:hover{background:var(--fg-hover-color)}
+.ceo-d-g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.ceo-d-tile{display:flex;flex-direction:column;gap:6px;min-height:96px}
+.ceo-d-lbl{font-size:13px;font-weight:500;color:var(--text-muted)}
+.ceo-d-n{font-size:28px;font-weight:700;color:var(--heading-color);font-variant-numeric:tabular-nums;line-height:1.1}
+.ceo-d-n.sm{font-size:22px}
+.ceo-d-amt{font-size:16px;font-weight:600;color:var(--heading-color);font-variant-numeric:tabular-nums}
+.ceo-d-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--text-muted)}
+.ceo-d-chip{display:inline-block;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.ceo-d-chip.d{background:var(--alert-bg-danger);color:var(--alert-text-danger)}
+.ceo-d-chip.w{background:var(--bg-orange);color:var(--text-on-orange)}
+.ceo-d-chip.n{background:var(--subtle-fg);color:var(--text-muted)}
+.ceo-d-stuck{background:var(--alert-bg-danger);border-radius:var(--border-radius-md);padding:12px 16px;display:flex;flex-direction:column}
+.ceo-d-stuck-h{font-weight:600;color:var(--alert-text-danger);padding-bottom:6px}
+.ceo-d-stuck .ceo-d-chip{background:var(--card-bg)}
+.ceo-d-stuck a{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center;min-height:44px;padding:6px 0;border-top:1px solid var(--border-color)}
+.ceo-d-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.6fr) minmax(0,.8fr) minmax(0,.7fr);gap:12px;align-items:center;min-height:44px;padding:8px 4px;border-top:1px solid var(--border-color)}
+.ceo-d-r{text-align:right;font-variant-numeric:tabular-nums}
+.ceo-d-b{font-weight:600;color:var(--heading-color)}
+.ceo-d-purch{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:16px}
+.ceo-d-big{font-size:32px;font-weight:700;color:var(--heading-color);font-variant-numeric:tabular-nums;line-height:1.1}
+.ceo-d-cat{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--border-color)}
+.ceo-d-sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+.ceo-d-track{grid-column:2 / 4;height:8px;border-radius:4px;background:var(--subtle-fg);overflow:hidden;display:block}
+.ceo-d-fill{display:block;height:8px;border-radius:4px;background:var(--text-muted)}
+.ceo-d-fill.over{background:var(--red-500)}
+.ceo-d-chart{display:flex;align-items:flex-end;gap:14px;height:230px;border-bottom:1px solid var(--border-color)}
+.ceo-d-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:4px;min-width:0}
+.ceo-d-colv{font-size:12px;color:var(--text-muted);text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ceo-d-stack{display:flex;flex-direction:column-reverse;border-radius:4px 4px 0 0;overflow:hidden}
+.ceo-d-xl{display:flex;gap:14px;margin-top:6px}
+.ceo-d-xl span{flex:1;text-align:center;font-size:12px;color:var(--text-muted)}
+.ceo-d-legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--text-muted);margin-top:10px}
+.ceo-d-legend span{display:inline-flex;gap:6px;align-items:center}
+.ceo-d-srow{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;gap:12px;align-items:center;min-height:44px;padding:8px 4px;border-top:1px solid var(--border-color)}
+.ceo-d-sum{display:flex;flex-wrap:wrap;gap:24px}
+.ceo-d-bud{columns:2;column-gap:24px}
+.ceo-d-brow{break-inside:avoid;display:flex;flex-direction:column;gap:6px;padding:10px 0;border-top:1px solid var(--border-color)}
+.ceo-d-brow-h{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.ceo-d-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px}
+.ceo-d-stock{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.ceo-d-skel{background:var(--skeleton-bg);border-radius:var(--border-radius-md);min-height:96px}
+.ceo-d-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (prefers-reduced-motion:no-preference){.ceo-d-skel{animation:ceo-d-pulse 1.4s ease-in-out infinite}}
+@keyframes ceo-d-pulse{50%{opacity:.55}}
+@media (min-width:768px){#page-ceo-dashboard .page-form .frappe-control[data-fieldname="company"]{flex:0 0 18rem;max-width:18rem}}
+@media (max-width:1199.98px){.ceo-d-purch,.ceo-d-two{grid-template-columns:minmax(0,1fr)}.ceo-d-bud{columns:1}}
+@media (max-width:767.98px){.ceo-d{--ceo-gap:24px}.ceo-d-g3{grid-template-columns:minmax(0,1fr)}.ceo-d-n{font-size:24px}.ceo-d-big{font-size:26px}
+ .ceo-d-row{grid-template-columns:minmax(0,1fr) auto}.ceo-d-hs{display:none}.ceo-d-chart{gap:8px}.ceo-d-xl{gap:8px}
+ .ceo-d-colv{visibility:hidden}
+ .ceo-d-stock{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}#page-ceo-dashboard .page-form .form-control{min-height:44px}}
+`;
+
 frappe.pages["ceo-dashboard"].on_page_load = function (wrapper) {
-	const page = frappe.ui.make_app_page({
-		parent: wrapper,
-		title: "CEO Dashboard",
-		single_column: true,
-	});
-
-	page.main.html('<div id="ceo-dash-container" style="padding: 15px;"></div>');
-
-	page.add_button(__("Wall Display"), () => {
-		frappe.set_route("ceo-wall-display");
-	}, { icon: "monitor" }).addClass("btn-dark");
-
+	const page = frappe.ui.make_app_page({ parent: wrapper, title: __("CEO Dashboard"), single_column: true });
+	if (!document.getElementById("ceo-d-styles")) {
+		$("<style id='ceo-d-styles'>").text(CEO_D_CSS).appendTo("head");
+	}
+	const st = (wrapper.ceo_d = { page, data: null, links: [], timer: null });
+	// append, not html: page.main also holds the Period / Company filter bar.
+	page.main.append('<div class="ceo-d"><div class="ceo-d-ctx"></div><div class="ceo-d-banners"></div><div class="ceo-d-body"></div></div>');
+	page.add_button(__("Wall Display"), () => frappe.set_route("ceo-wall-display"));
+	page.add_button(__("Refresh"), () => ceo_d_refresh(wrapper), { icon: "refresh" });
 	page.add_field({
-		fieldname: "date_range",
-		label: __("Period"),
-		fieldtype: "Select",
-		options: "Today\nThis Week\nThis Month\nThis Quarter\nThis Year",
-		default: "This Month",
-		change() { _cd_refresh(page); },
+		fieldname: "date_range", label: __("Period"), fieldtype: "Select",
+		options: "Today\nThis Week\nThis Month\nThis Quarter\nThis Year", default: "This Month",
+		change: () => ceo_d_refresh(wrapper, true),
 	});
-
 	page.add_field({
-		fieldname: "company",
-		label: __("Company"),
-		fieldtype: "Link",
-		options: "Company",
+		fieldname: "company", label: __("Company"), fieldtype: "Link", options: "Company",
 		default: frappe.defaults.get_global_default("company"),
-		change() { _cd_refresh(page); },
+		change: () => ceo_d_refresh(wrapper, true),
 	});
-
-	setTimeout(() => _cd_refresh(page), 500);
+	page.main.on("click", "[data-ceo-go]", (e) => {
+		e.preventDefault();
+		ceo_d_go(st.links[+e.currentTarget.dataset.ceoGo]);
+	});
+	page.main.on("click", ".ceo-d-retry", () => ceo_d_refresh(wrapper));
+	ceo_d_skeleton(page.main.find(".ceo-d-body"));
+	ceo_d_refresh(wrapper);
 };
 
 frappe.pages["ceo-dashboard"].refresh = function (wrapper) {
-	_cd_refresh(wrapper.page);
+	if (wrapper.ceo_d) ceo_d_refresh(wrapper);
 };
 
-let _cd_timeout = null;
-function _cd_refresh(page) {
-	clearTimeout(_cd_timeout);
-	_cd_timeout = setTimeout(() => _cd_do_refresh(page), 300);
+// if_changed: a Link field fires change on select AND on blur — load once.
+function ceo_d_refresh(wrapper, if_changed) {
+	const st = wrapper.ceo_d;
+	clearTimeout(st.timer);
+	st.timer = setTimeout(() => {
+		const key = `${st.page.fields_dict.date_range.get_value()}|${st.page.fields_dict.company.get_value()}`;
+		if (if_changed && key === st.loaded_key) return;
+		st.loaded_key = key;
+		ceo_d_load(st);
+	}, 300);
 }
 
-function _cd_do_refresh(page) {
-	const date_range = page.fields_dict.date_range?.get_value() || "This Month";
-	const company = page.fields_dict.company?.get_value();
-	const $c = $("#ceo-dash-container");
-	$c.html('<div style="text-align:center;padding:60px;color:#9ca3af;font-size:14px;">Loading CEO Dashboard...</div>');
-
+function ceo_d_load(st) {
+	const $root = st.page.main.find(".ceo-d");
+	const range = st.page.fields_dict.date_range.get_value() || "This Month";
+	const company = st.page.fields_dict.company.get_value();
+	$root.addClass("ceo-d-busy").attr("aria-busy", "true");
 	frappe.call({
-		method: "trustbit_ethanol.ts_gate_entry.ts_dashboard_ceo.get_ceo_dashboard",
-		args: { date_range, company },
-		callback(r) {
-			if (!r.message) {
-				$c.html('<div style="text-align:center;padding:60px;color:#9ca3af;">No data available.</div>');
-				return;
-			}
-			_cd_render(r.message, $c);
+		method: CEO_D_METHOD,
+		args: { date_range: range, company },
+		callback: (r) => {
+			st.data = r.message;
+			ceo_d_render(st, $root);
 		},
-		error() {
-			$c.html('<div style="text-align:center;padding:60px;color:#ef4444;">Error loading dashboard. Please refresh.</div>');
+		error: () => {
+			const when = st.data ? frappe.datetime.str_to_user(st.data.as_of).split(" ").pop() : null;
+			// Nothing loaded yet: drop the pulsing placeholders so it doesn't look like loading.
+			if (!st.data) $root.find(".ceo-d-body").empty();
+			$root.find(".ceo-d-banners").html(`<div class="ceo-d-banner err" role="alert">${
+				when ? __("Could not refresh — showing {0} data.", [when]) : __("The dashboard could not load.")
+			} <button class="btn btn-sm btn-default ceo-d-retry">${__("Try again")}</button></div>`);
 		},
+		always: () => $root.removeClass("ceo-d-busy").attr("aria-busy", "false"),
 	});
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   MAIN RENDER
-   ══════════════════════════════════════════════════════════════════════ */
-
-function _cd_render(data, $c) {
-	let html = "";
-
-	// KPI Cards (8)
-	html += _cd_kpi_cards(data.kpis);
-
-	// Section 1: Action Items
-	html += _cd_section("My Action Items", _cd_action_items(data.action_items), "#ef4444");
-
-	// Section 2: Daily Operations (two columns)
-	html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;">';
-	html += _cd_card("Today's Operations", _cd_daily_ops(data.daily_ops));
-	html += _cd_card("Vehicle Distribution by Stage", _cd_stage_bars(data.daily_ops.stages));
-	html += "</div>";
-
-	// Section 3: Procurement Health (two columns)
-	html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;">';
-	html += _cd_card("PO Pipeline by Category", _cd_po_pipeline(data.procurement.po_pipeline));
-	html += _cd_card("Monthly PO Trend (6 months)", '<div id="cd-monthly-chart" style="height:250px;"></div>');
-	html += "</div>";
-
-	// Section 4: Budget + Top Suppliers
-	html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;">';
-	html += _cd_card("Budget Utilization by Cost Center", _cd_budget_bars(data.budget_overview));
-	html += _cd_card("Top Suppliers by Value", _cd_suppliers(data.procurement.top_suppliers));
-	html += "</div>";
-
-	// Section 5: Quality + Material Inspection
-	html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;">';
-	html += _cd_card("Quality Inspection Summary", _cd_quality(data.quality));
-	html += _cd_card("Quality Metrics by Category", _cd_quality_metrics(data.quality));
-	html += "</div>";
-
-	// Budget Overrides
-	if (data.budget_overview.overrides && data.budget_overview.overrides.length) {
-		html += _cd_section("Recent Budget Overrides", _cd_overrides(data.budget_overview.overrides), "#f59e0b");
-	}
-
-	// Footer
-	html += `<div style="text-align:center;padding:15px;color:#9ca3af;font-size:11px;margin-top:20px;">
-		Last updated: ${frappe.datetime.prettyDate(data.last_updated)} &nbsp;|&nbsp;
-		Period: ${_cd_esc(data.filters_applied.start)} to ${_cd_esc(data.filters_applied.end)}
-	</div>`;
-
-	$c.html(html);
-
-	// Render chart after DOM insertion
-	_cd_render_chart(data.procurement.monthly_trend);
+function ceo_d_go(t) {
+	if (!t) return;
+	if (t.filters) frappe.route_options = t.filters;
+	if (t.form) return frappe.set_route("Form", t.dt, t.form);
+	if (t.report) return frappe.set_route("query-report", t.report);
+	if (t.page) return frappe.set_route(t.page);
+	frappe.set_route("List", t.dt);
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   KPI CARDS
-   ══════════════════════════════════════════════════════════════════════ */
+/* ── formatting ─────────────────────────────────────────────────────── */
 
-function _cd_kpi_cards(k) {
-	const cards = [
-		{ label: "My Pending Approvals", value: k.pending_approvals,
-		  sub: `${k.pending_pos} POs · ${k.pending_mrs} MRs`,
-		  color: "#ef4444", bg: "#fef2f2", icon: "⚠" },
-		{ label: "Today's Inward", value: k.today_inward + " vehicles",
-		  sub: k.today_weight_mt + " MT received",
-		  color: "#3b82f6", bg: "#eff6ff", icon: "🚛" },
-		{ label: "Vehicles Inside", value: k.vehicles_inside,
-		  color: "#8b5cf6", bg: "#faf5ff", icon: "📍" },
-		{ label: "Avg Turnaround", value: _cd_format_time(k.avg_turnaround_min),
-		  sub: "today's average",
-		  color: "#0ea5e9", bg: "#f0f9ff", icon: "⏱" },
-		{ label: "PO Value (Period)", value: format_currency(k.po_value),
-		  sub: "approved POs",
-		  color: "#10b981", bg: "#ecfdf5", icon: "₹" },
-		{ label: "Budget Utilization", value: k.budget_pct + "%",
-		  color: k.budget_pct > 80 ? "#ef4444" : k.budget_pct > 60 ? "#f59e0b" : "#10b981",
-		  bg: k.budget_pct > 80 ? "#fef2f2" : k.budget_pct > 60 ? "#fffbeb" : "#ecfdf5", icon: "📊" },
-		{ label: "Stuck Vehicles", value: k.stuck_vehicles,
-		  sub: "CTL breaches",
-		  color: k.stuck_vehicles > 0 ? "#ef4444" : "#10b981",
-		  bg: k.stuck_vehicles > 0 ? "#fef2f2" : "#ecfdf5", icon: "🔴" },
-		{ label: "Pending GRN", value: k.pending_grn,
-		  sub: "at Tare Weighed",
-		  color: "#f59e0b", bg: "#fffbeb", icon: "📦" },
-	];
+const ceo_d_esc = (s) => frappe.utils.escape_html(s == null ? "" : String(s));
 
-	let html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:10px;">';
-	cards.forEach((c) => {
-		html += `<div style="padding:16px;background:${c.bg};border-radius:12px;border:1px solid ${c.color}20;position:relative;">`;
-		html += `<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">${c.icon} ${c.label}</div>`;
-		html += `<div style="font-size:24px;font-weight:800;color:${c.color};margin-top:6px;">${c.value}</div>`;
-		if (c.sub) html += `<div style="font-size:11px;color:#9ca3af;margin-top:2px;">${c.sub}</div>`;
-		html += "</div>";
-	});
-	html += "</div>";
-	return html;
+function ceo_d_inr(v) {
+	if (v === null || v === undefined) return "—";
+	const a = Math.abs(v), sign = v < 0 ? "-" : "";
+	const fmt = (x, u) => `${sign}₹ ${x.toFixed(x < 10 ? 2 : x < 100 ? 1 : 0)} ${u}`;
+	if (a >= 99.95e5) return fmt(a / 1e7, "Cr");
+	if (a >= 1e5) return fmt(a / 1e5, "L");
+	return `${sign}₹ ${format_number(a, null, 0)}`;
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   SECTION 1: ACTION ITEMS
-   ══════════════════════════════════════════════════════════════════════ */
-
-function _cd_action_items(items) {
-	const pos = items.pos || [];
-	const mrs = items.mrs || [];
-
-	if (!pos.length && !mrs.length) {
-		return '<div style="padding:20px;text-align:center;color:#10b981;font-weight:600;">✓ No pending approvals — all clear!</div>';
-	}
-
-	let html = "";
-
-	if (pos.length) {
-		html += '<div style="font-weight:600;font-size:13px;color:#374151;margin-bottom:8px;">Purchase Orders Pending Approval</div>';
-		html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">';
-		html += '<thead><tr style="background:#fef2f2;">';
-		html += '<th style="padding:8px;text-align:left;border-bottom:2px solid #fecaca;">PO</th>';
-		html += '<th style="padding:8px;text-align:left;border-bottom:2px solid #fecaca;">Supplier</th>';
-		html += '<th style="padding:8px;text-align:right;border-bottom:2px solid #fecaca;">Amount</th>';
-		html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #fecaca;">Category</th>';
-		html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #fecaca;">Status</th>';
-		html += '<th style="padding:8px;text-align:right;border-bottom:2px solid #fecaca;">Waiting</th>';
-		html += "</tr></thead><tbody>";
-
-		pos.forEach((po, i) => {
-			const bg = i % 2 === 0 ? "#fff" : "#fff7ed";
-			const wait_color = po.waiting_hours > 24 ? "#ef4444" : po.waiting_hours > 8 ? "#f59e0b" : "#6b7280";
-			html += `<tr style="background:${bg};cursor:pointer;" onclick="frappe.set_route('Form','Purchase Order','${_cd_esc(po.name)}')">`;
-			html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;"><a style="color:#3b82f6;font-weight:600;">${_cd_esc(po.name)}</a></td>`;
-			html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;">${_cd_esc(po.supplier_name)}</td>`;
-			html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;">${format_currency(po.grand_total)}</td>`;
-			html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;text-align:center;"><span style="background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:10px;font-size:11px;">${_cd_esc(po.category || "—")}</span></td>`;
-			html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;text-align:center;"><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;">${_cd_esc(po.status)}</span></td>`;
-			html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;text-align:right;color:${wait_color};font-weight:600;">${_cd_format_wait(po.waiting_hours)}</td>`;
-			html += "</tr>";
-		});
-		html += "</tbody></table>";
-	}
-
-	if (mrs.length) {
-		html += '<div style="font-weight:600;font-size:13px;color:#374151;margin-bottom:8px;">Material Requests Pending Approval</div>';
-		html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
-		html += '<thead><tr style="background:#fef2f2;">';
-		html += '<th style="padding:8px;text-align:left;border-bottom:2px solid #fecaca;">MR</th>';
-		html += '<th style="padding:8px;text-align:left;border-bottom:2px solid #fecaca;">Cost Center</th>';
-		html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #fecaca;">Status</th>';
-		html += '<th style="padding:8px;text-align:right;border-bottom:2px solid #fecaca;">Waiting</th>';
-		html += "</tr></thead><tbody>";
-
-		mrs.forEach((mr, i) => {
-			const bg = i % 2 === 0 ? "#fff" : "#fff7ed";
-			const wait_color = mr.waiting_hours > 24 ? "#ef4444" : mr.waiting_hours > 8 ? "#f59e0b" : "#6b7280";
-			html += `<tr style="background:${bg};cursor:pointer;" onclick="frappe.set_route('Form','Material Request','${_cd_esc(mr.name)}')">`;
-			html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;"><a style="color:#3b82f6;font-weight:600;">${_cd_esc(mr.name)}</a></td>`;
-			html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;">${_cd_esc(mr.cost_center || "—")}</td>`;
-			html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;text-align:center;"><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;">${_cd_esc(mr.status)}</span></td>`;
-			html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;text-align:right;color:${wait_color};font-weight:600;">${_cd_format_wait(mr.waiting_hours)}</td>`;
-			html += "</tr>";
-		});
-		html += "</tbody></table>";
-	}
-
-	return html;
+function ceo_d_wait(h) {
+	if (h === null || h === undefined) return "—";
+	const mins = Math.round(h * 60), d = Math.floor(mins / 1440), hr = Math.floor((mins % 1440) / 60);
+	if (d >= 3) return `${d} d`;
+	if (d >= 1) return `${d} d ${hr} h`;
+	return hr >= 1 ? `${hr} h` : "< 1 h";
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   SECTION 2: DAILY OPERATIONS
-   ══════════════════════════════════════════════════════════════════════ */
+const ceo_d_wait_chip = (h) => (h > 24 ? "d" : h > 8 ? "w" : "n");
+const ceo_d_num = (v) => (v === null || v === undefined ? "—" : format_number(v, null, 0));
+const ceo_d_pos = (n) => (n === 1 ? __("1 PO") : __("{0} POs", [n]));
 
-function _cd_daily_ops(ops) {
-	let html = "";
-
-	// Today's summary cards
-	const t = ops.today;
-	html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">';
-	html += _cd_mini_card("Entries", t.entries, "#3b82f6");
-	html += _cd_mini_card("Exits", t.exits, "#10b981");
-	html += _cd_mini_card("Inside", t.entries - t.exits, "#f59e0b");
-	html += "</div>";
-
-	// Breakdown
-	html += '<div style="display:flex;gap:10px;margin-bottom:16px;">';
-	html += `<div style="flex:1;padding:8px;background:#eff6ff;border-radius:6px;text-align:center;font-size:11px;">Stock IN<br><b style="font-size:16px;color:#3b82f6;">${t.stock_in}</b></div>`;
-	html += `<div style="flex:1;padding:8px;background:#faf5ff;border-radius:6px;text-align:center;font-size:11px;">Stock OUT<br><b style="font-size:16px;color:#8b5cf6;">${t.stock_out}</b></div>`;
-	html += `<div style="flex:1;padding:8px;background:#ecfdf5;border-radius:6px;text-align:center;font-size:11px;">Gate Pass<br><b style="font-size:16px;color:#10b981;">${t.gate_pass}</b></div>`;
-	html += "</div>";
-
-	// This week
-	html += `<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">This Week: <b>${ops.week.entries}</b> entries, <b>${ops.week.exits}</b> exits</div>`;
-
-	// Weight by type
-	if (ops.weight_by_type && ops.weight_by_type.length) {
-		html += '<div style="font-weight:600;font-size:12px;color:#374151;margin-bottom:6px;">Weight Received Today</div>';
-		html += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
-		html += '<tr style="background:#f1f5f9;"><th style="padding:6px;text-align:left;">Type</th><th style="padding:6px;text-align:right;">Gross (MT)</th><th style="padding:6px;text-align:right;">Net (MT)</th><th style="padding:6px;text-align:center;">Count</th></tr>';
-		ops.weight_by_type.forEach((w) => {
-			html += `<tr><td style="padding:6px;">${_cd_esc(w.material_flow || "—")}</td>`;
-			html += `<td style="padding:6px;text-align:right;">${w.gross_mt || 0}</td>`;
-			html += `<td style="padding:6px;text-align:right;font-weight:600;">${w.net_mt || 0}</td>`;
-			html += `<td style="padding:6px;text-align:center;">${w.cnt}</td></tr>`;
-		});
-		html += "</table>";
-	}
-
-	return html;
+function ceo_d_dates(s, e) {
+	const o = (x) => frappe.datetime.str_to_obj(x);
+	const f = (x, y) => x.toLocaleDateString("en-IN", y ? { day: "numeric", month: "short", year: "numeric" } : { day: "numeric", month: "short" });
+	return s === e ? f(o(s), true) : `${f(o(s))} – ${f(o(e), true)}`;
 }
 
-function _cd_stage_bars(stages) {
-	if (!stages || !stages.length) return '<div style="color:#9ca3af;padding:20px;text-align:center;">No vehicles inside</div>';
+/* ── render ─────────────────────────────────────────────────────────── */
 
-	const total = stages.reduce((s, r) => s + r.count, 0);
-	const colors = {
-		"PO Linked": "#3b82f6", "Gross Weighed": "#8b5cf6", "Quality Done": "#0ea5e9",
-		"Graded": "#06b6d4", "Unloading": "#f59e0b", "Tare Weighed": "#10b981",
-		"GRN Created": "#22c55e", "SI Linked": "#6366f1", "Tare Recorded": "#a855f7",
-		"Loading Done": "#ec4899", "Gross Recorded": "#f43f5e", "Dispatch Ready": "#14b8a6",
+function ceo_d_skeleton($body) {
+	const heads = [__("Waiting for me"), __("Purchases"), __("Budget vs actual"), __("Stock"), __("Gate & receiving")];
+	$body.html(heads.map((h) => `<section class="ceo-d-sec"><div class="ceo-d-sh"><h2>${h}</h2></div>
+		<div class="ceo-d-g3"><div class="ceo-d-skel"></div><div class="ceo-d-skel"></div><div class="ceo-d-skel"></div></div></section>`).join(""));
+}
+
+function ceo_d_render(st, $root) {
+	const d = st.data;
+	st.links = [];
+	const link = (t) => `href="#" data-ceo-go="${st.links.push(t) - 1}"`;
+	const f = d.filters;
+	$root.find(".ceo-d-ctx").text(`${__(f.date_range)} · ${ceo_d_dates(f.start, f.end)} · ${__("Updated")} ${frappe.datetime.str_to_user(d.as_of).split(" ").pop()} · v${d.version}`);
+	$root.find(".ceo-d-banners").html(d.confidential_scope === "partial"
+		? `<div class="ceo-d-banner info" role="status">${__("Some purchase orders are hidden from your role, so purchase totals are partial.")}</div>` : "");
+	// One bad payload must not leave the whole page on placeholders.
+	const safe = (id, title, fn) => {
+		try {
+			return fn();
+		} catch (e) {
+			console.error(e);
+			return ceo_d_section(id, title, "", ceo_d_state(null));
+		}
 	};
-
-	let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
-	stages.forEach((s) => {
-		const pct = total > 0 ? ((s.count / total) * 100) : 0;
-		const color = colors[s.stage] || "#6b7280";
-		html += '<div style="display:flex;align-items:center;gap:10px;">';
-		html += `<div style="width:100px;font-size:11px;color:#374151;text-align:right;font-weight:500;">${_cd_esc(s.stage)}</div>`;
-		html += `<div style="flex:1;height:20px;background:#f1f5f9;border-radius:4px;overflow:hidden;">`;
-		html += `<div style="height:100%;width:${Math.max(pct, 2)}%;background:${color};border-radius:4px;display:flex;align-items:center;justify-content:center;">`;
-		if (s.count > 0) html += `<span style="font-size:10px;color:white;font-weight:700;">${s.count}</span>`;
-		html += `</div></div>`;
-		html += "</div>";
-	});
-	html += "</div>";
-	html += `<div style="text-align:center;margin-top:10px;font-size:12px;color:#374151;font-weight:600;">Total: ${total} vehicles</div>`;
-	return html;
+	$root.find(".ceo-d-body").html([
+		safe("w", __("Waiting for me"), () => ceo_d_waiting(d.waiting, d.stuck, link)),
+		safe("p", __("Purchases"), () => ceo_d_purchases(d.purchases, f, link)),
+		safe("b", __("Budget vs actual"), () => ceo_d_budget(d.budget, link)),
+		`<div class="ceo-d-two">${safe("s", __("Stock"), () => ceo_d_stock(d.stock, f, link))}${
+			safe("t", __("Gate & receiving"), () => ceo_d_plant(d.plant, link))}</div>`,
+	].join(""));
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   SECTION 3: PROCUREMENT
-   ══════════════════════════════════════════════════════════════════════ */
-
-function _cd_po_pipeline(pipeline) {
-	if (!pipeline || !pipeline.length) return '<div style="color:#9ca3af;padding:20px;text-align:center;">No PO data</div>';
-
-	const statuses = ["Draft", "Pending", "Awaiting", "Approved", "Rejected"];
-	const colors = { Draft: "#6b7280", Pending: "#f59e0b", Awaiting: "#3b82f6", Approved: "#10b981", Rejected: "#ef4444" };
-
-	let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
-	html += "<thead><tr>";
-	html += '<th style="padding:8px;text-align:left;border-bottom:2px solid #e5e7eb;color:#374151;">Category</th>';
-	statuses.forEach((s) => {
-		html += `<th style="padding:8px;text-align:center;border-bottom:2px solid #e5e7eb;color:${colors[s]};font-weight:600;">${s}</th>`;
-	});
-	html += '<th style="padding:8px;text-align:center;border-bottom:2px solid #e5e7eb;font-weight:700;">Total</th>';
-	html += "</tr></thead><tbody>";
-
-	pipeline.forEach((row, i) => {
-		const bg = i % 2 === 0 ? "#fff" : "#f9fafb";
-		let total = 0;
-		html += `<tr style="background:${bg};">`;
-		html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;font-weight:500;">${_cd_esc(row.category)}</td>`;
-		statuses.forEach((s) => {
-			const v = row[s] || 0;
-			total += v;
-			const badge = v > 0
-				? `<span style="background:${colors[s]}15;color:${colors[s]};padding:2px 8px;border-radius:10px;font-weight:600;">${v}</span>`
-				: '<span style="color:#d1d5db;">0</span>';
-			html += `<td style="padding:8px;text-align:center;border-bottom:1px solid #f1f5f9;">${badge}</td>`;
-		});
-		html += `<td style="padding:8px;text-align:center;border-bottom:1px solid #f1f5f9;font-weight:700;">${total}</td>`;
-		html += "</tr>";
-	});
-	html += "</tbody></table>";
-	return html;
+function ceo_d_section(id, title, caption, body) {
+	return `<section class="ceo-d-sec" aria-labelledby="ceo-d-${id}"><div class="ceo-d-sh"><h2 id="ceo-d-${id}">${title}</h2>
+		<span class="ceo-d-cap">${caption}</span></div>${body}</section>`;
 }
 
-function _cd_suppliers(suppliers) {
-	if (!suppliers || !suppliers.length) return '<div style="color:#9ca3af;padding:20px;text-align:center;">No supplier data</div>';
-
-	const max_val = suppliers[0]?.total_value || 1;
-	let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
-	suppliers.forEach((s, i) => {
-		const pct = ((s.total_value || 0) / max_val) * 100;
-		html += '<div style="padding:6px 0;">';
-		html += `<div style="display:flex;justify-content:space-between;margin-bottom:3px;">`;
-		html += `<span style="font-size:12px;font-weight:500;color:#374151;"><span style="color:#9ca3af;margin-right:4px;">${i + 1}.</span> ${_cd_esc(s.supplier_name)}</span>`;
-		html += `<span style="font-size:11px;color:#6b7280;">${s.po_count} POs</span>`;
-		html += `</div>`;
-		html += `<div style="height:8px;background:#e5e7eb;border-radius:4px;"><div style="height:100%;width:${pct}%;background:#3b82f6;border-radius:4px;"></div></div>`;
-		html += `<div style="font-size:11px;color:#3b82f6;font-weight:600;margin-top:2px;">${format_currency(s.total_value)}</div>`;
-		html += "</div>";
-	});
-	html += "</div>";
-	return html;
+function ceo_d_state(s, unconfigured) {
+	if (!s || s.state === "error") {
+		return `<div class="ceo-d-card" role="alert">${__("This section could not load.")} <button class="btn btn-sm btn-default ceo-d-retry">${__("Try again")}</button></div>`;
+	}
+	if (s.state === "restricted") return `<div class="ceo-d-card ceo-d-cap">${__("Not shown for your role.")}</div>`;
+	if (s.state === "unconfigured") return `<div class="ceo-d-card dash ceo-d-cap">${unconfigured}</div>`;
+	return null;
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   SECTION 4: BUDGET
-   ══════════════════════════════════════════════════════════════════════ */
+function ceo_d_waiting(w, stuck, link) {
+	const cap = __("Live, all companies · age = time since the document last changed");
+	const bad = ceo_d_state(w);
+	if (bad) return ceo_d_section("w", __("Waiting for me"), cap, bad);
+	const tile = (q, label, has_value) => `<a class="ceo-d-card ceo-d-tile" ${link({ dt: q.doctype, filters: q.filters })}
+		aria-label="${ceo_d_esc(`${label}: ${q.count}${has_value ? ", " + ceo_d_inr(q.value) : ""}${q.count ? ", oldest " + ceo_d_wait(q.oldest_hours) : ""}`)}">
+		<span class="ceo-d-lbl">${label}</span><span class="ceo-d-n">${q.count}</span>
+		${has_value ? `<span class="ceo-d-amt">${q.count ? `${ceo_d_inr(q.value)} <span class="ceo-d-cap">${__("order value")}</span>` : "—"}</span>` : ""}
+		<span class="ceo-d-meta">${q.count ? `${__("Oldest")} ${ceo_d_wait(q.oldest_hours)} <span class="ceo-d-chip ${ceo_d_wait_chip(q.oldest_hours)}">${
+			q.oldest_hours > 24 ? __("Over 24 h") : q.oldest_hours > 8 ? __("Over 8 h") : __("Recent")}</span>` : __("Nothing waiting")}</span></a>`;
+	let html = `<div class="ceo-d-g3">${tile(w.overrides, __("Budget overrides"), true)}${tile(w.pos, __("Purchase orders"), true)}${tile(w.mrs, __("Material requests"), false)}</div>`;
 
-function _cd_budget_bars(budget) {
-	if (!budget.cc_data || !budget.cc_data.length) {
-		return '<div style="color:#9ca3af;padding:20px;text-align:center;">No budget data for this fiscal year</div>';
+	if (stuck && stuck.state === "error") {
+		html += `<div class="ceo-d-card ceo-d-cap" role="alert">${__("Could not check for stuck documents.")}</div>`;
+	} else if (stuck && stuck.items.length) {
+		html += `<div class="ceo-d-stuck" role="status"><span class="ceo-d-stuck-h">${__("Stuck with nobody — these are in no one's approval queue")}${stuck.partial ? " · " + __("partial") : ""}</span>
+			${stuck.items.map((s) => `<a ${link({ dt: s.doctype, filters: s.filters })}><span>${ceo_d_esc(s.text)}</span>
+				<span class="ceo-d-chip d">${__("oldest {0} d", [Math.round(s.days)])}</span></a>`).join("")}</div>`;
+	} else if (stuck) {
+		html += `<div class="ceo-d-cap">${__("Nothing is stuck outside an approval queue.")}</div>`;
 	}
 
-	let html = "";
-
-	// Totals summary
-	const t = budget.totals;
-	html += '<div style="display:flex;gap:10px;margin-bottom:16px;">';
-	html += `<div style="flex:1;padding:10px;background:#f8fafc;border-radius:8px;text-align:center;font-size:11px;">Total Budget<br><b style="font-size:14px;color:#374151;">${format_currency(t.budget)}</b></div>`;
-	html += `<div style="flex:1;padding:10px;background:#fffbeb;border-radius:8px;text-align:center;font-size:11px;">Committed<br><b style="font-size:14px;color:#f59e0b;">${format_currency(t.committed)}</b></div>`;
-	html += `<div style="flex:1;padding:10px;background:#fef2f2;border-radius:8px;text-align:center;font-size:11px;">Actual Spent<br><b style="font-size:14px;color:#ef4444;">${format_currency(t.actual)}</b></div>`;
-	html += `<div style="flex:1;padding:10px;background:${t.pct > 80 ? '#fef2f2' : t.pct > 60 ? '#fffbeb' : '#ecfdf5'};border-radius:8px;text-align:center;font-size:11px;">Utilization<br><b style="font-size:14px;color:${t.pct > 80 ? '#ef4444' : t.pct > 60 ? '#f59e0b' : '#10b981'};">${t.pct}%</b></div>`;
-	html += "</div>";
-
-	// Per-CC bars
-	html += '<div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;">';
-	budget.cc_data.forEach((cc) => {
-		const color = cc.pct > 80 ? "#ef4444" : cc.pct > 60 ? "#f59e0b" : "#10b981";
-		const bar_pct = Math.min(cc.pct, 100);
-		const cc_short = (cc.cost_center || "").replace(/ - (BBF|BBPL)$/, "");
-		html += '<div style="padding:6px 8px;background:#f8fafc;border-radius:6px;">';
-		html += `<div style="display:flex;justify-content:space-between;margin-bottom:3px;">`;
-		html += `<span style="font-size:11px;font-weight:500;color:#374151;">${_cd_esc(cc_short)}</span>`;
-		html += `<span style="font-size:11px;font-weight:700;color:${color};">${cc.pct}%</span>`;
-		html += `</div>`;
-		html += `<div style="height:6px;background:#e5e7eb;border-radius:3px;"><div style="height:100%;width:${bar_pct}%;background:${color};border-radius:3px;"></div></div>`;
-		html += `<div style="font-size:10px;color:#9ca3af;margin-top:2px;">Budget: ${format_currency(cc.budget)} · Used: ${format_currency(cc.used)}</div>`;
-		html += "</div>";
-	});
-	html += "</div>";
-	return html;
-}
-
-function _cd_overrides(overrides) {
-	let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
-	html += '<thead><tr style="background:#fffbeb;">';
-	html += '<th style="padding:8px;text-align:left;border-bottom:2px solid #fcd34d;">PO</th>';
-	html += '<th style="padding:8px;text-align:left;border-bottom:2px solid #fcd34d;">Override By</th>';
-	html += '<th style="padding:8px;text-align:right;border-bottom:2px solid #fcd34d;">PO Amount</th>';
-	html += '<th style="padding:8px;text-align:right;border-bottom:2px solid #fcd34d;">Shortfall</th>';
-	html += '<th style="padding:8px;text-align:left;border-bottom:2px solid #fcd34d;">Reason</th>';
-	html += "</tr></thead><tbody>";
-
-	overrides.forEach((o) => {
-		html += `<tr style="cursor:pointer;" onclick="frappe.set_route('Form','Purchase Order','${_cd_esc(o.po_name)}')">`;
-		html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;"><a style="color:#3b82f6;font-weight:600;">${_cd_esc(o.po_name)}</a></td>`;
-		html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;">${_cd_esc(o.override_by)}</td>`;
-		html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;text-align:right;">${format_currency(o.po_amount)}</td>`;
-		html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#ef4444;font-weight:600;">${format_currency(o.shortfall)}</td>`;
-		html += `<td style="padding:8px;border-bottom:1px solid #f1f5f9;font-size:11px;color:#6b7280;">${_cd_esc(o.reason || "—")}</td>`;
-		html += "</tr>";
-	});
-	html += "</tbody></table>";
-	return html;
-}
-
-/* ══════════════════════════════════════════════════════════════════════
-   SECTION 5: QUALITY
-   ══════════════════════════════════════════════════════════════════════ */
-
-function _cd_quality(q) {
-	const qi = q.qi || {};
-	const total = qi.total || 0;
-	const accepted = qi.accepted || 0;
-	const rejected = qi.rejected || 0;
-	const on_hold = qi.on_hold || 0;
-	const pending = total - accepted - rejected - on_hold;
-	const reject_rate = total > 0 ? ((rejected / total) * 100).toFixed(1) : "0.0";
-
-	let html = "";
-
-	// QI summary cards
-	html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">';
-	html += _cd_mini_card("Total QI", total, "#374151");
-	html += _cd_mini_card("Accepted", accepted, "#10b981");
-	html += _cd_mini_card("Rejected", rejected, "#ef4444");
-	html += _cd_mini_card("On Hold", on_hold, "#f59e0b");
-	html += "</div>";
-
-	// Rejection rate
-	html += `<div style="padding:12px;background:${rejected > 0 ? '#fef2f2' : '#ecfdf5'};border-radius:8px;text-align:center;margin-bottom:12px;">`;
-	html += `<div style="font-size:11px;color:#6b7280;text-transform:uppercase;">Rejection Rate</div>`;
-	html += `<div style="font-size:28px;font-weight:800;color:${rejected > 0 ? '#ef4444' : '#10b981'};">${reject_rate}%</div>`;
-	html += "</div>";
-
-	// Material Inspection (Non-RM)
-	const mi = q.material_inspection || {};
-	const mi_total = Object.values(mi).reduce((s, v) => s + v, 0);
-	if (mi_total > 0) {
-		html += '<div style="font-weight:600;font-size:12px;color:#374151;margin-bottom:6px;">Material Inspection (Non-RM)</div>';
-		html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
-		const mi_colors = { Pending: "#f59e0b", Approved: "#10b981", "Partially Approved": "#3b82f6", Rejected: "#ef4444", "On Hold": "#6b7280", "Auto-Proceeded": "#9ca3af" };
-		Object.entries(mi).forEach(([status, cnt]) => {
-			const color = mi_colors[status] || "#6b7280";
-			html += `<span style="padding:4px 10px;background:${color}15;color:${color};border-radius:10px;font-size:11px;font-weight:600;">${status}: ${cnt}</span>`;
-		});
-		html += "</div>";
+	if (w.oldest.length) {
+		html += `<div class="ceo-d-card" style="padding:8px 16px 4px"><div class="ceo-d-sh" style="padding:8px 4px"><span class="ceo-d-b">${__("Waiting longest")}</span>
+			<span class="ceo-d-cap">${__("{0} oldest of {1}", [w.oldest.length, w.total])}</span></div>
+			${w.oldest.map((r) => `<a class="ceo-d-row" ${link({ dt: r.doctype, form: r.name })}>
+				<span class="ceo-d-b">${ceo_d_esc(r.name)}</span><span class="ceo-d-hs ceo-d-cap">${__(r.kind)}</span>
+				<span class="ceo-d-hs">${ceo_d_esc(r.party)}</span><span class="ceo-d-r ceo-d-hs">${r.value === null ? "—" : ceo_d_inr(r.value)}</span>
+				<span class="ceo-d-r"><span class="ceo-d-chip ${ceo_d_wait_chip(r.hours)}">${ceo_d_wait(r.hours)}</span></span></a>`).join("")}</div>`;
 	}
-
-	return html;
+	return ceo_d_section("w", __("Waiting for me"), cap, html);
 }
 
-function _cd_quality_metrics(q) {
-	const cats = q.by_category || [];
-
-	if (!cats.length) return '<div style="color:#9ca3af;padding:20px;text-align:center;">No quality data in this period</div>';
-
-	let html = '<div style="display:flex;flex-direction:column;gap:12px;">';
-	cats.forEach((c) => {
-		html += '<div style="padding:12px;background:#f8fafc;border-radius:8px;">';
-		html += `<div style="font-weight:600;font-size:13px;color:#374151;margin-bottom:8px;">${_cd_esc(c.item_category)} (${c.cnt} inspections)</div>`;
-		html += '<div style="display:flex;gap:16px;">';
-
-		if (c.avg_gcv) {
-			html += '<div style="flex:1;text-align:center;">';
-			html += '<div style="font-size:10px;color:#6b7280;text-transform:uppercase;">Avg GCV</div>';
-			html += `<div style="font-size:20px;font-weight:700;color:#3b82f6;">${c.avg_gcv}</div>`;
-			html += "</div>";
-		}
-
-		if (c.avg_moisture !== null && c.avg_moisture !== undefined) {
-			const m_color = c.avg_moisture > 12 ? "#ef4444" : c.avg_moisture > 8 ? "#f59e0b" : "#10b981";
-			html += '<div style="flex:1;text-align:center;">';
-			html += '<div style="font-size:10px;color:#6b7280;text-transform:uppercase;">Avg Moisture</div>';
-			html += `<div style="font-size:20px;font-weight:700;color:${m_color};">${c.avg_moisture}%</div>`;
-			html += "</div>";
-		}
-
-		html += "</div></div>";
-	});
-	html += "</div>";
-	return html;
+function ceo_d_purchases(p, f, link) {
+	const cap = __("{0} vs the same days of the previous period · approved POs", [__(f.date_range)]);
+	const bad = ceo_d_state(p);
+	if (bad) return ceo_d_section("p", __("Purchases"), cap, bad);
+	const delta = p.previous ? Math.round(((p.current - p.previous) / p.previous) * 100) : null;
+	const po_list = (extra) => ({ dt: "Purchase Order", filters: Object.assign({ docstatus: 1, company: f.company, transaction_date: ["between", [f.start, f.end]] }, extra) });
+	const cats = p.by_category.map((c) => {
+		const pct = p.current ? Math.round((c.value / p.current) * 100) : 0;
+		const cpct = p.count ? Math.round((c.count / p.count) * 100) : 0;
+		const extra = c.category === "Other" ? { ts_purchase_category: ["is", "not set"] } : { ts_purchase_category: c.category };
+		return `<a class="ceo-d-cat" ${link(po_list(extra))}>
+			<span class="ceo-d-sw" style="background:var(${CEO_D_CATS[c.category] || "--gray-400"})"></span>
+			<span><span class="ceo-d-b">${ceo_d_esc(__(c.category))}</span> <span class="ceo-d-cap">· ${ceo_d_pos(c.count)} ${__("({0}% of count)", [cpct])}</span></span>
+			<span class="ceo-d-r ceo-d-b">${ceo_d_inr(c.value)}</span>
+			<span class="ceo-d-track"><span class="ceo-d-fill" style="width:${pct}%;background:var(${CEO_D_CATS[c.category] || "--gray-400"})"></span></span></a>`;
+	}).join("");
+	const max = Math.max(...p.trend.map((m) => m.total), 1);
+	const order = ["Grain", "Coal", "Store", "Capex", "Other"];
+	const chart = `<div class="ceo-d-chart" role="img" aria-label="${__("Monthly approved PO value, last 6 months, stacked by category")}">
+		${p.trend.map((m) => `<div class="ceo-d-col"><span class="ceo-d-colv">${m.total ? ceo_d_inr(m.total) : "—"}</span>
+			<div class="ceo-d-stack" style="height:${m.total > 0 ? Math.max(3, Math.round((m.total / max) * 190)) : 0}px">${order.filter((k) => m.by[k]).map((k) =>
+				`<span style="display:block;height:${Math.max(2, Math.round((m.by[k] / max) * 190))}px;background:var(${CEO_D_CATS[k]})"></span>`).join("")}</div></div>`).join("")}</div>
+		<div class="ceo-d-xl">${p.trend.map((m) => `<span>${ceo_d_esc(m.label)}</span>`).join("")}</div>
+		<table class="ceo-d-sr"><tbody>${p.trend.map((m) => `<tr><th>${ceo_d_esc(m.label)}</th><td>${ceo_d_inr(m.total)}</td></tr>`).join("")}</tbody></table>
+		<div class="ceo-d-legend">${order.map((k) => `<span><span class="ceo-d-sw" style="background:var(${CEO_D_CATS[k]})"></span>${__(k)}</span>`).join("")}</div>`;
+	const sup = p.top_suppliers.length ? p.top_suppliers.map((s, i) => `<a class="ceo-d-srow" ${link(po_list({ supplier: s.supplier }))}>
+		<span class="ceo-d-cap">${i + 1}</span><span><span class="ceo-d-b">${ceo_d_esc(s.supplier_name)}</span> <span class="ceo-d-cap">· ${ceo_d_esc(__(s.category || "Other"))}</span></span>
+		<span class="ceo-d-cap ceo-d-hs">${ceo_d_pos(s.count)}</span><span class="ceo-d-r ceo-d-b">${ceo_d_inr(s.value)}</span></a>`).join("")
+		: `<div class="ceo-d-cap" style="padding:8px 4px">${__("No approved POs in this period.")}</div>`;
+	return ceo_d_section("p", __("Purchases"), cap, `<div class="ceo-d-purch">
+		<div class="ceo-d-card" style="display:flex;flex-direction:column;gap:12px">
+			<div style="display:flex;flex-direction:column;gap:4px"><span class="ceo-d-lbl">${__("PO value")}</span>
+			<span class="ceo-d-big">${ceo_d_inr(p.current)}</span>
+			<span class="ceo-d-cap" style="font-size:13px">${delta === null ? __("Nothing in the previous period to compare") :
+				`${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta) > 999 ? ">999" : Math.abs(delta)}% ${__("vs {0} ({1})", [ceo_d_dates(f.prev_start, f.prev_end), ceo_d_inr(p.previous)])}`} · ${ceo_d_pos(p.count)}</span></div>
+			<div>${cats || `<div class="ceo-d-cap">${__("No approved POs in this period.")}</div>`}</div></div>
+		<div class="ceo-d-card"><div class="ceo-d-sh" style="margin-bottom:8px"><span class="ceo-d-b">${__("Last 6 months")}</span>
+			<span class="ceo-d-cap">${__("this month to date")}</span></div>${chart}</div></div>
+		<div class="ceo-d-card" style="padding:8px 16px 4px"><div class="ceo-d-sh" style="padding:8px 4px"><span class="ceo-d-b">${__("Top suppliers")}</span>
+			<span class="ceo-d-cap">${__("by approved PO value in this period")}</span></div>${sup}</div>`);
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   CHART
-   ══════════════════════════════════════════════════════════════════════ */
-
-function _cd_render_chart(trend) {
-	const $el = document.getElementById("cd-monthly-chart");
-	if (!$el || !trend || !trend.length) {
-		if ($el) $el.innerHTML = '<div style="color:#9ca3af;padding:40px;text-align:center;">No trend data</div>';
-		return;
-	}
-
-	// Convert to lakhs for readable Y-axis
-	const values = trend.map((t) => Math.round((t.value || 0) / 100000));
-
-	new frappe.Chart($el, {
-		data: {
-			labels: trend.map((t) => t.month),
-			datasets: [{ name: "PO Value (₹ Lakhs)", values: values }],
-		},
-		type: "bar",
-		height: 220,
-		colors: ["#3b82f6"],
-		barOptions: { spaceRatio: 0.4 },
-		tooltipOptions: { formatTooltipY: (d) => "₹ " + d.toLocaleString("en-IN") + " L" },
-	});
+function ceo_d_budget(b, link) {
+	const cap = b && b.fiscal_year ? __("Fiscal year {0} · expense accounts only · same figures as the TS Budget Dashboard report", [ceo_d_esc(b.fiscal_year)]) : "";
+	const bad = ceo_d_state(b);
+	if (bad) return ceo_d_section("b", __("Budget vs actual"), cap, bad);
+	if (!b.rows.length) return ceo_d_section("b", __("Budget vs actual"), cap, `<div class="ceo-d-card ceo-d-cap">${__("No submitted budgets for this fiscal year.")}</div>`);
+	const s = b.summary;
+	const rows = b.rows.map((r) => `<a class="ceo-d-brow" ${link({ report: "TS Budget Dashboard", filters: Object.assign({ fiscal_year: b.fiscal_year, company: b.company }, r.cost_center ? { cost_center: r.cost_center } : {}) })}>
+		<span class="ceo-d-brow-h"><span class="ceo-d-b">${ceo_d_esc(r.label)}</span><span class="ceo-d-r">${r.pct}%</span></span>
+		<span class="ceo-d-track"><span class="ceo-d-fill ${r.pct > 100 ? "over" : ""}" style="width:${Math.min(Math.max(r.pct, 0), 100)}%"></span></span>
+		<span class="ceo-d-meta">${__("{0} of {1}", [ceo_d_inr(r.used), ceo_d_inr(r.budget)])}${r.pct > 100 ? ` <span class="ceo-d-chip d">${__("Over budget · {0} over", [ceo_d_inr(r.used - r.budget)])}</span>` : ""}</span></a>`).join("");
+	return ceo_d_section("b", __("Budget vs actual"), cap, `<div class="ceo-d-card" style="display:flex;flex-direction:column;gap:12px">
+		<div class="ceo-d-sum">
+			<div><div class="ceo-d-lbl">${__("Budget")}</div><div class="ceo-d-amt" style="font-size:20px">${ceo_d_inr(s.total_budget)}</div></div>
+			<div><div class="ceo-d-lbl">${__("Spent + committed")}</div><div class="ceo-d-amt" style="font-size:20px">${ceo_d_inr(s.total_committed + s.total_actual)} · ${s.overall_utilization}%</div></div>
+			<div><div class="ceo-d-lbl">${__("Over budget")}</div><div class="ceo-d-amt" style="font-size:20px${b.over_count ? ";color:var(--alert-text-danger)" : ""}">${
+				b.over_count ? __("{0} cost centres", [b.over_count]) : __("None")}</div></div></div>
+		<div class="ceo-d-bud">${rows}</div>${b.total_rows > b.rows.length ? `<div class="ceo-d-cap">${__("Showing {0} of {1} cost centres — open the TS Budget Dashboard report for all", [b.rows.length, b.total_rows])}</div>` : ""}</div>`);
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   HELPERS
-   ══════════════════════════════════════════════════════════════════════ */
-
-function _cd_card(title, content) {
-	return `<div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
-		<div style="font-weight:700;font-size:14px;color:#0f172a;margin-bottom:12px;">${title}</div>
-		${content}
-	</div>`;
+function ceo_d_stock(s, f, link) {
+	const cap = __("As of now · each item in its own unit");
+	if (!s || s.state !== "ok") return ceo_d_section("s", __("Stock"), cap, ceo_d_state(s, __("Not configured.")) || ceo_d_state(null));
+	const p = s.products;
+	const prod = p.state !== "ok"
+		? `<div class="ceo-d-card dash" style="min-height:88px"><div class="ceo-d-lbl">${__("Products")}</div><div class="ceo-d-cap" style="font-size:13px">${__("Product item list is not configured (TS Settings → Ethanol items).")}</div></div>`
+		: p.items.map((i) => `<a class="ceo-d-card ceo-d-tile" style="min-height:88px" ${link({ report: "Stock Balance", filters: { company: f.company, item_code: i.item_code } })}>
+			<span class="ceo-d-lbl">${ceo_d_esc(i.item_name)}</span><span class="ceo-d-n sm">${format_number(i.qty, null, i.qty % 1 ? 2 : 0)}</span>
+			<span class="ceo-d-cap">${ceo_d_esc(i.uom)}</span></a>`).join("");
+	return ceo_d_section("s", __("Stock"), cap, `<div class="ceo-d-stock">${prod}
+		<div class="ceo-d-card dash" style="min-height:88px"><div class="ceo-d-lbl">${__("Grain stock")}</div><div class="ceo-d-cap" style="font-size:13px">${__("Grain item list is not configured yet.")}</div></div></div>`);
 }
 
-function _cd_section(title, content, color) {
-	return `<div style="margin-top:20px;background:white;border:1px solid ${color}30;border-left:4px solid ${color};border-radius:10px;padding:16px;">
-		<div style="font-weight:700;font-size:15px;color:${color};margin-bottom:12px;">${title}</div>
-		${content}
-	</div>`;
-}
-
-function _cd_mini_card(label, value, color) {
-	return `<div style="padding:10px;background:${color}10;border-radius:8px;text-align:center;">
-		<div style="font-size:20px;font-weight:700;color:${color};">${value}</div>
-		<div style="font-size:10px;color:#6b7280;margin-top:2px;">${label}</div>
-	</div>`;
-}
-
-function _cd_format_time(min) {
-	if (!min || min <= 0) return "—";
-	const h = Math.floor(min / 60);
-	const m = Math.round(min % 60);
-	return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
-function _cd_format_wait(hours) {
-	if (!hours || hours <= 0) return "Just now";
-	if (hours < 1) return Math.round(hours * 60) + "m";
-	if (hours < 24) return Math.round(hours) + "h";
-	return Math.round(hours / 24) + "d " + Math.round(hours % 24) + "h";
-}
-
-function _cd_esc(v) {
-	return frappe.utils.escape_html(v || "");
+function ceo_d_plant(p, link) {
+	const cap = __("Live · open gate records — a vehicle may have left without an exit entry");
+	const bad = ceo_d_state(p);
+	if (bad) return ceo_d_section("t", __("Gate & receiving"), cap, bad);
+	const tile = (label, n, sub, t) => `<a class="ceo-d-card ceo-d-tile" style="min-height:88px" ${link(t)}>
+		<span class="ceo-d-lbl">${label}</span><span class="ceo-d-n sm">${ceo_d_num(n)}</span><span class="ceo-d-meta">${sub}</span></a>`;
+	return ceo_d_section("t", __("Gate & receiving"), cap, `<div class="ceo-d-g3" style="gap:12px">
+		${tile(__("Arrived in last 24 h"), p.arrived_24h, __("trucks not yet exited"), { dt: "TS Token", filters: {
+			entry_type: "Material", g2_link_time: [">=", p.arrived_since], status: ["not in", p.arrived_exclude] } })}
+		${tile(__("Grain awaiting PO link"), p.grain_waiting, p.grain_over_6h ? `<span class="ceo-d-chip w">${__("{0} over 6 h", [p.grain_over_6h])}</span>` : __("none over 6 h"), { page: "stores-receiving" })}
+		${tile(__("Left owing a receipt"), p.receipt_owed, p.receipt_owed === null ? "" : __("Grain {0} · Non-RM {1}", [p.receipt_owed_grain, p.receipt_owed_non_rm]), { page: "stores-receiving" })}
+	</div>`);
 }

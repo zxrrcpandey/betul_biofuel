@@ -1,5 +1,9 @@
 import frappe
-from frappe.utils import getdate, add_days, get_first_day, today, now_datetime, time_diff_in_seconds, flt
+from frappe.rate_limiter import rate_limit
+from frappe.utils import (
+	getdate, add_days, add_months, add_to_date, get_first_day, today, now_datetime,
+	time_diff_in_seconds, time_diff_in_hours, flt,
+)
 
 CEO_ROLES = ("CEO", "MD", "IT Head", "System Manager")
 
@@ -50,12 +54,19 @@ def get_ceo_dashboard(date_range="This Month", company=None, start=None, end=Non
 	today_date = getdate(today())
 	fiscal_year, fy_start, fy_end = _get_fiscal_year()
 
+	budget_overview = _get_budget_overview(fiscal_year, company, fy_start, fy_end)
+	kpis = _get_kpis(today_date, start_date, end_date, company)
+	# The tile uses the same per-cost-centre totals as the budget panel (and the
+	# TS Budget Dashboard report); a company-wide GL sum picks up cost centres
+	# that have no budget at all.
+	kpis["budget_pct"] = (budget_overview.get("totals") or {}).get("pct", 0)
+
 	return {
-		"kpis": _get_kpis(today_date, start_date, end_date, company, fiscal_year, fy_start, fy_end),
+		"kpis": kpis,
 		"action_items": _get_action_items(),
 		"daily_ops": _get_daily_ops(today_date),
 		"procurement": _get_procurement(start_date, end_date, company),
-		"budget_overview": _get_budget_overview(fiscal_year, company, fy_start, fy_end),
+		"budget_overview": budget_overview,
 		"quality": _get_quality(start_date, end_date),
 		"filters_applied": {
 			"date_range": date_range,
@@ -71,7 +82,7 @@ def get_ceo_dashboard(date_range="This Month", company=None, start=None, end=Non
 #  KPI CARDS
 # ═══════════════════════════════════════════════════════════════════════
 
-def _get_kpis(today_date, start_date, end_date, company, fiscal_year, fy_start, fy_end):
+def _get_kpis(today_date, start_date, end_date, company):
 	# Pending approvals for CEO/MD
 	pending_pos = frappe.db.sql("""
 		SELECT COUNT(*) as cnt FROM `tabPurchase Order`
@@ -129,34 +140,6 @@ def _get_kpis(today_date, start_date, end_date, company, fiscal_year, fy_start, 
 		{company_filter}
 	""", (start_date, end_date))[0][0] or 0
 
-	# Budget utilization (overall)
-	budget_pct = 0
-	if fiscal_year and fy_start and fy_end and company:
-		budget_data = frappe.db.sql("""
-			SELECT COALESCE(SUM(ba.budget_amount), 0) as total_budget
-			FROM `tabBudget Account` ba
-			JOIN `tabBudget` b ON ba.parent = b.name
-			WHERE b.fiscal_year = %s AND b.company = %s AND b.docstatus = 1
-		""", (fiscal_year, company))
-		total_budget = flt(budget_data[0][0]) if budget_data else 0
-
-		if total_budget > 0:
-			committed = frappe.db.sql("""
-				SELECT COALESCE(SUM(grand_total * (1 - IFNULL(per_billed, 0) / 100)), 0)
-				FROM `tabPurchase Order`
-				WHERE company = %s AND transaction_date BETWEEN %s AND %s
-				AND docstatus = 1 AND status NOT IN ('Closed', 'Cancelled')
-			""", (company, fy_start, fy_end))[0][0] or 0
-
-			actual = frappe.db.sql("""
-				SELECT COALESCE(SUM(debit) - SUM(credit), 0)
-				FROM `tabGL Entry`
-				WHERE company = %s AND posting_date BETWEEN %s AND %s
-				AND is_cancelled = 0 AND voucher_type IN ('Purchase Invoice', 'Journal Entry')
-			""", (company, fy_start, fy_end))[0][0] or 0
-
-			budget_pct = round(((flt(committed) + flt(actual)) / total_budget) * 100, 1)
-
 	# Stuck vehicles (CTL breaches)
 	settings = frappe.get_single("TS Settings")
 	threshold = settings.sla_threshold_minutes or 30
@@ -196,7 +179,6 @@ def _get_kpis(today_date, start_date, end_date, company, fiscal_year, fy_start, 
 		"vehicles_inside": vehicles_inside,
 		"avg_turnaround_min": round(flt(avg_ta), 0),
 		"po_value": flt(po_value),
-		"budget_pct": budget_pct,
 		"stuck_vehicles": stuck_count,
 		"pending_grn": pending_grn,
 	}
@@ -412,11 +394,13 @@ def _get_budget_overview(fiscal_year, company, fy_start, fy_end):
 	# Actual per CC
 	actual_map = {}
 	actual_rows = frappe.db.sql("""
-		SELECT cost_center, COALESCE(SUM(debit) - SUM(credit), 0) as actual
-		FROM `tabGL Entry`
-		WHERE company = %s AND posting_date BETWEEN %s AND %s
-		AND is_cancelled = 0 AND voucher_type IN ('Purchase Invoice', 'Journal Entry')
-		GROUP BY cost_center
+		SELECT gle.cost_center, COALESCE(SUM(gle.debit) - SUM(gle.credit), 0) as actual
+		FROM `tabGL Entry` gle
+		INNER JOIN `tabAccount` acc ON acc.name = gle.account
+		WHERE gle.company = %s AND gle.posting_date BETWEEN %s AND %s
+		AND gle.is_cancelled = 0 AND acc.root_type = 'Expense'
+		AND gle.voucher_type IN ('Purchase Invoice', 'Journal Entry', 'Stock Entry')
+		GROUP BY gle.cost_center
 	""", (company, fy_start, fy_end), as_dict=True)
 	for r in actual_rows:
 		actual_map[r.cost_center] = flt(r.actual)
@@ -475,6 +459,9 @@ def _get_budget_overview(fiscal_year, company, fy_start, fy_end):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _get_quality(start_date, end_date):
+	# `creation` is a datetime: compare against the day AFTER end_date, or a
+	# BETWEEN on bare dates drops everything created on the end day itself.
+	end_date = add_days(end_date, 1)
 	# QI summary
 	qi = frappe.db.sql("""
 		SELECT
@@ -483,7 +470,7 @@ def _get_quality(start_date, end_date):
 			SUM(CASE WHEN decision = 'Rejected' THEN 1 ELSE 0 END) as rejected,
 			SUM(CASE WHEN decision = 'Hold' THEN 1 ELSE 0 END) as on_hold
 		FROM `tabTS Quality Inspection`
-		WHERE creation BETWEEN %s AND %s
+		WHERE creation >= %s AND creation < %s
 	""", (start_date, end_date), as_dict=True)
 	qi_data = qi[0] if qi else {"total": 0, "accepted": 0, "rejected": 0, "on_hold": 0}
 
@@ -494,7 +481,7 @@ def _get_quality(start_date, end_date):
 			ROUND(AVG(actual_moisture_percent), 2) as avg_moisture,
 			COUNT(*) as cnt
 		FROM `tabTS Quality Inspection`
-		WHERE creation BETWEEN %s AND %s
+		WHERE creation >= %s AND creation < %s
 		AND item_category IN ('Coal', 'Grain')
 		GROUP BY item_category
 	""", (start_date, end_date), as_dict=True)
@@ -503,7 +490,7 @@ def _get_quality(start_date, end_date):
 	mi = frappe.db.sql("""
 		SELECT status, COUNT(*) as cnt
 		FROM `tabTS Material Inspection`
-		WHERE creation BETWEEN %s AND %s
+		WHERE creation >= %s AND creation < %s
 		GROUP BY status
 	""", (start_date, end_date), as_dict=True)
 
@@ -515,4 +502,313 @@ def _get_quality(start_date, end_date):
 		"qi": qi_data,
 		"by_category": by_category,
 		"material_inspection": mi_data,
+	}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  v2.64.0 — REDESIGNED PAGE: get_ceo_overview
+#  The /app/ceo-dashboard page reads this. get_ceo_dashboard above stays
+#  because the CEO Wall Display (ceo_wall_display.js) reads its payload.
+#  Every PO / MR read here is raw SQL, so each one carries the
+#  confidential_sql_clause itself (L297) — the list-view PQC never runs.
+# ═══════════════════════════════════════════════════════════════════════
+
+_OV_RANGES = ("Today", "This Week", "This Month", "This Quarter", "This Year")
+_OV_CATEGORIES = ("Grain", "Coal", "Store", "Capex")
+
+
+@frappe.whitelist(methods=["POST"])
+@rate_limit(limit=60, seconds=60)
+def get_ceo_overview(date_range="This Month", company=None):
+	"""The CEO dashboard: what waits for the viewer, purchases, budget,
+	product stock and the gate — each section fails on its own."""
+	_check_role()
+	from trustbit_ethanol import __version__
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import user_sees_confidential
+	from trustbit_ethanol.ts_gate_entry.ts_exec_api import _log_once
+
+	if date_range not in _OV_RANGES:
+		frappe.throw(frappe._("Invalid period."), frappe.ValidationError)
+	company = company or frappe.defaults.get_global_default("company")
+	# isinstance: a JSON body can send a dict, which db.exists reads as filters.
+	if not isinstance(company, str) or not frappe.db.exists("Company", company):
+		frappe.throw(frappe._("Invalid company."), frappe.ValidationError)
+
+	now = now_datetime()
+	start, end, prev_start, prev_end = _ov_window(date_range, company)
+	out = {
+		"filters": {
+			"date_range": date_range, "company": company,
+			"start": str(start), "end": str(end),
+			"prev_start": str(prev_start), "prev_end": str(prev_end),
+		},
+		"as_of": str(now),
+		"version": __version__,
+		"confidential_scope": "full" if user_sees_confidential("Purchase Order") else "partial",
+	}
+	sections = (
+		("waiting", lambda: _ov_waiting(now)),
+		("stuck", lambda: _ov_stuck(now)),
+		("purchases", lambda: _ov_purchases(company, start, end, prev_start, prev_end)),
+		("budget", lambda: _ov_budget(company)),
+		("stock", lambda: _ov_stock(company)),
+		("plant", lambda: _ov_plant(now)),
+	)
+	for key, build in sections:
+		try:
+			out[key] = build()
+		except Exception:
+			_log_once("ceo_ov:" + key, "CEO dashboard section failed", frappe.get_traceback())
+			frappe.clear_messages()
+			out[key] = {"state": "error"}
+	return out
+
+
+def _ov_window(date_range, company):
+	"""(start, end, prev_start, prev_end): the period to date, and the same
+	number of days into the previous period. 'This Year' is the fiscal year."""
+	t = getdate(today())
+	if date_range == "Today":
+		return t, t, add_days(t, -1), add_days(t, -1)
+	if date_range == "This Week":
+		s = add_days(t, -t.weekday())
+		return s, t, add_days(s, -7), add_days(t, -7)
+	if date_range == "This Quarter":
+		s = getdate(f"{t.year}-{((t.month - 1) // 3) * 3 + 1:02d}-01")
+		ps = add_months(s, -3)
+	elif date_range == "This Year":
+		from trustbit_ethanol.ts_gate_entry.ts_budget import _get_fiscal_year_dates, _resolve_fiscal_year
+		fy = _resolve_fiscal_year(company)
+		s = getdate(_get_fiscal_year_dates(fy)[0]) if fy else getdate(f"{t.year}-01-01")
+		ps = add_months(s, -12)
+	else:
+		s = get_first_day(t)
+		ps = add_months(s, -1)
+	return s, t, ps, min(add_days(ps, (t - s).days), add_days(s, -1))
+
+
+def _ov_statuses(doctype):
+	"""Pending statuses the viewer approves, from ROLE_STATUS_MAP (the inboxes'
+	vocabulary). IT Head / System Manager without CEO or MD see both queues."""
+	from trustbit_ethanol.ts_gate_entry.ts_my_approvals_api import ROLE_STATUS_MAP
+
+	roles = (set(frappe.get_roles()) & {"CEO", "MD"}) or {"CEO", "MD"}
+	cfg = ROLE_STATUS_MAP[doctype]
+	statuses = {s for r in roles for s in cfg["roles"].get(r, []) if s.startswith("Pending")}
+	return cfg["field"], tuple(sorted(statuses))
+
+
+def _ov_queue(doctype, kind, sql_from, value_sql, party_sql, params, now, filters):
+	agg = frappe.db.sql(f"SELECT COUNT(*), SUM({value_sql}), MIN(x.modified) {sql_from}", params)[0]
+	rows = frappe.db.sql(f"""
+		SELECT x.name, x.modified, {value_sql} AS value, {party_sql} AS party
+		{sql_from} ORDER BY x.modified ASC LIMIT 5
+	""", params, as_dict=True)
+	return {
+		"doctype": doctype,
+		"count": agg[0] or 0,
+		"value": flt(agg[1]) if agg[1] is not None else None,
+		"oldest_hours": round(time_diff_in_hours(now, agg[2]), 1) if agg[2] else None,
+		"filters": filters,
+		"rows": [{
+			"doctype": doctype, "kind": kind, "name": r.name, "party": r.party or "",
+			"value": flt(r.value) if r.value is not None else None,
+			"hours": round(time_diff_in_hours(now, r.modified), 1),
+		} for r in rows],
+	}
+
+
+def _ov_waiting(now):
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause as conf
+
+	po_field, po_st = _ov_statuses("Purchase Order")
+	mr_field, mr_st = _ov_statuses("Material Request")
+	overrides = _ov_queue(
+		"TS Budget Override Approval", "Budget override",
+		f"""FROM `tabTS Budget Override Approval` x
+		LEFT JOIN `tabPurchase Order` po ON x.reference_doctype = 'Purchase Order' AND po.name = x.reference_name
+		LEFT JOIN `tabMaterial Request` mr ON x.reference_doctype = 'Material Request' AND mr.name = x.reference_name
+		WHERE x.docstatus = 1 AND x.status = 'Pending CEO' {conf('po')} {conf('mr', doctype='Material Request')}""",
+		"x.source_amount", "CONCAT_WS(' · ', x.reference_name, x.cost_center)", {}, now,
+		{"docstatus": 1, "status": "Pending CEO"},
+	)
+	pos = _ov_queue(
+		"Purchase Order", "Purchase order",
+		f"FROM `tabPurchase Order` x WHERE x.docstatus = 0 AND x.ts_approval_status IN %(st)s {conf('x')}",
+		"x.base_grand_total", "CONCAT_WS(' · ', TRIM(x.supplier_name), x.ts_purchase_category)", {"st": po_st}, now,
+		{"docstatus": 0, po_field: ["in", list(po_st)]},
+	)
+	mrs = _ov_queue(
+		"Material Request", "Material request",
+		f"""FROM `tabMaterial Request` x WHERE x.docstatus = 0 AND x.ts_mr_status IN %(st)s
+		{conf('x', doctype='Material Request')}""",
+		"NULL", "x.cost_center", {"st": mr_st}, now,
+		{"docstatus": 0, mr_field: ["in", list(mr_st)]},
+	)
+	queues = (overrides, pos, mrs)
+	oldest = sorted((r for q in queues for r in q.pop("rows")), key=lambda r: -r["hours"])[:5]
+	return {
+		"state": "ok", "overrides": overrides, "pos": pos, "mrs": mrs,
+		"total": sum(q["count"] for q in queues), "oldest": oldest,
+	}
+
+
+def _ov_stuck(now):
+	"""Documents in no one's queue: parked at Pending Budget Override with no
+	live override, and stages no approver role maps to (reused from the exec
+	app so both screens agree)."""
+	from trustbit_ethanol.ts_gate_entry.ts_exec_api import _card_approvals, _orphaned_and_hidden
+
+	noun = {"Purchase Order": ("purchase order", "purchase orders"),
+			"Material Request": ("material request", "material requests")}
+	field = {"Purchase Order": "ts_approval_status", "Material Request": "ts_mr_status"}
+	def label(dt, n):
+		return f"{n} {noun[dt][0]} waits" if n == 1 else f"{n} {noun[dt][1]} wait"
+
+	orphaned, approvals = _orphaned_and_hidden(now), _card_approvals(now)
+	items = []
+	for dt in ("Purchase Order", "Material Request"):
+		docs = [o for o in orphaned["orphaned"]["items"] if o["doctype"] == dt]
+		if docs:
+			items.append({
+				"doctype": dt, "count": len(docs), "days": max(o["days"] for o in docs),
+				"text": f"{label(dt, len(docs))} at Pending Budget Override, but no override is pending",
+				"filters": {"name": ["in", [o["name"] for o in docs]]},
+			})
+	for u in approvals["unrouted"]["items"]:
+		if u.get("companion"):
+			continue  # Pending Budget Override with a live override is in the overrides tile
+		items.append({
+			"doctype": u["doctype"], "count": u["count"], "days": u["days"],
+			"text": f"{label(u['doctype'], u['count'])} at "
+					f"{u['stage'] or '(no status)'} — no approver is set for this step",
+			"filters": {"docstatus": 0, field[u["doctype"]]: u["stage"] or ["is", "not set"]},
+		})
+	return {
+		"state": "ok", "count": sum(i["count"] for i in items), "items": items,
+		"partial": bool(orphaned["partial"] or approvals["partial"]),
+	}
+
+
+def _ov_purchases(company, start, end, prev_start, prev_end):
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause as conf
+
+	where = f"po.docstatus = 1 AND po.company = %(co)s {conf('po')}"
+	cat = "IFNULL(NULLIF(po.ts_purchase_category, ''), 'Other')"
+
+	def by_category(a, b):
+		return frappe.db.sql(f"""
+			SELECT {cat} AS category, COUNT(*) AS count, SUM(po.base_grand_total) AS value
+			FROM `tabPurchase Order` po
+			WHERE {where} AND po.transaction_date BETWEEN %(a)s AND %(b)s
+			GROUP BY category
+		""", {"co": company, "a": a, "b": b}, as_dict=True)
+
+	current = by_category(start, end)
+	previous = by_category(prev_start, prev_end)
+	order = {c: i for i, c in enumerate(_OV_CATEGORIES)}
+	current.sort(key=lambda r: (order.get(r.category, 99), r.category))
+
+	m0 = add_months(get_first_day(getdate(today())), -5)
+	months = [add_months(m0, i) for i in range(6)]
+	trend = {m.strftime("%Y-%m"): {"label": m.strftime("%b"), "total": 0.0, "by": {}} for m in months}
+	for r in frappe.db.sql(f"""
+		SELECT DATE_FORMAT(po.transaction_date, '%%Y-%%m') AS month, {cat} AS category,
+			SUM(po.base_grand_total) AS value
+		FROM `tabPurchase Order` po
+		WHERE {where} AND po.transaction_date >= %(m0)s
+		GROUP BY month, category
+	""", {"co": company, "m0": m0}, as_dict=True):
+		if r.month in trend:
+			trend[r.month]["by"][r.category] = flt(r.value)
+			trend[r.month]["total"] += flt(r.value)
+
+	suppliers = frappe.db.sql(f"""
+		SELECT po.supplier, MAX(TRIM(po.supplier_name)) AS supplier_name, COUNT(*) AS count,
+			SUM(po.base_grand_total) AS value,
+			SUBSTRING_INDEX(GROUP_CONCAT({cat} ORDER BY po.base_grand_total DESC), ',', 1) AS category
+		FROM `tabPurchase Order` po
+		WHERE {where} AND po.transaction_date BETWEEN %(a)s AND %(b)s
+		GROUP BY po.supplier ORDER BY value DESC LIMIT 5
+	""", {"co": company, "a": start, "b": end}, as_dict=True)
+
+	return {
+		"state": "ok",
+		"current": sum(flt(r.value) for r in current),
+		"previous": sum(flt(r.value) for r in previous),
+		"count": sum(r["count"] for r in current),
+		"by_category": [{"category": r.category, "count": r["count"], "value": flt(r.value)} for r in current],
+		"trend": list(trend.values()),
+		"top_suppliers": [{
+			"supplier": s.supplier, "supplier_name": s.supplier_name, "category": s.category,
+			"count": s["count"], "value": flt(s.value),
+		} for s in suppliers],
+	}
+
+
+def _ov_budget(company):
+	"""Same figures as the TS Budget Dashboard report (expense accounts only).
+	That function has no confidentiality filter, so a viewer who cannot see
+	confidential POs gets nothing rather than leaked committed values."""
+	from trustbit_ethanol.ts_gate_entry.ts_budget import _resolve_fiscal_year, get_budget_dashboard
+	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import user_sees_confidential
+
+	if not user_sees_confidential("Purchase Order"):
+		return {"state": "restricted"}
+	fy = _resolve_fiscal_year(company)
+	d = get_budget_dashboard(fy, company)
+	rows = [{
+		# A Budget can be against a Project, leaving cost_center empty.
+		"cost_center": r["cost_center"],
+		"label": (r["cost_center"] or frappe._("(no cost centre)")).rsplit(" - ", 1)[0],
+		"budget": r["annual_budget"],
+		"used": r["committed"] + r["actual_spent"],
+		"pct": r["utilization_pct"],
+	} for r in d.get("data") or []]
+	return {
+		"state": "ok", "fiscal_year": fy, "company": company, "summary": d.get("summary") or {},
+		"rows": rows[:24], "total_rows": len(rows),
+		"over_count": len([r for r in rows if r["pct"] > 100]),
+	}
+
+
+def _ov_stock(company):
+	"""Product stock per item in its own UOM — never summed across items."""
+	from trustbit_ethanol.ts_gate_entry.ts_dashboard_omc_supply import _resolve_ethanol_items
+
+	codes, source = _resolve_ethanol_items()
+	if not codes:
+		return {"state": "ok", "products": {"state": "unconfigured", "source": source, "items": []}}
+	items = frappe.db.sql("""
+		SELECT i.name AS item_code, i.item_name, i.stock_uom AS uom, COALESCE(SUM(b.actual_qty), 0) AS qty
+		FROM `tabItem` i
+		LEFT JOIN `tabBin` b ON b.item_code = i.name
+			AND b.warehouse IN (SELECT w.name FROM `tabWarehouse` w WHERE w.company = %(co)s)
+		WHERE i.name IN %(codes)s
+		GROUP BY i.name, i.item_name, i.stock_uom
+		ORDER BY qty DESC LIMIT 12
+	""", {"co": company, "codes": tuple(codes)}, as_dict=True)
+	for i in items:
+		i.qty = flt(i.qty, 2)
+	return {"state": "ok", "products": {"state": "ok", "source": source, "items": items}}
+
+
+def _ov_plant(now):
+	"""Gate numbers from the exec app's gate card, so both screens agree."""
+	from trustbit_ethanol.ts_gate_entry.ts_exec_api import _TOKEN_EXITED, _card_gate
+
+	g = _card_gate(now)
+	ip, gh, go = g.get("in_plant"), g.get("grain_held"), g.get("grn_overdue")
+	return {
+		"state": "ok" if (ip or gh or go) else "error",
+		"arrived_24h": ip["arrived_today"] if ip else None,
+		# No microseconds: the list filter's date check rejects them.
+		"arrived_since": add_to_date(now, hours=-24).strftime("%Y-%m-%d %H:%M:%S"),
+		"arrived_exclude": list(_TOKEN_EXITED),
+		# *_all: the whole queue — count/over_6h stop at the exec list cap of 50.
+		"grain_waiting": gh.get("count_all", gh["count"]) if gh else None,
+		"grain_over_6h": gh.get("over_6h_all", gh["over_6h"]) if gh else None,
+		"receipt_owed": go["count"] if go else None,
+		"receipt_owed_grain": go["grain"] if go else None,
+		"receipt_owed_non_rm": go["non_rm"] if go else None,
 	}

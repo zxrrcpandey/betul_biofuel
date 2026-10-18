@@ -877,6 +877,12 @@ def _card_gate(as_of):
             })
         waiting = [i for i in items if not i["departed"]]
         departed = [i for i in items if i["departed"]]
+        # Same counts over the WHOLE queue (CEO dashboard): prod 18 Oct had
+        # 220 waiting while the capped `count` above said 50 (L441).
+        still = [h for h in held
+                 if (h.get("status") or "") not in ("Plant Exited", "Campus Exited")]
+        over_6h_all = len([h for h in still if h.get("tare_time") and time_diff_in_hours(
+            as_of, h.get("tare_time")) > _GRN_OVERDUE_HOURS])
         card["grain_held"] = {
             # `count` is now STILL-AT-THE-GATE only — the number the label claims.
             "count": len(waiting),
@@ -885,6 +891,8 @@ def _card_gate(as_of):
             # Reported separately rather than folded into the hold count.
             "departed_owing_grn": len(departed),
             "truncated": truncated,
+            "count_all": len(still),
+            "over_6h_all": over_6h_all,
             "items": items,
             # get_section_g does NOT read this flag, so a hold could be shown
             # that is not actually being enforced.
