@@ -531,7 +531,7 @@ def get_ceo_overview(date_range="This Month", company=None):
 		frappe.throw(frappe._("Invalid period."), frappe.ValidationError)
 	company = company or frappe.defaults.get_global_default("company")
 	# isinstance: a JSON body can send a dict, which db.exists reads as filters.
-	if not isinstance(company, str) or not frappe.db.exists("Company", company):
+	if not isinstance(company, str) or not frappe.db.exists("Company", {"name": company}):
 		frappe.throw(frappe._("Invalid company."), frappe.ValidationError)
 
 	now = now_datetime()
@@ -587,22 +587,23 @@ def _ov_window(date_range, company):
 	return s, t, ps, min(add_days(ps, (t - s).days), add_days(s, -1))
 
 
-def _ov_statuses(doctype):
+def _ov_statuses(doctype, roles=None):
 	"""Pending statuses the viewer approves, from ROLE_STATUS_MAP (the inboxes'
-	vocabulary). IT Head / System Manager without CEO or MD see both queues."""
+	vocabulary). IT Head / System Manager without CEO or MD see both queues.
+	roles: a fixed queue instead (the MD page always shows the MD's)."""
 	from trustbit_ethanol.ts_gate_entry.ts_my_approvals_api import ROLE_STATUS_MAP
 
-	roles = (set(frappe.get_roles()) & {"CEO", "MD"}) or {"CEO", "MD"}
+	roles = set(roles or ()) or (set(frappe.get_roles()) & {"CEO", "MD"}) or {"CEO", "MD"}
 	cfg = ROLE_STATUS_MAP[doctype]
 	statuses = {s for r in roles for s in cfg["roles"].get(r, []) if s.startswith("Pending")}
 	return cfg["field"], tuple(sorted(statuses))
 
 
-def _ov_queue(doctype, kind, sql_from, value_sql, party_sql, params, now, filters):
+def _ov_queue(doctype, kind, sql_from, value_sql, party_sql, params, now, filters, limit=5):
 	agg = frappe.db.sql(f"SELECT COUNT(*), SUM({value_sql}), MIN(x.modified) {sql_from}", params)[0]
 	rows = frappe.db.sql(f"""
 		SELECT x.name, x.modified, {value_sql} AS value, {party_sql} AS party
-		{sql_from} ORDER BY x.modified ASC LIMIT 5
+		{sql_from} ORDER BY x.modified ASC LIMIT {int(limit)}
 	""", params, as_dict=True)
 	return {
 		"doctype": doctype,
@@ -618,39 +619,38 @@ def _ov_queue(doctype, kind, sql_from, value_sql, party_sql, params, now, filter
 	}
 
 
-def _ov_waiting(now):
+def _ov_waiting(now, roles=None, limit=5):
 	from trustbit_ethanol.ts_gate_entry.ts_confidential_po import confidential_sql_clause as conf
 
-	po_field, po_st = _ov_statuses("Purchase Order")
-	mr_field, mr_st = _ov_statuses("Material Request")
-	overrides = _ov_queue(
-		"TS Budget Override Approval", "Budget override",
-		f"""FROM `tabTS Budget Override Approval` x
-		LEFT JOIN `tabPurchase Order` po ON x.reference_doctype = 'Purchase Order' AND po.name = x.reference_name
-		LEFT JOIN `tabMaterial Request` mr ON x.reference_doctype = 'Material Request' AND mr.name = x.reference_name
-		WHERE x.docstatus = 1 AND x.status = 'Pending CEO' {conf('po')} {conf('mr', doctype='Material Request')}""",
-		"x.source_amount", "CONCAT_WS(' · ', x.reference_name, x.cost_center)", {}, now,
-		{"docstatus": 1, "status": "Pending CEO"},
-	)
-	pos = _ov_queue(
+	po_field, po_st = _ov_statuses("Purchase Order", roles)
+	mr_field, mr_st = _ov_statuses("Material Request", roles)
+	out = {}
+	if roles is None or "CEO" in roles:  # budget overrides are the CEO's queue only
+		out["overrides"] = _ov_queue(
+			"TS Budget Override Approval", "Budget override",
+			f"""FROM `tabTS Budget Override Approval` x
+			LEFT JOIN `tabPurchase Order` po ON x.reference_doctype = 'Purchase Order' AND po.name = x.reference_name
+			LEFT JOIN `tabMaterial Request` mr ON x.reference_doctype = 'Material Request' AND mr.name = x.reference_name
+			WHERE x.docstatus = 1 AND x.status = 'Pending CEO' {conf('po')} {conf('mr', doctype='Material Request')}""",
+			"x.source_amount", "CONCAT_WS(' · ', x.reference_name, x.cost_center)", {}, now,
+			{"docstatus": 1, "status": "Pending CEO"}, limit,
+		)
+	out["pos"] = _ov_queue(
 		"Purchase Order", "Purchase order",
 		f"FROM `tabPurchase Order` x WHERE x.docstatus = 0 AND x.ts_approval_status IN %(st)s {conf('x')}",
 		"x.base_grand_total", "CONCAT_WS(' · ', TRIM(x.supplier_name), x.ts_purchase_category)", {"st": po_st}, now,
-		{"docstatus": 0, po_field: ["in", list(po_st)]},
+		{"docstatus": 0, po_field: ["in", list(po_st)]}, limit,
 	)
-	mrs = _ov_queue(
+	out["mrs"] = _ov_queue(
 		"Material Request", "Material request",
 		f"""FROM `tabMaterial Request` x WHERE x.docstatus = 0 AND x.ts_mr_status IN %(st)s
 		{conf('x', doctype='Material Request')}""",
 		"NULL", "x.cost_center", {"st": mr_st}, now,
-		{"docstatus": 0, mr_field: ["in", list(mr_st)]},
+		{"docstatus": 0, mr_field: ["in", list(mr_st)]}, limit,
 	)
-	queues = (overrides, pos, mrs)
-	oldest = sorted((r for q in queues for r in q.pop("rows")), key=lambda r: -r["hours"])[:5]
-	return {
-		"state": "ok", "overrides": overrides, "pos": pos, "mrs": mrs,
-		"total": sum(q["count"] for q in queues), "oldest": oldest,
-	}
+	queues = list(out.values())
+	oldest = sorted((r for q in queues for r in q.pop("rows")), key=lambda r: -r["hours"])[:limit]
+	return dict(out, state="ok", total=sum(q["count"] for q in queues), oldest=oldest)
 
 
 def _ov_stuck(now):
@@ -738,6 +738,7 @@ def _ov_purchases(company, start, end, prev_start, prev_end):
 		"previous": sum(flt(r.value) for r in previous),
 		"count": sum(r["count"] for r in current),
 		"by_category": [{"category": r.category, "count": r["count"], "value": flt(r.value)} for r in current],
+		"previous_by_category": {r.category: flt(r.value) for r in previous},
 		"trend": list(trend.values()),
 		"top_suppliers": [{
 			"supplier": s.supplier, "supplier_name": s.supplier_name, "category": s.category,
