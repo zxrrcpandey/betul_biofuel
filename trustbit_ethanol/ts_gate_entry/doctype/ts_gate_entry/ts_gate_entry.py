@@ -462,7 +462,6 @@ class TSGateEntry(Document):
 		self.customer_name = si.customer_name
 
 	def _create_material_inspection(self):
-		"""Auto-create material inspection for Non-RM gate entries."""
-		if self.material_flow != "Raw Material":
-			from trustbit_ethanol.ts_gate_entry.doctype.ts_material_inspection.ts_material_inspection import create_material_inspection
-			create_material_inspection(self.name)
+		"""Auto-create material inspection. v2.67.0: the item groups decide, not material_flow."""
+		from trustbit_ethanol.ts_gate_entry.doctype.ts_material_inspection.ts_material_inspection import create_material_inspection
+		create_material_inspection(self.name)

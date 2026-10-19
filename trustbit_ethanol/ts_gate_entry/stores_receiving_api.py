@@ -25,11 +25,11 @@ MUTATE_ROLES = {
 	"IT Head", "System Manager", "Administrator",
 }
 
-# Inspection states that allow GRN creation. "Auto-Proceeded" and "Partially
-# Approved" are EXCLUDED — Auto-Proceeded bypasses human QA (SLA timer), and
-# Partially Approved means SOME items rejected (we don't have per-item filter
-# yet, so block the whole batch for safety).
-INSPECTION_PASS_STATES = {"Approved", "Not Required"}
+# v2.67.0 — inspection states that allow the GRN while the requester-verification
+# gate (TS Settings.block_grn_on_inspection_pending) is on. Partially Approved
+# receives with the rejected part split off (_fill_from_inspection); Auto-Proceeded
+# means nobody verified within 2 working days, so Stores may go ahead.
+GRN_ALLOWED_STATES = {"Not Required", "Approved", "Partially Approved", "Auto-Proceeded"}
 
 # Token flow constants
 STATUS_TARE_WEIGHED = "Tare Weighed"
@@ -211,7 +211,75 @@ def _get_inspection_gate_enabled():
 def _inspection_blocks_grn(insp_label, gate_enabled):
 	"""v2.59.0 — a Rejected inspection blocks the GRN whatever the setting says,
 	as TS Token.create_grn already does; other states only while the gate is on."""
-	return insp_label == "Rejected" or (gate_enabled and insp_label not in INSPECTION_PASS_STATES)
+	return insp_label == "Rejected" or (gate_enabled and insp_label not in GRN_ALLOWED_STATES)
+
+
+def _inspection_gate(token_name):
+	"""v2.67.0 — the one GRN gate of all three builders (Section A, Section B and
+	the Token form). Throws when the token's inspection blocks the GRN; returns
+	the inspection and whether its quantities must be split into the GRN."""
+	gate_enabled = _get_inspection_gate_enabled()
+	label = _get_inspection_status_label(token_name)
+	insp = _get_inspection_doc(token_name) if label not in ("Not Required", "Error") else None
+	if insp:
+		# L362: read the status through the lock so a decision being saved now counts.
+		label = frappe.db.get_value("TS Material Inspection", insp.name, "status", for_update=True) or label
+
+	if _inspection_blocks_grn(label, gate_enabled):
+		esc = frappe.utils.escape_html
+		name = esc(insp.name) if insp else ""
+		who = esc(insp.requester_name or _("the requester")) if insp else ""
+		if label == "Rejected":
+			msg = _("GRN not allowed — the items were rejected in Material Inspection {0}.").format(name)
+		elif label == "On Hold":
+			msg = _("GRN not allowed — {0} has put items on hold in Material Inspection {1}. "
+				"Ask them to finish the verification.").format(who, name)
+		elif label == "Pending Inspection":
+			from trustbit_ethanol.ts_gate_entry.doctype.ts_material_inspection.ts_material_inspection import (
+				grn_allowed_after,
+			)
+			msg = _("GRN not allowed yet — {0} has not verified the items (Material Inspection {1}). "
+				"If they are still not verified, Stores may create the GRN after {2}.").format(
+				who, name, frappe.utils.format_datetime(grn_allowed_after(insp.created_time, insp.purchase_order)))
+		else:
+			msg = _("GRN blocked — the Material Inspection status '{0}' could not be confirmed. "
+				"Contact IT Head.").format(esc(label))
+		frappe.throw(msg)
+
+	return {"inspection": insp.name if insp else None, "label": label, "enabled": gate_enabled,
+		"fill": bool(gate_enabled and insp and label in ("Approved", "Partially Approved"))}
+
+
+def _fill_from_inspection(pr_items, gate, company):
+	"""v2.67.0 — split each inspected item's GRN rows into accepted + rejected at
+	the share the requester rejected (sum rejected ÷ sum received on the inspection).
+	Section B rows carry the declared qty, so the split is exact; weighed rows get
+	the same share of the weighed qty. Items not on the inspection are untouched."""
+	if not gate or not gate["fill"]:
+		return
+	share = {}
+	for r in frappe.get_all("TS Material Inspection Item", filters={"parent": gate["inspection"]},
+			fields=["item_code", "received_qty", "rejected_qty"]):
+		got, rej = share.get(r.item_code, (0, 0))
+		share[r.item_code] = (got + flt(r.received_qty), rej + flt(r.rejected_qty))
+
+	p = frappe.get_precision("Purchase Receipt Item", "qty")
+	rejected_wh = None
+	for row in pr_items:
+		got, rej = share.get(row["item_code"], (0, 0))
+		if not got or not rej:
+			continue
+		if not rejected_wh:
+			rejected_wh = frappe.db.get_value("Warehouse", {"company": company, "is_rejected_warehouse": 1,
+				"is_group": 0, "disabled": 0}, "name", order_by="name asc")
+			if not rejected_wh:
+				frappe.throw(_("Material Inspection {0} rejected part of item {1}, but company {2} has no "
+					"rejection warehouse. Ask IT Head to tick 'Is Rejected Warehouse' on the company's "
+					"rejection warehouse.").format(gate["inspection"], row["item_code"], company))
+		received = flt(row["qty"], p)
+		rejected = flt(received * min(rej / got, 1), p)
+		row.update({"received_qty": received, "rejected_qty": rejected,
+			"qty": flt(received - rejected, p), "rejected_warehouse": rejected_wh})
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -413,9 +481,9 @@ def _classify_receivable(tok, ge, insp_label):
 		from trustbit_ethanol.ts_gate_entry.ts_grain_defer import pre_grn_exit_released
 		_released = pre_grn_exit_released(tok["name"])
 	if status == STATUS_TARE_WEIGHED or _released:
-		# Inspection gate applies only to non-Raw-Material purpose in path A.
-		if tok.get("purpose") != "Raw Material" and _inspection_blocks_grn(insp_label, gate_enabled):
-			return no("Inspection is '{0}' — needs Quality approval before receiving.".format(insp_label))
+		# v2.67.0 — any token with an inspection is gated (exemption is by item group).
+		if _inspection_blocks_grn(insp_label, gate_enabled):
+			return no("Inspection is '{0}' — waiting for the requester's verification.".format(insp_label))
 		if _released:
 			return {"receivable": True, "grn_path": "A",
 					"reason": "Released to exit before GRN — receive via Grain section (PO link pending)."}
@@ -428,7 +496,7 @@ def _classify_receivable(tok, ge, insp_label):
 		if status in _TERMINAL_TOKEN_STATUSES and not _released_non_rm_exit(tok):
 			return no("Token status '{0}' does not allow GRN creation.".format(status))
 		if _inspection_blocks_grn(insp_label, gate_enabled):
-			return no("Inspection is '{0}' — needs Quality approval before receiving.".format(insp_label))
+			return no("Inspection is '{0}' — waiting for the requester's verification.".format(insp_label))
 		return {"receivable": True, "grn_path": "B",
 				"reason": "Ready to receive (Non-RM, no weighing)."}
 
@@ -687,7 +755,7 @@ def _get_inspection_status_label(token_name):
 	"""Return a short label: Approved / Pending / On Hold / Rejected / Not Required.
 
 	Fails CLOSED on import/lookup errors — returns "Error" which is NOT in
-	INSPECTION_PASS_STATES, so a failing inspection module blocks GRN rather
+	GRN_ALLOWED_STATES, so a failing inspection module blocks GRN rather
 	than silently allowing it.
 	"""
 	try:
@@ -770,16 +838,8 @@ def create_grn_for_weighed_token(token_name, manual_qty_per_po=None):
 	if token.status != STATUS_TARE_WEIGHED and not _released_grain_exit(token):
 		frappe.throw(_("Token status must be 'Tare Weighed', currently '{0}'").format(token.status))
 
-	# Inspection gate for Non-RM
-	if token.purpose != "Raw Material":
-		block_on_insp = _get_inspection_gate_enabled()
-		insp_label = _get_inspection_status_label(token.name)
-		if _inspection_blocks_grn(insp_label, block_on_insp):
-			frappe.throw(_(
-				"GRN blocked — Material Inspection is '{0}'. "
-				"Ask Quality Lab to approve before receiving. "
-				"Contact IT Head if an override is needed."
-			).format(insp_label))
+	# v2.67.0 — requester-verification gate (any token with an inspection)
+	insp_gate = _inspection_gate(token.name)
 
 	# Gate Entry
 	gate_entry = frappe.db.get_value("TS Gate Entry",
@@ -931,6 +991,8 @@ def create_grn_for_weighed_token(token_name, manual_qty_per_po=None):
 			"material_request": (po_item.material_request if po_item else "") or "",
 			"material_request_item": (po_item.material_request_item if po_item else "") or "",
 		})
+
+	_fill_from_inspection(pr_items, insp_gate, po.company)
 
 	pr = frappe.get_doc({
 		"doctype": "Purchase Receipt",
@@ -1133,20 +1195,11 @@ def create_grn_for_non_weighing_token(token_name):
 	if po.docstatus != 1:
 		frappe.throw(_("Purchase Order {0} is not submitted").format(po.name))
 
-	# Inspection gate (fail-closed default ON)
-	block_on_insp = _get_inspection_gate_enabled()
-	insp_label = _get_inspection_status_label(token.name)
-	inspection_id = None
-	insp_doc = _get_inspection_doc(token.name)
-	if insp_doc:
-		inspection_id = getattr(insp_doc, "name", None) or (insp_doc.get("name") if isinstance(insp_doc, dict) else None)
-
-	if _inspection_blocks_grn(insp_label, block_on_insp):
-		frappe.throw(_(
-			"GRN blocked — Material Inspection is '{0}'. "
-			"Ask Quality Lab to approve before receiving. "
-			"Contact IT Head if an override is needed."
-		).format(insp_label))
+	# v2.67.0 — requester-verification gate (fail-closed default ON)
+	insp_gate = _inspection_gate(token.name)
+	block_on_insp = insp_gate["enabled"]
+	insp_label = insp_gate["label"]
+	inspection_id = insp_gate["inspection"]
 
 	# Build PR items from Gate Entry Items using ordered_qty
 	ge_items = frappe.get_all("TS Gate Entry Item",
@@ -1206,6 +1259,8 @@ def create_grn_for_non_weighing_token(token_name):
 			"material_request_item": (po_item.material_request_item if po_item else "") or "",
 		})
 
+	_fill_from_inspection(pr_items, insp_gate, po.company)
+
 	pr = frappe.get_doc({
 		"doctype": "Purchase Receipt",
 		"supplier": po.supplier,
@@ -1249,6 +1304,8 @@ def create_grn_for_non_weighing_token(token_name):
 	esc = frappe.utils.escape_html
 	try:
 		override_note = "NO (gate active)" if block_on_insp else "YES (gate disabled)"
+		if insp_gate["fill"]:
+			override_note += ". Accepted / rejected quantities split per the inspection"
 		pr.add_comment("Comment",
 			_("Created via Stores Receiving Dashboard — Non-RM no-weighing path. "
 			  "Token: {0}. Gate Entry: {1}. Inspection: {2}{3}. "

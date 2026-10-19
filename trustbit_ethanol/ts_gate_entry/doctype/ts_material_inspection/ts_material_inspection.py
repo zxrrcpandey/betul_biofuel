@@ -1,9 +1,10 @@
 import re
+from datetime import timedelta
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cstr, escape_html, now_datetime, flt, get_fullname
+from frappe.utils import cint, cstr, escape_html, format_datetime, get_datetime, getdate, now_datetime, flt, get_fullname
 from frappe.utils.html_utils import sanitize_html
 
 from trustbit_ethanol.ts_gate_entry.doctype.ts_cc_approval_config.ts_cc_approval_config import (
@@ -14,6 +15,11 @@ from trustbit_ethanol.ts_gate_entry.ts_notification_routing import audience
 
 # v2.59.0 — the only fields an inspector's form may send to the buttons below.
 DECISION_FIELDS = ("item_status", "approved_qty", "held_qty", "rejected_qty", "remark")
+
+# v2.67.0 — items in this Item Group, or any group below it (grain, coal), need no
+# requester verification. Unverified items: Stores may GRN after this many working days.
+EXEMPT_ITEM_GROUP = "Raw Material"
+GRN_WAIT_WORKING_DAYS = 2
 
 
 def _require_post():
@@ -217,15 +223,15 @@ class TSMaterialInspection(Document):
 				f"Material Inspection {status} — {self.name}",
 				message
 			)
+			if status in ("Approved", "Partially Approved", "Auto-Proceeded"):
+				_whatsapp(self, "inspection_grn_allowed", recipients)
 
 
 def create_material_inspection(gate_entry_name):
-	"""Auto-create a Material Inspection when a Non-RM Gate Entry is submitted."""
+	"""Auto-create a Material Inspection when a Stock-IN Gate Entry is submitted.
+	v2.67.0: items under EXEMPT_ITEM_GROUP are left out, whatever the gate's
+	material_flow; with none left there is no inspection."""
 	ge = frappe.get_doc("TS Gate Entry", gate_entry_name)
-
-	# Only for Non-RM items (not Raw Material, not Gate Pass)
-	if ge.material_flow == "Raw Material":
-		return
 
 	settings = frappe.get_single("TS Settings")
 	if not settings.enable_material_inspection:
@@ -233,6 +239,16 @@ def create_material_inspection(gate_entry_name):
 
 	# Check if inspection already exists
 	if frappe.db.exists("TS Material Inspection", {"gate_entry": ge.name}):
+		return
+
+	ge_items = frappe.get_all(
+		"TS Gate Entry Item",
+		filters={"parent": ge.name},
+		fields=["item_code", "item_name", "ordered_qty", "uom"]
+	)
+	exempt = _exempt_item_codes([i.item_code for i in ge_items])
+	ge_items = [i for i in ge_items if i.item_code not in exempt]
+	if not ge_items:
 		return
 
 	# Find the Material Request from PO
@@ -277,11 +293,6 @@ def create_material_inspection(gate_entry_name):
 	insp.sla_1st_sent = now_datetime()
 
 	# Add items from gate entry
-	ge_items = frappe.get_all(
-		"TS Gate Entry Item",
-		filters={"parent": ge.name},
-		fields=["item_code", "item_name", "ordered_qty", "uom"]
-	)
 	for ge_item in ge_items:
 		insp.append("items", {
 			"item_code": ge_item.item_code,
@@ -299,12 +310,15 @@ def create_material_inspection(gate_entry_name):
 	recipients = audience("inspection_request", raised_by=requester, dept_heads=heads)
 
 	if recipients:
+		deadline = grn_allowed_after(insp.created_time, ge.purchase_order)
 		_send_inspection_notification(
 			insp, recipients,
 			f"Material Inspection Required — {insp.name}",
-			f"Non-Raw Material items received at G2 against PO {ge.purchase_order or ''}. "
-			f"Please inspect and approve/reject in ERP before GRN is created."
+			f"Items received at the gate against PO {ge.purchase_order or ''} (Token {ge.token_number or ''}). "
+			f"Please verify them in ERP before the GRN is created. If they are not verified by "
+			f"{format_datetime(deadline)}, Stores may create the GRN without your verification."
 		)
+		_whatsapp(insp, "inspection_needed", recipients)
 
 	return insp.name
 
@@ -326,22 +340,35 @@ def check_inspection_sla():
 		"TS Material Inspection",
 		filters={"status": "Pending Inspection"},
 		fields=["name", "created_time", "notification_stage", "requester",
-				"department_head", "token_number", "purchase_order"]
+				"department_head", "token_number", "purchase_order", "gate_entry"]
 	)
 
 	now = now_datetime()
 
+	# v2.67.0 — an inspection whose Gate Entry was cancelled no longer gates a GRN: no reminders.
+	cancelled = set(frappe.get_all("TS Gate Entry", filters={"docstatus": 2,
+		"name": ["in", [p.gate_entry for p in pending if p.gate_entry] or [""]]}, pluck="name"))
+
 	for insp in pending:
-		if not insp.created_time:
+		if not insp.created_time or insp.gate_entry in cancelled:
 			continue
 
 		from frappe.utils import time_diff_in_hours
 		hours_elapsed = time_diff_in_hours(now, insp.created_time)
 		current_stage = insp.notification_stage or 1
 
-		# Check if next stage notification is due
-		if current_stage < 4 and hours_elapsed >= sla_hours[current_stage]:
+		# Check if next stage notification is due. v2.67.0: the final stage
+		# (Stores may GRN) waits for the 2-working-day deadline, not 48 hours.
+		if current_stage == 3:
+			due = now >= grn_allowed_after(insp.created_time, insp.purchase_order)
+		else:
+			due = current_stage < 3 and hours_elapsed >= sla_hours[current_stage]
+		if due:
 			next_stage = current_stage + 1
+			# L362: a decision saved at this moment wins — flip only a row still Pending.
+			if next_stage == 4 and frappe.db.get_value(
+					"TS Material Inspection", insp.name, "status", for_update=True) != "Pending Inspection":
+				continue
 			# v2.59.0 — the groups ticked in TS Notification Audience (the final
 			# notice also goes to IT Head by default).
 			recipients = audience(
@@ -360,9 +387,8 @@ def check_inspection_sla():
 			if next_stage == 4:
 				message = (
 					f"FINAL NOTICE: Material items for Token {insp.token_number} "
-					f"(PO: {insp.purchase_order or 'N/A'}) have NOT been inspected after "
-					f"{int(hours_elapsed)} hours. Storekeeper will proceed with GRN. "
-					f"Please inspect immediately if items need to be rejected."
+					f"(PO: {insp.purchase_order or 'N/A'}) were not verified within "
+					f"{GRN_WAIT_WORKING_DAYS} working days. Stores may now create the GRN."
 				)
 			else:
 				message = (
@@ -391,19 +417,82 @@ def check_inspection_sla():
 				from trustbit_ethanol.ts_gate_entry.ts_notification_coverage import _coverage_bell
 				_coverage_bell(recipients, subject,
 					"TS Material Inspection", insp.name, body=message)
+				if next_stage < 4:
+					_whatsapp(insp.name, "inspection_reminder", recipients)
+
+			if next_stage == 4:
+				# v2.67.0 — tell Stores (+ WhatsApp) that the GRN may go ahead.
+				try:
+					frappe.get_doc("TS Material Inspection", insp.name)._notify_stores("Auto-Proceeded", message)
+				except Exception:
+					frappe.clear_messages()
+					frappe.log_error(title="Material inspection: Stores notice failed",
+						message=frappe.get_traceback()[:2000])
 
 	frappe.db.commit()
 
 
 def get_inspection_status_for_token(token_name):
-	"""Get inspection status for a token. Returns dict or None."""
-	insp = frappe.db.get_value(
-		"TS Material Inspection",
-		{"token_number": token_name},
-		["name", "status"],
-		as_dict=True
-	)
-	return insp
+	"""Get inspection status for a token. Returns dict or None.
+	v2.67.0: the newest inspection whose Gate Entry is not cancelled."""
+	rows = frappe.db.sql("""
+		SELECT i.name, i.status, i.created_time, i.purchase_order, i.requester_name
+		FROM `tabTS Material Inspection` i
+		LEFT JOIN `tabTS Gate Entry` ge ON ge.name = i.gate_entry
+		WHERE i.token_number = %s AND IFNULL(ge.docstatus, 0) != 2
+		ORDER BY i.creation DESC
+		LIMIT 1
+	""", (token_name,), as_dict=True)
+	return rows[0] if rows else None
+
+
+def grn_allowed_after(created_time, purchase_order=None):
+	"""v2.67.0 — when Stores may create the GRN of an unverified inspection: the same
+	clock time on the GRN_WAIT_WORKING_DAYS-th working day after created_time. Sunday
+	is always off, and so is every date in the PO company's default Holiday List.
+	TS Settings inspection_4th_notify_hours stays as a floor."""
+	created = get_datetime(created_time)
+	company = frappe.db.get_value("Purchase Order", purchase_order, "company") if purchase_order else None
+	holiday_list = frappe.db.get_value("Company", company, "default_holiday_list") if company else None
+	holidays = {getdate(d) for d in frappe.get_all("Holiday",
+		filters={"parent": holiday_list, "parenttype": "Holiday List"}, pluck="holiday_date")} if holiday_list else set()
+
+	due, counted = created, 0
+	for _i in range(60):
+		due += timedelta(days=1)
+		if due.weekday() != 6 and due.date() not in holidays:
+			counted += 1
+			if counted == GRN_WAIT_WORKING_DAYS:
+				break
+	floor_hours = cint(frappe.db.get_single_value("TS Settings", "inspection_4th_notify_hours")) or 48
+	return max(due, created + timedelta(hours=floor_hours))
+
+
+def _exempt_item_codes(item_codes):
+	"""v2.67.0 — the given items whose Item Group is EXEMPT_ITEM_GROUP or below it.
+	No such group on the site means nothing is exempt."""
+	if not item_codes:
+		return set()
+	return set(frappe.db.sql_list("""
+		SELECT it.name FROM `tabItem` it
+		JOIN `tabItem Group` g ON g.name = it.item_group
+		JOIN `tabItem Group` root ON root.name = %s
+		WHERE it.name IN %s AND g.lft >= root.lft AND g.rgt <= root.rgt
+	""", (EXEMPT_ITEM_GROUP, tuple(item_codes))))
+
+
+def _whatsapp(insp, action, recipients):
+	"""v2.67.0 — WhatsApp copy of an inspection notice. Fail-soft, and inert until
+	the event's TS WhatsApp Template Map row is enabled."""
+	try:
+		from trustbit_ethanol.ts_gate_entry.ts_whatsapp_notify import whatsapp_notify_for_approval
+		if isinstance(insp, str):
+			insp = frappe.get_doc("TS Material Inspection", insp)
+		whatsapp_notify_for_approval(insp, action, recipients)
+	except Exception:
+		frappe.clear_messages()
+		frappe.log_error(title="Material inspection: WhatsApp notice failed",
+			message=frappe.get_traceback()[:2000])
 
 
 def _mr_cc_config(mr_name):

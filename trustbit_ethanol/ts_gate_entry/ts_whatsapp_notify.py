@@ -39,6 +39,10 @@ ACTION_EVENT = {
 	("TS Cascade Delete Log", "cascade_pending"): "cascade_needs_approval",
 	("TS Cascade Delete Log", "cascade_executed"): "cascade_executed",
 	("TS Cascade Delete Log", "cascade_rejected"): "cascade_rejected",
+	# v2.67.0 — requester verification before GRN
+	("TS Material Inspection", "inspection_needed"): "inspection_needed",
+	("TS Material Inspection", "inspection_reminder"): "inspection_reminder",
+	("TS Material Inspection", "inspection_grn_allowed"): "inspection_grn_allowed",
 }
 
 # Human-readable label for the doc_type token / {{2}}.
@@ -47,6 +51,7 @@ DOCTYPE_LABEL = {
 	"Material Request": "Material Request",
 	"TS Item Creator": "Item Request",
 	"TS Cascade Delete Log": "Cascade Delete",
+	"TS Material Inspection": "Material Inspection",
 }
 
 # Which field holds the approval status, per doctype (the status token).
@@ -225,6 +230,9 @@ _EVENT_DOCTYPE = {
 	"cascade_needs_approval": "TS Cascade Delete Log",
 	"cascade_executed": "TS Cascade Delete Log",
 	"cascade_rejected": "TS Cascade Delete Log",
+	"inspection_needed": "TS Material Inspection",
+	"inspection_reminder": "TS Material Inspection",
+	"inspection_grn_allowed": "TS Material Inspection",
 }
 
 

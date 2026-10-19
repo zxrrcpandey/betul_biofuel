@@ -49,6 +49,10 @@ TEMPLATE_EVENT_KEYS = (
 	"grain_po_pending_link",
 	# v2.45.0 — daily digest to the grain linkers (2 variables: count, oldest-days)
 	"grain_po_link_daily_digest",
+	# v2.67.0 — requester verification before GRN (Material Inspection)
+	"inspection_needed",
+	"inspection_reminder",
+	"inspection_grn_allowed",
 )
 
 # Field -> doctype mapping used by the one-time legacy migration.

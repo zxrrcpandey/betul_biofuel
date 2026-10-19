@@ -248,24 +248,9 @@ class TSToken(Document):
 		if self.purchase_receipt:
 			frappe.throw(f"Purchase Receipt {self.purchase_receipt} already exists for this token")
 
-		# Material Inspection gate — guarded by TS Settings.block_grn_on_inspection_pending.
-		# v2.8.1 Phase B: this flag should be OFF; QC enforcement moves to PI validate hook.
-		# Rejected is STILL blocked unconditionally (rejected stock should not enter warehouse).
-		if self.purpose != "Raw Material":
-			from trustbit_ethanol.ts_gate_entry.doctype.ts_material_inspection.ts_material_inspection import get_inspection_status_for_token
-			insp = get_inspection_status_for_token(self.name)
-			if insp:
-				if insp.status == "Rejected":
-					# Rejected always blocks — no amount of flag flipping allows rejected stock through
-					frappe.throw("GRN cannot be created — material inspection has been rejected. Please resolve the inspection first.")
-
-				# Pending / On Hold block only when the legacy flag is ON (v2.7 behavior)
-				block_on_inspection = frappe.db.get_single_value("TS Settings", "block_grn_on_inspection_pending")
-				if block_on_inspection:
-					if insp.status == "On Hold":
-						frappe.throw("GRN cannot be created — material inspection is on hold. Please resolve held items first.")
-					elif insp.status == "Pending Inspection":
-						frappe.throw("GRN cannot be created — material inspection is still pending. Please wait for inspection approval, turn off 'Block GRN on Inspection Pending' in TS Settings, or contact IT Head.")
+		# v2.67.0 — the shared requester-verification gate (same rule as the Stores dashboard).
+		from trustbit_ethanol.ts_gate_entry.stores_receiving_api import _fill_from_inspection, _inspection_gate
+		insp_gate = _inspection_gate(self.name)
 
 		# Gather all linked data
 		gate_entry = frappe.db.get_value(
@@ -393,6 +378,8 @@ class TSToken(Document):
 				"ts_item_remark": ts_item_remark,
 			}
 			pr_items.append(pr_item)
+
+		_fill_from_inspection(pr_items, insp_gate, po.company)
 
 		# Create Purchase Receipt
 		pr = frappe.get_doc({
