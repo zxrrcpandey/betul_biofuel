@@ -191,6 +191,7 @@ doctype_js = {
 website_route_rules = [
 	{"from_route": "/exec/login", "to_route": "exec"},
 	{"from_route": "/exec/overview", "to_route": "exec"},
+	{"from_route": "/exec/dashboard", "to_route": "exec"},
 	{"from_route": "/exec/usage", "to_route": "exec"},
 	{"from_route": "/exec/history", "to_route": "exec"},
 	{"from_route": "/exec/settings", "to_route": "exec"},

@@ -14,9 +14,7 @@
         class="flex min-h-[56px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 pt-1.5"
         :class="active === t.name ? 'text-brand-deep' : 'text-ink-faint'"
         :aria-current="active === t.name ? 'page' : undefined"
-        :aria-label="t.badge && badgeCount > 0 ? t.label + ', ' + badgeCount + ' need a look' : undefined"
       >
-        <span class="relative flex">
         <svg
           viewBox="0 0 24 24"
           class="h-6 w-6 shrink-0"
@@ -29,15 +27,6 @@
         >
           <path v-for="(p, i) in t.paths" :key="i" :d="p" />
         </svg>
-        <!-- "Needs a look" count, same idiom as the header bell badge.
-             aria-hidden: the visible label below is the accessible carrier. -->
-        <span
-          v-if="t.badge && badgeCount > 0"
-          class="absolute -right-2 -top-1 min-w-[17px] rounded-full bg-warn-text px-1 text-center text-[12px] font-bold leading-[17px] text-white"
-          aria-hidden="true"
-          >{{ badgeCount }}</span
-        >
-        </span>
         <span class="w-full truncate text-center text-[13px] font-semibold">{{ t.label }}</span>
       </router-link>
     </div>
@@ -45,20 +34,19 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from "vue"
+import { computed } from "vue"
 import { useRoute } from "vue-router"
-
-import { alertCount, ensureUsageLoaded } from "@/data/usage.js"
 
 const route = useRoute()
 const active = computed(() => route.name)
 
-// Server-rendered per user (www/exec.py → overview_visible): kill switch AND
-// audience. Read ONCE at module load — it cannot change without a page load,
-// and re-reading it per render would only add a way to disagree with itself.
+// Server-rendered per user (www/exec.py): kill switch AND audience. Read ONCE
+// at module load — it cannot change without a page load, and re-reading it
+// per render would only add a way to disagree with itself.
 const showOverview = Number((window.execEnv || {}).overview) === 1
-const showUsage = Number((window.execEnv || {}).usage) === 1
+const showDashboard = Number((window.execEnv || {}).dashboard) > 0
 
+// History and Usage live in the account menu (AppHeader).
 const TABS = [
   {
     name: "inbox",
@@ -67,25 +55,18 @@ const TABS = [
     paths: ["M3 13h4l2 3h6l2-3h4", "M5 5h14l2 8v6H3v-6l2-8z"],
   },
   {
+    name: "dashboard",
+    label: "Dashboard",
+    // four panels — the person's own CEO or MD dashboard
+    paths: ["M3 3h7v9H3z", "M14 3h7v5h-7z", "M14 12h7v9h-7z", "M3 16h7v5H3z"],
+    when: () => showDashboard,
+  },
+  {
     name: "overview",
     label: "Overview",
     // gauge — a reading, not an action; deliberately unlike the action tabs
     paths: ["M12 13l3.5-3.5", "M4.2 17a9 9 0 1 1 15.6 0", "M4.2 17h15.6"],
     when: () => showOverview,
-  },
-  {
-    name: "usage",
-    label: "Usage",
-    // bar chart: a reading, like the Overview gauge, unlike the action tabs
-    paths: ["M4 20V10", "M10 20V4", "M16 20v-7", "M22 20H2"],
-    when: () => showUsage,
-    badge: true,
-  },
-  {
-    name: "history",
-    label: "History",
-    // clock
-    paths: ["M12 7v5l3 2", "M12 21a9 9 0 1 0-9-9", "M3 12v-4m0 4h4"],
   },
   {
     name: "settings",
@@ -96,13 +77,4 @@ const TABS = [
 ]
 
 const tabs = TABS.filter((t) => !t.when || t.when())
-
-const badgeCount = computed(() => alertCount.value)
-
-// Load the usage summary once per app open (only when the tab is visible)
-// so the badge can flag attention BEFORE the tab is opened. One POST per
-// app open for <=3 accounts; opening the tab does its own refresh.
-onMounted(() => {
-  if (showUsage) ensureUsageLoaded()
-})
 </script>

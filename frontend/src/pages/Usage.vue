@@ -1,6 +1,6 @@
 <template>
-  <div class="pb-28">
-    <AppHeader title="Usage" bell refreshable :refreshing="usage.loading" @refresh="reload" />
+  <div class="pb-8">
+    <AppHeader title="Usage" back bell refreshable :refreshing="usage.loading" @refresh="reload" />
     <AlertsSheet />
 
     <PullToRefresh :refreshing="usage.loading" @refresh="reload">
@@ -244,8 +244,6 @@
       :rows="foldedRows"
       @close="foldedOpen = false"
     />
-
-    <TabBar />
   </div>
 </template>
 
@@ -257,7 +255,6 @@ import AppHeader from "@/components/AppHeader.vue"
 import PullToRefresh from "@/components/PullToRefresh.vue"
 import StatCard from "@/components/StatCard.vue"
 import StatSheet from "@/components/StatSheet.vue"
-import TabBar from "@/components/TabBar.vue"
 import { isStale, loadUsage, usage } from "@/data/usage.js"
 
 const WINDOWS = [7, 30, 90]
@@ -396,7 +393,7 @@ function onVisible() {
 }
 
 onMounted(() => {
-  // TabBar's badge fetch may already have fresh data (cold-open dedupe).
+  // The account menu's badge fetch may already have fresh data (cold-open dedupe).
   if (!usage.data || isStale()) reload()
   else tick.value++
   document.addEventListener("visibilitychange", onVisible)

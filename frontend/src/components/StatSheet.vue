@@ -41,12 +41,12 @@
             @click="r.to && $emit('close')"
           >
             <div class="min-w-0">
-              <div class="truncate text-[15px] font-semibold">{{ r.label }}</div>
+              <div class="text-[15px] font-semibold" :class="r.wrap ? 'break-words' : 'truncate'">{{ r.label }}</div>
               <div v-if="r.sub" class="mt-0.5 text-[13px] text-ink-faint">{{ r.sub }}</div>
             </div>
             <span
               class="tnum shrink-0 whitespace-nowrap text-[15px] font-bold"
-              :class="r.tone === 'warn' ? 'text-warn-text' : 'text-ink'"
+              :class="r.tone === 'warn' ? 'text-warn-text' : r.tone === 'danger' ? 'text-danger-text' : 'text-ink'"
             >
               {{ r.value }}
             </span>
@@ -65,7 +65,8 @@ defineProps({
   title: { type: String, default: "" },
   subtitle: { type: String, default: "" },
   footnote: { type: String, default: "" },
-  // [{ label, value, sub?, tone?, to? }] — `to` makes the row a router-link.
+  // [{ label, value, sub?, tone?, to?, wrap? }] — `to` makes the row a
+  // router-link; `wrap` lets a sentence-long label wrap instead of truncating.
   rows: { type: Array, default: () => [] },
 })
 defineEmits(["close"])

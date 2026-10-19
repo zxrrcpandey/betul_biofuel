@@ -12,6 +12,7 @@
   "sec_tabs",
   "ts_exec_today_enabled",
   "ts_exec_usage_enabled",
+  "ts_exec_dashboard_enabled",
   "sec_push",
   "ts_push_enabled",
   "ts_push_dry_run",
@@ -65,6 +66,12 @@
    "label": "Enable Executive Usage Tab"
   },
   {
+   "description": "OFF removes the Dashboard tab (the CEO's or MD's own dashboard). It cannot block the desk dashboard methods. Fail-open.",
+   "fieldname": "ts_exec_dashboard_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Executive Dashboard Tab"
+  },
+  {
    "fieldname": "sec_push",
    "fieldtype": "Section Break",
    "label": "Lock-Screen Push (fail-CLOSED)"
@@ -90,7 +97,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-08-12 11:00:00.000000",
+ "modified": "2026-10-18 18:10:00.000000",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Exec App Settings",

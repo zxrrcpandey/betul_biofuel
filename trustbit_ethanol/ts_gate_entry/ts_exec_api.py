@@ -1237,6 +1237,31 @@ def usage_visible():
         return False
 
 
+# Dashboard tab (v2.66.0): the person's OWN desk dashboard — get_ceo_overview
+# for a CEO, get_md_overview for an MD; an account holding both sees MD.
+DASHBOARD_KILL_SWITCH = "ts_exec_dashboard_enabled"  # field on TS Exec App Settings
+
+
+def dashboard_view():
+    """0 = no Dashboard tab, 1 = CEO, 2 = MD. Nav affordance only — both
+    methods re-check the caller's role. Fails CLOSED and NEVER raises
+    (called from www/exec.py, which also renders the Guest login screen)."""
+    try:
+        if frappe.session.user in (None, "", "Guest"):
+            return 0
+        if not flag_on(DASHBOARD_KILL_SWITCH):
+            return 0
+        roles = set(frappe.get_roles(frappe.session.user))
+        if "MD" in roles:
+            return 2
+        if "CEO" in roles:
+            return 1
+        return 0
+    except Exception:
+        frappe.clear_messages()
+        return 0
+
+
 def _usage_inner(from_d, to_d):
     """Call the desk report's function DIRECTLY (undecorated). Inside an HTTP
     request the inner @rate_limit would otherwise share the outer endpoint's

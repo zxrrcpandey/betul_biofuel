@@ -6,7 +6,7 @@
         type="button"
         class="-ml-2 flex h-12 w-12 items-center justify-center rounded-full text-2xl text-ink-muted"
         aria-label="Back"
-        @click="$router.back()"
+        @click="goBack"
       >
         ‹
       </button>
@@ -74,19 +74,51 @@
       </button>
       <div class="relative">
       <button
+        ref="avatar"
         type="button"
-        class="flex h-12 w-12 items-center justify-center rounded-full bg-brand-deep text-[13px] font-bold text-white"
-        aria-label="Account menu"
+        class="relative flex h-12 w-12 items-center justify-center rounded-full bg-brand-deep text-[13px] font-bold text-white"
+        :aria-label="alertCount > 0 ? `Account menu, usage needs a look` : 'Account menu'"
         :aria-expanded="menuOpen"
+        aria-controls="account-menu"
         @click="menuOpen = !menuOpen"
       >
         {{ initials }}
+        <!-- Usage moved off the tab bar; this dot keeps its "needs a look"
+             signal visible without opening the menu. -->
+        <span
+          v-if="alertCount > 0"
+          class="absolute right-0.5 top-0.5 h-3 w-3 rounded-full border-2 border-surface bg-warn-text"
+          aria-hidden="true"
+        ></span>
       </button>
+      <!-- Backdrop: a tap anywhere else closes the menu. -->
+      <div v-if="menuOpen" class="fixed inset-0 z-40" aria-hidden="true" @click="menuOpen = false"></div>
       <div
         v-if="menuOpen"
-        class="absolute right-0 top-12 z-30 w-56 rounded-xl border border-surface-line bg-surface p-2 shadow-lg"
+        id="account-menu"
+        class="absolute right-0 top-12 z-40 w-56 rounded-xl border border-surface-line bg-surface p-2 shadow-lg"
       >
         <div class="truncate px-3 py-2 text-[13px] text-ink-muted">{{ session.user }}</div>
+        <router-link :to="{ name: 'history' }" :class="MENU_ITEM" @click="menuOpen = false">
+          <svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0 text-ink-muted" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 7v5l3 2" /><path d="M12 21a9 9 0 1 0-9-9" /><path d="M3 12v-4m0 4h4" />
+          </svg>
+          History
+        </router-link>
+        <router-link v-if="showUsage" :to="{ name: 'usage' }" :class="MENU_ITEM" @click="menuOpen = false">
+          <svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0 text-ink-muted" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20H2" />
+          </svg>
+          <span class="flex-1">Usage</span>
+          <span
+            v-if="alertCount > 0"
+            class="min-w-[20px] rounded-full bg-warn-text px-1 text-center text-[13px] font-bold leading-5 text-white"
+            aria-hidden="true"
+            >{{ alertCount }}</span
+          >
+          <span v-if="alertCount > 0" class="sr-only">, {{ alertCount }} need a look</span>
+        </router-link>
+        <div class="my-1 border-t border-surface-line"></div>
         <button
           type="button"
           class="w-full rounded-lg px-3 py-3.5 text-left text-[15px] font-semibold text-danger-text"
@@ -101,10 +133,12 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue"
+import { computed, onMounted, onUnmounted, ref, watch } from "vue"
+import { useRouter } from "vue-router"
 
 import { alerts, openAlerts } from "@/data/alerts.js"
 import { logout, session } from "@/data/session.js"
+import { alertCount, ensureUsageLoaded } from "@/data/usage.js"
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -127,7 +161,38 @@ const bellLabel = computed(() =>
   alerts.unread > 0 ? `Alerts, ${alerts.unread} unread` : "Alerts"
 )
 
+const router = useRouter()
 const menuOpen = ref(false)
+const avatar = ref(null)
+const MENU_ITEM = "flex min-h-secondary items-center gap-3 rounded-lg px-3 text-[15px] font-semibold text-ink active:bg-surface-page"
+
+// Server-rendered per user (www/exec.py): kill switch AND audience.
+const showUsage = Number((window.execEnv || {}).usage) === 1
+
+// History and Usage are reached from the menu, so a back-page can be the
+// first page of the session (a bookmark, a reopened PWA) — go home then.
+function goBack() {
+  if (window.history.state && window.history.state.back) router.back()
+  else router.replace({ name: "inbox" })
+}
+
+function onKey(e) {
+  if (e.key === "Escape" && menuOpen.value) {
+    menuOpen.value = false
+    if (avatar.value) avatar.value.focus()
+  }
+}
+watch(menuOpen, (open) => {
+  if (open) document.addEventListener("keydown", onKey)
+  else document.removeEventListener("keydown", onKey)
+})
+
+// Once per app open (ensureUsageLoaded dedupes), so the avatar dot can flag
+// attention before Usage is opened. Only for the accounts that see Usage.
+onMounted(() => {
+  if (showUsage) ensureUsageLoaded()
+})
+onUnmounted(() => document.removeEventListener("keydown", onKey))
 
 const initials = computed(() => {
   const u = session.user || ""

@@ -36,12 +36,12 @@ export async function loadUsage(days) {
   }
 }
 
-// Tab-badge fetch: called once from TabBar when the tab is visible, so the
-// badge can answer "needs a look?" BEFORE the tab is opened. Never refetches —
-// opening the tab does that.
+// Badge fetch: called from AppHeader when Usage is visible, so the avatar dot
+// can answer "needs a look?" BEFORE Usage is opened. Never refetches —
+// opening Usage does that.
 export function ensureUsageLoaded() {
   if (usage.data || usage.loading) return
-  // 60s cooldown after a failure: TabBar mounts on every page, and without
+  // 60s cooldown after a failure: AppHeader mounts on every page, and without
   // this a persistently failing endpoint refires once per navigation.
   if (usage.failedAt && Date.now() - usage.failedAt < 60 * 1000) return
   loadUsage()

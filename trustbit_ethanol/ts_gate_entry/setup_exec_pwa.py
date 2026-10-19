@@ -7,7 +7,7 @@
 #   1. copies any stored TS Settings switch values into the new doctype ONCE
 #      (INSERT-ONLY — a deliberate OFF stays OFF, an armed push switch stays
 #      exactly as stored, and re-running can never overwrite anything);
-#   2. only after ALL nine values are verified present, deletes the old
+#   2. only after ALL values are verified present, deletes the old
 #      TS Settings Custom Fields + stored rows (with the L234 session-safe
 #      cache flush);
 #   3. seeds the grantable app-access role (unchanged from v2.34.0).
@@ -32,6 +32,9 @@ _SWITCH_DEFAULTS = {
     "ts_exec_login_alert_enabled": "1",
     "ts_exec_today_enabled": "1",
     "ts_exec_usage_enabled": "1",
+    # v2.66.0 — never in TS Settings, so it just seeds ON (and the cleanup
+    # below finds nothing of it to delete).
+    "ts_exec_dashboard_enabled": "1",
     "ts_push_enabled": "0",
     "ts_push_dry_run": "1",
     "ts_push_preview_amounts": "0",

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router"
 
 import { bootSession, session } from "./data/session.js"
 
+import Dashboard from "./pages/Dashboard.vue"
 import DocumentDetail from "./pages/DocumentDetail.vue"
 import History from "./pages/History.vue"
 import Inbox from "./pages/Inbox.vue"
@@ -16,6 +17,12 @@ export const router = createRouter({
   routes: [
     { path: "/login", name: "login", component: Login },
     { path: "/", name: "inbox", component: Inbox, meta: { auth: true } },
+    {
+      path: "/dashboard",
+      name: "dashboard",
+      component: Dashboard,
+      meta: { auth: true, dashboard: true },
+    },
     {
       path: "/overview",
       name: "overview",
@@ -53,6 +60,9 @@ router.beforeEach(async (to) => {
     return { name: "inbox" }
   }
   if (to.meta.usage && Number((window.execEnv || {}).usage) !== 1) {
+    return { name: "inbox" }
+  }
+  if (to.meta.dashboard && !(Number((window.execEnv || {}).dashboard) > 0)) {
     return { name: "inbox" }
   }
   return true

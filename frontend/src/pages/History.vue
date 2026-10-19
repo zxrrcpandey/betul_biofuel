@@ -1,7 +1,8 @@
 <template>
-  <div class="pb-28">
+  <div class="pb-8">
     <AppHeader
       title="History"
+      back
       bell
       refreshable
       :refreshing="history.loading"
@@ -115,8 +116,6 @@
       </div>
     </div>
     </PullToRefresh>
-
-    <TabBar />
   </div>
 </template>
 
@@ -128,7 +127,6 @@ import AppHeader from "@/components/AppHeader.vue"
 import PullToRefresh from "@/components/PullToRefresh.vue"
 import SearchBar from "@/components/SearchBar.vue"
 import Skeletons from "@/components/Skeletons.vue"
-import TabBar from "@/components/TabBar.vue"
 import { moneyCompact, shortDate } from "@/data/format.js"
 import { history, loadHistory } from "@/data/history.js"
 

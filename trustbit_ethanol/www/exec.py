@@ -12,6 +12,7 @@ import frappe.sessions
 from trustbit_ethanol.ts_gate_entry.ts_exec_api import (
     KILL_SWITCH_FIELD,
     SW_FLAG_FIELD,
+    dashboard_view,
     exec_app_allowed,
     flag_on,
     overview_visible,
@@ -48,6 +49,8 @@ def get_context(context):
     # Usage tab: kill switch AND audience (CEO/MD/Administrator — user decision
     # 12 Aug 2026: IT Head excluded), resolved per user at render time.
     context.exec_usage = 1 if usage_visible() else 0
+    # Dashboard tab: 0 none, 1 CEO, 2 MD (MD wins for both) — v2.66.0.
+    context.exec_dashboard = dashboard_view()
 
     # App-access gate (v2.34.0). ⚠ GUEST MUST RENDER AS ALLOWED — this same
     # page serves the login screen, and denying Guest here would make signing
