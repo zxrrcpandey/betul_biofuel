@@ -229,9 +229,14 @@ class TSToken(Document):
 			return f"{hours}h {mins}m"
 		return f"{mins}m"
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def create_grn(self):
 		"""Create a Purchase Receipt (GRN) from token data."""
+		# methods=["POST"] is not checked on GET /api/resource/...?run_method= (L447): re-assert it.
+		# No request (console, scheduler, tests) stays allowed.
+		req = getattr(frappe.local, "request", None)
+		if req is not None and req.method != "POST":
+			raise frappe.PermissionError
 		if self.entry_type == "Gate Pass":
 			frappe.throw("GRN cannot be created for Gate Pass entries")
 
