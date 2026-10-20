@@ -86,15 +86,20 @@ def resolve_production_cost_center(pe):
 		main_cat = frappe.db.get_value("TS BOM Connector", conn, "main_category")
 		if main_cat:
 			cc = frappe.db.get_value("TS Production BOM Category", main_cat, "cost_center")
-	# 2) category whose is_production BOM matches the run's item
+	# 2) category whose BOM matches the run's item. A category has no BOM of its
+	# own — the item -> category link is an active connector whose main BOM makes
+	# this item (same main_category as step 1). No match falls through, never to
+	# "the first production category" (that charged every run to one department).
 	if not cc and getattr(pe, "production_item", None):
-		cats = frappe.get_all("TS Production BOM Category",
-		                      filters={"active": 1, "is_production": 1},
-		                      fields=["name", "cost_center"], limit=0)
-		for c in cats:
-			if c.cost_center:
-				cc = c.cost_center
-				break
+		row = frappe.db.sql("""
+			SELECT cat.cost_center FROM `tabTS BOM Connector` con
+			JOIN `tabBOM` b ON b.name = con.main_bom
+			JOIN `tabTS Production BOM Category` cat ON cat.name = con.main_category
+			WHERE con.active = 1 AND cat.active = 1
+			  AND b.item = %s AND IFNULL(cat.cost_center, '') != ''
+			ORDER BY con.creation LIMIT 1""", pe.production_item)
+		if row:
+			cc = row[0][0]
 	# 3) the existing MR cost-centre setting
 	if not cc:
 		cc = frappe.db.get_single_value("TS Settings", "ts_production_mr_cost_center")
