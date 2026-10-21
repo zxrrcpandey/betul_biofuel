@@ -287,7 +287,8 @@ def get_store_release_queue():
 		filters={"ts_variance_status": "Pending Stores Release"},
 		fields=["name", "bom", "flow_type", "production_item", "production_item_name",
 		        "actual_produced_qty", "production_uom", "work_order",
-		        "release_stock_entry", "submitted_by", "owner", "modified"],
+		        "release_stock_entry", "submitted_by", "owner", "modified",
+		        "posting_date"],  # v6 — the SM sees which day the stock will move
 		order_by="modified desc", limit=20)
 	if not runs:
 		return []

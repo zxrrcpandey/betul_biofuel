@@ -21,7 +21,7 @@
        on success and switches to an error state on failure.
    ===================================================================== */
 
-const PL_VERSION = "v1.6.4"; // 20 Aug — Post-Distribution for EVERY BOM (v2.41.2: FG placeable on all runs, dialog prefill + FG-warehouse preselect) // 19 Aug — releaser-aware displays (v2.41.1) + per-BOM source warehouse card (v2.41)
+const PL_VERSION = "v1.7.1"; // 14 Sep — Production Date (back-dated runs, English + Hindi notes) // 20 Aug — Post-Distribution for EVERY BOM (v2.41.2: FG placeable on all runs, dialog prefill + FG-warehouse preselect) // 19 Aug — releaser-aware displays (v2.41.1) + per-BOM source warehouse card (v2.41)
 const PL_DOCTYPE = "TS Production Entry";
 const PL_API = "trustbit_ethanol.ts_gate_entry.ts_production_api";
 const PL_REL = "trustbit_ethanol.ts_gate_entry.ts_production_release";
@@ -235,6 +235,7 @@ class ProductionLogging {
 					<table class="log-table">
 						<thead><tr>
 							<th>Production ID</th>
+							<th>Prod. Date</th>
 							<th>BOM</th>
 							<th>Item</th>
 							<th class="r">Produced</th>
@@ -382,7 +383,13 @@ class ProductionLogging {
 						<label>Bill of Materials <span class="req">*</span></label>
 						<select class="inp" id="pl-bom-select"><option value="">Loading BOMs&hellip;</option></select>
 					</div>
-					<div class="fld" id="pl-conn-fld" style="display:none">
+					<div class="fld" id="pl-date-fld">
+							<label for="pl-prod-date">Production Date <span class="req">*</span></label>
+							<input type="date" class="inp" id="pl-prod-date" required aria-describedby="pl-date-help pl-date-note">
+							<div class="pl-helper" id="pl-date-help">The day the product was made. Today is filled in. Change it if you are entering an old day.<span class="pl-hi">जिस दिन माल बना, वह तारीख। आज की तारीख भरी है; पुराने दिन की एंट्री हो तो बदलें।</span></div>
+							<div id="pl-date-note" aria-live="polite"></div>
+						</div>
+						<div class="fld" id="pl-conn-fld" style="display:none">
 						<label>BOM Connector <span class="req">*</span></label>
 						<select class="inp" id="pl-conn-select"><option value="">Select a connector&hellip;</option></select>
 					</div>
@@ -489,6 +496,7 @@ class ProductionLogging {
 				self.open_distribution_dialog($(this).data("name"));
 			});
 			this.$root.on("input", "#pl-produced-qty", () => self.on_produced_change());
+			this.$root.on("input change", "#pl-prod-date", () => self.on_date_change());
 			this.$root.on("input", "#pl-rm-body input.qty", function () {
 				self.edit_rm(parseInt($(this).data("idx"), 10), this.value);
 			});
@@ -623,13 +631,13 @@ class ProductionLogging {
 				this.settings = r.message || {};
 				this.render_feature_tag();
 				this.reload_data();
-				if (this.is_pm) this.load_boms();
+				if (this.is_pm) { this.load_boms(); this.reset_date(); }  // v6 — note needs settings.cutover_date
 			},
 			error: () => {
 				this.settings = {};
 				this.render_feature_tag();
 				this.reload_data();
-				if (this.is_pm) this.load_boms();
+				if (this.is_pm) { this.load_boms(); this.reset_date(); }  // v6 — note needs settings.cutover_date
 			},
 		});
 	}
@@ -842,6 +850,8 @@ class ProductionLogging {
 		this.$root.find("#pl-flow-note").toggle(multi);
 		this.$root.find("#pl-bom-fld").toggle(!multi);
 		this.$root.find("#pl-conn-fld").toggle(multi);
+		this.$root.find("#pl-date-fld").toggle(!multi);  // v6 — Multiple runs stay dated today
+		this.reset_date();
 		this.$root.find("#pl-conn-depts").toggle(multi).empty();
 		this.$root.find("#pl-step1-label").text(multi ? "Select BOM Connector" : "Select BOM");
 		this.$root.find("#pl-submit-btn").html(multi
@@ -893,6 +903,7 @@ class ProductionLogging {
 					"actual_produced_qty", "production_uom", "ts_variance_status",
 					"material_variance_pct", "produced_variance_pct", "variance_breach",
 					"work_order", "linked_stock_entry", "release_stock_entry", "modified",
+					"posting_date", "creation",
 				],
 				order_by: "modified desc",
 				limit_page_length: 30,
@@ -1063,7 +1074,9 @@ class ProductionLogging {
 			size: "large",
 			fields: [
 				{ fieldtype: "Date", fieldname: "posting_date", label: __("Posting Date"),
-				  default: frappe.datetime.now_date(), reqd: 1 },
+				  default: frappe.datetime.now_date(), reqd: 1,
+				  // v6 M17 — greys future days in the picker (advisory; server throw = phase 2)
+				  max_date: frappe.datetime.str_to_obj(frappe.datetime.now_date()) },
 				{ fieldtype: "Data", fieldname: "remark", label: __("Remark") },
 				{ fieldtype: "HTML", fieldname: "mat_html" },
 			],
@@ -1682,14 +1695,14 @@ class ProductionLogging {
 				completed++;
 				if (cint(r.variance_breach)) varN++;
 			}
-			const md = (r.modified || "").slice(0, 10);
+			const md = String(r.posting_date || "").slice(0, 10);  // v6 — keyed on the Production Date
 			if (md === today && (st === "completed" || st === "released")) {
 				producedToday += flt(r.actual_produced_qty);
 				runsToday++;
 			}
 		});
 		const KPIS = [
-			{ ico: "🛢️", cls: "ki-green", lbl: "Produced Today", val: this.fmt(producedToday), unit: "", sub: `${runsToday} run(s) released/posted today` },
+			{ ico: "🛢️", cls: "ki-green", lbl: "Produced Today", val: this.fmt(producedToday), unit: "", sub: `${runsToday} run(s) dated today` },
 			{ ico: "🚦", cls: "ki-amber", lbl: "Pending Releases", val: String(pending), unit: "", sub: "awaiting Store Manager" },
 			{ ico: "⚙️", cls: "ki-blue", lbl: "Released (in process)", val: String(released), unit: "", sub: "auto-chain recoverable" },
 			{ ico: "✓", cls: "ki-purple", lbl: "Completed (recent)", val: String(completed), unit: "", sub: "in the last 30 runs" },
@@ -1748,7 +1761,7 @@ class ProductionLogging {
 	render_log(rows) {
 		const $b = this.$root.find("#pl-log-body");
 		if (!rows.length) {
-			$b.html('<tr><td colspan="8"><div class="log-empty">No production entries yet.</div></td></tr>');
+			$b.html('<tr><td colspan="9"><div class="log-empty">No production entries yet.</div></td></tr>');
 			return;
 		}
 		$b.html(
@@ -1763,6 +1776,7 @@ class ProductionLogging {
 					return (
 						`<tr>` +
 						`<td><a class="pid log-link" href="/app/${encodeURIComponent(PL_DOCTYPE.toLowerCase().replace(/ /g, "-"))}/${encodeURIComponent(r.name)}" target="_blank" rel="noopener">${this.esc(r.name)}</a></td>` +
+						`<td class="pl-pdate${r.posting_date && r.creation && String(r.posting_date) < String(r.creation).slice(0, 10) ? " is-back" : ""}">${this.esc(r.posting_date ? frappe.datetime.str_to_user(r.posting_date) : "—")}</td>` +
 						`<td><div class="bom-cell"><span class="bm mono">${this.esc(r.bom || "—")}</span></div></td>` +
 						`<td>${this.esc(itemName)} <span class="bt mono" style="color:var(--faint)">${this.esc(itemCode)}</span></td>` +
 						`<td class="r mono"><b>${this.fmt1(r.actual_produced_qty)}</b> <span class="uom-cell">${this.esc(r.production_uom || "")}</span></td>` +
@@ -1829,6 +1843,7 @@ class ProductionLogging {
 				`<span class="pl-rid">${this.esc(r.name)}</span>` +
 				`<span class="pl-rwhat">${this.esc(itemName)} · <b>${this.fmt1(r.actual_produced_qty)} ${this.esc(r.production_uom || "")}</b>` +
 				` <span class="dim">· ${this.esc(r.bom || "—")} · from ${this.esc(r.submitted_by || r.owner || "—")}</span></span>` +
+				this._date_chip(r) +
 				`<span class="pl-pill age">waiting ${this.age_of(r.modified) || "—"}</span>` +
 				`<span class="pl-sp"></span><span class="pl-more">details &#9656;</span>` +
 				action +
@@ -1836,6 +1851,7 @@ class ProductionLogging {
 				`<div class="pl-xpand" style="display:none">` +
 				`<span><b>Work Order</b> <span class="mono">${this.esc(r.work_order || "—")}</span></span>` +
 				`<span><b>Release SE</b> <span class="mono">${this.esc(r.release_stock_entry || "—")}</span></span>` +
+				this._date_xpand(r, rsrc, wip) +
 				`<span><b>Updated</b> ${this.esc(frappe.datetime.str_to_user(r.modified))}</span>` +
 				(gated
 					? `<span><b>Waiting for departments</b> ${this.esc(gatedBy.join(", "))} must release their own material first — then this run becomes releasable.</span>`
@@ -1860,6 +1876,8 @@ class ProductionLogging {
 
 	// ── ADD-PRODUCTION FORM ────────────────────────────────────────────
 	open_form() {
+		// v6 — a page left open past midnight must not keep yesterday as "today"
+		if (this.$root.find("#pl-prod-date").attr("max") !== frappe.datetime.now_date()) this.reset_date();
 		this.$root.find("#pl-form-scrim").addClass("open");
 		this.$root.find("#pl-slideover").addClass("open");
 		document.body.style.overflow = "hidden";
@@ -2066,6 +2084,7 @@ class ProductionLogging {
 		const ok =
 			!!this.bom &&
 			!!this.bom_std &&
+			this.date_ok() &&
 			flt(this.$root.find("#pl-produced-qty").val()) > 0 &&
 			this.rm_state.some((r) => !r.removed && flt(r.qty) > 0) &&
 			!this.busy;
@@ -2130,12 +2149,22 @@ class ProductionLogging {
 			],
 		});
 
+		// v6 M05 — a back-dated run names its Production Date under the progress title
+		const pdv = multi ? "" : (this.$root.find("#pl-prod-date").val() || "");
+		if (pdv && pdv < frappe.datetime.now_date()) {
+			const du = frappe.datetime.str_to_user(pdv);
+			this.$root.find("#pl-prog-sub").append(document.createTextNode(" · ")).append($("<b></b>").text("dated " + du))
+				.append($('<span class="pl-hi"></span>').append($("<b></b>").text("तारीख " + du)));
+		}
+
 		// Step 1 — insert the draft TS Production Entry.
 		this.advance_progress(0);
 		const doc_payload = {
 			doctype: PL_DOCTYPE,
 			bom: this.bom,
 			actual_produced_qty: produced,
+			// v6 — Single runs carry the picked Production Date; Multiple keeps the server default (today)
+			...(multi ? {} : { posting_date: pdv || frappe.datetime.now_date() }),
 			standard_batches: 1,
 			materials: materials,
 			byproducts: byproducts,
@@ -2174,6 +2203,8 @@ class ProductionLogging {
 						const sf_depts = (m.department_categories || []);
 						// v2.41.1 — name the configured per-BOM releaser in the toast
 						const relWho = ((this.settings || {}).bom_releasers || {})[doc.bom] || null;
+						// v6 M06 replaces the plain "pending Store Manager release" toast for a back-dated run
+						const m06 = !multi && !sf_depts.length && !relWho && m.back_dated && m.posting_date;
 						this.finish_progress({
 							doneStatus: multi
 								? (awaiting_depts
@@ -2181,7 +2212,7 @@ class ProductionLogging {
 									: "Submitted ✓ — Material Request routed to Store Manager")
 								: (sf_depts.length ? "Submitted ✓ — Pending Department Release (" + sf_depts.join(", ") + ")" : (relWho ? "Submitted ✓ — Pending Release by " + relWho : "Submitted ✓ — Pending Store Manager release")),
 							onDone: () => {
-								frappe.show_alert({
+								if (!m06) frappe.show_alert({
 									message: multi
 										? (awaiting_depts
 											? __("Submitted {0} — {1} department(s) notified. The Store-Manager release fires automatically when all add their production.", [doc.name, (m.department_entries || []).length])
@@ -2189,6 +2220,7 @@ class ProductionLogging {
 										: (sf_depts.length ? __("Submitted {0} — {1} department(s) must release first, then the Store Manager releases the rest.", [doc.name, sf_depts.length]) : (relWho ? __("Submitted {0} — pending release by {1}.", [doc.name, this.esc(relWho)]) : __("Submitted {0} — pending Store Manager release.", [doc.name]))),
 									indicator: "green",
 								});
+								this.after_submit_notes(doc.name, m, m06);
 								this.reset_after_submit();
 								this.reload_data();
 								this.flash_after_reload(doc.name);
@@ -2224,6 +2256,85 @@ class ProductionLogging {
 		this.$root.find("#pl-produced-qty").val("");
 		this.$root.find("#pl-fetched-box").addClass("hidden").empty();
 		this.$root.find("#pl-step2,#pl-step3").hide();
+		this.reset_date();
+	}
+
+	// ── v6 BACK-DATED PRODUCTION (14 Sep 2026) — English block, then Hindi block ──
+	reset_date() {
+		const today = frappe.datetime.now_date();
+		this.$root.find("#pl-prod-date").attr("max", today).val(today);
+		this.on_date_change();
+	}
+
+	date_ok() {
+		if (this.flow_mode === "multiple") return true;
+		const v = this.$root.find("#pl-prod-date").val();
+		return !!v && v <= frappe.datetime.now_date();
+	}
+
+	on_date_change() {
+		const $i = this.$root.find("#pl-prod-date");
+		const $n = this.$root.find("#pl-date-note").empty();
+		const v = $i.val() || "";
+		const today = frappe.datetime.now_date();
+		const note = (cls, ico, en, hi) => $n.html(
+			`<div class="scale-note ${cls}"><span aria-hidden="true">${ico}</span><span>${en}<span class="pl-hi">${hi}</span></span></div>`);
+		$i.removeClass("date-back date-bad").attr("aria-invalid", v > today ? "true" : "false");
+		if (this.flow_mode !== "multiple" && v && v !== today) {
+			const d = this.esc(frappe.datetime.str_to_user(v));
+			const co = (this.settings || {}).cutover_date;
+			if (v > today) {
+				$i.addClass("date-bad");
+				note("err", "&#10006;", "<b>This date is in the future.</b> Pick today or an earlier day.",
+					"<b>यह तारीख आगे की है।</b> आज या उससे पहले की तारीख चुनें।");
+			} else if (co && v < co) {
+				const c = this.esc(frappe.datetime.str_to_user(co));
+				$i.addClass("date-back");
+				note("date-warn", "&#9888;",
+					`<b>This date is before the cut-over date ${c}.</b> For that time Stores used bulk Material Issues. On Submit the ERP checks whether a Material Issue already covers this date. If yes, Submit is refused and that Material Issue is named.`,
+					`<b>यह तारीख cut-over तारीख ${c} से पहले की है।</b> उस समय Stores bulk Material Issue से माल देता था। Submit पर ERP जाँचेगा कि कोई Material Issue इस तारीख को पहले से cover करता है या नहीं। अगर हाँ, तो Submit मना होगा और उस Material Issue का नाम बताया जाएगा।`);
+			} else {
+				$i.addClass("date-back");
+				note("date-warn", "&#9888;",
+					`<b>Old date picked: ${d}.</b> Material release, production and leftover return will all be dated ${d}. Stock is checked as on ${d}, not today.`,
+					`<b>पुरानी तारीख चुनी है: ${d}।</b> माल का release, production और बचे माल की वापसी, ये सब ${d} की तारीख से होंगे। Stock भी ${d} का देखा जाएगा, आज का नहीं।`);
+			}
+		}
+		this.recompute_submit_enabled();
+	}
+
+	after_submit_notes(name, m, show_m06) {
+		if (show_m06) {
+			const d = this.esc(frappe.datetime.str_to_user(m.posting_date));
+			const n = this.esc(name);
+			frappe.show_alert({
+				message: `Run ${n} submitted with Production Date ${d}. Now waiting for Store Manager release.` +
+					`<br><br>Run ${n} Production Date ${d} के साथ Submit हो गया। अब Store Manager के release का इंतज़ार है।`,
+				indicator: "green",
+			}, 12);
+		}
+		const note = m.partial_period_note;  // M24 — server-built, values escaped server-side
+		if (note && note.en) {
+			frappe.msgprint({ title: note.title || __("Production still to be entered"),
+				message: `${note.en}<br><br>${note.hi || ""}`, indicator: "orange" });
+		}
+	}
+
+	_date_chip(r) {
+		const pd = String(r.posting_date || "").slice(0, 10);
+		if (!pd) return "";
+		const d = this.esc(frappe.datetime.str_to_user(pd));
+		const today = pd === frappe.datetime.now_date();
+		return `<span class="pl-pill pl-date${today ? " is-today" : ""}" title="Stock on ${d}&#10;${d} का Stock">Stock ${d}</span>`;
+	}
+
+	_date_xpand(r, src, wip) {
+		const pd = String(r.posting_date || "").slice(0, 10);
+		if (!pd || pd >= frappe.datetime.now_date()) return "";
+		const d = this.esc(frappe.datetime.str_to_user(pd));
+		const s = this.esc(src), w = this.esc(wip);
+		return `<span><b>Stock on ${d}</b> — on Release, the Material Transfer (${s} &rarr; ${w}) and the Manufacture entry post on ${d}, not today. Stock on that date is checked first.` +
+			`<span class="pl-hi"><b>${d} का Stock</b> — Release करने पर Material Transfer (${s} &rarr; ${w}) और Manufacture entry ${d} की तारीख से लगेंगी, आज की नहीं। पहले उस तारीख का Stock देखा जाएगा।</span></span>`;
 	}
 
 	flash_after_reload(name) {

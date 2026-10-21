@@ -111,15 +111,20 @@ def require_issue_fields_on_submit(doc, method=None):
 		if missing:
 			problems.append((row.idx, missing))
 
-	if not problems:
-		return
+	if problems:
+		lines = "".join(
+			f"<li>Row <b>{idx}</b>: {', '.join(missing)}</li>"
+			for idx, missing in problems
+		)
+		frappe.throw(
+			"Please fill the following mandatory field(s) before submitting this "
+			"Material Issue:<br><ul>" + lines + "</ul>",
+			title="Material Issue — Required Fields",
+		)
 
-	lines = "".join(
-		f"<li>Row <b>{idx}</b>: {', '.join(missing)}</li>"
-		for idx, missing in problems
-	)
-	frappe.throw(
-		"Please fill the following mandatory field(s) before submitting this "
-		"Material Issue:<br><ul>" + lines + "</ul>",
-		title="Material Issue — Required Fields",
-	)
+	# v6 G10 (back-dated production, 14 Sep 2026) — a Material Issue may not take out
+	# material that production runs already recorded as used. Called for EVERY valid
+	# Material Issue (the old `if not problems: return` would have made this dead code).
+	# Inert while no active production run exists.
+	from trustbit_ethanol.ts_gate_entry.ts_production_api import assert_issue_not_consumed
+	assert_issue_not_consumed(doc)

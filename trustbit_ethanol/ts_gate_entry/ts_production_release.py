@@ -30,7 +30,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt, cint, now_datetime, escape_html
+from frappe.utils import flt, cint, now_datetime, escape_html, getdate, nowdate, date_diff, formatdate
 
 from trustbit_ethanol.ts_gate_entry import ts_production_api as api
 from trustbit_ethanol.ts_gate_entry import ts_production_wo as wo_engine
@@ -111,6 +111,9 @@ def submit_for_release(name):
 	if doc.ts_variance_status != "Draft":
 		frappe.throw(_("Only a Draft entry can be submitted for release (current status: {0}).").format(
 			doc.ts_variance_status))
+	if doc.flow_type == "Multiple":
+		# v6 security — a REST insert can preset flow_type; a Multiple run here would skip G0/G10
+		frappe.throw(_("{0} is a Multiple-flow entry. Submit it from the Multiple flow.").format(name))
 
 	# Fresh variance + sanity (variance is informational in this flow)
 	api.compute_and_set_variance(doc)
@@ -128,6 +131,10 @@ def submit_for_release(name):
 	# else it would be released into WIP and stranded (Manufacture consumes BOM only).
 	from trustbit_ethanol.ts_gate_entry import ts_production_dept_release as dept_rel
 	dept_rel.preflight_bom_membership(doc)
+	# v6 G0 — refuse while a Material Issue already covers this Production Date (the
+	# material would be counted twice). Real user, BEFORE any Work Order / Stock Entry.
+	covered_windows = api._assert_no_issue_covers_date(doc, stage="submit")
+	back_dated = bool(doc.posting_date and getdate(doc.posting_date) < getdate(nowdate()))
 
 	# Capture BOM branch attributes for the release/automation steps.
 	attrs = wo_engine.read_bom_attrs(doc.bom)
@@ -184,6 +191,13 @@ def submit_for_release(name):
 		_("Submitted for release by {0}. Work Order {1} + draft Release SE {2} created.").format(
 			user, wo_name, release_se),
 	)
+	if back_dated:
+		_days = date_diff(nowdate(), doc.posting_date)
+		doc.add_comment("Comment", api._bi(
+			_("Submitted by {0} with Production Date {1}, back-dated by {2} day(s).").format(
+				escape_html(user), formatdate(doc.posting_date), _days),
+			"{0} ने Production Date {1} के साथ Submit किया। यह तारीख {2} दिन पीछे की है।".format(
+				escape_html(user), formatdate(doc.posting_date), _days)))
 	# v2.21 (client request 13 Jul) — split the release: any run item sourced from a
 	# department-claimed warehouse becomes that department's release slot (they enter
 	# the ACTUAL qty). No-op when no category claims a warehouse (today's behavior).
@@ -197,6 +211,21 @@ def submit_for_release(name):
 		frappe.log_error(title="TS dept release slot build failed",
 		                 message=f"{name}: {frappe.get_traceback()}")
 		frappe.clear_messages()
+	# v6 G5 at PM submit (back-dated runs only): the stock must have existed on the
+	# Production Date. Runs AFTER the department slots re-pointed their rows and BEFORE
+	# anything is committed — a shortage rolls the whole request back (no WO/SE left).
+	if back_dated:
+		shortages = wo_engine.check_stock_available(release_se)
+		if shortages:
+			frappe.db.rollback()
+			api.throw_stock_shortage(shortages, doc.posting_date, run=doc.name, stage="submit")
+	partial_note = None
+	try:
+		partial_note = api._partial_period_note(doc, covered_windows)
+	except Exception:
+		frappe.log_error(title="TS production partial-period note failed",
+		                 message=f"{name}: {frappe.get_traceback()}")
+		frappe.clear_messages()  # an advisory note never blocks the submit (L238/276)
 	try:
 		api._notify_stores_managers_release(doc)
 	except Exception:
@@ -208,6 +237,9 @@ def submit_for_release(name):
 		"work_order": wo_name,
 		"release_stock_entry": release_se,
 		"department_categories": [c for c in dept_categories if c],
+		"posting_date": str(doc.posting_date or ""),
+		"back_dated": back_dated,
+		"partial_period_note": partial_note,
 		"message": _("Submitted to the Stores Manager for raw-material release."),
 	}
 
@@ -294,6 +326,9 @@ def approve_release(name):
 	# ── PRE-FLIGHT (BEFORE any submit) ───────────────────────────────────
 	# 1) Valuation hard-block (re-check; the form may have changed).
 	api._block_if_missing_valuation(doc, settings)
+	# 1b) v6 G0 re-check — a covering Material Issue submitted since the PM submit
+	# (the run stays 'Pending Stores Release'; nothing is submitted before this throw).
+	api._assert_no_issue_covers_date(doc, stage="approve")
 	# 2) Overproduction guard: produced <= WO planned qty.
 	wo_qty = flt(frappe.db.get_value("Work Order", doc.work_order, "qty"))
 	if flt(doc.actual_produced_qty) > wo_qty + 1e-9:
@@ -304,26 +339,19 @@ def approve_release(name):
 			title=_("Over-Production"),
 		)
 	# 3) Stock availability for the release SE rows (avoid NegativeStockError mid-chain).
-	shortages = wo_engine.check_stock_available(doc.release_stock_entry)
+	# v6 — the run's locked Production Date governs the release (None = pre-change draft)
+	rel_base = api._release_base_date(doc)
+	shortages = wo_engine.check_stock_available(doc.release_stock_entry, base_date=rel_base)
 	if shortages:
-		rows = "".join(
-			"<li><b>{0}</b> in {1}: need {2}, have {3}</li>".format(
-				escape_html(s["item_code"]), escape_html(s["warehouse"]),
-				flt(s["required"]), flt(s["available"]),
-			) for s in shortages
-		)
-		frappe.throw(
-			_("Not enough stock to release the following raw material(s):")
-			+ "<ul style='margin-top:6px'>" + rows + "</ul>"
-			+ _("Receive / reconcile the stock first, then approve again."),
-			title=_("Insufficient Stock for Release"),
-		)
+		# v6 M13 — English block then Hindi block; stock as of the date the entry posts
+		api.throw_stock_shortage(shortages, shortages[0].get("as_of") or nowdate(),
+		                         run=doc.name, stage="approve")
 
 	# ── SUBMIT release SE -> entry becomes recoverable 'Released' ─────────
 	# Elevated: authorized at this gate, but the SE submit drives nested docs
 	# (Project cost roll-up) whose own perms the Stores Manager doesn't hold.
 	with wo_engine.system_session():
-		wo_engine.submit_release_se(doc.release_stock_entry)
+		wo_engine.submit_release_se(doc.release_stock_entry, base_date=rel_base)
 	released_val = wo_engine.released_value(doc.release_stock_entry)
 	doc.db_set("released_by", frappe.session.user, update_modified=False)
 	doc.db_set("released_at", now_datetime(), update_modified=False)
@@ -639,7 +667,8 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 
 		# 8 — Manufacture SE (consumes WIP per BOM-scaled qty). Idempotent.
 		manufacture_se = wo_engine.submit_manufacture_se(wo_name, company=company,
-		                                                 bp_split=bp_split, fg_split=fg_split)
+		                                                 bp_split=bp_split, fg_split=fg_split,
+		                                                 after_se=doc.release_stock_entry)
 		if not manufacture_se:
 			manufacture_se = frappe.db.get_value(
 				"Stock Entry",
@@ -653,7 +682,8 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 		# 10a — auto-return surplus WIP -> Stores (decision 4), if enabled.
 		return_se = None
 		if settings.get("auto_return_surplus"):
-			return_se, _surplus = wo_engine.auto_return_surplus(wo_name, settings)
+			return_se, _surplus = wo_engine.auto_return_surplus(wo_name, settings,
+			                                                    after_se=manufacture_se)
 
 	except Exception as e:
 		# Stay recoverable at 'Released'; surface a clear, retryable error.

@@ -31,9 +31,58 @@ import contextlib
 
 import frappe
 from frappe import _
-from frappe.utils import flt, cint, now_datetime, add_to_date, get_datetime
+from frappe.utils import flt, cint, now_datetime, add_to_date, get_datetime, getdate, nowdate
 
 RELEASE_PURPOSE = "Material Transfer for Manufacture"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  POSTING DATE / TIME FOR BACK-DATED RUNS  (plan v6 §3.2, 14 Sep 2026)
+# ─────────────────────────────────────────────────────────────────────────
+# ERPNext resets posting_date/time to NOW on every save AND submit unless
+# set_posting_time=1 (TransactionBase.validate_posting_time), so every chain Stock
+# Entry is stamped explicitly. A run dated today posts at the current time (today's
+# behaviour); a past date uses fixed end-of-day slots so release < manufacture <
+# surplus on that day, and a successor is never at or before its predecessor
+# (+1 s floor, capped at the end of that same day — never rolls to the next day).
+_SLOT = {"release": "23:57:00", "manufacture": "23:58:00", "surplus": "23:59:00"}
+
+
+def posting_slot(base_date, step, after_se=None):
+	"""(posting_date, posting_time) for a chain Stock Entry of a run dated base_date."""
+	d = getdate(base_date or nowdate())
+	if d >= getdate(nowdate()):
+		dt = now_datetime()
+	else:
+		dt = get_datetime("{0} {1}".format(d, _SLOT[step]))
+	if after_se:
+		pred = frappe.db.get_value("Stock Entry", after_se,
+		                           ["posting_date", "posting_time"], as_dict=True)
+		if pred and pred.posting_date:
+			floor = get_datetime("{0} {1}".format(getdate(pred.posting_date),
+			                                      pred.posting_time or "00:00:00"))
+			if dt <= floor:
+				cap = get_datetime("{0} 23:59:59.999999".format(getdate(pred.posting_date)))
+				dt = min(add_to_date(floor, seconds=1), cap)
+	return dt.date(), dt.strftime("%H:%M:%S.%f")
+
+
+def stamp_posting(se, base_date, step, after_se=None):
+	"""Fix a Stock Entry's posting datetime so ERPNext keeps it through save + submit."""
+	se.set_posting_time = 1
+	se.posting_date, se.posting_time = posting_slot(base_date, step, after_se)
+
+
+def stamp_after(se, step, after_se):
+	"""Stamp a successor from its STORED predecessor Stock Entry (never re-reads the
+	run). A predecessor without set_posting_time (pre-deploy draft, Multiple flow)
+	leaves the successor untouched — today's behaviour, byte-identical."""
+	pred = frappe.db.get_value("Stock Entry", after_se,
+	                           ["posting_date", "set_posting_time"], as_dict=True)
+	if not pred or not cint(pred.set_posting_time):
+		return False
+	stamp_posting(se, pred.posting_date, step, after_se)
+	return True
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -185,7 +234,13 @@ def create_and_submit_work_order(pe, settings, skip_transfer=0):
 		wo.scrap_warehouse = scrap
 	wo.use_multi_level_bom = 0
 	wo.skip_transfer = cint(skip_transfer)
-	wo.planned_start_date = now_datetime()  # verified prerequisite
+	# verified prerequisite; a back-dated run starts on its Production Date (cosmetic —
+	# actual start/end derive natively from the stamped Stock Entries)
+	# (Single runs only — the locked Multiple flow stays unchanged in v1)
+	_pd = getattr(pe, "posting_date", None)
+	_single = (getattr(pe, "flow_type", None) or "Single") != "Multiple"
+	wo.planned_start_date = (get_datetime("{0} 00:00:00".format(getdate(_pd)))
+	                         if _single and _pd and getdate(_pd) < getdate(nowdate()) else now_datetime())
 
 	# Pull the operation/required-item structure from the BOM.
 	if hasattr(wo, "set_work_order_operations"):
@@ -295,6 +350,9 @@ def build_draft_release_se(wo_name, settings, pe=None):
 		# v2.21 ② department-wise cost centre on every release row
 		if pe is not None:
 			apply_cost_center_to_se(se, resolve_production_cost_center(pe))
+			# v6 — the DRAFT carries the run's Production Date so dept-slot re-saves
+			# and the Store Manager's submit keep it (re-stamped at approval)
+			stamp_posting(se, getattr(pe, "posting_date", None), "release")
 		se.flags.ignore_permissions = True
 		se.insert()  # DRAFT — docstatus 0
 		return se.name
@@ -380,7 +438,7 @@ def _auto_qi_for_se(se):
 			"reference_name": se.name,
 			"item_code": row.item_code,
 			"sample_size": flt(row.qty) or 1.0,
-			"report_date": frappe.utils.nowdate(),
+			"report_date": se.posting_date if cint(se.get("set_posting_time")) else frappe.utils.nowdate(),
 			"inspected_by": frappe.session.user,
 		})
 		if tmpl:
@@ -403,11 +461,18 @@ def _auto_qi_for_se(se):
 	return made
 
 
-def submit_release_se(se_name):
+def submit_release_se(se_name, base_date=None):
 	"""Submit the DRAFT release SE (Store-Manager approve step). WO -> In Process."""
 	se = frappe.get_doc("Stock Entry", se_name)
 	if se.docstatus == 0:
 		_auto_qi_for_se(se)  # auto-accept QI per inward row when the BOM requires it
+		# v6 — re-stamp at approval (after the QI reload): a run dated today posts at
+		# the approval time, after any same-day GRN; a past date lands on D 23:57.
+		# base_date = the run's locked Production Date (the draft's own date is desk-editable).
+		if base_date:
+			stamp_posting(se, base_date, "release")
+		elif cint(se.get("set_posting_time")):
+			stamp_posting(se, se.posting_date, "release")
 		se.flags.ignore_permissions = True
 		se.submit()          # caller runs this inside system_session() (Administrator)
 	return se.name
@@ -585,7 +650,7 @@ def _cap_byproduct_rates(se):
 				frappe.clear_messages()
 
 
-def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None):
+def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None, after_se=None):
 	"""Create + submit the Manufacture Stock Entry (consumes WIP per BOM-scaled qty,
 	produces FG + by-products). WO auto-Completes when produced_qty == qty.
 	Idempotent: returns an existing submitted Manufacture SE if one already exists.
@@ -621,6 +686,10 @@ def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None):
 
 	se = frappe.get_doc(make_stock_entry(wo_name, "Manufacture", remaining))
 	se.company = company or wo.company
+	# v6 — same day as the submitted release SE, one slot later (unchanged when the
+	# release SE was not stamped: pre-deploy draft)
+	if after_se:
+		stamp_after(se, "manufacture", after_se)
 	# 20 Jul — by-product ACTUALS: the native mapper builds scrap rows BOM-scaled;
 	# the PM's edited by-product qty/warehouse (run.byproducts) must win — same
 	# actuals-first rule as materials.
@@ -741,7 +810,7 @@ def close_work_order_if_needed(wo_name):
 #  AUTO-RETURN SURPLUS WIP -> STORES  (decision 4)
 # ─────────────────────────────────────────────────────────────────────────
 
-def auto_return_surplus(wo_name, settings):
+def auto_return_surplus(wo_name, settings, after_se=None):
 	"""After completion, if leftover released raw material sits in the WIP warehouse
 	(released − BOM-consumed > 0), create + submit a Material Transfer (WIP -> Stores
 	source) to zero it. Returns (return_se_name | None, returned_items list).
@@ -788,6 +857,10 @@ def auto_return_surplus(wo_name, settings):
 	se.stock_entry_type = "Material Transfer"
 	se.company = wo.company
 	se.set_posting_time = 1
+	# v6 — one slot after the submitted Manufacture SE (the locked Multiple-flow caller
+	# passes no predecessor -> unchanged)
+	if after_se:
+		stamp_after(se, "surplus", after_se)
 	for row in surplus:
 		se.append("items", {
 			"item_code": row["item_code"],
@@ -809,11 +882,22 @@ def auto_return_surplus(wo_name, settings):
 #  PRE-FLIGHT — STOCK AVAILABILITY (BEFORE any submit; Lesson 288)
 # ─────────────────────────────────────────────────────────────────────────
 
-def check_stock_available(se_name):
+def check_stock_available(se_name, base_date=None):
 	"""Return a list of {item_code, warehouse, required, available} for release-SE
 	rows that lack physical stock in their source warehouse, so the caller can BLOCK
-	before submitting (avoids NegativeStockError mid-chain). Empty list = all OK."""
+	before submitting (avoids NegativeStockError mid-chain). Empty list = all OK.
+
+	v6 — for a stamped Stock Entry the stock is ALSO checked as of the moment the entry
+	WILL post: the slot recomputed now, never the stored draft stamp (at SM approval the
+	draft still carries the PM-submit time; the re-stamp happens in submit_release_se).
+	available = min(current Bin, balance at that moment). Native NegativeStockError
+	stays the final authority."""
 	se = frappe.get_doc("Stock Entry", se_name)
+	at = None
+	if base_date:
+		at = posting_slot(base_date, "release")
+	elif cint(se.get("set_posting_time")) and se.posting_date:
+		at = posting_slot(se.posting_date, "release")
 	shortages = []
 	seen = {}
 	for row in (se.items or []):
@@ -825,11 +909,20 @@ def check_stock_available(se_name):
 		actual = flt(frappe.db.get_value(
 			"Bin", {"item_code": item_code, "warehouse": wh}, "actual_qty"
 		))
+		if at:
+			from erpnext.stock.stock_ledger import get_previous_sle
+			prev = get_previous_sle({
+				"item_code": item_code, "warehouse": wh,
+				"posting_date": at[0], "posting_time": at[1],
+				"posting_datetime": get_datetime("{0} {1}".format(at[0], at[1])),
+			})
+			actual = min(actual, flt((prev or {}).get("qty_after_transaction")))
 		if actual < req - 1e-9:
 			shortages.append({
 				"item_code": item_code,
 				"warehouse": wh,
 				"required": req,
 				"available": actual,
+				"as_of": str(at[0]) if at else None,
 			})
 	return shortages

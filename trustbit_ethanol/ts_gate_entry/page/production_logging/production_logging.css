@@ -814,3 +814,24 @@
 .prodlog:not([data-prodlog-theme="light"]) .pl-act.amber .pl-act-num { background: linear-gradient(160deg, #f59e0b, #fcd34d); -webkit-background-clip: text; background-clip: text; }
 .prodlog:not([data-prodlog-theme="light"]) .pl-act.violet .pl-act-num { background: linear-gradient(160deg, #8b5cf6, #c4b5fd); -webkit-background-clip: text; background-clip: text; }
 .prodlog .btn.btn-violet:hover:not(:disabled) { transform: translateY(-2px); box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 12px 28px rgba(124,58,237,.55); }
+
+/* v6 back-dated production (14 Sep 2026) — Production Date field, notes, chips, Hindi block */
+.prodlog .pl-hi { display:block; margin-top:8px; padding-top:8px; border-top:1px dashed var(--g-border); font-size:1.06em; line-height:1.75; font-family:"Noto Sans Devanagari","Nirmala UI","Kohinoor Devanagari","Devanagari Sangam MN",Mangal,sans-serif; }
+.prodlog .pl-helper { font-size:11px; color:var(--faint); line-height:1.5; margin-top:6px; }
+.prodlog input.inp[type="date"] { color-scheme:dark; -webkit-appearance:none; appearance:none; line-height:1.2; }
+.prodlog[data-prodlog-theme="light"] input.inp[type="date"] { color-scheme:light; }
+.prodlog input.inp[type="date"]::-webkit-date-and-time-value { text-align:left; }
+.prodlog input.inp.date-back { border-color:var(--amber-bd); box-shadow:0 0 0 3px var(--amber-chip); }
+.prodlog input.inp.date-bad { border-color:var(--red-bd); box-shadow:0 0 0 3px var(--red-chip); }
+.prodlog .scale-note.date-warn { border-style:solid; border-left-width:3px; font-size:11px; }
+.prodlog .scale-note.err { background:var(--red-chip); border:1px solid var(--red-bd); border-left-width:3px; font-size:11px; }
+.prodlog .scale-note.err b { color:var(--red-txt); }
+.prodlog[data-prodlog-theme="light"] .scale-note.err b { color:var(--red); }
+.prodlog .pl-pill.pl-date { background:transparent; border:1px dashed var(--amber-bd); color:var(--amber); white-space:nowrap; }
+.prodlog .pl-pill.pl-date.is-today { border:1px solid var(--g-border); color:var(--muted); }
+.prodlog .log-table td.pl-pdate { white-space:nowrap; }
+.prodlog .log-table td.pl-pdate.is-back { color:var(--amber); font-weight:650; }
+@media (max-width:720px) { .prodlog input.inp[type="date"] { font-size:16px; } }
+.prodlog input.inp.date-back:focus, .prodlog input.inp.date-bad:focus { outline:2px solid var(--blue); outline-offset:2px; }
+.prodlog .scale-note.date-warn > span:last-child, .prodlog .scale-note.err > span:last-child { flex:1; min-width:0; }
+@media (max-width:640px) { .prodlog .pl-row > .pl-approve-btn { margin-left:auto; } }

@@ -314,6 +314,43 @@ _PRODUCTION_SETTINGS_FIELDS = [
 						"Stores Manager for that BOM. Multiple/Connector-flow runs ignore this "
 						"table."),
 	},
+	# v6 back-dated production (14 Sep 2026) — own section; ts_production_bom_configs is
+	# the last field of the BOM-config section and anchors nothing else (safe anchor).
+	# NO JSON defaults (Lesson 227): blank cut-over = no warning note; blank exempt list =
+	# every Material Issue counts (strictest). The creation time of the cut-over Custom
+	# Field is the go-live marker for the partial-period note.
+	{
+		"fieldname": "ts_production_backdate_section",
+		"label": "Back-dated Production",
+		"fieldtype": "Section Break",
+		"insert_after": "ts_production_bom_configs",
+		"collapsible": 0,
+	},
+	{
+		"fieldname": "ts_production_cutover_date",
+		"label": "Production Cut-over Date",
+		"fieldtype": "Date",
+		"insert_after": "ts_production_backdate_section",
+		"description": ("The day production logging went live. Runs dated before it are back-fill "
+						"of old days: the ERP shows a warning, and it refuses any run whose date is "
+						"already covered by a Material Issue. That check always runs, even when this "
+						"field is blank.<br><br>जिस दिन सिस्टम में production लिखना शुरू हुआ, वह तारीख। "
+						"उससे पहले की तारीख के run पुराने दिनों की एंट्री हैं। ERP उन पर चेतावनी दिखाता है। "
+						"अगर कोई Material Issue उस run की तारीख को पहले से cover करता है, तो ERP वह run मना "
+						"कर देता है। यह जाँच हमेशा चलती है, यह field खाली हो तब भी।"),
+	},
+	{
+		"fieldname": "ts_production_issue_exempt_cost_centers",
+		"label": "Exempt from Production Check",
+		"fieldtype": "Small Text",
+		"insert_after": "ts_production_cutover_date",
+		"description": ("Material Issues that are NOT production use, one per line: a Cost Center, "
+						"or \"Cost Center | Item Code\", or \"type: Stock Entry Type\". The production "
+						"check ignores them. Blank = every Material Issue counts.<br><br>जो Material "
+						"Issue production के लिए नहीं हैं, हर लाइन में एक: Cost Center, या \"Cost Center "
+						"| Item Code\", या \"type: Stock Entry Type\"। Production जाँच इन्हें नहीं गिनेगी। "
+						"खाली = हर Material Issue गिना जाएगा।"),
+	},
 ]
 
 # Phase D — tag field on Material Request identifying the Multiple-flow auto-MRs
