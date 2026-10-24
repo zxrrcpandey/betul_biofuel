@@ -510,6 +510,32 @@ def resume_mr(docname, comment=""):
 	return {"status": "resumed", "pending_state": pending_state}
 
 
+@frappe.whitelist(methods=["POST"])
+def callback_mr(docname, reason):
+	"""v2.69.0 — the creator recalls their own pending MR to fix a mistake.
+	Moves it to the existing "Revised" state (editable); the creator then uses
+	the normal Resubmit, which restarts the route from the first step."""
+	_require_post()  # L366 — trampoline-reachable
+	reason = (reason or "")[:2000]
+	if not reason:
+		frappe.throw(_("Callback reason is mandatory"))
+	doc = frappe.get_doc("Material Request", docname, for_update=True)
+	frappe.has_permission("Material Request", throw=True)  # L224 fence
+	if frappe.session.user not in (doc.owner, doc.ts_mr_submitted_by or ""):
+		frappe.throw(_("Only the MR creator or submitter can call it back"))
+	_block_if_mr_transfer(doc)
+	_block_if_budget_override_pending(doc)
+	if doc.docstatus != 0 or not (doc.ts_mr_status or "").startswith("Pending"):
+		frappe.throw(_("Only a pending MR can be called back (status: {0})").format(doc.ts_mr_status))
+	_log_mr_action(doc, "Revised", doc.ts_mr_status, "Revised",
+		comment=_("Called back by creator: {0}").format(reason),
+		step_order=cint(doc.ts_mr_current_step), purchase_category=doc.ts_mr_approval_route)
+	# escaped: db_set skips sanitising and the Small Text field renders as HTML
+	doc.db_set({"ts_mr_status": "Revised",
+		"ts_mr_revision_reason": frappe.utils.escape_html(reason)}, update_modified=True)
+	return {"status": "revised"}
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  v2.28 — EXECUTIVE PO HOLD (CEO/MD, any stage)
 #  Held-ness = ts_po_on_hold (tamper-guarded Check), orthogonal to
@@ -2421,6 +2447,8 @@ def _get_mr_approval_context(doc, settings):
 		"can_resubmit": (status == "Revised" and frappe.session.user in (
 			doc.owner, mr_submitted_by or "", "Administrator"
 		)),
+		# v2.69.0 — creator may recall a pending MR (server re-checks)
+		"can_callback": is_pending and frappe.session.user in (doc.owner, mr_submitted_by or ""),
 		"is_pending": is_pending,
 		"is_on_hold": is_on_hold,
 		"hold_reason": (doc.ts_mr_hold_reason if hasattr(doc, "ts_mr_hold_reason") else "") or "",
