@@ -339,6 +339,11 @@ def resubmit_document(doctype, docname, mode="restart"):
 
 	_validate_resubmit_permission(doc)
 
+	# v2.72.0 — a resubmitted PO re-enters the budget gate, like _resubmit_mr: the
+	# amount may have changed during revision (approver Revise or creator Callback)
+	if _maybe_divert_po_for_budget(doc, from_state="Revised"):
+		return {"status": "resubmitted", "next_state": "Pending Budget Override"}
+
 	# Re-resolve category and rule (amount may have changed)
 	category = _resolve_po_category(doc)
 	rule_name = _find_po_approval_rule(category, flt(doc.grand_total))
@@ -361,6 +366,8 @@ def resubmit_document(doctype, docname, mode="restart"):
 		"ts_total_steps": len(steps),
 		"ts_can_send_to_md": 0,
 		"ts_amount_at_submission": flt(doc.grand_total),
+		# v2.72.0 — recompute (was left stale from the first submit); same formula as first submit
+		"ts_self_skip_impossible": 1 if (target == steps[0] and target.role in frappe.get_roles(frappe.session.user) and len(steps) == 1) else 0,
 		"ts_resubmit_mode": f"Restarted from {target.role_label or target.role}",
 		"ts_last_action": f"Resubmitted on {now_datetime().strftime('%d %b %Y %H:%M')}",
 	}, update_modified=True)
@@ -533,6 +540,39 @@ def callback_mr(docname, reason):
 	# escaped: db_set skips sanitising and the Small Text field renders as HTML
 	doc.db_set({"ts_mr_status": "Revised",
 		"ts_mr_revision_reason": frappe.utils.escape_html(reason)}, update_modified=True)
+	return {"status": "revised"}
+
+
+@frappe.whitelist(methods=["POST"])
+def callback_po(docname, reason):
+	"""v2.72.0 — PO twin of callback_mr: the creator recalls their own pending PO
+	to the existing editable "Revised" state; Resubmit then restarts from step 1."""
+	_require_post()  # L366 — trampoline-reachable
+	reason = (reason or "")[:2000]
+	if not reason:
+		frappe.throw(_("Callback reason is mandatory"))
+	doc = frappe.get_doc("Purchase Order", docname, for_update=True)
+	frappe.has_permission("Purchase Order", throw=True)  # L224 fence
+	# creator check FIRST, so no other message tells a non-owner about this PO
+	if frappe.session.user not in (doc.owner, doc.ts_submitted_by or ""):
+		frappe.throw(_("Only the PO creator or submitter can call it back"))
+	_block_if_on_hold(doc)
+	_block_if_budget_override_pending(doc)
+	status = doc.ts_approval_status or ""
+	if doc.docstatus != 0 or not status.startswith(("Pending", "Awaiting")):
+		frappe.throw(_("Only a pending PO can be called back (status: {0})").format(status))
+	_log_approval_action(doc, "Revised", status, "Revised",
+		comment=_("Called back by creator: {0}").format(reason), po_amount=flt(doc.grand_total),
+		step_order=cint(doc.ts_current_step), purchase_category=doc.ts_purchase_category)
+	# escaped: db_set skips sanitising and the Small Text field renders as HTML
+	doc.db_set({
+		"ts_approval_status": "Revised",
+		"ts_revision_count": cint(doc.ts_revision_count) + 1,
+		"ts_revision_reason": frappe.utils.escape_html(reason),
+		"ts_revised_by": f"{frappe.session.user} (Creator)",
+		"ts_can_send_to_md": 0,
+		"ts_last_action": f"Called back by creator on {now_datetime().strftime('%d %b %Y %H:%M')}",
+	}, update_modified=True)
 	return {"status": "revised"}
 
 
@@ -924,6 +964,16 @@ def _submit_po_for_approval(doc):
 	# deviations now so the approver knows the PO doesn't match the approved MR.
 	_warn_if_po_differs_from_mr(doc)
 
+	diverted = _maybe_divert_po_for_budget(doc)
+	if diverted:
+		return diverted
+	return _start_po_approval_chain(doc)
+
+
+def _maybe_divert_po_for_budget(doc, from_state="Draft"):
+	"""v2.10.0 budget fork, split out v2.72.0 so first submit AND resubmit share it
+	(PO twin of _maybe_divert_mr_for_budget). Returns the response dict when the PO
+	was diverted to 'Pending Budget Override', else None."""
 	# v2.10.0 — Budget breach detection.
 	# Kill switch ON (default): breach diverts PO to 'Pending Budget Override' and
 	#   auto-creates a TS Budget Override Approval doc. NO throw.
@@ -1003,7 +1053,7 @@ def _submit_po_for_approval(doc):
 					_log_approval_action(
 						doc,
 						"Held for Budget Override",
-						"Draft",
+						from_state,
 						"Pending Budget Override",
 						comment=f"Linked override: {override['name']} ({breach.get('breach_type')})",
 						po_amount=flt(doc.grand_total),
@@ -1026,7 +1076,11 @@ def _submit_po_for_approval(doc):
 		else:
 			# Kill switch OFF — legacy hard-throw.
 			validate_budget_on_po_submit(doc)
+	return None
 
+
+def _start_po_approval_chain(doc):
+	"""First-submit routing, after the budget check: category → rule → first step."""
 	status = doc.ts_approval_status
 	if status and status not in ("", "Draft", "Not Submitted"):
 		frappe.throw(_("This PO is already in the approval chain (status: {0})").format(status))
@@ -1478,10 +1532,10 @@ def _block_if_budget_override_pending(doc):
 	Only an override actively 'Pending CEO' blocks. A Cancelled/Rejected/missing
 	override leaves Revise open on purpose: after cancel_budget_override the
 	source doc can only move again via Revise → Resubmit, so blocking
-	unconditionally would strand it forever. On resubmit the MR re-runs the
-	budget fork; the PO resubmit branch does NOT re-check budget yet (P2
-	follow-up in pending_works — a self-cancelled PO override can re-enter
-	the chain unchecked there).
+	unconditionally would strand it forever. On resubmit both re-run the
+	budget fork (MR: _maybe_divert_mr_for_budget; PO since v2.72.0:
+	_maybe_divert_po_for_budget), so a cancelled override cannot slip back
+	into the chain unchecked.
 	"""
 	status_field = "ts_approval_status" if doc.doctype == "Purchase Order" else "ts_mr_status"
 	if doc.get(status_field) != "Pending Budget Override":
@@ -2323,6 +2377,7 @@ def _get_po_approval_context(doc, settings):
 		"can_revise": False,
 		"can_reject": False,
 		"can_resubmit": (status == "Revised" and frappe.session.user in (doc.owner, doc.ts_submitted_by or "", "Administrator")),
+		"can_callback": (is_pending and doc.docstatus == 0 and frappe.session.user in (doc.owner, doc.ts_submitted_by or "")),
 		"self_skip_impossible": bool(self_skip_impossible),
 		"is_pending": is_pending,
 		"approval_chain": [],
@@ -2400,7 +2455,7 @@ def _get_po_approval_context(doc, settings):
 		# every progression action is frozen while held — server endpoints re-enforce
 		for _k in ("can_submit_for_approval", "can_review", "can_approve",
 				"can_final_approve", "can_send_to_md", "can_revise",
-				"can_reject", "can_resubmit"):
+				"can_reject", "can_resubmit", "can_callback"):
 			ctx[_k] = False
 
 	return ctx

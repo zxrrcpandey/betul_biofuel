@@ -472,6 +472,24 @@ function _render_buttons(frm, ctx) {
 		}, null).addClass("btn-success bbf-approval-btn");
 	}
 
+	// v2.72.0 — creator recalls a pending PO to edit it, then uses Resubmit. Full page
+	// reload, not reload_doc: the pending-state field locks survive reload_doc.
+	if (ctx.can_callback) {
+		frm.add_custom_button(__("Callback"), () => {
+			frappe.prompt(
+				{ fieldtype: "Small Text", fieldname: "reason", label: __("What needs fixing?"), reqd: 1 },
+				(values) => frappe.call({
+					method: "trustbit_ethanol.ts_gate_entry.ts_po_approval.callback_po",
+					args: { docname: frm.doc.name, reason: values.reason },
+					freeze: true,
+					callback: () => window.location.reload(),
+				}),
+				__("Call back this PO for editing?"),
+				__("Callback")
+			);
+		}, null).addClass("bbf-approval-btn");
+	}
+
 	if (ctx.can_resubmit) {
 		frm.add_custom_button(__("Resubmit for Approval"), () => {
 			if (frm.is_dirty()) {
