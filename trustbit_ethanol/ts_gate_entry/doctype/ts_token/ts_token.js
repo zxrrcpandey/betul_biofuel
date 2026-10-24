@@ -231,9 +231,11 @@ frappe.ui.form.on("TS Token", {
 						|| frappe.user.has_role("IT Head")
 						|| frappe.user.has_role("System Manager")
 						|| frappe.user.has_role("Admin Reception");
-					// v2.18.0 — Stores roles may approve a Non-Raw-Material vehicle for exit.
+					// v2.18.0 — Stores roles may approve a Non-Raw-Material vehicle for exit
+					// (and release a grain truck before GRN). G2 added 24 Oct 2026.
 					const has_stores = frappe.user.has_role("Stores User")
 						|| frappe.user.has_role("Stores Manager")
+						|| frappe.user.has_role("G2 Gate Operator")
 						|| frappe.user.has_role("IT Head")
 						|| frappe.user.has_role("System Manager");
 					const _is_non_rm = (frm.doc.purpose === "Non-Raw Material");
@@ -259,7 +261,7 @@ frappe.ui.form.on("TS Token", {
 						}, __("Gate Actions")).addClass("btn-primary");
 					}
 
-					// v2.30.0 — "Release Exit (before GRN)" (Stores). A grain-deferred
+					// v2.30.0 — "Release Exit (before GRN)" (Stores, + G2 since 24 Oct 2026). A grain-deferred
 					// truck held at G2 Exit may be released to leave BEFORE the GRN;
 					// the PO link + GRN are then completed from Stores Receiving →
 					// Section G after exit. Rendered from pre_grn_exit_state — the

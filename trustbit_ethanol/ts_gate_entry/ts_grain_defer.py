@@ -103,7 +103,7 @@ def pre_grn_exit_state(token_name):
     # mirrors ts_token.STORES_EXIT_APPROVE_ROLES + break-glass (L280 parity;
     # literal set to avoid a circular top-level import). Fail-soft zeros, not
     # a throw, so a stray call never breaks the form.
-    if not ({"Stores User", "Stores Manager", "IT Head", "System Manager"}
+    if not ({"Stores User", "Stores Manager", "G2 Gate Operator", "IT Head", "System Manager"}
             & set(frappe.get_roles())):
         return {"eligible": 0, "released": 0}
     if not token_name or not frappe.db.exists("TS Token", token_name):

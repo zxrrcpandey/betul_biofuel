@@ -11,7 +11,9 @@ TWO_PASS_G1_ROLE = "G1 Security"
 
 # v2.18.0 Non-Raw-Material Stores-approved exit
 NON_RM_PURPOSE = "Non-Raw Material"
-STORES_EXIT_APPROVE_ROLES = ("Stores User", "Stores Manager")
+# Who may press Non-RM "Exit Approved" and grain "Release Exit (before GRN)".
+# G2 added on the user's request, 24 Oct 2026 (name kept from v2.18.0).
+STORES_EXIT_APPROVE_ROLES = ("Stores User", "Stores Manager", TWO_PASS_G2_ROLE)
 # Statuses that mean the vehicle has already left — never re-process exit from these.
 _EXITED_STATUSES = ("Plant Exited", "Campus Exited", "Exited")
 
@@ -842,7 +844,8 @@ def g2_mat_log_exit(token_name):
 			_(
 				"Vehicle {0}: the grain Purchase Order is not linked yet. Stores must "
 				"link the PO and create the GRN (Stores Receiving Dashboard → "
-				"Grain — Awaiting PO Link) before this vehicle can record G2 Exit."
+				"Grain — Awaiting PO Link) before this vehicle can record G2 Exit, "
+				"or press \"Release Exit (before GRN)\" on this token first."
 			).format(escape_html(tok.vehicle_number or token_name)),
 			title=_("Awaiting PO Link"),
 		)
@@ -930,8 +933,8 @@ def approve_non_rm_exit(token_name):
 	control-plane fields via db_set (which skips save hooks); REST tamper of those
 	fields is blocked by TSToken.before_save (Lesson 162/176).
 
-	Role: Stores User / Stores Manager (IT Head / System Manager break-glass).
-	Mutation endpoint → POST only (Lesson 175).
+	Role: Stores User / Stores Manager / G2 Gate Operator (IT Head / System
+	Manager break-glass). Mutation endpoint → POST only (Lesson 175).
 	"""
 	# Defence in depth: hard existence check before any load (mirrors g2/g1 exit).
 	if not frappe.db.exists("TS Token", token_name):
@@ -939,7 +942,7 @@ def approve_non_rm_exit(token_name):
 	user_roles = set(frappe.get_roles())
 	allowed = set(STORES_EXIT_APPROVE_ROLES) | {"IT Head", "System Manager"}
 	if not (allowed & user_roles):
-		frappe.throw(_("Only Stores can approve a Non-Raw-Material vehicle exit"), frappe.PermissionError)
+		frappe.throw(_("Only Stores or G2 can approve a Non-Raw-Material vehicle exit"), frappe.PermissionError)
 	tok = frappe.get_doc("TS Token", token_name)
 	if tok.entry_type != "Material":
 		frappe.throw(_("Exit approval is only valid for Material tokens (not Gate Pass)."))
@@ -948,6 +951,15 @@ def approve_non_rm_exit(token_name):
 	# re-labeled Raw-Material token skip the weighbridge/GRN via this path.
 	if not _non_rm_flow_confirmed(token_name):
 		frappe.throw(_("Token {0} has no submitted Non-Raw-Material Gate Entry — exit approval does not apply.").format(token_name))
+	# A weighed Non-RM truck exits through the normal Tare path (G2 Exit accepts
+	# 'Tare Weighed'). Approving it earlier lets it leave with no net weight, and
+	# then no GRN route accepts it (weighed path needs 'Tare Weighed'; the
+	# non-weighing path refuses requires_weighing=1).
+	if cint(frappe.db.get_value(
+			"TS Gate Entry",
+			{"token_number": token_name, "docstatus": 1, "material_flow": NON_RM_PURPOSE},
+			"requires_weighing")):
+		frappe.throw(_("Token {0} must go over the weighbridge — Exit Approved is only for Non-Raw-Material vehicles that are not weighed. After Tare, G2 can record exit directly.").format(token_name))
 	if tok.status in _EXITED_STATUSES:
 		frappe.throw(_("Token {0} has already exited (status '{1}').").format(token_name, tok.status))
 	if cint(getattr(tok, "non_rm_exit_approved", 0)):
@@ -962,7 +974,7 @@ def approve_non_rm_exit(token_name):
 
 @frappe.whitelist(methods=["POST"])
 def approve_pre_grn_exit(token_name):
-	"""v2.30.0: Stores releases a grain-held vehicle to exit BEFORE the GRN.
+	"""v2.30.0: Stores (or G2, since 24 Oct 2026) releases a grain-held vehicle to exit BEFORE the GRN.
 
 	Applies ONLY to a token currently held by the grain deferred-linking hold
 	(ts_grain_defer.exit_hold_active) — any other token throws, so every
@@ -974,8 +986,8 @@ def approve_pre_grn_exit(token_name):
 
 	Writes three permlevel-0 control-plane fields via db_set (skips save
 	hooks); REST tamper is blocked by TSToken.before_save (Lesson 162/176).
-	Role: Stores User / Stores Manager (IT Head / System Manager break-glass).
-	Mutation endpoint → POST only (Lesson 175).
+	Role: Stores User / Stores Manager / G2 Gate Operator (IT Head / System
+	Manager break-glass). Mutation endpoint → POST only (Lesson 175).
 	"""
 	if not frappe.db.exists("TS Token", token_name):
 		from frappe.utils import escape_html
@@ -983,7 +995,7 @@ def approve_pre_grn_exit(token_name):
 	user_roles = set(frappe.get_roles())
 	allowed = set(STORES_EXIT_APPROVE_ROLES) | {"IT Head", "System Manager"}
 	if not (allowed & user_roles):
-		frappe.throw(_("Only Stores can release a grain vehicle to exit before the GRN"), frappe.PermissionError)
+		frappe.throw(_("Only Stores or G2 can release a grain vehicle to exit before the GRN"), frappe.PermissionError)
 	# Row-lock against a concurrent release / link_grain_po_and_create_grn, and
 	# read EVERY gate field THROUGH the lock: under REPEATABLE READ a get_doc()
 	# after the lock still returns the transaction's snapshot, so N concurrent
