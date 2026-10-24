@@ -12,6 +12,10 @@ frappe.ui.form.on("TS Returnable Gate Pass", {
 				ts_mr_status: "Approved",
 			},
 		}));
+		frm.set_query("purchase_receipt", () => ({
+			filters: Object.assign({ docstatus: 1, is_return: 0 },
+				frm.doc.supplier ? { supplier: frm.doc.supplier } : {}),
+		}));
 		frm.set_query("supplier_address", () => ({
 			filters: { link_doctype: "Supplier", link_name: frm.doc.supplier || "" },
 		}));
@@ -247,6 +251,11 @@ function ts_rgp_buttons(frm, ctx) {
 	if (frm.doc.material_request) {
 		frm.add_custom_button(__("Source Indent"), () => {
 			frappe.set_route("Form", "Material Request", frm.doc.material_request);
+		}, __("View"));
+	}
+	if (frm.doc.purchase_receipt) {
+		frm.add_custom_button(__("Source GRN"), () => {
+			frappe.set_route("Form", "Purchase Receipt", frm.doc.purchase_receipt);
 		}, __("View"));
 	}
 }

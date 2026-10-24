@@ -16,6 +16,7 @@
   "cost_center",
   "source_section",
   "material_request",
+  "purchase_receipt",
   "requested_by",
   "column_break_source",
   "reason",
@@ -167,17 +168,28 @@
   {
    "fieldname": "source_section",
    "fieldtype": "Section Break",
-   "label": "Source Indent"
+   "label": "Source (Indent or GRN)"
   },
   {
    "fieldname": "material_request",
    "fieldtype": "Link",
    "label": "Material Request",
    "options": "Material Request",
-   "reqd": 1,
    "set_only_once": 1,
    "in_standard_filter": 1,
-   "description": "Approved Service Request indent this pass is issued against."
+   "description": "Approved Service Request indent this pass is issued against (leave blank when sending GRN items back to the supplier).",
+   "depends_on": "eval:!doc.purchase_receipt",
+   "mandatory_depends_on": "eval:!doc.purchase_receipt"
+  },
+  {
+   "fieldname": "purchase_receipt",
+   "fieldtype": "Link",
+   "label": "GRN (Purchase Receipt)",
+   "options": "Purchase Receipt",
+   "set_only_once": 1,
+   "in_standard_filter": 1,
+   "depends_on": "eval:!doc.material_request",
+   "description": "Damaged/defective items from this GRN going back to the supplier for repair or replacement. No indent needed; Stores raises and issues the pass."
   },
   {
    "fieldname": "requested_by",
@@ -195,7 +207,7 @@
    "fieldname": "reason",
    "fieldtype": "Select",
    "label": "Purpose of Movement",
-   "options": "Repair\nCalibration\nJob Work\nTesting\nDemo/Trial\nOther",
+   "options": "Repair\nReplacement\nCalibration\nJob Work\nTesting\nDemo/Trial\nOther",
    "reqd": 1,
    "in_list_view": 1
   },
@@ -709,7 +721,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-08-28 00:00:00",
+ "modified": "2026-10-24 10:45:00",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Returnable Gate Pass",
@@ -868,7 +880,7 @@
    "role": "AVP"
   }
  ],
- "search_fields": "material_request,supplier_name,status",
+ "search_fields": "material_request,purchase_receipt,supplier_name,status",
  "sort_field": "modified",
  "sort_order": "DESC",
  "title_field": "supplier_name",

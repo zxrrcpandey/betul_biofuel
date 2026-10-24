@@ -232,6 +232,84 @@ def create_rgp_from_mr(mr):
 
 
 @frappe.whitelist(methods=["POST"])
+def create_rgp_from_grn(purchase_receipt):
+	"""Draft RGP for damaged/defective items on a GRN going back to the
+	supplier for repair or replacement. No indent and no approval chain —
+	Stores raises and issues it (user decision 24 Oct 2026). Lines: the
+	inspection-rejected qty (from the rejection warehouse) if the GRN has
+	any, else every accepted line — Stores trims before submitting. Qty
+	already on other passes for this GRN is left out."""
+	_require_post()
+	_require_feature()  # creation follows the RGP switch, like create_rgp_from_mr
+	_require_role(STORES_ROLES)
+	frappe.has_permission("Purchase Receipt", doc=purchase_receipt, throw=True)
+
+	from trustbit_ethanol.ts_gate_entry.doctype.ts_returnable_gate_pass.ts_returnable_gate_pass import (
+		grn_qty_on_other_passes,
+	)
+	pr = frappe.get_doc("Purchase Receipt", purchase_receipt)
+	if pr.docstatus != 1 or cint(pr.is_return):
+		frappe.throw(_("{0} must be a submitted GRN (not a return).").format(pr.name))
+
+	has_rejected = any(flt(i.rejected_qty) > 0 for i in pr.items)
+	used = grn_qty_on_other_passes(pr.name)  # stock qty per item
+	for i in pr.items:  # already sent back on a Purchase Return (stock UOM)
+		used[i.item_code] = flt(used.get(i.item_code)) + flt(i.returned_qty)
+	rgp = frappe.new_doc(RGP_DOCTYPE)
+	rgp.purchase_receipt = pr.name
+	rgp.company = pr.company
+	rgp.supplier = pr.supplier
+	rgp.reason = "Repair"
+	rgp.cost_center = next((i.cost_center for i in pr.items if i.get("cost_center")), None) \
+		or frappe.get_cached_value("Company", pr.company, "cost_center")
+	for item in pr.items:
+		qty, wh = (flt(item.rejected_qty), item.rejected_warehouse) if has_rejected \
+			else (flt(item.qty), item.warehouse)
+		cf = flt(item.conversion_factor) or 1.0
+		taken = min(flt(used.get(item.item_code)), qty * cf)
+		used[item.item_code] = flt(used.get(item.item_code)) - taken
+		qty = flt(qty - taken / cf, item.precision("qty"))
+		if qty <= 0:
+			continue
+		rgp.append("items", {
+			"item_code": item.item_code,
+			"description": item.get("description"),
+			"uom": item.uom,
+			"qty_out": qty,
+			"rate": flt(item.rate),
+			"warehouse": wh,
+		})
+	if not rgp.items:
+		frappe.throw(_("Everything on GRN {0} is already on a Returnable Gate "
+			"Pass.").format(pr.name))
+	rgp.insert()  # normal perms — Stores holds create
+	return rgp.name
+
+
+def _check_stock_before_issue(doc):
+	"""With the stock leg on, the G1 exit moves each line out of its
+	warehouse — check the stock is there NOW, while the pass can still be
+	cancelled, instead of failing at the gate and stranding it outside."""
+	from trustbit_ethanol.ts_gate_entry.ts_rgp_stock import _stock_rows, rgp_out_warehouse
+	from trustbit_ethanol.ts_gate_entry.doctype.ts_returnable_gate_pass.ts_returnable_gate_pass import (
+		to_stock_qty,
+	)
+	if not rgp_out_warehouse():
+		return
+	need = {}
+	for line, qty in _stock_rows(doc):
+		key = (line.item_code, line.warehouse)
+		need[key] = need.get(key, 0) + to_stock_qty(line.item_code, line.uom, qty)
+	for (item_code, warehouse), qty in need.items():
+		have = flt(frappe.db.get_value("Bin",
+			{"item_code": item_code, "warehouse": warehouse}, "actual_qty"))
+		if flt(qty, 6) > flt(have, 6):
+			frappe.throw(_("Not enough {0} in {1}: the pass needs {2}, the "
+				"warehouse holds {3}. Correct the pass (or cancel it) before "
+				"issuing.").format(item_code, warehouse, flt(qty, 6), flt(have, 6)))
+
+
+@frappe.whitelist(methods=["POST"])
 def issue_rgp(rgp):
 	"""Draft (submitted) → Issued. E-way precondition enforced here; the issue
 	photo is OPTIONAL since 12 Sep 2026 (IT Head request) — advisory note only."""
@@ -249,6 +327,7 @@ def issue_rgp(rgp):
 		frappe.throw(
 			_("An e-way bill number is required (value above ₹50,000 or "
 			  "inter-state movement) before this pass can be issued."))
+	_check_stock_before_issue(doc)
 	if not (doc.issue_photo_1 or "").strip():
 		# D6 evidence downgraded from hard gate to advisory (IT Head, 12 Sep 2026);
 		# the field is allow_on_submit so the photo can still be attached later.
@@ -339,7 +418,11 @@ def record_rgp_return(rgp, lines):
 		if cint(row.is_serialized):
 			serial_in = frappe.utils.cstr(line.get("serial_no_in")).strip()
 			serial_out = (row.serial_no_out or "").strip()
-			if serial_in != serial_out:
+			if doc.reason == "Replacement":
+				if not serial_in:
+					frappe.throw(_("Row {0}: record the replacement unit's serial "
+						"number.").format(row.idx))
+			elif serial_in != serial_out:
 				frappe.throw(
 					_("Row {0}: serial mismatch — went out as '{1}', returning "
 					  "as '{2}'. The same unit must return (D6).")
@@ -424,6 +507,8 @@ def verify_rgp(rgp):
 	_rgp_log(doc, "Verified", "Returned", "Verified - Closed")
 	_bell(
 		[doc.requested_by, doc.owner],
+		_("RGP {0} verified & closed — goods back from the supplier against GRN {1}")
+			.format(doc.name, doc.purchase_receipt) if doc.purchase_receipt else
 		_("RGP {0} verified & closed — Work Order conversion unlocked on {1}")
 			.format(doc.name, doc.material_request),
 		doc,

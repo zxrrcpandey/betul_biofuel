@@ -32,8 +32,37 @@ frappe.ui.form.on("Purchase Receipt", {
 		_force_grid_columns(frm, "Purchase Receipt Item");
 		_show_grn_source_indicator(frm);
 		_add_bbpl_print_button(frm);
+		_add_rgp_from_grn_button(frm);
 	}
 });
+
+// Damaged/defective items back to the supplier for repair or replacement —
+// an RGP raised from this GRN (no indent; Stores raises and issues it).
+function _add_rgp_from_grn_button(frm) {
+	if (frm.is_new() || frm.doc.docstatus !== 1 || frm.doc.is_return) return;
+	if (!frappe.user.has_role(["Stores User", "Stores Manager", "IT Head", "System Manager"])) return;
+	if (frm.doc.ts_confidential) return;
+	frappe.xcall("trustbit_ethanol.ts_gate_entry.ts_rgp.rgp_enabled").then((on) => {
+		if (on) _render_rgp_from_grn_button(frm);
+	});
+}
+
+function _render_rgp_from_grn_button(frm) {
+	frm.add_custom_button(__("Send Back to Supplier (RGP)"), () => {
+		frappe.confirm(
+			__("Create a Returnable Gate Pass to send damaged or defective items from this GRN back to {0} for repair or replacement?",
+				[frappe.utils.escape_html(frm.doc.supplier_name || frm.doc.supplier)]),
+			() => frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.ts_rgp.create_rgp_from_grn",
+				type: "POST",
+				args: { purchase_receipt: frm.doc.name },
+				freeze: true,
+				callback: (r) => {
+					if (r.message) frappe.set_route("Form", "TS Returnable Gate Pass", r.message);
+				},
+			}));
+	}, __("Create"));
+}
 
 function _add_bbpl_print_button(frm) {
 	if (frm.is_new() || frm.doc.docstatus !== 1) return;

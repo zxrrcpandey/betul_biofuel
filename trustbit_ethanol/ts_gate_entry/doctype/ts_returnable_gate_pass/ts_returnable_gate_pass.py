@@ -63,18 +63,30 @@ TERMINAL_STATUSES = ("Verified - Closed", "Closed Short", "Cancelled")
 OPEN_STATUSES = ("Draft", "Issued", "Out of Plant", "At Vendor", "Partially Returned", "Returned")
 
 SEC143_EXEMPT_GOODS = "Moulds/Dies/Jigs/Fixtures/Tools"
+# A pass raised from a GRN (no indent, no approval chain) is for these only.
+GRN_REASONS = ("Repair", "Replacement")
 EWAY_VALUE_THRESHOLD = 50000
 
 
 class TSReturnableGatePass(frappe.model.document.Document):
 	def before_insert(self):
+		# H-2 (3 Sep scan): desk Amend copies no_copy fields and the tamper
+		# guard skips new docs, so a new pass could arrive already "Verified"
+		# or with g1_out_by set (which arms a reverse stock transfer with no
+		# out-transfer behind it). Reset the control plane on every insert.
+		for field in RGP_GATE_FIELDS:
+			self.set(field, None)
+		self.status = "Draft"
+		self.is_overdue = 0
+		self.set("returns", [])
+		self.set("rgp_log", [])
 		if not self.challan_date:
 			self.challan_date = frappe.utils.today()
 		if not self.expected_return_date:
 			self.expected_return_date = add_days(self.challan_date, 7)
 
 	def validate(self):
-		self._validate_source_mr()
+		self._validate_source()
 		self._validate_dates()
 		self._validate_items()
 		# N-2: also gate DRAFT-stage returns rows — without this, rows
@@ -145,7 +157,12 @@ class TSReturnableGatePass(frappe.model.document.Document):
 					"mandatory (D6).").format(ret.idx))
 			src = items_by_name.get(ret.rgp_item_row)
 			if src and cint(src.is_serialized):
-				if (ret.serial_no_in or "").strip() != (src.serial_no_out or "").strip():
+				if self.reason == "Replacement":
+					# a replacement unit carries a NEW serial — just require one
+					if not (ret.serial_no_in or "").strip():
+						frappe.throw(_("Return row {0}: record the replacement "
+							"unit's serial number.").format(ret.idx))
+				elif (ret.serial_no_in or "").strip() != (src.serial_no_out or "").strip():
 					frappe.throw(_("Return row {0}: serial mismatch — the same "
 						"unit must return (D6).").format(ret.idx))
 
@@ -170,6 +187,10 @@ class TSReturnableGatePass(frappe.model.document.Document):
 			comment=_("Pass content frozen; awaiting Issue by Stores."))
 
 	def before_cancel(self):
+		# H-1 (3 Sep scan): cancel skips validate()/before_save and the doc is
+		# built from the browser's copy — never trust self.status here.
+		_block_gate_field_tampering(self, RGP_GATE_FIELDS)
+		self.status = frappe.db.get_value(self.doctype, self.name, "status") or "Draft"
 		if (self.status or "Draft") in OUTSIDE_STATUSES:
 			frappe.throw(
 				_("Cannot cancel {0}: material is outside the plant (status {1}). "
@@ -185,6 +206,69 @@ class TSReturnableGatePass(frappe.model.document.Document):
 		_rgp_log(self, "Cancelled", from_state, "Cancelled")
 
 	# ── validation helpers ─────────────────────────────────────────────
+
+	def _validate_source(self):
+		if self.material_request and self.purchase_receipt:
+			frappe.throw(_("Pick either the Service Request indent or the GRN, not both."))
+		if self.purchase_receipt:
+			self._validate_source_grn()
+		elif not self.material_request:
+			frappe.throw(_("Pick the source: an approved Service Request indent, "
+				"or the GRN of the damaged items."))
+		else:
+			self._validate_source_mr()
+
+	def _validate_source_grn(self):
+		"""Damaged/defective GRN items going back to the supplier for repair or
+		replacement — no indent, Stores raises it (user decision 24 Oct 2026)."""
+		if self.is_new():
+			# Confidential GRNs are hidden by a has_permission hook that the
+			# plain db reads below skip (L297) — check it before reading.
+			frappe.has_permission("Purchase Receipt", doc=self.purchase_receipt, throw=True)
+		pr = frappe.db.get_value("Purchase Receipt", self.purchase_receipt,
+			["docstatus", "is_return", "company", "supplier", "ts_confidential"],
+			as_dict=True, for_update=True)
+		if not pr:
+			frappe.throw(_("GRN {0} not found.").format(self.purchase_receipt))
+		if cint(pr.ts_confidential):
+			frappe.throw(_("A confidential GRN cannot be sent on a Returnable Gate Pass."))
+		if self.reason not in GRN_REASONS:
+			frappe.throw(_("A pass raised from a GRN is for {0} only.").format(
+				" / ".join(GRN_REASONS)))
+		if cint(pr.docstatus) != 1 or cint(pr.is_return):
+			frappe.throw(_("{0} must be a submitted GRN (not a return).")
+				.format(self.purchase_receipt))
+		if pr.company != self.company:
+			frappe.throw(_("GRN {0} belongs to {1}, not {2}.").format(
+				self.purchase_receipt, pr.company, self.company))
+		if not self.supplier:
+			self.supplier = pr.supplier
+		elif self.supplier != pr.supplier:
+			frappe.throw(_("GRN {0} is from {1} — the pass must go back to the "
+				"same supplier.").format(self.purchase_receipt, pr.supplier))
+		self.requested_by = self.owner or frappe.session.user
+
+		# Qty cap per item, in stock UOM: what the GRN received, less what
+		# other (non-cancelled) passes against the same GRN already carry.
+		received = grn_received_stock_qty(self.purchase_receipt)
+		used = grn_qty_on_other_passes(self.purchase_receipt, self.name)
+		mine = {}
+		for row in (self.items or []):
+			if row.item_code not in received:
+				frappe.throw(_("Row {0}: {1} is not on GRN {2}.").format(
+					row.idx, row.item_code, self.purchase_receipt))
+			if to_stock_qty(row.item_code, row.uom, 1, strict=True) is None:
+				frappe.throw(_("Row {0}: {1} has no conversion for UOM {2}.").format(
+					row.idx, row.item_code, row.uom))
+			mine[row.item_code] = mine.get(row.item_code, 0) + to_stock_qty(
+				row.item_code, row.uom, row.qty_out)
+		for item_code, qty in mine.items():
+			left = flt(received[item_code] - used.get(item_code, 0), 6)
+			if flt(qty, 6) > left:
+				frappe.throw(_("{0}: only {1} {2} can go back on this GRN "
+					"(received {3}, already on other passes {4}).").format(
+					item_code, left, frappe.get_cached_value("Item", item_code, "stock_uom"),
+					flt(received[item_code], 6), flt(used.get(item_code, 0), 6)))
 
 	def _validate_source_mr(self):
 		if not self.material_request:
@@ -276,6 +360,50 @@ class TSReturnableGatePass(frappe.model.document.Document):
 		self.eway_bill_required = 1 if (
 			flt(self.total_taxable_value) > EWAY_VALUE_THRESHOLD or cint(self.is_interstate)
 		) else 0
+
+
+def to_stock_qty(item_code, uom, qty, strict=False):
+	"""qty in stock UOM. strict=True returns None when no conversion exists
+	(instead of assuming 1)."""
+	from erpnext.stock.get_item_details import get_conversion_factor
+	# get_conversion_factor itself falls back to 1.0, so check the item's own
+	# UOM table to know whether a conversion really exists
+	if strict and uom != frappe.get_cached_value("Item", item_code, "stock_uom") \
+			and not frappe.db.exists("UOM Conversion Detail", {"parent": item_code, "uom": uom}):
+		return None
+	try:
+		cf = flt((get_conversion_factor(item_code, uom) or {}).get("conversion_factor"))
+	except Exception:
+		cf = 0
+	if not cf:
+		if strict:
+			return None
+		cf = 1.0
+	return flt(qty) * cf
+
+
+def grn_received_stock_qty(purchase_receipt):
+	"""{item_code: received stock qty (accepted + rejected) less what already
+	went back on a Purchase Return (returned_qty is in stock UOM)} on one GRN."""
+	out = {}
+	for r in frappe.get_all("Purchase Receipt Item", filters={"parent": purchase_receipt},
+			fields=["item_code", "received_stock_qty", "returned_qty"]):
+		out[r.item_code] = out.get(r.item_code, 0) + flt(r.received_stock_qty) - flt(r.returned_qty)
+	return out
+
+
+def grn_qty_on_other_passes(purchase_receipt, exclude=None):
+	"""{item_code: stock qty} already on non-cancelled passes for this GRN."""
+	out = {}
+	for r in frappe.db.sql(
+			"""SELECT i.item_code, i.uom, i.qty_out
+			   FROM `tabTS RGP Item` i
+			   JOIN `tabTS Returnable Gate Pass` p ON p.name = i.parent
+			   WHERE p.purchase_receipt = %s AND p.docstatus < 2 AND p.name != %s
+			   FOR UPDATE""",
+			(purchase_receipt, exclude or ""), as_dict=True):
+		out[r.item_code] = out.get(r.item_code, 0) + to_stock_qty(r.item_code, r.uom, r.qty_out)
+	return out
 
 
 def _rgp_log(doc, action, from_state, to_state, comment=""):
