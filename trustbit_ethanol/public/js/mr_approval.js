@@ -35,6 +35,7 @@ frappe.ui.form.on("Material Request", {
 		_setup_stock_columns(frm);
 		// Override item filter: allow non-stock items for Service Request
 		_setup_item_query(frm);
+		_ts_hide_material_issue_purpose(frm);
 		if (frm.is_new()) return;
 		// v2.9.9 — Stores flow branch (Material Transfer + Material Issue):
 		// uses Stores Manager workflow, NOT the Purchase chain. Skip
@@ -812,6 +813,22 @@ function _setup_item_query(frm) {
 		// Default: let ERPNext handle it (stock items for Stock, purchase items for Purchase)
 		return {};
 	});
+}
+
+// "Material Issue" is no longer offered as an MR Purpose, for every department.
+// Form-side only: an MR already SAVED with it keeps the option, so the open ones
+// still load, save and get approved. A new MR copied from one (Duplicate / Amend)
+// gets the value cleared so the user picks another purpose.
+function _ts_hide_material_issue_purpose(frm) {
+	if (frm.doc.docstatus !== 0) return;
+	if (!frm.is_new() && frm.doc.material_request_type === "Material Issue") return;
+	const df = frm.get_docfield("material_request_type");
+	if (!df || !df.options) return;
+	if (frm.doc.material_request_type === "Material Issue") {
+		frm.set_value("material_request_type", "");
+	}
+	const options = df.options.split("\n").filter((o) => o !== "Material Issue");
+	frm.set_df_property("material_request_type", "options", options.join("\n"));
 }
 
 
