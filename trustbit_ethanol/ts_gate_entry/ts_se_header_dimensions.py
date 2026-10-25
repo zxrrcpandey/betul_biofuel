@@ -125,6 +125,24 @@ def _autofetch_header_dims_from_mr(doc):
             doc.set(header_field, mr.get(mr_field))
 
 
+def _block_material_receipt(doc):
+    """24 Oct 2026 — only Administrator may save a Material Receipt by hand.
+    App code that saves with ignore_permissions (TS Item Creator opening stock)
+    still may; `flags` cannot be set from a request payload. Cancel is unaffected
+    (before_validate does not run on cancel)."""
+    if frappe.session.user == "Administrator" or doc.flags.ignore_permissions:
+        return
+    purposes = {doc.get("purpose")}
+    if doc.get("stock_entry_type"):
+        purposes.add(frappe.get_cached_value("Stock Entry Type", doc.stock_entry_type, "purpose"))
+    if "Material Receipt" in purposes:
+        frappe.throw(
+            frappe._("Material Receipt is not allowed. Choose another Stock Entry Type, "
+                     "or add opening stock through TS Item Creator."),
+            title=frappe._("Not Allowed"),
+        )
+
+
 def cascade_se_header_dimensions(doc, method=None):
     """Stock Entry before_validate — push the header fields onto the item rows.
 
@@ -142,6 +160,7 @@ def cascade_se_header_dimensions(doc, method=None):
     Request (when blank) so an MR-sourced issue inherits the MR's Cost Center +
     Project end-to-end without manual re-entry.
     """
+    _block_material_receipt(doc)
     if not doc.get("items"):
         return
     _autofetch_header_dims_from_mr(doc)

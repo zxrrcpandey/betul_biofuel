@@ -10,6 +10,15 @@
 // the integrity backstop that the cascaded row values actually landed.
 
 frappe.ui.form.on("Stock Entry", {
+	setup(frm) {
+		// 24 Oct 2026 — Material Receipt hidden for everyone except Administrator.
+		// Server backstop: ts_se_header_dimensions._block_material_receipt.
+		if (frappe.session.user !== "Administrator") {
+			frm.set_query("stock_entry_type", () => ({
+				filters: { purpose: ["!=", "Material Receipt"] },
+			}));
+		}
+	},
 	refresh(frm) {
 		_ts_toggle_header_reqd(frm);
 		_ts_backfill_header_from_rows(frm);
