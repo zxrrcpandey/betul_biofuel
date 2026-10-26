@@ -1388,7 +1388,13 @@ def _approve_mr(doc, comment=""):
 		# v2.59.0 — the groups ticked in TS Notification Audience (default: owner +
 		# notify-only + Purchase Manager/User). audience() never raises.
 		from trustbit_ethanol.ts_gate_entry.ts_notification_routing import audience
-		mr_approved_recipients = audience("mr_approved", raised_by=doc.owner, cc_notify=notify_only)
+		# v2.75.0 — the cost centre's own Department Head (same rule as the inspection notices).
+		try:
+			from trustbit_ethanol.ts_gate_entry.doctype.ts_material_inspection.ts_material_inspection import _department_heads
+			heads = _department_heads(doc.name, doc.owner)
+		except Exception:
+			heads = []
+		mr_approved_recipients = audience("mr_approved", raised_by=doc.owner, dept_heads=heads, cc_notify=notify_only)
 		_send_approval_notification(doc, "mr_approved", mr_approved_recipients,
 			extra={"approved_by": role_display})
 		_send_post_approval_notification(doc, "mr_approval")
