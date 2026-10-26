@@ -55,6 +55,12 @@ frappe.query_reports["TS Advance Payment Sheet"] = {
 		if (data && data.is_subtotal) {
 			value = `<span style="font-weight:600">${value}</span>`;
 		}
+		// MR creator = blue tag; a PO made without any MR = purple tag
+		if (column.fieldname === "responsible_person" && data &&
+			!data.is_subtotal && data.responsible_person) {
+			const colour = data.responsible_person === __("Directly Created PO") ? "purple" : "blue";
+			value = `<span class="indicator-pill ${colour}">${value}</span>`;
+		}
 		if (column.fieldname === "status" && data && data.is_general) {
 			value = `<span style="color:var(--blue-500,#2563eb)">${value}</span>`;
 		}

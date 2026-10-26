@@ -29,8 +29,9 @@
 # carries conf+match clauses; general-advance candidates resolve through
 # ru.visible_docs; Payment Entry / PO Item / Material Request legs are
 # hop-gated, the MR-creator hop conf-governed (the v2.38.6 _mr_owner_map
-# class). RESPONSIBLE PERSON = the MR creator per the client's 11-Aug answer
-# for PR-Wise — blank when the PO has no MR link (3 of 50 POs on demo).
+# class). "MR Created By" = the MR creator (client's 11-Aug answer for
+# PR-Wise) beside an "MR No." column; a PO with no MR link reads
+# "Directly Created PO" (v2.75.1).
 
 import frappe
 from frappe import _
@@ -83,7 +84,8 @@ def get_columns():
 		{"fieldname": "balance", "label": _("Balance"), "fieldtype": "Currency", "options": cur, "width": 120},
 		{"fieldname": "material", "label": _("Material"), "fieldtype": "Data", "width": 260},
 		{"fieldname": "location", "label": _("Location"), "fieldtype": "Data", "width": 180},
-		{"fieldname": "responsible_person", "label": _("Responsible Person"), "fieldtype": "Data", "width": 150},
+		{"fieldname": "mr_no", "label": _("MR No."), "fieldtype": "Data", "width": 170},
+		{"fieldname": "responsible_person", "label": _("MR Created By"), "fieldtype": "Data", "width": 150},
 		{"fieldname": "po_total", "label": _("PO Amount"), "fieldtype": "Currency", "options": cur, "width": 125, "disable_total": 1},
 	]
 
@@ -110,14 +112,14 @@ def get_data(filters):
 
 	pos = list(term) + list(general)
 	mat, loc = _items(pos)
-	resp = _responsible(pos)
+	resp, mr_nos = _responsible(pos)
 
 	raw = []
 	for po, d in term.items():
-		raw.append(_row(po, d, d["due"], paid.get(po), mat, loc, resp))
+		raw.append(_row(po, d, d["due"], paid.get(po), mat, loc, resp, mr_nos))
 	for po, d in general.items():
 		# AMOUNT = the paid amount: a general advance has no term to owe against
-		raw.append(_row(po, d, paid.get(po), paid.get(po), mat, loc, resp, general=True))
+		raw.append(_row(po, d, paid.get(po), paid.get(po), mat, loc, resp, mr_nos, general=True))
 
 	raw.sort(key=lambda r: (r["cost_center"] or "~", r["vendor"] or "~",
 	                        str(r["po_date"] or ""), r["po_no"]))
@@ -137,7 +139,7 @@ def get_data(filters):
 				"is_subtotal": 1, "sr": None, "po_no": "", "po_date": None,
 				"cost_center": _("Total — {0}").format(group or _("No Cost Center")),
 				"vendor": "", "status": "", "material": "", "location": "",
-				"responsible_person": "", "po_total": None,
+				"mr_no": "", "responsible_person": "", "po_total": None,
 				"amount": 0.0, "paid_amount": 0.0, "balance": 0.0,
 			}
 		sr += 1
@@ -154,7 +156,7 @@ def get_data(filters):
 	return rows, truncated, totals
 
 
-def _row(po, d, amount, paid_amt, mat, loc, resp, general=False):
+def _row(po, d, amount, paid_amt, mat, loc, resp, mr_nos, general=False):
 	amount = flt(amount) if amount is not None else None
 	paid_amt = flt(paid_amt) if paid_amt is not None else None
 	balance = None
@@ -173,6 +175,7 @@ def _row(po, d, amount, paid_amt, mat, loc, resp, general=False):
 		"balance": balance,
 		"material": mat.get(po, ""),
 		"location": loc.get(po, ""),
+		"mr_no": mr_nos.get(po, ""),
 		"responsible_person": resp.get(po, ""),
 		"po_total": d["grand_total"],
 	}
@@ -311,11 +314,11 @@ def _items(po_names):
 
 
 def _responsible(po_names):
-	"""po -> MR creator full name (client's 11-Aug answer for PR-Wise:
-	responsible person = MR creator). MR hop is confidentiality-governed —
-	a hidden MR contributes nothing (the v2.38.6 _mr_owner_map class)."""
+	"""(po -> MR creator full name, po -> MR numbers). MR hop is
+	confidentiality-governed — a hidden MR contributes nothing (the v2.38.6
+	_mr_owner_map class). A PO with no MR link reads "Directly Created PO"."""
 	if not po_names:
-		return {}
+		return {}, {}
 	mr_of_po = {}
 	for chunk in ru.chunked(po_names):
 		for x in frappe.db.sql(
@@ -331,7 +334,10 @@ def _responsible(po_names):
 		"Material Request", "mr", mr_names, extra_cols=", mr.owner", docstatus=(0, 1))}
 	fullnames = ru.fullname_map(set(owner_of_mr.values()))
 
-	out = {}
+	out, mr_nos = {}, {}
+	for po in po_names:
+		if po not in mr_of_po:
+			out[po] = _("Directly Created PO")
 	for po, mrs in mr_of_po.items():
 		names = []
 		for m in mrs:
@@ -341,7 +347,10 @@ def _responsible(po_names):
 				names.append(fn)
 		if names:
 			out[po] = ", ".join(names)
-	return out
+		visible = [m for m in mrs if m in owner_of_mr]
+		if visible:
+			mr_nos[po] = ", ".join(visible)
+	return out, mr_nos
 
 
 def _summary(rows, truncated, totals):
