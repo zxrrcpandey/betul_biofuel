@@ -265,13 +265,17 @@ def _query_mr_based(filters):
 		match_cond = match_cond.replace("`tabMaterial Request`", "mr")
 	match_clause = f" AND ({match_cond}) " if match_cond else ""
 
+	# v2.75.3 — each sub-query also matches `material_request = mri.parent`.
+	# ERPNext indexes Stock Entry Detail.material_request but not
+	# material_request_item, so without it every MR line scanned the whole
+	# table (365 days took ~50 s on demo; now under 1 s, same rows).
 	sql = f"""
 		SELECT
 			mr.transaction_date AS posting_date,
 			mr.name AS material_request,
 			(SELECT MIN(se2.name) FROM `tabStock Entry Detail` sed2
 				JOIN `tabStock Entry` se2 ON se2.name = sed2.parent
-				WHERE sed2.material_request_item = mri.name
+				WHERE sed2.material_request = mri.parent AND sed2.material_request_item = mri.name
 				  AND se2.purpose IN ('Material Issue', 'Material Transfer')
 				  AND se2.docstatus = 1) AS stock_entry,
 			mri.item_code, mri.item_name, item.item_group,
@@ -279,21 +283,21 @@ def _query_mr_based(filters):
 			COALESCE((
 				SELECT SUM(sed3.qty) FROM `tabStock Entry Detail` sed3
 				JOIN `tabStock Entry` se3 ON se3.name = sed3.parent
-				WHERE sed3.material_request_item = mri.name
+				WHERE sed3.material_request = mri.parent AND sed3.material_request_item = mri.name
 				  AND se3.purpose IN ('Material Issue', 'Material Transfer')
 				  AND se3.docstatus = 1
 			), 0) AS issued_qty,
 			mri.uom,
 			(SELECT MAX(sed4.s_warehouse) FROM `tabStock Entry Detail` sed4
 				JOIN `tabStock Entry` se4 ON se4.name = sed4.parent
-				WHERE sed4.material_request_item = mri.name
+				WHERE sed4.material_request = mri.parent AND sed4.material_request_item = mri.name
 				  AND se4.purpose IN ('Material Issue', 'Material Transfer')
 				  AND se4.docstatus = 1) AS source_warehouse_se,
 			mri.from_warehouse AS source_warehouse_mr,
 			mri.warehouse AS source_warehouse_fallback,
 			(SELECT MAX(sedL.ts_delivery_location) FROM `tabStock Entry Detail` sedL
 				JOIN `tabStock Entry` seL ON seL.name = sedL.parent
-				WHERE sedL.material_request_item = mri.name
+				WHERE sedL.material_request = mri.parent AND sedL.material_request_item = mri.name
 				  AND seL.purpose IN ('Material Issue', 'Material Transfer')
 				  AND seL.docstatus = 1
 				  AND COALESCE(sedL.ts_delivery_location, '') <> '') AS se_use_location,
@@ -301,19 +305,19 @@ def _query_mr_based(filters):
 			mri.cost_center,
 			(SELECT MAX(sed5.basic_rate) FROM `tabStock Entry Detail` sed5
 				JOIN `tabStock Entry` se5 ON se5.name = sed5.parent
-				WHERE sed5.material_request_item = mri.name
+				WHERE sed5.material_request = mri.parent AND sed5.material_request_item = mri.name
 				  AND se5.purpose IN ('Material Issue', 'Material Transfer')
 				  AND se5.docstatus = 1) AS rate,
 			COALESCE((
 				SELECT SUM(sed6.amount) FROM `tabStock Entry Detail` sed6
 				JOIN `tabStock Entry` se6 ON se6.name = sed6.parent
-				WHERE sed6.material_request_item = mri.name
+				WHERE sed6.material_request = mri.parent AND sed6.material_request_item = mri.name
 				  AND se6.purpose IN ('Material Issue', 'Material Transfer')
 				  AND se6.docstatus = 1
 			), 0) AS value,
 			(SELECT MAX(sedR.ts_item_remark) FROM `tabStock Entry Detail` sedR
 				JOIN `tabStock Entry` seR ON seR.name = sedR.parent
-				WHERE sedR.material_request_item = mri.name
+				WHERE sedR.material_request = mri.parent AND sedR.material_request_item = mri.name
 				  AND seR.purpose IN ('Material Issue', 'Material Transfer')
 				  AND seR.docstatus = 1
 				  AND COALESCE(sedR.ts_item_remark, '') <> '') AS se_item_remark,

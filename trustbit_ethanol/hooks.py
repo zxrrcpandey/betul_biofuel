@@ -37,6 +37,8 @@ app_include_js = [
 	"/assets/trustbit_ethanol/js/vehicle_origin_autocomplete.js",
 	# v2.24.0 — Notification Center: navbar icon beside the native bell (fail-soft)
 	"/assets/trustbit_ethanol/js/ts_navbar_notification.js?v=3",
+	# v2.75.3 — spinner + seconds count while any query report loads (fail-soft)
+	"/assets/trustbit_ethanol/js/ts_report_loading.js?v=1",
 ]
 
 # Module-workspace mapping for correct breadcrumbs
