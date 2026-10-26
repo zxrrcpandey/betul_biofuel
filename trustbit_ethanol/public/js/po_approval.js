@@ -1226,7 +1226,7 @@ function _ts_add_print_button(frm, default_format) {
 	// Add our custom Print button as standalone (not inside Actions)
 	frm.add_custom_button(__("🖨 Print PDF"), () => {
 		// v2.9.8.31: BBPL Purchase Order added as the new default per-PDF-mockup format.
-		const formats = ["BBPL Purchase Order", "TS Purchase Order", "TS Purchase Order (Clean)"];
+		const formats = ["BBPL Purchase Order", "Store Purchase Order Format", "TS Purchase Order", "TS Purchase Order (Clean)"];
 
 		frappe.prompt({
 			fieldtype: "Select",
