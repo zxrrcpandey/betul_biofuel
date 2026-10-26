@@ -1,6 +1,7 @@
-// TS Tally Export — v2.44
-// Previews one sheet of the client's Tally import workbook; the toolbar button
-// exports all three sheets (Pmt Receipt / JV / Sales) as one .xlsx.
+// TS Tally Export — v2.44 (Purchase Invoice sheet v2.76.0)
+// Previews one sheet of the client's Tally import workbook; one toolbar button
+// exports all four sheets (Pmt Receipt / JV / Sales / Purchase Invoice) as one
+// .xlsx, the other exports the Purchase Invoice sheet on its own.
 // fetch + Blob, NOT frappe.xcall — xcall JSON-parses the response and would
 // corrupt the binary.
 
@@ -44,10 +45,10 @@ frappe.query_reports["TS Tally Export"] = {
 			fieldname: "sheet",
 			label: __("Preview Sheet"),
 			fieldtype: "Select",
-			options: ["Pmt Receipt", "JV", "Sales"].join("\n"),
+			options: ["Pmt Receipt", "JV", "Sales", "Purchase Invoice"].join("\n"),
 			default: "JV",
 			reqd: 1,
-			description: __("Preview only — the Export button always writes all three sheets"),
+			description: __("Preview only — \"Export to Tally\" always writes all four sheets"),
 		},
 	],
 
@@ -60,25 +61,33 @@ frappe.query_reports["TS Tally Export"] = {
 	},
 
 	onload(report) {
-		report.page.add_inner_button(__("Export to Tally (Excel)"), () => {
-			const filters = report.get_values();
-			if (!filters.from_date || !filters.to_date) {
-				frappe.msgprint(__("Please set From Date and To Date before exporting."));
-				return;
-			}
-			if (filters.from_date > filters.to_date) {
-				frappe.msgprint(__("From Date cannot be after To Date."));
-				return;
-			}
-			frappe.confirm(
-				__("Export all three Tally sheets for {0} to {1}?", [filters.from_date, filters.to_date]),
-				() => _ts_tally_download(filters)
-			);
-		});
+		report.page.add_inner_button(__("Export to Tally (Excel)"), () => _ts_tally_export(report, null));
+		report.page.add_inner_button(__("Export Purchase Invoice only (Excel)"), () =>
+			_ts_tally_export(report, "Purchase Invoice")
+		);
 	},
 };
 
-function _ts_tally_download(filters) {
+function _ts_tally_export(report, only_sheet) {
+	const filters = report.get_values();
+	if (!filters.from_date || !filters.to_date) {
+		frappe.msgprint(__("Please set From Date and To Date before exporting."));
+		return;
+	}
+	if (filters.from_date > filters.to_date) {
+		frappe.msgprint(__("From Date cannot be after To Date."));
+		return;
+	}
+	const dates = [filters.from_date, filters.to_date];
+	const ask = only_sheet
+		? __("Export the Purchase Invoice sheet for {0} to {1}?", dates)
+		: __("Export all four Tally sheets for {0} to {1}?", dates);
+	frappe.confirm(ask + "<br><br>" + __("Purchase returns are not included."), () =>
+		_ts_tally_download(filters, only_sheet)
+	);
+}
+
+function _ts_tally_download(filters, only_sheet) {
 	frappe.dom.freeze(__("Generating Tally workbook..."));
 	fetch("/api/method/trustbit_ethanol.ts_gate_entry.api.ts_tally_export.export_tally_excel", {
 		method: "POST",
@@ -86,7 +95,7 @@ function _ts_tally_download(filters) {
 			"Content-Type": "application/json",
 			"X-Frappe-CSRF-Token": frappe.csrf_token,
 		},
-		body: JSON.stringify({ filters }),
+		body: JSON.stringify(only_sheet ? { filters, only_sheet } : { filters }),
 	})
 		.then((res) => {
 			if (!res.ok) {
@@ -111,7 +120,8 @@ function _ts_tally_download(filters) {
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement("a");
 			a.href = url;
-			a.download = name || `TS_Tally_Export_${filters.company || "ALL"}_${filters.from_date}_to_${filters.to_date}.xlsx`;
+			const stem = only_sheet ? "TS_Tally_" + only_sheet.replace(/ /g, "_") : "TS_Tally_Export";
+			a.download = name || `${stem}_${filters.company || "ALL"}_${filters.from_date}_to_${filters.to_date}.xlsx`;
 			document.body.appendChild(a);
 			a.click();
 			a.remove();

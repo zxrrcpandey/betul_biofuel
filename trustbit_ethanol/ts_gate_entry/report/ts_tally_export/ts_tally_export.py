@@ -1,10 +1,10 @@
-# TS Tally Export — v2.44
-# Script Report that previews ONE of the three sheets of the client's Tally
+# TS Tally Export — v2.44 (Purchase Invoice sheet v2.76.0)
+# Script Report that previews ONE of the four sheets of the client's Tally
 # import workbook (Pmt Receipt <- Payment Entry, JV <- Journal Entry,
-# Sales <- Sales Invoice). The row-builders below are positional lists in the
-# template's column order and are shared with api/ts_tally_export.py, so the
-# on-screen grid and the exported .xlsx come from the same rows (make_xlsx still
-# runs frappe's handle_html over string cells on the way into the workbook).
+# Sales <- Sales Invoice, Purchase Invoice <- Purchase Invoice). The row-builders
+# below are positional lists in the template's column order and are shared with
+# api/ts_tally_export.py, so the on-screen grid and the exported .xlsx come from
+# the same rows (make_xlsx still runs frappe's handle_html over string cells).
 #
 # Conventions agreed with the client (22 Aug 2026): voucher no. = ERPNext
 # document name; dates as real date cells; ledger names = tabAccount.account_name
@@ -19,6 +19,8 @@
 import frappe
 from frappe import _
 from frappe.utils import flt, formatdate, getdate
+
+from trustbit_ethanol.ts_gate_entry.report import report_utils as ru
 
 SHEETS = {
 	"Pmt Receipt": [("voucher type", "Data", 110), ("voucher date", "Date", 100),
@@ -35,9 +37,29 @@ SHEETS = {
 		("item name", "Data", 220), ("item rate", "Currency", 110),
 		("item amount", "Currency", 120), ("billed qty", "Float", 100),
 		("cgst", "Currency", 100), ("sgst", "Currency", 100), ("igst", "Currency", 100)],
+	# Client template (27 Oct 2026): their 34 columns as-is, then 5 appended at the end.
+	"Purchase Invoice": [("Posting Date", "Date", 100), ("Supplier Name", "Data", 220),
+		("Tax Withholding Category", "Data", 200), ("Supplier Invoice No", "Data", 150),
+		("Supplier Invoice Date", "Date", 110), ("LR Number", "Data", 130), ("LR Date", "Date", 100),
+		("Purchase Order Reference", "Data", 170), ("RST Number", "Data", 100),
+		("Purchase Receipt", "Data", 140), ("Vehicle No", "Data", 110),
+		("Base Tax Withholding Net Total", "Currency", 140), ("ID (Items)", "Data", 110),
+		("Accepted Qty (Items)", "Float", 100), ("Accepted Qty in Stock UOM (Items)", "Float", 110),
+		("Amount (Items)", "Currency", 120), ("Item Name (Items)", "Data", 200),
+		("Rate (Items)", "Currency", 110), ("Rate (Company Currency) (Items)", "Currency", 120),
+		("UOM (Items)", "Data", 80), ("HSN/SAC (Items)", "Data", 100), ("Item (Items)", "Data", 120),
+		("Item Group (Items)", "Data", 140), ("Taxable Value (Items)", "Currency", 120),
+		("Received Qty (Items)", "Float", 100), ("Net Rate (Items)", "Currency", 110),
+		("Net Amount (Items)", "Currency", 120), ("IGST Amount (Items)", "Currency", 110),
+		("cgst Rate", "Float", 80), ("sgst Rate", "Float", 80), ("IGST Rate (Items)", "Float", 90),
+		("Cgst Amount", "Currency", 110), ("Sgst Amount", "Currency", 110), ("Tds", "Currency", 100),
+		("Purchase Invoice No", "Data", 180), ("Cess Amount", "Currency", 110),
+		("Other Charges", "Currency", 120), ("Round Off", "Currency", 100), ("Grand Total", "Currency", 130)],
 }
-SHEET_ORDER = ["Pmt Receipt", "JV", "Sales"]
-SHEET_DT = {"Pmt Receipt": "Payment Entry", "JV": "Journal Entry", "Sales": "Sales Invoice"}
+PI_ROUND_OFF = [label for label, _t, _w in SHEETS["Purchase Invoice"]].index("Round Off")
+SHEET_ORDER = ["Pmt Receipt", "JV", "Sales", "Purchase Invoice"]
+SHEET_DT = {"Pmt Receipt": "Payment Entry", "JV": "Journal Entry", "Sales": "Sales Invoice",
+	"Purchase Invoice": "Purchase Invoice"}
 ROW_LIMIT = 5000  # preview only; the export has its own cap
 
 # Plain-language onboarding notice shown above the report until this date
@@ -52,6 +74,10 @@ JV_TYPE = {"Journal Entry": "Journal", "Debit Note": "Debit Note", "Credit Note"
 PARTY_NAME_FIELD = {"Supplier": "supplier_name", "Customer": "customer_name",
 	"Employee": "employee_name", "Shareholder": "title"}
 GST_COLS = ("taxable_value", "cgst_amount", "sgst_amount", "igst_amount")
+# Optional columns (india_compliance / our seeders), selected only when present.
+PI_HEAD_COLS = ("lr_no", "lr_date", "vehicle_no", "ts_rst_number", "ts_purchase_receipt")
+PI_ITEM_COLS = ("gst_hsn_code", "taxable_value", "igst_rate", "igst_amount", "cgst_rate", "cgst_amount",
+	"sgst_rate", "sgst_amount", "cess_amount", "cess_non_advol_amount")
 
 
 def execute(filters=None):
@@ -68,19 +94,27 @@ def execute(filters=None):
 	truncated = len(rows) > ROW_LIMIT
 	if truncated:
 		rows = rows[:ROW_LIMIT]
-	return get_columns(sheet), rows, _notice(), None, _summary(rows, notes, truncated)
+	return get_columns(sheet), rows, _notice(sheet), None, _summary(rows, notes, truncated)
 
 
-def _notice():
-	if getdate() > getdate(NOTICE_UNTIL):
-		return None
-	return _(
-		"<b>Please note (till 28-02-2027):</b> Right now only <b>Journal Entries (JV sheet)</b> "
-		"are recorded in ERPNext. Payments and Sales Invoices are not entered in ERPNext yet, "
-		"so the <b>Pmt Receipt</b> and <b>Sales</b> sheets will be empty. "
-		"If your downloaded file has no data, it simply means there are no entries for the "
-		"selected dates — try an older date range. This is <b>not an error</b>."
-	)
+def _notice(sheet=None):
+	parts = []
+	if sheet == "Purchase Invoice":
+		parts.append(_(
+			"<b>Purchase Invoice sheet:</b> one row per invoice line. TDS base, Tds, Other Charges, "
+			"Round Off and Grand Total are on the <b>first line of each invoice only</b>. Grand Total is "
+			"after TDS, as on the invoice. Purchase returns and opening invoices are not included "
+			"(enter returns as Debit Notes in Tally)."
+		))
+	if getdate() <= getdate(NOTICE_UNTIL):
+		parts.append(_(
+			"<b>Please note (till 28-02-2027):</b> Right now only <b>Journal Entries (JV sheet)</b> and "
+			"<b>Purchase Invoices</b> are recorded in ERPNext. Payments and Sales Invoices are not entered "
+			"in ERPNext yet, so the <b>Pmt Receipt</b> and <b>Sales</b> sheets will be empty. "
+			"If your downloaded file has no data, it simply means there are no entries for the "
+			"selected dates — try an older date range. This is <b>not an error</b>."
+		))
+	return "<br><br>".join(parts) or None
 
 
 def get_columns(sheet):
@@ -107,10 +141,10 @@ def validate_filters(filters):
 		frappe.throw(_("From Date cannot be after To Date"))
 
 
-def build_all(filters):
-	"""All three sheets (used by the export endpoint). {sheet: (rows, notes)}."""
+def build_all(filters, names=None):
+	"""Sheets for the export endpoint (all four unless `names` is given). {sheet: (rows, notes)}."""
 	validate_filters(filters)
-	return {name: BUILDERS[name](filters) for name in SHEET_ORDER}
+	return {name: BUILDERS[name](filters) for name in (names or SHEET_ORDER)}
 
 
 def _slug(label):
@@ -294,7 +328,103 @@ def _sales_rows(filters):
 	return rows, {"vouchers": len(seen), "gst_columns": len(gst)}
 
 
-BUILDERS = {"Pmt Receipt": _pmt_rows, "JV": _jv_rows, "Sales": _sales_rows}
+# ------------------------------------------------------------ Purchase Invoice
+def _pi_charges(taxes):
+	"""(tds, other) for one invoice's tax rows, summed the way ERPNext builds the grand
+	total (taxes_and_totals.py): after-discount amounts, Valuation rows never reach the
+	payable, TDS rows are Deduct. GST-typed rows are skipped — GST comes from the item rows."""
+	tds = other = 0.0
+	for t in taxes:
+		if t.category == "Valuation":
+			continue
+		amt = flt(t.base_tax_amount_after_discount_amount)
+		if t.is_tax_withholding_account:
+			tds += amt if t.add_deduct_tax == "Deduct" else -amt
+		elif not t.get("gst_tax_type"):
+			other += amt if t.add_deduct_tax == "Add" else -amt
+	return flt(tds, 2), flt(other, 2)
+
+
+def _pi_rows(filters):
+	cond, params = _params(filters, "pi")
+	# Raw SQL bypasses the Purchase Invoice confidentiality PQC + match conditions (L297).
+	cond += "".join(" AND " + c for c in ru.conf_match_clauses("Purchase Invoice", "pi"))
+	opt = "".join(f", pi.{c}" for c in PI_HEAD_COLS if frappe.db.has_column("Purchase Invoice", c))
+	opt += "".join(f", pii.{c}" for c in PI_ITEM_COLS if frappe.db.has_column("Purchase Invoice Item", c))
+	lines = frappe.db.sql(f"""
+		SELECT pi.name, pi.is_return, pi.posting_date, pi.supplier_name, pi.tax_withholding_category,
+			pi.bill_no, pi.bill_date, pi.base_tax_withholding_net_total, pi.base_grand_total,
+			pi.base_rounded_total, pi.base_rounding_adjustment, pii.name AS row_id, pii.qty,
+			pii.stock_qty, pii.base_amount, pii.item_name, pii.base_rate, pii.uom, pii.item_code,
+			pii.item_group, pii.received_qty, pii.base_net_rate, pii.base_net_amount,
+			pii.purchase_order, pii.purchase_receipt {opt}
+		FROM `tabPurchase Invoice` pi
+		JOIN `tabPurchase Invoice Item` pii ON pii.parent = pi.name AND pii.parenttype = 'Purchase Invoice'
+		WHERE pi.docstatus = 1 AND IFNULL(pi.is_opening, 'No') != 'Yes'
+			AND pi.posting_date BETWEEN %(from_date)s AND %(to_date)s {cond}
+		ORDER BY pi.posting_date, pi.name, pii.idx""", params, as_dict=True)
+	# Returns are Debit Note vouchers in Tally, not negative purchases -> counted, not exported.
+	returns = {ln.name for ln in lines if ln.is_return}
+	lines = [ln for ln in lines if not ln.is_return]
+	tfields = ["parent", "category", "add_deduct_tax", "is_tax_withholding_account",
+		"base_tax_amount_after_discount_amount"]
+	if frappe.db.has_column("Purchase Taxes and Charges", "gst_tax_type"):
+		tfields.append("gst_tax_type")
+	taxes = {}
+	for chunk in ru.chunked({ln.name for ln in lines}):
+		for t in frappe.get_all("Purchase Taxes and Charges", fields=tfields,
+				filters={"parenttype": "Purchase Invoice", "parent": ("in", chunk)}, limit=0):
+			taxes.setdefault(t.parent, []).append(t)
+	rst = {}
+	if frappe.db.has_column("Purchase Receipt", "custom_rst_number"):
+		prs = {ln.purchase_receipt for ln in lines if ln.purchase_receipt}
+		rst = {r.name: r.custom_rst_number for r in
+			ru.visible_docs("Purchase Receipt", "pr", prs, ", pr.custom_rst_number")}
+	# Every amount and rate is in company currency (INR), so each voucher balances in Tally's books.
+	rows, bal = [], {}
+	for ln in lines:
+		gst = flt(ln.get("cgst_amount")) + flt(ln.get("sgst_amount")) + flt(ln.get("igst_amount"))
+		cess = flt(ln.get("cess_amount")) + flt(ln.get("cess_non_advol_amount"))
+		first = ln.name not in bal
+		if first:
+			# Invoice-level amounts go on the invoice's FIRST line only, so an importer that sums a
+			# voucher's rows and one that reads its first row both get the right figure.
+			tds, other = _pi_charges(taxes.get(ln.name, []))
+			grand = flt(ln.base_rounded_total) or flt(ln.base_grand_total)
+			inv = [flt(ln.base_tax_withholding_net_total), tds, other, flt(ln.base_rounding_adjustment), grand]
+			bal[ln.name] = [None, grand, other - tds]  # [first row, grand total, parts before round off]
+		else:
+			inv = [None] * 5
+		bal[ln.name][2] += flt(ln.base_net_amount) + gst + cess
+		pr = ln.purchase_receipt or ""
+		head_rst = (ln.get("ts_rst_number") or "") if pr and pr == ln.get("ts_purchase_receipt") else ""
+		row = [ln.posting_date, (ln.supplier_name or "").strip(), ln.tax_withholding_category or "",
+			ln.bill_no or "", ln.bill_date, ln.get("lr_no") or "", ln.get("lr_date"), ln.purchase_order or "",
+			rst.get(pr) or head_rst, pr, ln.get("vehicle_no") or "", inv[0], ln.row_id, flt(ln.qty),
+			flt(ln.stock_qty), flt(ln.base_amount), ln.item_name or "", flt(ln.base_rate), flt(ln.base_rate),
+			ln.uom or "", ln.get("gst_hsn_code") or "", ln.item_code or "", ln.item_group or "",
+			flt(ln.get("taxable_value")), flt(ln.received_qty), flt(ln.base_net_rate), flt(ln.base_net_amount),
+			flt(ln.get("igst_amount")), flt(ln.get("cgst_rate")), flt(ln.get("sgst_rate")),
+			flt(ln.get("igst_rate")), flt(ln.get("cgst_amount")), flt(ln.get("sgst_amount")), inv[1],
+			ln.name, cess, inv[2], inv[3], inv[4]]
+		rows.append(row)
+		if first:
+			bal[ln.name][0] = row
+	# Tally needs each voucher to balance to the paisa: lines + GST + cess + other - TDS + round off
+	# = Grand Total. ERPNext posts its rounding adjustment AND any precision difference (e.g. after a
+	# discount) to the round-off account, so Round Off carries both while they stay within Rs 1 of the
+	# rounding adjustment; a bigger gap is left visible and counted as an unbalanced voucher.
+	unbalanced = 0
+	for first_row, grand, parts in bal.values():
+		residual = flt(grand - parts, 2)
+		if abs(residual - first_row[PI_ROUND_OFF]) <= 1:
+			first_row[PI_ROUND_OFF] = residual
+		else:
+			unbalanced += 1
+	return rows, {"vouchers": len(bal), "unbalanced": unbalanced, "returns": len(returns)}
+
+
+BUILDERS = {"Pmt Receipt": _pmt_rows, "JV": _jv_rows, "Sales": _sales_rows, "Purchase Invoice": _pi_rows}
 
 
 def _summary(rows, notes, truncated):
@@ -305,6 +435,9 @@ def _summary(rows, notes, truncated):
 	if notes.get("unbalanced"):
 		cards.append({"label": _("Unbalanced vouchers"), "value": notes["unbalanced"],
 			"datatype": "Int", "indicator": "Orange"})
+	if notes.get("returns"):
+		cards.append({"label": _("Purchase returns not exported"), "value": notes["returns"],
+			"datatype": "Int", "indicator": "Blue"})
 	if truncated:
 		cards.append({"label": _("Preview truncated at"), "value": ROW_LIMIT, "datatype": "Int", "indicator": "Orange"})
 	return cards
