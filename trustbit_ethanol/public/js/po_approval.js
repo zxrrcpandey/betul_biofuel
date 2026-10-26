@@ -39,7 +39,8 @@ frappe.ui.form.on("Purchase Order", {
 		_hide_native_hold_buttons(frm);
 		setTimeout(() => { try { _hide_native_hold_buttons(frm); } catch (e) {} }, 600);
 		// v2.9.8.31: default to BBPL Purchase Order (new mockup format).
-		_ts_add_print_button(frm, "BBPL Purchase Order");
+		// Work Order POs (BBPL-WO-*) pre-select the Work Order print format.
+		_ts_add_print_button(frm, frm.doc.ts_po_type === "Work Order" ? "Work Order Format" : "BBPL Purchase Order");
 		// Deliveries button — opens the delivery chain in a dialog, next to Print PDF.
 		_ts_add_deliveries_button(frm);
 		_load_approval_context(frm);
@@ -1226,7 +1227,7 @@ function _ts_add_print_button(frm, default_format) {
 	// Add our custom Print button as standalone (not inside Actions)
 	frm.add_custom_button(__("🖨 Print PDF"), () => {
 		// v2.9.8.31: BBPL Purchase Order added as the new default per-PDF-mockup format.
-		const formats = ["BBPL Purchase Order", "Store Purchase Order Format", "TS Purchase Order", "TS Purchase Order (Clean)"];
+		const formats = ["BBPL Purchase Order", "Store Purchase Order Format", "Work Order Format", "TS Purchase Order", "TS Purchase Order (Clean)"];
 
 		frappe.prompt({
 			fieldtype: "Select",
