@@ -107,6 +107,11 @@ def create_pre_cascade_backup(token_name: str, log_name: str, doc_map: dict | No
 				"weighbridge_logs": [_row_dict("TS Weighbridge Log", r["name"]) for r in chain["weighbridge_logs"]],
 				"quality_inspections": [_row_dict("TS Quality Inspection", r["name"]) for r in chain["quality_inspections"]],
 				"deduction_sheets": [_row_dict("TS Deduction Sheet", r["name"]) for r in chain["deduction_sheets"]],
+				# v2.79.0 — now deleted by the cascade too.
+				"material_inspections": [_row_dict("TS Material Inspection", r["name"])
+				                         for r in chain.get("material_inspections") or []],
+				"deduction_suggestions": [_row_dict("TS Deduction Suggestion", r["name"])
+				                          for r in chain.get("deduction_suggestions") or []],
 				"purchase_receipts": [_row_dict("Purchase Receipt", r["name"]) for r in chain["purchase_receipts"]],
 				"purchase_invoices": [_row_dict("Purchase Invoice", r["name"]) for r in chain["purchase_invoices"]],
 			},
@@ -229,8 +234,10 @@ def restore_from_backup(log_doc) -> dict:
 	for label, dt, key in [
 		("ts_token", "TS Token", "ts_token"),
 		("ge", "TS Gate Entry", "gate_entries"),
+		("minsp", "TS Material Inspection", "material_inspections"),
 		("wb", "TS Weighbridge Log", "weighbridge_logs"),
 		("qi", "TS Quality Inspection", "quality_inspections"),
+		("sugg", "TS Deduction Suggestion", "deduction_suggestions"),
 		("ds", "TS Deduction Sheet", "deduction_sheets"),
 		("pr", "Purchase Receipt", "purchase_receipts"),
 		("pi", "Purchase Invoice", "purchase_invoices"),
@@ -244,6 +251,21 @@ def restore_from_backup(log_doc) -> dict:
 			if not rec:
 				continue
 			if frappe.db.exists(dt, rec.get("name")):
+				# v2.79.0 — a QI kept by the cascade still exists; point it back
+				# at the restored token, unless it was already attached elsewhere.
+				if dt == "TS Quality Inspection" and token_name:
+					live = frappe.db.get_value(dt, rec["name"],
+					                           ["token_number", "ts_retained_from_token"], as_dict=True)
+					if live and not live.token_number and live.ts_retained_from_token == token_name:
+						frappe.db.set_value(dt, rec["name"], {
+							"token_number": token_name,
+							"gate_entry": rec.get("gate_entry"),
+							"ts_retained_from_token": None,
+							"ts_retained_material_type": None,
+						})
+						restored["qi_relinked"] = restored.get("qi_relinked", 0) + 1
+					elif live and live.token_number != token_name:
+						restored["qi_not_relinked"] = restored.get("qi_not_relinked", 0) + 1
 				# Idempotent skip
 				continue
 			try:

@@ -9,6 +9,8 @@
   "quality_report_no",
   "lab_register_no",
   "token_number",
+  "ts_retained_from_token",
+  "ts_retained_material_type",
   "gate_entry",
   "purchase_order",
   "column_break_ref",
@@ -76,7 +78,25 @@
    "in_standard_filter": 1,
    "label": "Token Number",
    "options": "TS Token",
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "description": "Set when this inspection was kept while its token was deleted by Cascade Delete. Use \"Attach to New Token\" to link it to the re-created token.",
+   "fieldname": "ts_retained_from_token",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Kept From Deleted Token",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "ts_retained_material_type",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Kept Material Type",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "gate_entry",
@@ -442,7 +462,7 @@
    "link_fieldname": "quality_inspection"
   }
  ],
- "modified": "2026-04-27 22:00:00",
+ "modified": "2026-10-27 05:03:16",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS Quality Inspection",

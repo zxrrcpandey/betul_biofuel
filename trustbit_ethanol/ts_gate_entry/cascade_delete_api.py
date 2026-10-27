@@ -30,7 +30,7 @@ import re
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
-from frappe.utils import escape_html, now_datetime, add_to_date, flt
+from frappe.utils import cint, escape_html, now_datetime, add_to_date, flt
 
 
 _TOKEN_NAME_RE = re.compile(r"^BBPL-TKN-[0-9]{4}-[0-9]{5}$")
@@ -187,8 +187,12 @@ def initiate_cascade(
 	cut_point: str = "Full Chain",
 	force_payment_links: int = 0,
 	force_payment_confirmation_typed: str = "",
+	retain_qi: int = 0,
 ) -> dict:
 	"""Super Admin initiates a cascade. Creates Pending CEO Approval log row.
+
+	`retain_qi` (v2.79.0) — keep the submitted Quality Inspection for re-use on
+	a re-created token instead of deleting it (no FORCE-DELETE-MI needed then).
 
 	`cut_point` — "Full Chain" (delete the whole chain incl. Token) or one of
 	the 6 deletion-order doctypes (partial cascade — delete from that document
@@ -233,6 +237,15 @@ def initiate_cascade(
 	if not frappe.db.exists("TS Token", token_name):
 		frappe.throw(_("Token {0} not found.").format(escape_html(token_name)))
 
+	# v2.79.0 — refuse a partial cut the engine would refuse anyway (e.g. token
+	# already exited), so it never reaches the CEO only to fail at approval.
+	# The engine still re-checks at execute time (status can change meanwhile).
+	if cut_point not in ("Full Chain", "TS Gate Entry"):
+		from trustbit_ethanol.ts_gate_entry.cascade_delete_engine import _validate_partial_cut_feasibility
+		feas = _validate_partial_cut_feasibility(token_name, cut_point)
+		if not feas.get("ok"):
+			frappe.throw(escape_html(feas.get("error") or ""), title=_("Partial cut not possible"))
+
 	# In-flight duplicate guard — one token may not have two cascades queued at
 	# once. A token whose log is still 'Pending CEO Approval' or 'Approved' must
 	# resolve (execute / fail / reject / cancel) before another can be initiated.
@@ -269,6 +282,13 @@ def initiate_cascade(
 	from trustbit_ethanol.ts_gate_entry.cascade_delete_engine import build_chain_snapshot
 	chain = build_chain_snapshot(token_name)
 	chain_json = json.dumps(chain, indent=2, default=str)
+	# v2.79.0 — keep the QI only when the token itself is deleted (it is kept
+	# for the re-created token) and there is a submitted QI to keep.
+	retain = int(
+		cint(retain_qi)
+		and cut_point in ("Full Chain", "TS Gate Entry")
+		and any(int(q.get("docstatus") or 0) == 1 for q in chain.get("quality_inspections") or [])
+	)
 
 	# Forensic block (Q&A 7)
 	from trustbit_ethanol.ts_gate_entry.cascade_delete_forensics import (
@@ -295,6 +315,7 @@ def initiate_cascade(
 	log.forensic_block_json = forensic_json
 	log.rate_limit_position = rate_limit_position
 	log.cut_point = cut_point
+	log.retain_qi = retain
 	log.flags.ignore_permissions = True
 	log.insert(ignore_permissions=True)
 	log.submit()
@@ -452,6 +473,7 @@ def ceo_approve_cascade(log_name: str, decision: str, reason: str = "") -> dict:
 			cut_point=(None if (log_doc.get("cut_point") or "Full Chain") == "Full Chain"
 			           else log_doc.cut_point),
 			force_payment_links=bool(log_doc.get("force_payment_links")),
+			retain_qi=bool(log_doc.get("retain_qi")),
 		)
 		# Attach attribution to the engine result for audit visibility.
 		if isinstance(result, dict):
@@ -640,7 +662,7 @@ def get_pending_review_detail(log_name: str) -> dict:
 	log = frappe.db.get_value(
 		"TS Cascade Delete Log", log_name,
 		["target_token", "approval_status", "force_pr_override", "force_mi_override",
-		 "cut_point", "force_payment_links"],
+		 "cut_point", "force_payment_links", "retain_qi"],
 		as_dict=True,
 	)
 	if not log:
@@ -721,6 +743,8 @@ def get_pending_review_detail(log_name: str) -> dict:
 			"weighbridge_logs": len(chain.get("weighbridge_logs") or []),
 			"quality_inspections": len(chain.get("quality_inspections") or []),
 			"deduction_sheets": len(chain.get("deduction_sheets") or []),
+			"deduction_suggestions": len(chain.get("deduction_suggestions") or []),
+			"material_inspections": len(chain.get("material_inspections") or []),
 			"purchase_receipts": len(prs),
 			"purchase_invoices": len(pis),
 			"gl_entries": chain.get("gl_entries_count") or 0,
@@ -741,6 +765,7 @@ def get_pending_review_detail(log_name: str) -> dict:
 		"force_pr_override": int(log.force_pr_override or 0),
 		"force_mi_override": int(log.force_mi_override or 0),
 		"force_payment_links": int(log.get("force_payment_links") or 0),
+		"retain_qi": int(log.get("retain_qi") or 0),
 	})
 
 

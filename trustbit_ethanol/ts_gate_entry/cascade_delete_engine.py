@@ -59,6 +59,10 @@ def build_chain_snapshot(token_name: str) -> dict:
 		"deduction_sheets": [],
 		"purchase_receipts": [],
 		"purchase_invoices": [],
+		# v2.79.0 — records that hang off the token / QI and used to be left
+		# behind pointing at deleted rows.
+		"material_inspections": [],
+		"deduction_suggestions": [],
 		"stock_ledger_entries_count": 0,
 		"gl_entries_count": 0,
 		"versions_count": 0,
@@ -104,6 +108,15 @@ def build_chain_snapshot(token_name: str) -> dict:
 			"SELECT name, docstatus FROM `tabTS Deduction Sheet` WHERE quality_inspection IN %s",
 			(qi_names,), as_dict=True,
 		)
+		chain["deduction_suggestions"] = frappe.db.sql(
+			"SELECT name, docstatus, quality_inspection FROM `tabTS Deduction Suggestion` "
+			"WHERE quality_inspection IN %s",
+			(qi_names,), as_dict=True,
+		)
+	chain["material_inspections"] = frappe.db.sql(
+		"SELECT name, status FROM `tabTS Material Inspection` WHERE token_number=%s",
+		(token_name,), as_dict=True,
+	)
 	chain["purchase_receipts"] = frappe.db.sql(
 		"SELECT name, docstatus, status, grand_total, per_billed FROM `tabPurchase Receipt` WHERE ts_token=%s",
 		(token_name,), as_dict=True,
@@ -390,6 +403,7 @@ def execute_cascade(
 	force_mi: bool = False,
 	cut_point: str | None = None,
 	force_payment_links: bool = False,
+	retain_qi: bool = False,
 ) -> dict:
 	"""Run the PI → PR → DS → QI → WB → GE → Token cascade.
 
@@ -398,6 +412,10 @@ def execute_cascade(
 	SKIPPED (kept). The Token is deleted only when cut_point is None or
 	"TS Gate Entry"; for a partial cut the Token is kept and its status is
 	auto-reset to the deepest surviving document's real phase.
+
+	`retain_qi` (v2.79.0): a SUBMITTED Quality Inspection is kept instead of
+	deleted — unlinked from the token and marked `ts_retained_from_token` so it
+	can be attached to a re-created token (`attach_retained_qi`).
 
 	Returns:
 	  {success, aborted_step, steps[], lesson_275_fallback_used, partial(bool)}
@@ -510,10 +528,24 @@ def execute_cascade(
 				(token_name,), as_dict=True,
 			)
 			for qi in qi_rows:
+				if qi.docstatus == 1 and retain_qi:
+					res = _retain_qi(qi.name, token_name, log_name)
+					steps.append({"step": "QI", **res})
+					if not res["success"]:
+						return _abort(steps, "QI", lesson_275_used)
+					continue
 				if qi.docstatus == 1 and not force_mi:
 					steps.append({"step": "QI", "name": qi.name, "action": "skip-not-forced",
 					              "success": False, "error": "Submitted QI requires force_mi"})
 					return _abort(steps, "QI", lesson_275_used)
+				# v2.79.0 — delete the QI's Deduction Suggestions first; they
+				# used to be cancelled by QI.on_cancel and then left behind.
+				for sg in frappe.get_all("TS Deduction Suggestion",
+				                         filters={"quality_inspection": qi.name}, pluck="name"):
+					res = _cancel_then_delete("TS Deduction Suggestion", sg, allow_force=True)
+					steps.append({"step": "QI", **res})
+					if not res["success"]:
+						return _abort(steps, "QI", lesson_275_used)
 				res = _cancel_then_delete("TS Quality Inspection", qi.name, allow_force=force_mi)
 				steps.append({"step": "QI", **res})
 				if not res["success"]:
@@ -537,6 +569,15 @@ def execute_cascade(
 
 		# Step 6 — Gate Entry (Lesson 275 fallback embedded)  (deletion index 5)
 		if 5 <= cut_idx:
+			# v2.79.0 — Material Inspections hang off the token; delete them
+			# with the Gate Entry instead of leaving them (and their SLA
+			# reminders) pointing at a deleted token.
+			for mi in frappe.get_all("TS Material Inspection",
+			                         filters={"token_number": token_name}, pluck="name"):
+				res = _cancel_then_delete("TS Material Inspection", mi, allow_force=True)
+				steps.append({"step": "MINSP", **res})
+				if not res["success"]:
+					return _abort(steps, "MINSP", lesson_275_used)
 			ge_rows = frappe.db.sql(
 				"SELECT name, docstatus FROM `tabTS Gate Entry` WHERE token_number=%s",
 				(token_name,), as_dict=True,
@@ -627,6 +668,37 @@ def _cancel_then_delete(doctype: str, name: str, allow_force: bool = False) -> d
 			"doctype": doctype, "name": name, "action": "error",
 			"success": False, "error": f"{type(e).__name__}: {e}",
 		}
+
+
+def _retain_qi(qi_name: str, token_name: str, log_name: str) -> dict:
+	"""v2.79.0 — keep a submitted QI for re-use instead of deleting it.
+
+	Clears its token / gate-entry links (both rows are about to be deleted)
+	and records where it came from. The material type of the old Gate Entry
+	is snapshotted because a grain-deferred QI has no item_code to match on.
+	Its Deduction Suggestion is left as is and moves with it on attach.
+	"""
+	try:
+		frappe.has_permission("TS Quality Inspection", "delete", doc=qi_name, throw=True)
+		ge = frappe.db.get_value("TS Quality Inspection", qi_name, "gate_entry")
+		mat = frappe.db.get_value("TS Gate Entry", ge, "ts_material_type") if ge else None
+		frappe.db.set_value("TS Quality Inspection", qi_name, {
+			"token_number": None,
+			"gate_entry": None,
+			"ts_retained_from_token": token_name,
+			"ts_retained_material_type": mat or None,
+		})
+		frappe.get_doc("TS Quality Inspection", qi_name).add_comment(
+			"Info",
+			f"[CASCADE RETAIN] Kept for re-use when token {token_name} was deleted "
+			f"by cascade {log_name}. Attach it to the re-created token.",
+		)
+		frappe.db.commit()
+		return {"doctype": "TS Quality Inspection", "name": qi_name,
+		        "action": "retained", "success": True}
+	except Exception as e:
+		return {"doctype": "TS Quality Inspection", "name": qi_name, "action": "error",
+		        "success": False, "error": f"{type(e).__name__}: {e}"}
 
 
 def _cancel_then_delete_ge_with_lesson_275_fallback(ge_name: str) -> dict:
@@ -745,7 +817,7 @@ def _abort(steps: list[dict], step_name: str, lesson_275_used: bool) -> dict:
 	not-forced skip — aborts with partial_failure=False, nothing deleted.)
 	"""
 	frappe.db.rollback()
-	_mutated = {"deleted", "deleted-via-surgical-sql", "status-reset"}
+	_mutated = {"deleted", "deleted-via-surgical-sql", "status-reset", "retained"}
 	completed = [s for s in steps if s.get("success") and s.get("action") in _mutated]
 	return {
 		"success": False,
@@ -900,6 +972,8 @@ def scan_orphans(token_name: str, cut_point: str | None = None) -> dict:
 		("QI", "TS Quality Inspection", "tabTS Quality Inspection", "token_number"),
 		("WB", "TS Weighbridge Log", "tabTS Weighbridge Log", "token_number"),
 		("GE", "TS Gate Entry", "tabTS Gate Entry", "token_number"),
+		# v2.79.0 — deleted together with the Gate Entry.
+		("GE", "TS Material Inspection", "tabTS Material Inspection", "token_number"),
 	]
 	for code, label, dt, fn in _CHAIN_TABLES:
 		try:
@@ -913,6 +987,15 @@ def scan_orphans(token_name: str, cut_point: str | None = None) -> dict:
 				kept_rows[label] = c
 		except Exception as e:
 			checks[label] = f"error: {e}"
+	# v2.79.0 — Deduction Suggestions whose QI no longer exists. A kept QI
+	# still exists, so its Suggestion is not counted.
+	if "QI" in check_codes:
+		checks["TS Deduction Suggestion (QI gone)"] = frappe.db.sql(
+			"SELECT COUNT(*) FROM `tabTS Deduction Suggestion` s "
+			"LEFT JOIN `tabTS Quality Inspection` q ON q.name = s.quality_inspection "
+			"WHERE s.token_number=%s AND q.name IS NULL",
+			(token_name,),
+		)[0][0]
 	# Comments / Versions — for a FULL cascade the Token itself is gone, so
 	# any leftover reference IS an orphan. For a partial cut the Token is
 	# kept, so these are EXPECTED (they're the Token's audit trail). Move

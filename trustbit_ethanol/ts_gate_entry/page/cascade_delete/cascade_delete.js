@@ -3,7 +3,9 @@
 // Lesson 174 — version pill rendered into DOM by JS; bump on every page edit.
 // Frappe v15 does NOT auto-inject {page}.html — JS builds the DOM via page.main.html().
 
-const CD_PAGE_VERSION = "v2.13.1-2026-05-28";
+const CD_PAGE_VERSION = "v2.79.0-2026-10-27b";
+// v2.79.0 — set by the preview when "Keep Quality Inspection" applies; read at Stage 3.
+let _cd_retain_qi = false;
 
 const CD_CSS = `
 	#cd-root { padding: 18px 22px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -294,13 +296,30 @@ function _render_preview(chain, token_name) {
 		const disabled = (s.code === "GE" || has_rows) ? "" : "disabled";
 		let note = "";
 		if (s.code === "QI" && submitted) note = "<strong style='color:#dc2626'>submitted</strong>";
+		if (s.code === "QI" && (chain.deduction_suggestions || []).length) {
+			note = [note, `${(chain.deduction_suggestions || []).length} Deduction Suggestion(s)`].filter(Boolean).join(" &middot; ");
+		}
 		if (s.code === "PR" && submitted) note = "<strong style='color:#dc2626'>submitted</strong>";
 		if (!has_rows && s.code !== "GE") note = "<span style='color:#94a3b8'>n/a (no rows)</span>";
 		html += `<tr id="cd-cp-row-${s.code}">`
 			+ `<td style="text-align:center;"><input type="radio" name="cd-cutpoint" value="${s.cut}" data-code="${s.code}" ${checked} ${disabled}></td>`
 			+ `<td>${frappe.utils.escape_html(s.doctype)}</td><td>${rows.length}</td><td>${submitted}</td><td>${note}</td></tr>`;
 	}
+	// v2.79.0 — Material Inspections are deleted together with the Gate Entry.
+	const mis = chain.material_inspections || [];
+	if (mis.length) {
+		html += `<tr id="cd-cp-row-MINSP"><td style="text-align:center;color:#cbd5e1;">—</td>`
+			+ `<td>TS Material Inspection</td><td>${mis.length}</td><td>—</td>`
+			+ `<td>deleted together with the Gate Entry</td></tr>`;
+	}
 	html += `</table>`;
+	const _subQI = (stage.QI || []).some(r => r.docstatus === 1);
+	if (_subQI) {
+		html += `<label id="cd-retain-wrap" class="cd-cutpoint-summary" style="display:block;cursor:pointer;">`
+			+ `<input type="checkbox" id="cd-retain-qi" checked> `
+			+ `<strong>Keep the submitted Quality Inspection for re-use</strong> — it can be attached to the re-created token, so the quality team does not inspect again. The Deduction Sheet is still deleted.`
+			+ `</label>`;
+	}
 	html += `<p style="margin-top:8px;font-size:12px;color:#64748b;">Stock Ledger Entries: ${chain.stock_ledger_entries_count} | GL Entries: ${chain.gl_entries_count}</p>`;
 	// B4 (v2.11.1) — financial blast-radius panel. If the chain has downstream
 	// Payment Entries / Journal Entries / Landed Cost Vouchers / billed PRs, the
@@ -330,11 +349,15 @@ function _render_preview(chain, token_name) {
 		const deleted = _CD_CHAIN.slice(idx).map(c => c.code);  // this row + below
 		const inRange = (code) => deleted.includes(code);
 		const subQI = (stage.QI || []).some(r => r.docstatus === 1);
+		const retainBox = document.getElementById("cd-retain-qi");
+		// Keep only when the token is deleted (Full Chain / GE cut).
+		const retain = (cut === "Full Chain" || cut === "TS Gate Entry") && subQI && !!(retainBox && retainBox.checked);
 		const subPR = (stage.PR || []).some(r => r.docstatus === 1);
 		const subPI = (stage.PI || []).some(r => r.docstatus === 1);
 		return {
 			needs_force_pr: (inRange("PR") && subPR) || (inRange("PI") && subPI),
-			needs_force_mi: inRange("QI") && subQI,
+			needs_force_mi: inRange("QI") && subQI && !retain,
+			retain_qi: retain,
 			deleted: deleted,
 		};
 	};
@@ -357,6 +380,10 @@ function _render_preview(chain, token_name) {
 		const cut = sel ? sel.value : "Full Chain";
 		const code = sel ? sel.dataset.code : "GE";
 		const info = _stage_for_cut(cut);
+		const retainWrap = document.getElementById("cd-retain-wrap");
+		if (retainWrap) retainWrap.style.display = (cut === "Full Chain" || cut === "TS Gate Entry") ? "block" : "none";
+		// A kept QI is not deleted — show it as kept in the tint and the summary.
+		const delCodes = info.retain_qi ? info.deleted.filter(c => c !== "QI") : info.deleted;
 		// v2.11.2 — Full Chain AND GE cut both delete the Token (engine wins).
 		const deletes_token = (cut === "Full Chain" || cut === "TS Gate Entry");
 		// Tint rows
@@ -364,7 +391,12 @@ function _render_preview(chain, token_name) {
 			const row = document.getElementById("cd-cp-row-" + s.code);
 			if (!row) continue;
 			row.classList.remove("cd-row-delete", "cd-row-keep");
-			row.classList.add(info.deleted.includes(s.code) ? "cd-row-delete" : "cd-row-keep");
+			row.classList.add(delCodes.includes(s.code) ? "cd-row-delete" : "cd-row-keep");
+		}
+		const miRow = document.getElementById("cd-cp-row-MINSP");
+		if (miRow) {
+			miRow.classList.remove("cd-row-delete", "cd-row-keep");
+			miRow.classList.add(delCodes.includes("GE") ? "cd-row-delete" : "cd-row-keep");
 		}
 		const tokRow = document.getElementById("cd-cp-row-TOKEN");
 		if (tokRow) {
@@ -373,8 +405,8 @@ function _render_preview(chain, token_name) {
 		}
 		// Summary
 		const sumEl = document.getElementById("cd-cutpoint-summary");
-		const delCount = info.deleted.length;
-		const kept = _CD_CHAIN.filter(c => !info.deleted.includes(c.code)).map(c => c.code);
+		const delCount = delCodes.length;
+		const kept = _CD_CHAIN.filter(c => !delCodes.includes(c.code)).map(c => c.code);
 		const cur = t.status || "";
 		let tokenLine;
 		let serverWarn = "";
@@ -389,12 +421,16 @@ function _render_preview(chain, token_name) {
 				serverWarn = `<div class="cd-warn-note" style="margin-top:8px;">⚠ Server will REJECT this combination: current status <code>${frappe.utils.escape_html(cur)}</code> with cut-point <code>${frappe.utils.escape_html(cut)}</code> is outside the partial-cut allowlist. Either pick Full Chain or amend the Token status first.</div>`;
 			}
 		}
-		sumEl.innerHTML = `Will delete <strong>${delCount}</strong> document type(s) [${info.deleted.join(", ")}]`
+		sumEl.innerHTML = `Will delete <strong>${delCount}</strong> document type(s) [${delCodes.join(", ")}]`
 			+ (kept.length ? ` &middot; keep [${kept.join(", ")}]` : "")
-			+ `. ${tokenLine}` + serverWarn;
+			+ `. ${tokenLine}`
+			+ (info.retain_qi ? " Quality Inspection KEPT for re-use; Deduction Sheet deleted." : "")
+			+ serverWarn;
 	};
 
 	area.querySelectorAll("input[name='cd-cutpoint']").forEach(r => r.addEventListener("change", _update));
+	const _retainBox = document.getElementById("cd-retain-qi");
+	if (_retainBox) _retainBox.addEventListener("change", _update);
 	_update();
 
 	document.getElementById("cd-initiate-btn").addEventListener("click", () => {
@@ -402,6 +438,7 @@ function _render_preview(chain, token_name) {
 		const cut = sel ? sel.value : "Full Chain";
 		const info = _stage_for_cut(cut);
 		const needs_force_payment = !!chain.has_financial_links;
+		_cd_retain_qi = info.retain_qi;
 		_show_stage1_confirm(token_name, info.needs_force_pr, info.needs_force_mi,
 		                     needs_force_payment, cut);
 	});
@@ -543,12 +580,14 @@ function _show_stage3_final(token_name, force_pr, force_mi, force_payment, cut_p
 	const scope_line = cut_point === "Full Chain"
 		? `<span style="color:#dc2626;font-weight:600;">FULL CHAIN</span> — the Token and every downstream document will be deleted.`
 		: `<span style="color:#dc2626;font-weight:600;">PARTIAL</span> — delete from <code>${frappe.utils.escape_html(cut_point)}</code> down to Purchase Invoice; the Token is KEPT (status will be reset).`;
+	const retain_line = _cd_retain_qi
+		? `<br>The submitted Quality Inspection is <strong>KEPT</strong> for re-use on the re-created token.` : "";
 	const modal_html = `
 		<div class="cd-modal-bg">
 		<div class="cd-modal">
 		<h2>Stage 3 of 3 — FINAL CONFIRMATION</h2>
 		<p style="font-size:12px;color:#475569;">You are about to <strong>queue a cascade delete</strong> for <code>${frappe.utils.escape_html(token_name)}</code>. A CEO must approve before execution. Type the token name ONE MORE TIME to submit.</p>
-		<p class="cd-warn-note" style="font-size:12px;">Scope: ${scope_line}</p>
+		<p class="cd-warn-note" style="font-size:12px;">Scope: ${scope_line}${retain_line}</p>
 		<label for="cd-st3-final">Type token name to submit:</label>
 		<input type="text" id="cd-st3-final" maxlength="20" autofocus />
 		<div class="cd-modal-actions">
@@ -580,6 +619,7 @@ function _show_stage3_final(token_name, force_pr, force_mi, force_payment, cut_p
 				client_screen: `${screen.width}x${screen.height}`,
 				client_language: navigator.language,
 				cut_point: cut_point,
+				retain_qi: _cd_retain_qi ? 1 : 0,
 			},
 			callback(r) {
 				div.remove();
@@ -693,7 +733,12 @@ function _cd_render_review_detail(d) {
 	h += `<div class="cd-detail-line"><b>Chain:</b> ${c.gate_entries || 0} GE &middot; ${c.weighbridge_logs || 0} WB`
 		+ ` &middot; ${c.quality_inspections || 0} QI &middot; ${c.deduction_sheets || 0} DS`
 		+ ` &middot; ${c.purchase_receipts || 0} PR &middot; ${c.purchase_invoices || 0} PI`
-		+ ` &middot; ${c.gl_entries || 0} GL entries</div>`;
+		+ ` &middot; ${c.gl_entries || 0} GL entries`
+		+ ((c.material_inspections || 0) ? ` &middot; ${c.material_inspections} Material Inspection` : "")
+		+ `</div>`;
+	if (d.retain_qi) {
+		h += `<div class="cd-cutpoint-summary">The submitted Quality Inspection will be KEPT (not deleted) so it can be attached to the re-created token.</div>`;
+	}
 	h += `<div class="cd-detail-line cd-detail-money">💰 <b>PO</b> ${_cd_inr(d.po_total)}`
 		+ ` &middot; <b>PR</b> ${_cd_inr(d.pr_total)}`
 		+ ` &middot; <b>PI</b> ${_cd_inr(d.pi_total)}</div>`;

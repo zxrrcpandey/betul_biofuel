@@ -15,7 +15,8 @@ const QI_LOCK_FIELDS = [
 
 frappe.ui.form.on("TS Quality Inspection", {
 	refresh(frm) {
-		if (frm.doc.quality_report_no) {
+		const _kept = frm.doc.docstatus === 1 && !frm.doc.token_number && frm.doc.ts_retained_from_token;
+		if (frm.doc.quality_report_no && !_kept) {
 			frm.set_intro(
 				`Quality Report No: ${frappe.utils.escape_html(frm.doc.quality_report_no)}`,
 				"blue"
@@ -103,6 +104,20 @@ frappe.ui.form.on("TS Quality Inspection", {
 				}
 			});
 		}
+
+		// v2.79.0 — inspection kept by Cascade Delete, waiting for its re-created token.
+		if (frm.doc.docstatus === 1 && !frm.doc.token_number && frm.doc.ts_retained_from_token) {
+			const qrn = frm.doc.quality_report_no
+				? `Quality Report No: ${frappe.utils.escape_html(frm.doc.quality_report_no)}. ` : "";
+			frm.set_intro(qrn +
+				__("Kept from deleted token {0}. Attach it to the re-created token so the truck is not inspected again.",
+					[frappe.utils.escape_html(frm.doc.ts_retained_from_token)]),
+				"orange"
+			);
+			if (frappe.model.can_create("TS Quality Inspection")) {
+				frm.add_custom_button(__("Attach to New Token"), () => ts_qi_attach_dialog(frm));
+			}
+		}
 	},
 
 	setup(frm) {
@@ -126,7 +141,22 @@ frappe.ui.form.on("TS Quality Inspection", {
 		frm.set_value("vehicle_number", null);
 		frm.set_value("party_name", null);
 		frm.set_value("rst_number", null);
+		if (frm.is_new()) frm.set_intro();  // clear an old hint
 		if (!frm.doc.token_number) return;
+		// v2.79.0 — hint when a kept inspection already exists for this truck.
+		if (frm.is_new()) {
+			const tok = frm.doc.token_number;
+			frappe.call({
+				method: "trustbit_ethanol.ts_gate_entry.doctype.ts_quality_inspection.ts_quality_inspection.list_retained_for_token",
+				args: { token_name: frm.doc.token_number },
+			}).then(r => {
+				const rows = r.message || [];
+				if (!rows.length || frm.doc.token_number !== tok) return;
+				const links = rows.map(q => `<a href="/app/ts-quality-inspection/${encodeURIComponent(q.name)}">${frappe.utils.escape_html(q.name)}</a>`
+					+ ` (${__("from")} ${frappe.utils.escape_html(q.from_token)})`).join(", ");
+				frm.set_intro(__("A kept inspection may already cover this truck: {0}. Open it and use \"Attach to New Token\" instead of inspecting again.", [links]), "orange");
+			});
+		}
 		frappe.db.get_value("TS Token", frm.doc.token_number,
 			["vehicle_number", "custom_rst_number"]
 		).then(t => {
@@ -327,4 +357,39 @@ function calculate_coal_variances(frm) {
 		let variance = frm.doc.actual_moisture_percent - frm.doc.po_moisture_percent;
 		frm.set_value("moisture_variance_percent", flt(variance, 3));
 	}
+}
+
+// v2.79.0 — attach a kept inspection to the re-created token.
+function ts_qi_attach_dialog(frm) {
+	const method = "trustbit_ethanol.ts_gate_entry.doctype.ts_quality_inspection.ts_quality_inspection.attach_retained_qi";
+	const d = new frappe.ui.Dialog({
+		title: __("Attach to New Token"),
+		fields: [{
+			fieldname: "token_name", fieldtype: "Link", options: "TS Token",
+			label: __("New Token"), reqd: 1,
+			get_query: () => ({ filters: { purpose: "Raw Material" } }),
+		}],
+		primary_action_label: __("Attach"),
+		primary_action(values) {
+			const run = (confirm) => frappe.call({
+				method, freeze: true,
+				args: { qi_name: frm.doc.name, token_name: values.token_name, confirm: confirm ? 1 : 0 },
+			}).then(r => {
+				const m = r.message || {};
+				if (m.needs_confirm) {
+					const list = (m.warnings || []).map(w => `<li>${frappe.utils.escape_html(w)}</li>`).join("");
+					frappe.confirm(`${__("Please check before attaching:")}<ul>${list}</ul>${__("Attach anyway?")}`,
+						() => run(true));
+					return;
+				}
+				if (m.attached) {
+					d.hide();
+					frappe.show_alert({ message: __("Attached to {0}", [frappe.utils.escape_html(m.token)]), indicator: "green" });
+					frm.reload_doc();
+				}
+			});
+			run(false);
+		},
+	});
+	d.show();
 }

@@ -78,6 +78,9 @@ _PRODUCTION_EXECUTOR_PERMS = {
 	                "report": 1, "export": 1, "print": 1, "email": 1},
 	"Quality Inspection": {"read": 1, "delete": 1, "cancel": 1,
 	                       "report": 1, "export": 1, "print": 1, "email": 1},
+	# v2.79.0 — Token cascade now also deletes these instead of orphaning them.
+	"TS Deduction Suggestion": {"read": 1, "delete": 1, "cancel": 1},
+	"TS Material Inspection": {"read": 1, "delete": 1},
 }
 
 

@@ -63,6 +63,8 @@ def _format_standard(target, min_v, max_v):
 class TSQualityInspection(Document):
 	# ── lifecycle ──────────────────────────────────────────────────────
 	def before_insert(self):
+		# v2.79.0 — only Cascade Delete may mark a QI as kept.
+		self.ts_retained_from_token = self.ts_retained_material_type = None
 		if not self.inspector:
 			self.inspector = frappe.session.user
 		self._validate_token_status()
@@ -423,3 +425,182 @@ def populate_template_rows(qi_name=None, template_name=None):
 	if tpl.supports_bags and tpl.bag_type:
 		result["bag_type"] = tpl.bag_type
 	return result
+
+
+# ── v2.79.0 — re-use a QI kept by Cascade Delete ─────────────────────
+# A cascade run with "Keep Quality Inspection" leaves the submitted QI with an
+# empty token_number and ts_retained_from_token = the deleted token. These two
+# methods find such a QI for a re-created token and attach it, so the quality
+# team does not have to inspect the same truck again.
+
+
+SUPPLIER_UNVERIFIED = "The kept inspection has no supplier recorded, so only the item was checked."
+
+
+def _retained_match(qi, ge):
+	"""Compare a kept QI with the new token's submitted Gate Entry.
+
+	Returns (errors, warnings). Item and supplier must match; vehicle only warns.
+	"""
+	errors, warnings = [], []
+	# Item — material type and/or item code; each compared only when both sides have it.
+	ge_item = frappe.db.get_value("TS Gate Entry Item", {"parent": ge.name}, "item_code")
+	compared = 0
+	if qi.ts_retained_material_type and ge.ts_material_type:
+		compared += 1
+		if qi.ts_retained_material_type != ge.ts_material_type:
+			errors.append(f"Material type differs ({escape_html(qi.ts_retained_material_type)} "
+			              f"vs {escape_html(ge.ts_material_type)}).")
+	if qi.item_code and ge_item:
+		compared += 1
+		if qi.item_code != ge_item:
+			errors.append(f"Item differs ({escape_html(qi.item_code)} vs {escape_html(ge_item)}).")
+	if not compared:
+		errors.append("Cannot verify that the item is the same.")
+	# Supplier — taken from each side's PO. A kept QI with a supplier waits until
+	# Stores links the PO on the new token (grain trucks get it after Tare).
+	old_sup = frappe.db.get_value("Purchase Order", qi.purchase_order, "supplier") if qi.purchase_order else None
+	new_sup = frappe.db.get_value("Purchase Order", ge.purchase_order, "supplier") if ge.purchase_order else None
+	if old_sup and not new_sup:
+		errors.append("The new token has no Purchase Order yet. Ask Stores to link the PO, then attach.")
+	elif old_sup and new_sup and old_sup != new_sup:
+		# Don't name the new supplier — maize POs are confidential.
+		errors.append("Supplier on the new token's PO differs from the inspected truck's supplier.")
+	elif not old_sup:
+		warnings.append(SUPPLIER_UNVERIFIED)
+	# Vehicle — warning only (tokens are often re-created to fix a typo here).
+	norm = lambda v: "".join(ch for ch in (v or "").upper() if ch.isalnum())
+	new_vehicle = frappe.db.get_value("TS Token", ge.token_number, "vehicle_number")
+	if norm(qi.vehicle_number) != norm(new_vehicle):
+		# Plain text: the dialog escapes it.
+		warnings.append(f"Vehicle number differs ({qi.vehicle_number or '-'} vs {new_vehicle or '-'}).")
+	return errors, warnings
+
+
+@frappe.whitelist()
+def list_retained_for_token(token_name):
+	"""Kept inspections that look like they belong to this token (item match).
+
+	Used for the hint on a new QI form. Read-only.
+	"""
+	if not frappe.has_permission("TS Quality Inspection", "read"):
+		return []
+	ge = frappe.db.get_value(
+		"TS Gate Entry", {"token_number": token_name, "docstatus": 1},
+		["name", "ts_material_type", "purchase_order", "token_number"], as_dict=True,
+	)
+	if not ge:
+		return []
+	out = []
+	can_submit = frappe.has_permission("TS Quality Inspection", "submit")
+	for qi in frappe.get_list(
+		"TS Quality Inspection",
+		filters={"docstatus": 1, "token_number": ["is", "not set"],
+		         "ts_retained_from_token": ["is", "set"]},
+		fields=["name", "item_code", "purchase_order", "vehicle_number",
+		        "ts_retained_from_token", "ts_retained_material_type"],
+		order_by="modified desc", limit=50,
+	):
+		errors, _w = _retained_match(qi, ge)
+		if SUPPLIER_UNVERIFIED in _w and not can_submit:
+			continue  # this user could not attach it anyway
+		if not errors or (len(errors) == 1 and "no Purchase Order yet" in errors[0]):
+			out.append({"name": qi.name, "from_token": qi.ts_retained_from_token,
+			            "vehicle_number": qi.vehicle_number})
+	return out
+
+
+@frappe.whitelist(methods=["POST"])
+def attach_retained_qi(qi_name, token_name, confirm=0):
+	"""Attach a QI kept by Cascade Delete to a re-created token.
+
+	Allowed for anyone who can create a QI (same as today). Item + supplier
+	must match; a vehicle difference needs confirm=1.
+	"""
+	frappe.has_permission("TS Quality Inspection", "create", throw=True)
+	frappe.has_permission("TS Quality Inspection", "read", doc=qi_name, throw=True)
+
+	# Lock both rows so two people can't attach at once (Lesson 362).
+	row = frappe.db.sql(
+		"SELECT name, docstatus, token_number, ts_retained_from_token "
+		"FROM `tabTS Quality Inspection` WHERE name=%s FOR UPDATE",
+		(qi_name,), as_dict=True,
+	)
+	if not row:
+		frappe.throw("Quality Inspection not found.")
+	row = row[0]
+	if row.docstatus != 1 or row.token_number or not row.ts_retained_from_token:
+		frappe.throw("This Quality Inspection is not waiting to be attached.")
+	tok = frappe.db.sql("SELECT name FROM `tabTS Token` WHERE name=%s FOR UPDATE", (token_name,))
+	if not tok:
+		frappe.throw(f"Token {escape_html(token_name)} not found.")
+	token_name = tok[0][0]  # canonical spelling
+	if frappe.db.sql("SELECT name FROM `tabTS Quality Inspection` "
+	                 "WHERE token_number=%s AND docstatus<2 LIMIT 1 FOR UPDATE", (token_name,)):
+		frappe.throw(f"Token {escape_html(token_name)} already has a Quality Inspection.")
+
+	qi = frappe.get_doc("TS Quality Inspection", qi_name)
+	qi.token_number = token_name
+	qi.amended_from = None  # in memory only — so the stage check below always runs
+	qi._validate_token_status()
+
+	ge = frappe.db.get_value(
+		"TS Gate Entry", {"token_number": token_name, "docstatus": 1},
+		["name", "ts_material_type", "purchase_order", "token_number"], as_dict=True,
+	)
+	if not ge:
+		frappe.throw(f"Token {escape_html(token_name)} has no submitted Gate Entry.")
+	errors, warnings = _retained_match(qi, ge)
+	if errors:
+		frappe.throw("<br>".join(errors), title="Cannot attach")
+	# Supplier could not be checked (grain truck kept before its PO was linked):
+	# only someone who can submit a QI may vouch for it — not draft-only roles.
+	if SUPPLIER_UNVERIFIED in warnings and not frappe.has_permission("TS Quality Inspection", "submit"):
+		frappe.throw("The supplier of the kept inspection is not recorded, so it can only be "
+		             "attached by the quality team (users who can submit a Quality Inspection).",
+		             title="Cannot attach")
+	if warnings and not int(confirm or 0):
+		return {"needs_confirm": True, "warnings": warnings}
+
+	# Re-fetch references from the new token using the normal create-time logic.
+	old_token = qi.ts_retained_from_token
+	qi.vehicle_number = qi.rst_number = qi.party_name = None
+	qi.gate_entry = qi.purchase_order = None
+	qi._auto_fetch_references()
+	frappe.db.set_value("TS Quality Inspection", qi.name, {
+		"token_number": token_name,
+		"gate_entry": qi.gate_entry,
+		"purchase_order": qi.purchase_order,
+		"item_code": qi.item_code,
+		"item_name": qi.item_name,
+		"vehicle_number": qi.vehicle_number,
+		"rst_number": qi.rst_number,
+		"party_name": qi.party_name,
+	})
+	qi.reload()
+
+	# Same follow-ups a QI submit runs (minus the Grain Manager alert).
+	from trustbit_ethanol.ts_gate_entry.doctype.ts_deduction_suggestion.ts_deduction_suggestion import (
+		auto_create_suggestion_for_qi,
+	)
+	from trustbit_ethanol.ts_gate_entry.ts_qc_auto_reject import on_qi_submitted
+	if qi.qc_template:
+		auto_create_suggestion_for_qi(qi)
+	for s_name in frappe.get_all("TS Deduction Suggestion",
+	                             filters={"quality_inspection": qi.name, "docstatus": ["<", 2]},
+	                             pluck="name"):
+		s_vals = {"token_number": token_name, "vehicle_number": qi.vehicle_number,
+		          "rst_number": qi.rst_number}
+		if qi.purchase_order:
+			s_vals["purchase_order"] = qi.purchase_order
+		frappe.db.set_value("TS Deduction Suggestion", s_name, s_vals, update_modified=False)
+		s = frappe.get_doc("TS Deduction Suggestion", s_name)
+		if s.docstatus == 1:
+			s._auto_create_deduction_sheet()
+	on_qi_submitted(qi)
+
+	note = f"[RETAINED QI ATTACHED] Moved from deleted token {old_token} to {token_name} by {frappe.session.user}."
+	if warnings:
+		note += " Warnings accepted: " + escape_html(" ".join(warnings))
+	qi.add_comment("Info", note)
+	return {"attached": True, "token": token_name}
