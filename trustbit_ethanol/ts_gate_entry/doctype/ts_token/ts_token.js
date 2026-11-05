@@ -191,7 +191,9 @@ frappe.ui.form.on("TS Token", {
 					}
 				}
 
-				if (show_mark_exit && !frappe.user.has_role("Weighbridge Operator")) {
+				// v2.80.0: only gate staff (same roles the server allows).
+				if (show_mark_exit && !frappe.user.has_role("Weighbridge Operator")
+					&& frappe.user.has_role(["G1 Security", "G2 Gate Operator", "IT Head", "System Manager"])) {
 					frm.add_custom_button(__("Mark Exit"), function () {
 						frappe.confirm(
 							__("Are you sure you want to mark this vehicle as exited?"),
@@ -231,73 +233,10 @@ frappe.ui.form.on("TS Token", {
 						|| frappe.user.has_role("IT Head")
 						|| frappe.user.has_role("System Manager")
 						|| frappe.user.has_role("Admin Reception");
-					// v2.18.0 — Stores roles may approve a Non-Raw-Material vehicle for exit
-					// (and release a grain truck before GRN). G2 added 24 Oct 2026.
-					const has_stores = frappe.user.has_role("Stores User")
-						|| frappe.user.has_role("Stores Manager")
-						|| frappe.user.has_role("G2 Gate Operator")
-						|| frappe.user.has_role("IT Head")
-						|| frappe.user.has_role("System Manager");
-					const _is_non_rm = (frm.doc.purpose === "Non-Raw Material");
+					// v2.80.0 — Stores "Exit Approved" / "Release Exit (before GRN)" removed
+					// (client request, 1 Nov 2026): G2's one "Record G2 Exit" (B2) now
+					// lets every vehicle out.
 					const _already_exited = ["Plant Exited", "Campus Exited", "Exited"].includes(frm.doc.status);
-
-					// v2.18.0 — "Exit Approved" (Stores). Authorises a Non-RM vehicle to
-					// leave with no weighbridge / GRN / two-pass; unlocks B2 + B3 below.
-					if (has_stores && _is_non_rm && !frm.doc.non_rm_exit_approved && !_already_exited) {
-						frm.add_custom_button(__("Exit Approved"), function () {
-							frappe.confirm(
-								__("Approve this Non-Raw-Material vehicle to exit? G2 and G1 will then be able to record exit."),
-								function () {
-									frappe.call({
-										method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.approve_non_rm_exit",
-										args: { token_name: frm.doc.name },
-										callback: () => {
-											frm.reload_doc();
-											frappe.show_alert({ message: __("Exit approved — G2 can now record exit"), indicator: "green" });
-										}
-									});
-								}
-							);
-						}, __("Gate Actions")).addClass("btn-primary");
-					}
-
-					// v2.30.0 — "Release Exit (before GRN)" (Stores, + G2 since 24 Oct 2026). A grain-deferred
-					// truck held at G2 Exit may be released to leave BEFORE the GRN;
-					// the PO link + GRN are then completed from Stores Receiving →
-					// Section G after exit. Rendered from pre_grn_exit_state — the
-					// SAME predicate the server enforces (server stays the authority).
-					if (has_stores && frm.doc.status === "Tare Weighed"
-						&& !frm.doc.ts_pre_grn_exit_approved && !_already_exited) {
-						const _tok = frm.doc.name;
-						frappe.call({
-							method: "trustbit_ethanol.ts_gate_entry.ts_grain_defer.pre_grn_exit_state",
-							args: { token_name: _tok },
-							callback: (r) => {
-								const st = r && r.message;
-								if (!st || !st.eligible || st.released) return;
-								if (!frm.doc || frm.doc.name !== _tok) return; // stale-render guard
-								if (frm.custom_buttons[__("Release Exit (before GRN)")]) return; // dedupe on refresh race
-								const _btn = frm.add_custom_button(__("Release Exit (before GRN)"), function () {
-									frappe.confirm(
-										__("Release this grain vehicle to exit BEFORE the GRN? Stores must still link the PO and create the GRN afterwards from the Stores Receiving Dashboard."),
-										function () {
-											frappe.call({
-												method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.approve_pre_grn_exit",
-												args: { token_name: frm.doc.name },
-												callback: () => {
-													frm.reload_doc();
-													frappe.show_alert({ message: __("Exit released — G2 can now record exit; the GRN stays pending in Stores Receiving"), indicator: "green" });
-												}
-											});
-										}
-									);
-								}, __("Gate Actions"));
-								// add_custom_button returns undefined when the group dedupes
-								// an already-present label — never chain on it (audit UI-H2).
-								if (_btn) _btn.addClass("btn-primary");
-							}
-						});
-					}
 
 					// B1 — Record G2 Entry (status=G1 Entered)
 					if (has_g2 && frm.doc.status === "G1 Entered") {
@@ -318,24 +257,42 @@ frappe.ui.form.on("TS Token", {
 						}, __("Gate Actions")).addClass("btn-primary");
 					}
 
-					// B2 — Record G2 Exit (status=Tare Weighed/GRN Created, OR a Stores-approved Non-RM token)
-					const _non_rm_exit_ready = _is_non_rm && frm.doc.non_rm_exit_approved && !_already_exited;
-					if (has_g2 && (["Tare Weighed", "GRN Created"].includes(frm.doc.status) || _non_rm_exit_ready)) {
-						frm.add_custom_button(__("Record G2 Exit"), function () {
-							frappe.confirm(
-								__("Confirm vehicle has completed unloading and is leaving the plant via G2?"),
-								function () {
-									frappe.call({
-										method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.g2_mat_log_exit",
-										args: { token_name: frm.doc.name },
-										callback: () => {
-											frm.reload_doc();
-											frappe.show_alert({ message: __("G2 Exit recorded — status: Plant Exited"), indicator: "yellow" });
-										}
+					// B2 — Record G2 Exit. v2.80.0: one button for every vehicle, rendered
+					// from g2_exit_state — the same rule g2_mat_log_exit enforces (server
+					// stays the authority). For unweighed Non-RM and held grain the click
+					// also records the exit permission in G2's name.
+					if (has_g2 && !_already_exited) {
+						const _tok = frm.doc.name;
+						frappe.call({
+							method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.g2_exit_state",
+							args: { token_name: _tok },
+							callback: (r) => {
+								const st = r && r.message;
+								if (!st || !st.ready) return;
+								if (!frm.doc || frm.doc.name !== _tok) return; // stale-render guard
+								if (frm.custom_buttons[__("Record G2 Exit")]) return; // dedupe on refresh race
+								const _veh = frappe.utils.escape_html(frm.doc.vehicle_number || "");
+								const _msg = st.kind === "grain_release"
+									? __("Vehicle {0} — grain, PO not linked yet. Record G2 Exit now? The PO link and GRN stay pending with Stores (Grain — Awaiting PO Link).", [_veh])
+									: st.kind === "non_rm"
+										? __("Vehicle {0} — Non-Raw Material, not weighed. Record G2 Exit now? The GRN stays pending with Stores.", [_veh])
+										: __("Confirm vehicle has completed unloading and is leaving the plant via G2?");
+								const _btn = frm.add_custom_button(__("Record G2 Exit"), function () {
+									frappe.confirm(_msg, function () {
+										frappe.call({
+											method: "trustbit_ethanol.ts_gate_entry.doctype.ts_token.ts_token.g2_mat_log_exit",
+											args: { token_name: frm.doc.name },
+											callback: () => {
+												frm.reload_doc();
+												frappe.show_alert({ message: __("G2 Exit recorded — status: Plant Exited"), indicator: "yellow" });
+											}
+										});
 									});
-								}
-							);
-						}, __("Gate Actions")).addClass("btn-warning");
+								}, __("Gate Actions"));
+								// add_custom_button returns undefined when the group dedupes (audit UI-H2).
+								if (_btn) _btn.addClass("btn-warning");
+							}
+						});
 					}
 
 					// B3 — Record G1 Final Exit (status=Plant Exited)

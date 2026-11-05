@@ -6,7 +6,7 @@
      C — Approved Direct PO (new, no token)
    ═══════════════════════════════════════════════════════════════════ */
 
-const SR_VERSION = "v6.15-2026-10-17-grain-supplier-filter";
+const SR_VERSION = "v6.16-2026-11-01-g2-only-exit";
 const SR_API = "trustbit_ethanol.ts_gate_entry.stores_receiving_api";
 console.log("[stores-receiving]", SR_VERSION, "loaded");
 
@@ -806,9 +806,11 @@ function _sr_render_section_b() {
 // v2.18.0 — Non-RM Stores exit approval. Section B holds only Non-RM no-weighing
 // tokens, so every row is eligible. The button shows only to approve-capable roles
 // (server re-checks); once approved it renders as a disabled badge.
+// v2.80.0 (client request, 1 Nov 2026): no exit buttons on this page for anyone —
+// G2 lets every vehicle out with "Record G2 Exit" on the token. Hides both the
+// Section B "Exit Approved" and the Section G "Release Exit" buttons.
 function _sr_can_approve_exit() {
-	return frappe.user.has_role("Stores User") || frappe.user.has_role("Stores Manager")
-		|| frappe.user.has_role("IT Head") || frappe.user.has_role("System Manager");
+	return false;
 }
 
 function _sr_exit_approve_btn(r) {
