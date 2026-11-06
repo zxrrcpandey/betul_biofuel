@@ -41,6 +41,14 @@ frappe.query_reports["TS MR to Pay"] = {
 			label: __("Supplier"),
 			fieldtype: "Link",
 			options: "Supplier"
+		},
+		{
+			// Which document the two Supplier Invoice No. / Date columns read.
+			fieldname: "bill_source",
+			label: __("Supplier Invoice From"),
+			fieldtype: "Select",
+			options: ["Purchase Receipt", "Purchase Invoice"].join("\n"),
+			default: "Purchase Receipt"
 		}
 	],
 	formatter(value, row, column, data, default_formatter) {

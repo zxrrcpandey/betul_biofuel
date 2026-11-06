@@ -56,6 +56,8 @@ SEP = ", "
 
 MR_TYPES = ("Purchase & Service", "Purchase", "Service Request", "All")
 PURCHASE_AND_SERVICE = ("Purchase", "Service Request")
+# Source of the Supplier Invoice No. / Date columns; the first is the default.
+BILL_SOURCES = ("Purchase Receipt", "Purchase Invoice")
 
 
 def execute(filters=None):
@@ -82,6 +84,8 @@ def _validate_filters(filters):
 		frappe.throw(_("From Date cannot be after To Date"))
 	if filters.get("material_request_type") and filters["material_request_type"] not in MR_TYPES:
 		frappe.throw(_("Invalid MR Type filter"))
+	if filters.get("bill_source") and filters["bill_source"] not in BILL_SOURCES:
+		frappe.throw(_("Invalid Supplier Invoice From filter"))
 
 
 def get_columns():
@@ -177,6 +181,7 @@ def get_data(filters):
 				out.append((po, None, None))
 		return out
 
+	bill_from_pr = (filters.get("bill_source") or BILL_SOURCES[0]) == "Purchase Receipt"
 	chained_only = bool(filters.get("supplier") or filters.get("purchase_order"))
 	today_date = getdate(today())
 	rows = []
@@ -188,6 +193,7 @@ def get_data(filters):
 			pom = po_meta.get(po) or {}
 			prm = pr_meta.get(pr) or {}
 			pim = pi_meta.get(pi) or {}
+			bill = prm if bill_from_pr else pim
 			adv_pes = pes.get(("Purchase Order", po), []) if po else []
 			pi_pes = pes.get(("Purchase Invoice", pi), []) if pi else []
 			advance_paid = sum(flt(p["allocated"]) for p in adv_pes) if adv_pes else None
@@ -217,8 +223,8 @@ def get_data(filters):
 				"po_approved_date": pom.get("approved_date"),
 				"pr_no": pr or "", "pr_date": prm.get("posting_date"),
 				"pi_no": pi or "", "pi_date": pim.get("posting_date"),
-				"bill_date": pim.get("bill_date"),
-				"bill_no": " ".join(strip_html(pim["bill_no"]).split()) if pim.get("bill_no") else "",
+				"bill_date": bill.get("bill_date"),
+				"bill_no": " ".join(strip_html(bill["bill_no"]).split()) if bill.get("bill_no") else "",
 				"currency": pom.get("currency"),
 				"party_currency": pom.get("party_account_currency") or pom.get("currency"),
 				"pi_currency": pim.get("currency"),
@@ -284,7 +290,7 @@ def _pr_leg(po_names):
 	conds = _clauses("Purchase Receipt", "pr", ["IFNULL(pri.purchase_order, '') != ''"])
 	for chunk in ru.chunked(po_names):
 		for x in frappe.db.sql(
-			f"""SELECT DISTINCT pri.purchase_order AS po, pr.name, pr.posting_date
+			f"""SELECT DISTINCT pri.purchase_order AS po, pr.name, pr.posting_date, pr.bill_no, pr.bill_date
 			FROM `tabPurchase Receipt Item` pri
 			JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent
 			WHERE pri.purchase_order IN %(names)s AND {" AND ".join(conds)}""",
