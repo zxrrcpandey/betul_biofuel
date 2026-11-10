@@ -147,6 +147,26 @@ def _released_non_rm_exit(token):
 	return bool(_non_rm_flow_confirmed(name))
 
 
+def _exited_weighed_pending(token_name):
+	"""v2.80.2: a weighed truck G2 let out at Tare Weighed before its GRN stays
+	receivable — tare on the weighbridge log, no Purchase Receipt yet, and not a
+	grain / Non-RM release (those have their own queues). Rule: _SQL_EXITED_WEIGHED."""
+	return bool(frappe.db.sql("""SELECT 1 FROM `tabTS Token` t WHERE t.name = %s
+		AND IFNULL(t.purchase_receipt, '') = '' AND """ + _SQL_EXITED_WEIGHED, (token_name,)))
+
+
+# The PO must still have something to receive (< 99.5% received, not closed), so an
+# old truck that was received another way (a PR without ts_token) is not shown again.
+_SQL_EXITED_WEIGHED = """(t.status IN ('Plant Exited', 'Campus Exited', 'Exited')
+	AND IFNULL(t.ts_pre_grn_exit_approved, 0) = 0 AND IFNULL(t.non_rm_exit_approved, 0) = 0
+	AND EXISTS (SELECT 1 FROM `tabTS Weighbridge Log` w WHERE w.token_number = t.name AND w.tare_weight > 0)
+	AND NOT EXISTS (SELECT 1 FROM `tabPurchase Receipt` pr WHERE pr.ts_token = t.name AND pr.docstatus < 2)
+	AND EXISTS (SELECT 1 FROM `tabTS Gate Entry` g JOIN `tabPurchase Order` po ON po.name = g.purchase_order
+		WHERE g.token_number = t.name AND g.docstatus = 1 AND IFNULL(g.stock_direction, '') != 'Stock OUT'
+		  AND po.docstatus = 1
+		  AND po.status NOT IN ('Closed', 'Completed') AND po.per_received < 99.5))"""
+
+
 def _is_kg_uom(uom):
 	"""v2.8.9 — UOM normalization helper (predictor non-negotiable #1).
 
@@ -480,7 +500,8 @@ def _classify_receivable(tok, ge, insp_label):
 	if status in ("Plant Exited", "Campus Exited") and tok.get("name"):
 		from trustbit_ethanol.ts_gate_entry.ts_grain_defer import pre_grn_exit_released
 		_released = pre_grn_exit_released(tok["name"])
-	if status == STATUS_TARE_WEIGHED or _released:
+	_exited_weighed = bool(tok.get("name")) and not _released and _exited_weighed_pending(tok["name"])
+	if status == STATUS_TARE_WEIGHED or _released or _exited_weighed:
 		# v2.67.0 — any token with an inspection is gated (exemption is by item group).
 		if _inspection_blocks_grn(insp_label, gate_enabled):
 			return no("Inspection is '{0}' — waiting for the requester's verification.".format(insp_label))
@@ -563,13 +584,13 @@ def _fetch_section_a_tokens():
 		SELECT
 			t.name, t.vehicle_number, t.entry_time, t.status, t.purpose
 		FROM `tabTS Token` t
-		WHERE t.status = %s
+		WHERE (t.status = %s OR {exited_weighed})
 		  AND t.docstatus != 2
 		  AND (t.purchase_receipt IS NULL OR t.purchase_receipt = '')
 		  AND t.entry_type = 'Material'
 		ORDER BY t.entry_time ASC
 		LIMIT 500
-	""", (STATUS_TARE_WEIGHED,), as_dict=True)
+	""".format(exited_weighed=_SQL_EXITED_WEIGHED), (STATUS_TARE_WEIGHED,), as_dict=True)
 
 	result = []
 	for tok in tokens:
@@ -835,7 +856,8 @@ def create_grn_for_weighed_token(token_name, manual_qty_per_po=None):
 		frappe.throw(_("Cannot create GRN for a cancelled token"))
 	if token.purchase_receipt:
 		frappe.throw(_("Purchase Receipt {0} already exists for this token").format(token.purchase_receipt))
-	if token.status != STATUS_TARE_WEIGHED and not _released_grain_exit(token):
+	if (token.status != STATUS_TARE_WEIGHED and not _released_grain_exit(token)
+			and not _exited_weighed_pending(token.name)):
 		frappe.throw(_("Token status must be 'Tare Weighed', currently '{0}'").format(token.status))
 
 	# v2.67.0 — requester-verification gate (any token with an inspection)
@@ -1493,10 +1515,9 @@ def pr_on_submit_update_token(doc, method=None):
 		"TS Token", token_name,
 		["status", "ts_pre_grn_exit_approved", "non_rm_exit_approved"],
 		as_dict=True, ignore=True)
+	# v2.80.2: the same holds for a weighed truck G2 let out before its GRN.
 	updates = {"grn_time": now_datetime()}
-	if not (tok_state and tok_state.status in _EXITED_TOKEN_STATUSES
-			and (cint(tok_state.ts_pre_grn_exit_approved)
-				or cint(tok_state.non_rm_exit_approved))):
+	if not (tok_state and tok_state.status in _EXITED_TOKEN_STATUSES):
 		updates["status"] = STATUS_GRN_CREATED
 	frappe.db.set_value("TS Token", token_name, updates, update_modified=False)
 
@@ -1516,16 +1537,17 @@ def pr_on_cancel_clear_token(doc, method=None):
 
 	# v2.30.0: a RELEASED truck stays exited — clear the GRN linkage only, so it
 	# returns to its queue (Section G for grain, Section B for approved Non-RM,
-	# both "Exited — GRN pending"). Scoped to the stored release flags; every
-	# OTHER exited token keeps the pre-v2.30.0 revert path, which is its only
-	# re-receive route after a PR cancel (audit M1 + user bug report 7 Aug).
+	# both "Exited — GRN pending").
+	# v2.80.2: a WEIGHED exited truck also stays exited and returns to Section A
+	# (_SQL_EXITED_WEIGHED). Every other exited token keeps the revert below.
 	tok_state = frappe.db.get_value(
 		"TS Token", token_name,
 		["status", "ts_pre_grn_exit_approved", "non_rm_exit_approved"],
 		as_dict=True, ignore=True)
 	if (tok_state and tok_state.status in _EXITED_TOKEN_STATUSES
 			and (cint(tok_state.ts_pre_grn_exit_approved)
-				or cint(tok_state.non_rm_exit_approved))):
+				or cint(tok_state.non_rm_exit_approved)
+				or frappe.db.exists("TS Weighbridge Log", {"token_number": token_name, "tare_weight": [">", 0]}))):
 		frappe.db.set_value("TS Token", token_name, {
 			"purchase_receipt": "",
 			"grn_time": None,
