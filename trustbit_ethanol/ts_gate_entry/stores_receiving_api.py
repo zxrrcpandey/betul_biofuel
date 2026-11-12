@@ -270,6 +270,26 @@ def _inspection_gate(token_name):
 		"fill": bool(gate_enabled and insp and label in ("Approved", "Partially Approved"))}
 
 
+def _grn_warehouses(po):
+	"""(warehouse, accepted_warehouse) for a GRN against this PO.
+
+	TS Settings defaults are used when they belong to the PO's company (BBPL — unchanged).
+	For any other company: the PO line's warehouse, then the PO header's Set Warehouse.
+	"""
+	settings = frappe.get_single("TS Settings")
+	warehouse = settings.default_warehouse
+	if not warehouse:
+		frappe.throw(_("Default Warehouse is not set. Please contact IT Head."))
+	if frappe.db.get_value("Warehouse", warehouse, "company") == po.company:
+		return warehouse, settings.default_accepted_warehouse
+
+	for wh in [i.warehouse for i in po.items] + [po.set_warehouse]:
+		if wh and frappe.db.get_value("Warehouse", wh, "company") == po.company:
+			return wh, None
+	frappe.throw(_("No warehouse of company {0} found for GRN. Please set the Warehouse on "
+		"Purchase Order {1}.").format(po.company, po.name))
+
+
 def _fill_from_inspection(pr_items, gate, company):
 	"""v2.67.0 — split each inspected item's GRN rows into accepted + rejected at
 	the share the requester rejected (sum rejected ÷ sum received on the inspection).
@@ -907,11 +927,7 @@ def create_grn_for_weighed_token(token_name, manual_qty_per_po=None):
 		["name", "net_weight", "net_payable", "total_deduction", "item_rate"],
 		as_dict=True)
 
-	settings = frappe.get_single("TS Settings")
-	warehouse = settings.default_warehouse
-	accepted_warehouse = settings.default_accepted_warehouse
-	if not warehouse:
-		frappe.throw(_("Default Warehouse is not set. Please contact IT Head."))
+	warehouse, accepted_warehouse = _grn_warehouses(po)
 
 	net_weight_kg = flt(wb_log.net_weight)
 
@@ -1239,11 +1255,7 @@ def create_grn_for_non_weighing_token(token_name):
 			"Please ask IT Head / Item Manager to restore these items or correct the Purchase Order."
 		).format(", ".join(missing)))
 
-	settings = frappe.get_single("TS Settings")
-	warehouse = settings.default_warehouse
-	accepted_warehouse = settings.default_accepted_warehouse
-	if not warehouse:
-		frappe.throw(_("Default Warehouse is not set. Please contact IT Head."))
+	warehouse, accepted_warehouse = _grn_warehouses(po)
 
 	pr_items = []
 	for ge_item in ge_items:

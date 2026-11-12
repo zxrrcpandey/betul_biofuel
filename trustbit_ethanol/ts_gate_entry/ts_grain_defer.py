@@ -176,6 +176,30 @@ def get_section_g():
     return rows
 
 
+def _rm_link_po_names(po_name=None):
+    """Open POs a grain/RM vehicle may be linked to: BBPL's maize cost-center POs
+    (unchanged), or another company's (CF, CBG…) PO holding a Raw Material item."""
+    from trustbit_ethanol.ts_gate_entry.ts_confidential_po import MAIZE_COST_CENTER
+    grp = frappe.db.get_value("Item Group", "Raw Material", ["lft", "rgt"], as_dict=True)
+    rows = frappe.db.sql("""
+        SELECT po.name, po.cost_center = %(cc)s AS maize FROM `tabPurchase Order` po
+        WHERE po.docstatus = 1 AND po.per_received < 100
+          AND po.status NOT IN ('Closed', 'Cancelled', 'Completed')
+          AND (%(po)s IS NULL OR po.name = %(po)s)
+          AND (po.cost_center = %(cc)s
+               OR (po.company != (SELECT company FROM `tabCost Center` WHERE name = %(cc)s)
+                   AND EXISTS (SELECT 1 FROM `tabPurchase Order Item` pi
+                               JOIN `tabItem` i ON i.name = pi.item_code
+                               JOIN `tabItem Group` g ON g.name = i.item_group
+                               WHERE pi.parent = po.name AND g.lft >= %(lft)s AND g.rgt <= %(rgt)s)))
+        """, {"po": po_name, "cc": MAIZE_COST_CENTER,
+              "lft": grp.lft if grp else 0, "rgt": grp.rgt if grp else -1})
+    # Other-company POs must also pass the user's own PO read permission
+    # (Company / Supplier / Cost Center User Permissions); maize POs keep the allow-list rule.
+    return [r[0] for r in rows
+            if r[1] or frappe.has_permission("Purchase Order", "read", doc=r[0])]
+
+
 @frappe.whitelist()
 def get_grain_po_suppliers():
     """Supplier dropdown for the Link-Grain-PO dialog: only suppliers that have an
@@ -187,12 +211,7 @@ def get_grain_po_suppliers():
         return []
     return frappe.get_all(
         "Purchase Order",
-        filters={
-            "docstatus": 1,
-            "status": ["not in", ["Closed", "Cancelled", "Completed"]],
-            "per_received": ["<", 100],
-            "cost_center": MAIZE_COST_CENTER,
-        },
+        filters={"name": ["in", _rm_link_po_names() or [""]]},
         fields=["supplier", "supplier_name"],
         group_by="supplier, supplier_name",
         order_by="supplier_name asc",
@@ -210,14 +229,9 @@ def get_grain_purchase_orders(po_id=None, po_date=None, supplier=None, **kwargs)
     )
     if not user_sees_confidential("Purchase Order"):
         return []
-    filters = {
-        "docstatus": 1,
-        "status": ["not in", ["Closed", "Cancelled", "Completed"]],
-        "per_received": ["<", 100],
-        "cost_center": MAIZE_COST_CENTER,
-    }
+    filters = {"name": ["in", _rm_link_po_names() or [""]]}
     if po_id:
-        filters["name"] = ["like", "%{0}%".format(po_id)]
+        filters["name"] = ["in", [n for n in filters["name"][1] if po_id.lower() in n.lower()] or [""]]
     if po_date:
         filters["transaction_date"] = po_date
     # Typed supplier text: exact supplier ID, or any part of the supplier name.
@@ -272,8 +286,8 @@ def get_grain_po_receipt_preview(token_name, po_name):
         _is_kg_uom, _get_uom_conversion_to_kg,
     )
     po = frappe.get_doc("Purchase Order", po_name)
-    if po.cost_center != MAIZE_COST_CENTER:
-        frappe.throw(_("Purchase Order {0} is not a grain PO.").format(po_name))
+    if not _rm_link_po_names(po_name):
+        frappe.throw(_("Purchase Order {0} is not an open grain PO.").format(po_name))
 
     net_kg = flt(frappe.db.get_value(
         "TS Weighbridge Log", {"token_number": token_name, "docstatus": ["<", 2]},
@@ -362,13 +376,12 @@ def link_grain_po_and_create_grn(token_name, po_name, received_qty=None):
     # Only grain POs (maize/rice/dorb cost center) can be linked here — a non-grain
     # PO (e.g. a Capex fixed-asset PO in 'Nos') has no weighbridge conversion and would
     # fail deep in the GRN builder with a confusing "received quantity" error.
-    from trustbit_ethanol.ts_gate_entry.ts_confidential_po import MAIZE_COST_CENTER
-    if po.cost_center != MAIZE_COST_CENTER:
+    if not _rm_link_po_names(po_name):
         frappe.throw(_(
-            "Purchase Order {0} is not a grain PO (its cost center is {1}, not the "
-            "Maize/Rice/DORB cost center). Only grain POs can be linked to a grain "
-            "vehicle here."
-        ).format(po_name, po.cost_center or "—"))
+            "Purchase Order {0} cannot be linked here: only open grain POs (the "
+            "Maize/Rice/DORB cost center, or another company's PO with a Raw Material "
+            "item) can be linked to a grain vehicle."
+        ).format(po_name))
 
     # Populate the empty deferred GE from the PO (mirrors add_purchase_order).
     ge.append("po_list", {
