@@ -1,0 +1,171 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-11-14 06:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "submission",
+  "check_type",
+  "company",
+  "list_date",
+  "col_head",
+  "submitted_by",
+  "submitted_on",
+  "sec_read",
+  "file_kind",
+  "read_by",
+  "pages_in_file",
+  "pages_seen",
+  "col_read",
+  "lines_total",
+  "list_total",
+  "printed_total",
+  "read_notes",
+  "sec_lines",
+  "lines"
+ ],
+ "fields": [
+  {
+   "fieldname": "submission",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Submission",
+   "options": "TS AI Check Submission",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "check_type",
+   "fieldtype": "Data",
+   "label": "Check type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "list_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "List date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col_head",
+   "fieldtype": "Column Break",
+   "read_only": 1
+  },
+  {
+   "fieldname": "submitted_by",
+   "fieldtype": "Link",
+   "label": "Submitted by",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "submitted_on",
+   "fieldtype": "Datetime",
+   "label": "Submitted on",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_read",
+   "fieldtype": "Section Break",
+   "label": "What was read",
+   "read_only": 1
+  },
+  {
+   "fieldname": "file_kind",
+   "fieldtype": "Data",
+   "label": "File type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "read_by",
+   "fieldtype": "Data",
+   "label": "Read by",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pages_in_file",
+   "fieldtype": "Int",
+   "label": "Pages in the file",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pages_seen",
+   "fieldtype": "Int",
+   "label": "Pages seen",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col_read",
+   "fieldtype": "Column Break",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lines_total",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Number of lines",
+   "read_only": 1
+  },
+  {
+   "fieldname": "list_total",
+   "fieldtype": "Currency",
+   "label": "Total of the lines",
+   "read_only": 1
+  },
+  {
+   "fieldname": "printed_total",
+   "fieldtype": "Currency",
+   "label": "Total printed on the list",
+   "read_only": 1
+  },
+  {
+   "fieldname": "read_notes",
+   "fieldtype": "Small Text",
+   "label": "Reading notes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_lines",
+   "fieldtype": "Section Break",
+   "label": "Lines as read",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Lines",
+   "options": "TS AI Check Line",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "links": [],
+ "modified": "2026-11-14 06:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS AI Check Report",
+ "naming_rule": "By script",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "role": "System Manager"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "submission",
+ "track_changes": 0
+}

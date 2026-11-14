@@ -1,0 +1,70 @@
+{
+ "actions": [],
+ "creation": "2026-11-14 06:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "model",
+  "max_checks_per_day",
+  "max_file_mb",
+  "max_pages"
+ ],
+ "fields": [
+  {
+   "description": "Off: Submit is refused. Blank counts as off.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Checker switched on"
+  },
+  {
+   "description": "Blank = claude-fable-5-2.",
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "AI model"
+  },
+  {
+   "description": "Blank or 0 = 20.",
+   "fieldname": "max_checks_per_day",
+   "fieldtype": "Int",
+   "label": "Checks per day (whole site)"
+  },
+  {
+   "description": "Blank or 0 = 10. At most 20.",
+   "fieldname": "max_file_mb",
+   "fieldtype": "Int",
+   "label": "Largest file (MB)"
+  },
+  {
+   "description": "Blank or 0 = 20. At most 100.",
+   "fieldname": "max_pages",
+   "fieldtype": "Int",
+   "label": "Most pages in a PDF"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-11-14 06:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "TS AI Check Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "IT Head",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
