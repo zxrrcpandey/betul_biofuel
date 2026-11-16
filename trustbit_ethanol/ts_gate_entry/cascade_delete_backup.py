@@ -30,7 +30,7 @@ import re
 from datetime import datetime
 import frappe
 from frappe import _
-from frappe.utils import get_site_path
+from frappe.utils import get_site_path, get_datetime, escape_html
 
 
 def _backup_dir() -> str:
@@ -312,7 +312,30 @@ def _restore_generic(data: dict) -> dict:
 	"""
 	docs = data.get("docs", {})
 	restore_order = data.get("restore_order") or [[k, None] for k in docs.keys()]
+
+	# 13 Nov — refuse BEFORE restoring anything when a backed-up number now belongs to a
+	# DIFFERENT record. Deleting the latest run frees its numbers; a run created after
+	# the delete takes the same PROD / Work Order numbers, and restoring around it would
+	# attach the old Stock Entries to the newer run. Same record = same `creation`.
+	reused = []
+	for label, _dt in restore_order:
+		recs = docs.get(label) or []
+		for rec in ([recs] if isinstance(recs, dict) else recs):
+			dt = rec and (rec.get("doctype") or _dt)
+			if not dt or not rec.get("name"):
+				continue
+			live = frappe.db.get_value(dt, rec["name"], "creation")
+			if live and get_datetime(live) != get_datetime(rec.get("creation")):
+				reused.append(f"{dt} {rec['name']}")
+	if reused:
+		return {"success": False, "restored": {}, "ledger_restored": False,
+		        "error": _("Revert refused — nothing was restored. These numbers were used "
+		                   "again by newer records after the delete: {0}. Reverting would "
+		                   "attach the old Stock Entries to the newer run.").format(
+		                       escape_html(", ".join(reused)))}
+
 	restored = {}
+	restored_names = []
 	for label, _dt in restore_order:
 		recs = docs.get(label)
 		if not recs:
@@ -333,6 +356,7 @@ def _restore_generic(data: dict) -> dict:
 				new_doc.flags.ignore_validate = True
 				new_doc.flags.ignore_mandatory = True
 				new_doc.db_insert()
+				restored_names.append(rec.get("name") or "")  # the number is taken from here on
 				for child_field, child_rows in [(k, v) for k, v in rec.items() if isinstance(v, list)]:
 					for child_row in child_rows:
 						if isinstance(child_row, dict) and "doctype" in child_row:
@@ -347,6 +371,15 @@ def _restore_generic(data: dict) -> dict:
 					message=f"{type(e).__name__}: {e}",
 				)
 		restored[label] = count
+
+	# Deleting the latest record rewinds its numbering counter, so a restored record sits
+	# ABOVE the counter and the next new one would fail with "already exists". Lift each
+	# counter to the highest restored number (only ever upwards, existing series only).
+	for nm in restored_names:
+		m = re.match(r"^(.*?)(\d+)$", nm)
+		if m:
+			frappe.db.sql("UPDATE `tabSeries` SET current = %s WHERE name = %s AND current < %s",
+			              (int(m.group(2)), m.group(1), int(m.group(2))))
 
 	frappe.db.commit()
 	return {"success": True, "restored": restored, "ledger_restored": False}

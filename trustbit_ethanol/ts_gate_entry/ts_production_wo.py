@@ -31,7 +31,8 @@ import contextlib
 
 import frappe
 from frappe import _
-from frappe.utils import flt, cint, now_datetime, add_to_date, get_datetime, getdate, nowdate
+from frappe.utils import (flt, cint, now_datetime, add_to_date, get_datetime, getdate,
+                          nowdate, escape_html)
 
 RELEASE_PURPOSE = "Material Transfer for Manufacture"
 
@@ -474,8 +475,42 @@ def submit_release_se(se_name, base_date=None):
 		elif cint(se.get("set_posting_time")):
 			stamp_posting(se, se.posting_date, "release")
 		se.flags.ignore_permissions = True
-		se.submit()          # caller runs this inside system_session() (Administrator)
+		_submit_from_page(se)  # caller runs this inside system_session() (Administrator)
 	return se.name
+
+
+def _submit_from_page(se):
+	"""Submit a run's Work Order entry as Production Logging itself — the only caller
+	assert_posted_by_production_logging() lets through. The flag never outlives the call."""
+	frappe.flags.ts_production_posting = True
+	try:
+		se.submit()
+	finally:
+		frappe.flags.ts_production_posting = False
+
+
+def assert_posted_by_production_logging(se):
+	"""Stock Entry before_submit (13 Nov) — the two Work Order entries of a Single-flow
+	run (release = material into WIP, Manufacture = consumption + output) are posted by
+	the Production Logging buttons only. Submitted from the Stock Entry / Work Order form
+	the release skips the department releases, the releaser and the stock check and
+	leaves the run parked at 'Pending Stores Release'; a form-built Manufacture entry does
+	not follow the Production Manager's kept lines. Multiple-flow runs post their own.
+	ERPNext's "Material Consumption for Manufacture" entry is refused the same way: it
+	uses up the run's raw material in WIP, so the page's Manufacture entry has nothing
+	left to consume and the run can never be completed (demo, PROD-2026-00940)."""
+	if (se.get("purpose") not in (RELEASE_PURPOSE, "Manufacture",
+	                              "Material Consumption for Manufacture")
+			or not se.get("work_order") or frappe.flags.ts_production_posting):
+		return
+	for run in frappe.get_all("TS Production Entry", filters={"work_order": se.work_order},
+	                          fields=["name", "flow_type"], limit=5):
+		if (run.flow_type or "Single") != "Multiple":
+			frappe.throw(
+				_("Stock Entry {0} belongs to Production {1}. Post it from the Production "
+				  "Logging page (Release / Complete) — it cannot be submitted from this "
+				  "form.").format(escape_html(se.get("name") or ""), escape_html(run.name)),
+				title=_("Use Production Logging"))
 
 
 def released_value(se_name):
@@ -488,7 +523,24 @@ def released_value(se_name):
 #  STEP 7a — AUTO-COMPLETE JOB CARDS (operations BOMs)
 # ─────────────────────────────────────────────────────────────────────────
 
-def auto_complete_job_cards(wo_name):
+def _free_job_card_slot(jc, start):
+	"""`start` if the card's workstation is free for the 30-minute completing log, else
+	the latest earlier start that ERPNext's own overlap check accepts.
+
+	The log is stamped an hour back from "now", so a second run of the same BOM completed
+	within half an hour asked for the slot the first run's card already held, and ERPNext
+	refused the save: "From Time and To Time of … is overlapping with …" (demo 13 Nov,
+	PROD-2026-00940 and 00944). A pending run's scheduled slot collides the same way."""
+	for _i in range(100):
+		hit = jc.get_overlap_for(frappe._dict(
+			from_time=start, to_time=add_to_date(start, minutes=30), parent=jc.name))
+		if not hit or not hit.get("from_time"):
+			break
+		start = add_to_date(get_datetime(hit.get("from_time")), minutes=-35)
+	return start
+
+
+def auto_complete_job_cards(wo_name, free_slot=False):
 	"""Auto-complete every Open Job Card of a Work Order, in sequence_id order.
 
 	VERIFIED approach: append ONE time_logs row per card with
@@ -498,7 +550,10 @@ def auto_complete_job_cards(wo_name):
 	Idempotent: a Job Card already Completed is skipped; only appends a time log when
 	total_completed_qty < for_quantity. Capacity OverlapError fallback ladder per
 	Risk #4 (stagger windows; LAST resort = temporary disable_capacity_planning,
-	reverted in try/finally)."""
+	reverted in try/finally).
+
+	free_slot (13 Nov, Single flow): move a card's log back to a free slot when its
+	workstation is already taken at that time. False -> exactly as before."""
 	job_cards = frappe.get_all(
 		"Job Card",
 		filters={"work_order": wo_name},
@@ -523,7 +578,7 @@ def auto_complete_job_cards(wo_name):
 		loss = flt(jc.process_loss_qty)
 		remaining = for_qty - already - loss
 		if remaining > 0:
-			from_time = cursor
+			from_time = _free_job_card_slot(jc, cursor) if free_slot else cursor
 			to_time = add_to_date(from_time, minutes=30)
 			jc.append("time_logs", {
 				"from_time": from_time,
@@ -650,9 +705,50 @@ def _cap_byproduct_rates(se):
 				frappe.clear_messages()
 
 
+def se_ledger_rows(se_name):
+	"""(live, expected) stock-ledger rows of a submitted Stock Entry — one per item row
+	and side (source / target). live < expected means the entry was saved HALF POSTED:
+	the material left the source warehouse but the receipt never reached stock."""
+	legs = frappe.db.sql(
+		"""SELECT SUM(IF(IFNULL(s_warehouse, '') != '', 1, 0)
+		            + IF(IFNULL(t_warehouse, '') != '', 1, 0))
+		   FROM `tabStock Entry Detail`
+		   WHERE parent = %s AND IFNULL(transfer_qty, 0) != 0""", (se_name,))
+	live = frappe.db.count("Stock Ledger Entry", {
+		"voucher_type": "Stock Entry", "voucher_no": se_name, "is_cancelled": 0})
+	return cint(live), cint(legs[0][0]) if legs else 0
+
+
+def _consume_from_wo_rows(se):
+	"""Consume what the Production Manager kept and entered — the Work Order rows.
+
+	ERPNext builds a Manufacture entry from the Work Order rows only while Manufacturing
+	Settings has "Allow Continuous Material Consumption" ticked (with backflush = BOM).
+	Without the tick it rebuilds the FULL BOM scaled to the produced qty: a material the
+	PM removed comes back and edited quantities are ignored (tester report 12 Nov 2026 —
+	the tick was missing on the live server). When ERPNext took that full-BOM path, swap
+	its raw-material rows for the ones ERPNext's own Work-Order builder gives, so the
+	result no longer depends on the tick. No-op when the Work Order rows were used."""
+	ms = "Manufacturing Settings"
+	if (frappe.db.get_single_value(ms, "backflush_raw_materials_based_on") != "BOM"
+			or cint(frappe.db.get_single_value(ms, "material_consumption")) == 1):
+		return
+	outputs = [r for r in se.items if cint(r.is_finished_item) or cint(r.is_scrap_item)]
+	se.set("items", [])
+	se.get_unconsumed_raw_materials()   # one row per Work Order line, out of WIP
+	se.extend("items", outputs)         # finished good + by-products, untouched
+	for i, r in enumerate(se.items, start=1):
+		r.idx = i
+	# same tail as ERPNext's get_items(): stock, then rates (the by-product cap reads them)
+	se.set_actual_qty()
+	se.validate_customer_provided_item()
+	se.calculate_rate_and_amount(raise_error_if_no_rate=False)
+
+
 def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None, after_se=None):
-	"""Create + submit the Manufacture Stock Entry (consumes WIP per BOM-scaled qty,
-	produces FG + by-products). WO auto-Completes when produced_qty == qty.
+	"""Create + submit the Manufacture Stock Entry (consumes the Work Order rows = the
+	PM's kept lines and quantities out of WIP, produces FG + by-products). WO
+	auto-Completes when produced_qty == qty.
 	Idempotent: returns an existing submitted Manufacture SE if one already exists.
 
 	bp_split (23 Jul, single-flow Post Distribution): optional
@@ -676,6 +772,15 @@ def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None, a
 		pluck="name",
 	)
 	if existing:
+		# 13 Nov — an entry that failed halfway through posting was once saved as
+		# "submitted" with only its outgoing rows. Never complete a run on top of it.
+		live, expected = se_ledger_rows(existing[0])
+		if live < expected:
+			frappe.throw(_(
+				"Manufacture Stock Entry {0} is only half posted ({1} of {2} stock ledger "
+				"rows) — the finished good never reached stock. IT must repair this entry "
+				"before the run can be completed.").format(existing[0], live, expected),
+				title=_("Half-Posted Stock Entry"))
 		return existing[0]
 
 	wo = frappe.get_doc("Work Order", wo_name)
@@ -690,6 +795,8 @@ def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None, a
 	# release SE was not stamped: pre-deploy draft)
 	if after_se:
 		stamp_after(se, "manufacture", after_se)
+	# 13 Nov — raw material = the Work Order rows, whatever the ERPNext setting says
+	_consume_from_wo_rows(se)
 	# 20 Jul — by-product ACTUALS: the native mapper builds scrap rows BOM-scaled;
 	# the PM's edited by-product qty/warehouse (run.byproducts) must win — same
 	# actuals-first rule as materials.
@@ -700,9 +807,11 @@ def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None, a
 	# target_warehouse is honoured either way.
 	_pe_bp = frappe.get_all("TS Production Entry", filters={"work_order": wo_name},
 	                        pluck="name", limit=1)
+	entered = set()  # 13 Nov — by-products with a quantity recorded on the run (any line)
 	if _pe_bp:
-		bp = {r.item_code: r for r in
-		      (frappe.get_doc("TS Production Entry", _pe_bp[0]).byproducts or [])}
+		_bp_rows = frappe.get_doc("TS Production Entry", _pe_bp[0]).byproducts or []
+		bp = {r.item_code: r for r in _bp_rows}
+		entered = {r.item_code for r in _bp_rows if flt(r.actual_qty) > 0}
 		if bp:
 			for row in se.items:
 				if getattr(row, "is_scrap_item", 0) and row.item_code in bp:
@@ -713,6 +822,15 @@ def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None, a
 						row.transfer_qty = flt(r.actual_qty) * cf
 					if r.get("target_warehouse"):
 						row.t_warehouse = r.target_warehouse
+	# 13 Nov — a by-product the BOM scales to nothing (a 1 L run of a 160,000 L BOM gives
+	# 0.00025 MT DDGS) and for which the run recorded no quantity: ERPNext builds that row
+	# with quantity 0 and then refuses it, so the run could never be completed (demo,
+	# PROD-2026-00943). Only that untouched zero row is left out. A quantity that was
+	# entered (on any line of the run) or split and cannot be posted is still refused by
+	# ERPNext, never dropped.
+	for row in [r for r in se.items if cint(r.get("is_scrap_item")) and not flt(r.qty)
+	            and r.item_code not in entered and not (bp_split or {}).get(r.item_code)]:
+		se.remove(row)
 	# Post Distribution (23 Jul): split each listed by-product across warehouses —
 	# first split line reuses the existing scrap row, extras are appended copies.
 	if bp_split:
@@ -770,7 +888,7 @@ def submit_manufacture_se(wo_name, company=None, bp_split=None, fg_split=None, a
 	se.flags.ignore_permissions = True
 	se.insert()
 	_auto_qi_for_se(se)  # auto-accept QI per inward row when the BOM requires it
-	se.submit()          # caller runs this inside system_session() (Administrator)
+	_submit_from_page(se)  # caller runs this inside system_session() (Administrator)
 	return se.name
 
 
@@ -893,6 +1011,11 @@ def check_stock_available(se_name, base_date=None):
 	available = min(current Bin, balance at that moment). Native NegativeStockError
 	stays the final authority."""
 	se = frappe.get_doc("Stock Entry", se_name)
+	if se.docstatus == 1:
+		# 13 Nov — already posted: its material has left the source warehouse, so asking
+		# for the same quantity again reported a false shortage (submit_release_se skips
+		# a posted entry the same way).
+		return []
 	at = None
 	if base_date:
 		at = posting_slot(base_date, "release")

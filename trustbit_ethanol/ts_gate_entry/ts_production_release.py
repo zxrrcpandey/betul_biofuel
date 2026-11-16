@@ -30,7 +30,8 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt, cint, now_datetime, escape_html, getdate, nowdate, date_diff, formatdate
+from frappe.utils import (flt, cint, now_datetime, escape_html, strip_html, getdate, nowdate,
+                          date_diff, formatdate)
 
 from trustbit_ethanol.ts_gate_entry import ts_production_api as api
 from trustbit_ethanol.ts_gate_entry import ts_production_wo as wo_engine
@@ -619,14 +620,23 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 	like 'Released') instead of posting the Manufacture SE — the PM then supplies
 	the per-warehouse output split (finished good always; by-products when present)
 	via complete_single_distribution(), which re-enters with bp_split/fg_split."""
-	doc = frappe.get_doc(DOCTYPE, name)
+	# 13 Nov — one completion at a time per run. The run is read THROUGH a row lock: a
+	# second click / second user waits here, then sees the status the first one
+	# COMMITTED (a plain read would still show the old snapshot) and is refused —
+	# never a second Manufacture entry.
+	doc = frappe.get_doc(DOCTYPE, name, for_update=True)
+	if doc.ts_variance_status not in ("Released", "Awaiting Distribution"):
+		frappe.throw(
+			_("Production {0} is now '{1}' — it was already processed. Refresh the page.").format(
+				escape_html(name), escape_html(doc.ts_variance_status or "")),
+			title=_("Already Processed"))
 	wo_name = doc.work_order
 	company = frappe.db.get_value("Work Order", wo_name, "company")
 
 	try:
 		# 7a — auto-complete Job Cards (no-op for no-ops BOMs).
 		if cint(doc.bom_with_operations):
-			wo_engine.auto_complete_job_cards(wo_name)
+			wo_engine.auto_complete_job_cards(wo_name, free_slot=True)  # 13 Nov — never collide
 
 		# 7b — opt-in OUTPUT distribution pause (v2.41.2: EVERY BOM — the finished
 		# good is always placeable; by-products join when present). Only when no
@@ -686,9 +696,17 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 			                                                    after_se=manufacture_se)
 
 	except Exception as e:
+		# 13 Nov — undo EVERYTHING this attempt wrote before anything is saved. The
+		# commit below used to save a Stock Entry that had failed halfway through
+		# posting as "submitted" with only its outgoing ledger rows (material gone from
+		# WIP, finished good never received), and the retry then took it for done. The
+		# Stores release was committed by approve_release, so the run stays 'Released'.
+		frappe.db.rollback()
+		frappe.clear_messages()
 		# Stay recoverable at 'Released'; surface a clear, retryable error.
 		try:
-			frappe.log_error(title="TS Production completion chain failed", message=f"{name}: {e}")
+			frappe.log_error(title="TS Production completion chain failed",
+			                 message=f"{name} (by {actor or frappe.session.user}): {e}")
 		except Exception:
 			pass
 		# F-1 (20 Aug audit, both testers): if the Manufacture SE SUBMITTED before
@@ -698,7 +716,9 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 		try:
 			_se = frappe.db.get_value("Stock Entry",
 				{"work_order": wo_name, "purpose": "Manufacture", "docstatus": 1}, "name")
-			if _se and not frappe.db.get_value(DOCTYPE, name, "linked_stock_entry"):
+			_rows = wo_engine.se_ledger_rows(_se) if _se else (0, 0)
+			if (_se and _rows[0] >= _rows[1]  # never vouch for a half-posted entry
+					and not frappe.db.get_value(DOCTYPE, name, "linked_stock_entry")):
 				frappe.db.set_value(DOCTYPE, name, "linked_stock_entry", _se,
 				                    update_modified=False)
 				doc.add_comment("Comment", _(
@@ -707,7 +727,7 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 					"split (a different one cannot be applied).").format(_se))
 		except Exception:
 			frappe.clear_messages()  # forensics never block the checkpoint (L238)
-		frappe.db.commit()  # persist the recoverable checkpoint + any partial Job-Card progress
+		frappe.db.commit()  # saves only the Error Log row + the note above (attempt rolled back)
 		_st = frappe.db.get_value(DOCTYPE, name, "ts_variance_status") or "Released"
 		frappe.throw(
 			_("The production could not be completed. The raw material is already in WIP, so the "
@@ -715,7 +735,7 @@ def _run_completion_chain(name, settings, actor=None, bp_split=None, fg_split=No
 			  "Details:").format(_st,
 			  _("re-post the output distribution") if _st == "Awaiting Distribution"
 			  else _("click 'Complete Production'"))
-			+ "<br><br>" + escape_html(str(e)),
+			+ "<br><br>" + escape_html(strip_html(str(e))),  # ERPNext's <strong> tags showed as text
 			title=_("Completion Failed — Retry"),
 		)
 

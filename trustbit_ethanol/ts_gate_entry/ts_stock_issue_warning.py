@@ -83,6 +83,10 @@ def require_issue_fields_on_submit(doc, method=None):
 	issue must always record where the material is used, a remark, and the cost
 	centre it is charged to. Mirrors the v2.16.4 PR-invoice-at-submit pattern.
 	"""
+	# 13 Nov — a Production Logging run's Work Order entries are posted by its page only
+	# (this is the app's one Stock Entry before_submit hook; no-op for every other entry).
+	from trustbit_ethanol.ts_gate_entry.ts_production_wo import assert_posted_by_production_logging
+	assert_posted_by_production_logging(doc)
 	if getattr(doc, "purpose", "") != "Material Issue":
 		return
 	if not doc.items:
