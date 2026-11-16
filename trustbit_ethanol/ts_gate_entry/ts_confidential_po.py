@@ -44,10 +44,16 @@ _STORE_TEAM = {
     "store@betulbiofuel.com",
     "akash.pawar@betulbiofuel.com",
 }
+# Grain buyers who must see grain GRNs + invoices (user decision 16 Nov 2026):
+# Chetan Yadav, Tilok Katariya. Named users, NOT a role — nobody else widens.
+_GRAIN_BUYERS = {
+    "purchase.cattlefeed@betulbiofuel.com",
+    "grain.manager@betulbiofuel.com",
+}
 _ALLOW_USERS = {
     "Purchase Order": _STORE_TEAM,        # read PO to build the GRN
-    "Purchase Receipt": _STORE_TEAM,      # they create/receive the GRN
-    "Purchase Invoice": set(),            # invoices are Accounts' domain (user decision)
+    "Purchase Receipt": _STORE_TEAM | _GRAIN_BUYERS,  # they create/receive the GRN
+    "Purchase Invoice": set(_GRAIN_BUYERS),  # otherwise Accounts' domain (user decision)
     "Material Request": set(),
 }
 
