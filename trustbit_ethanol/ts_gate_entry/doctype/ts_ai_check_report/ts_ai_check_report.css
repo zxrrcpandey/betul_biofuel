@@ -1,0 +1,80 @@
+/* AI Checker report view. Colours come from Frappe's own variables, so the dark theme works unchanged. */
+.aichk { display: flex; flex-direction: column; gap: 14px; font-variant-numeric: tabular-nums; }
+.aichk p { margin: 0; }
+.aichk-muted { color: var(--text-muted); font-size: var(--text-sm); }
+.aichk-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.aichk-tile { border: 1px solid var(--border-color); border-radius: var(--border-radius-md); padding: 10px 12px; background: var(--subtle-fg); }
+.aichk-tile .v { font-size: 24px; font-weight: 700; line-height: 1.1; }
+.aichk-tile .l { font-size: var(--text-sm); color: var(--text-muted); }
+.aichk-tile.serious .v { color: var(--red-500); }
+.aichk-tile.check .v { color: var(--orange-500); }
+.aichk-tile.ok .v { color: var(--green-500); }
+.aichk-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--subtle-fg); border: 1px solid var(--border-color); }
+.aichk-bar i { display: block; height: 100%; }
+.aichk-bar .ok, .aichk-legend .ok::before { background: var(--green-500); }
+.aichk-bar .check, .aichk-legend .check::before { background: var(--orange-500); }
+.aichk-bar .serious, .aichk-legend .serious::before { background: var(--red-500); }
+.aichk-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--text-sm); }
+.aichk-legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+.aichk-sum { max-width: 85ch; }
+.aichk-aisum { border-left: 3px solid var(--primary); background: var(--subtle-fg); border-radius: 0 8px 8px 0; padding: 9px 12px; max-width: 85ch; }
+.aichk-aisum b, .aichk-says b, .aichk-cover b { display: block; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px; }
+.aichk-ai { font-size: 10px; font-weight: 700; border: 1px solid var(--border-color); border-radius: 4px; padding: 0 5px; color: var(--text-muted); }
+.aichk-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.aichk-lines { border: 1px solid var(--border-color); border-radius: var(--border-radius-md); overflow: hidden; }
+.aichk-blk { display: flex; justify-content: space-between; gap: 10px; padding: 7px 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); background: var(--subtle-fg); border-bottom: 1px solid var(--border-color); }
+.aichk-line { border-bottom: 1px solid var(--border-color); border-left: 4px solid var(--green-500); }
+.aichk-line:last-child { border-bottom: 0; }
+.aichk-line.serious { border-left-color: var(--red-500); }
+.aichk-line.check { border-left-color: var(--orange-500); }
+.aichk-row { width: 100%; text-align: left; border: 0; background: transparent; color: inherit; padding: 10px 14px 10px 10px; display: grid; grid-template-columns: 26px minmax(0, 1.5fr) minmax(0, 1.6fr) auto auto; gap: 12px; align-items: center; }
+.aichk-row:hover, .aichk-line.open .aichk-row { background: var(--subtle-fg); }
+.aichk-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.aichk-no, .aichk-how, .aichk-name span { color: var(--text-muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.aichk-name b { display: block; overflow-wrap: anywhere; }
+.aichk-amt { font-weight: 700; white-space: nowrap; }
+.aichk-det { display: flex; flex-direction: column; gap: 12px; padding: 4px 14px 14px 10px; }
+.aichk-chain { display: flex; overflow-x: auto; padding: 4px 0 6px; }
+.aichk-node { flex: 1 0 118px; position: relative; padding-right: 8px; }
+.aichk-node::before { content: ""; position: absolute; left: 22px; right: 0; top: 10px; height: 2px; background: var(--border-color); }
+.aichk-node:last-child::before { display: none; }
+.aichk-dot { position: relative; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; background: var(--gray-500); }
+.aichk-node.ok .aichk-dot { background: var(--green-500); }
+.aichk-node.bad .aichk-dot { background: var(--red-500); }
+.aichk-node.warn .aichk-dot { background: var(--orange-500); }
+.aichk-node b { display: block; font-size: var(--text-sm); margin-top: 5px; }
+.aichk-node span { display: block; font-size: var(--text-xs); color: var(--text-muted); overflow-wrap: anywhere; }
+.aichk-says { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.aichk-says > div { border: 1px solid var(--border-color); border-radius: var(--border-radius-md); padding: 9px 12px; background: var(--subtle-fg); overflow-wrap: anywhere; }
+.aichk-pts { display: flex; flex-direction: column; gap: 8px; }
+.aichk-pt { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
+.aichk-pt p { color: var(--text-muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.aichk-refs { font-family: var(--font-family-monospace, monospace); font-size: var(--text-xs); }
+.aichk-cover { border: 1px dashed var(--border-color); border-radius: var(--border-radius-md); padding: 9px 12px; font-size: var(--text-sm); color: var(--text-muted); }
+/* Motion: once when a report opens, and on the line that was just opened. */
+@keyframes aichk-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes aichk-grow { from { width: 0; } }
+@keyframes aichk-pop { from { transform: scale(0); } 70% { transform: scale(1.2); } }
+@keyframes aichk-draw { from { transform: scaleX(0); } }
+.aichk-row { transition: background-color 0.15s; }
+.aichk-enter .aichk-tile { animation: aichk-rise 0.4s ease-out backwards; }
+.aichk-enter .aichk-tile:nth-child(2) { animation-delay: 0.06s; }
+.aichk-enter .aichk-tile:nth-child(3) { animation-delay: 0.12s; }
+.aichk-enter .aichk-tile:nth-child(4) { animation-delay: 0.18s; }
+.aichk-enter .aichk-bar i { animation: aichk-grow 0.8s ease-out 0.2s backwards; }
+.aichk-enter .aichk-line { animation: aichk-rise 0.3s ease-out backwards; animation-delay: calc(0.3s + var(--i, 0) * 0.03s); }
+.aichk-pop { animation: aichk-rise 0.25s ease-out; }
+.aichk-pop .aichk-node { animation: aichk-rise 0.3s ease-out backwards; animation-delay: calc(var(--i, 0) * 0.11s); }
+.aichk-pop .aichk-dot { animation: aichk-pop 0.35s ease-out backwards; animation-delay: calc(var(--i, 0) * 0.11s + 0.05s); }
+.aichk-pop .aichk-node::before { transform-origin: left; animation: aichk-draw 0.25s ease-out backwards; animation-delay: calc(var(--i, 0) * 0.11s + 0.1s); }
+.aichk-pop .aichk-pt { animation: aichk-rise 0.3s ease-out 0.45s backwards; }
+@media (prefers-reduced-motion: reduce) {
+	.aichk *, .aichk *::before { animation: none !important; transition: none !important; }
+}
+@media (max-width: 768px) {
+	.aichk-tiles { grid-template-columns: 1fr 1fr; }
+	.aichk-says { grid-template-columns: 1fr; }
+	.aichk-row { grid-template-columns: 22px 1fr auto; row-gap: 4px; }
+	.aichk-how { grid-column: 2 / -1; grid-row: 2; }
+	.aichk-amt { grid-column: 2; grid-row: 3; }
+}

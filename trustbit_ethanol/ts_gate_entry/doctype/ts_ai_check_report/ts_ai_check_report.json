@@ -2,6 +2,7 @@
  "actions": [],
  "allow_rename": 0,
  "creation": "2026-11-14 06:00:00.000000",
+ "default_print_format": "TS AI Check Report",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -12,6 +13,23 @@
   "col_head",
   "submitted_by",
   "submitted_on",
+  "sec_view",
+  "view",
+  "sec_result",
+  "n_serious",
+  "n_check",
+  "n_ok",
+  "col_result",
+  "amt_serious",
+  "amt_check",
+  "amt_ok",
+  "sec_words",
+  "summary",
+  "ai_summary",
+  "ai_note",
+  "coverage",
+  "sec_findings",
+  "findings",
   "sec_read",
   "file_kind",
   "read_by",
@@ -76,6 +94,121 @@
    "read_only": 1
   },
   {
+   "fieldname": "sec_view",
+   "fieldtype": "Section Break",
+   "label": "Report",
+   "read_only": 1
+  },
+  {
+   "fieldname": "view",
+   "fieldtype": "HTML",
+   "label": "Report",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sec_result",
+   "fieldtype": "Section Break",
+   "label": "Result in figures",
+   "read_only": 1
+  },
+  {
+   "fieldname": "n_serious",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Serious",
+   "read_only": 1
+  },
+  {
+   "fieldname": "n_check",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "To check",
+   "read_only": 1
+  },
+  {
+   "fieldname": "n_ok",
+   "fieldtype": "Int",
+   "label": "No issue found",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col_result",
+   "fieldtype": "Column Break",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amt_serious",
+   "fieldtype": "Currency",
+   "label": "Money on Serious lines",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amt_check",
+   "fieldtype": "Currency",
+   "label": "Money on To check lines",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amt_ok",
+   "fieldtype": "Currency",
+   "label": "Money on lines with no issue",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sec_words",
+   "fieldtype": "Section Break",
+   "label": "Summary and coverage",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Small Text",
+   "label": "Summary",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "ai_summary",
+   "fieldtype": "Small Text",
+   "label": "AI summary",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "ai_note",
+   "fieldtype": "Small Text",
+   "label": "Note on the AI review",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "coverage",
+   "fieldtype": "Small Text",
+   "label": "What was checked",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sec_findings",
+   "fieldtype": "Section Break",
+   "label": "Points",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "findings",
+   "fieldtype": "Table",
+   "label": "Points",
+   "options": "TS AI Check Finding",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "collapsible": 1,
    "fieldname": "sec_read",
    "fieldtype": "Section Break",
    "label": "What was read",
@@ -133,25 +266,29 @@
    "fieldname": "read_notes",
    "fieldtype": "Small Text",
    "label": "Reading notes",
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   },
   {
+   "collapsible": 1,
    "fieldname": "sec_lines",
    "fieldtype": "Section Break",
    "label": "Lines as read",
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   },
   {
    "fieldname": "lines",
    "fieldtype": "Table",
    "label": "Lines",
    "options": "TS AI Check Line",
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   }
  ],
  "in_create": 1,
  "links": [],
- "modified": "2026-11-14 06:00:00.000000",
+ "modified": "2026-11-16 22:30:21",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS AI Check Report",
@@ -159,8 +296,14 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "print": 1,
    "read": 1,
    "role": "System Manager"
+  },
+  {
+   "print": 1,
+   "read": 1,
+   "role": "MD"
   }
  ],
  "sort_field": "modified",

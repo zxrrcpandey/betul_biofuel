@@ -671,6 +671,7 @@ def part_b(check, writes=True):
 		if writes:
 			_refused(check, ow, made)
 			_md_only(check, made)
+			_page(check, ow, made)
 			_confidential(check, ow, made)
 		else:
 			po = _confidential_po()
@@ -810,6 +811,86 @@ def _md_only(check, made):
 	finally:
 		frappe.clear_messages()
 		frappe.set_user("Administrator")
+
+
+PAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "page", "order_watch")
+PAGE_KEYS = {"from_date", "to_date", "company", "companies", "md_lines", "last_line", "money", "findings", "ranked"}
+FINDING_KEYS = {"level", "kind", "kinds", "review_line", "summary", "supplier", "company", "line", "total", "over_by", "facts",
+	"orders"}
+ORDER_KEYS = {"name", "supplier", "entered_at", "po_date", "value", "items", "request", "entered_by", "approved_by",
+	"approved_at", "status", "received"}
+
+
+def _page(check, ow, made):
+	"""B6: the Order Watch page. Its data method gives the report's findings, to the MD only; the page's files
+	are complete and its only role is MD."""
+	import re
+
+	span = {"from_date": add_days(today(), -90), "to_date": today()}
+	check("B6 the page's data method can be called from the desk", ow.get_page_data in frappe.whitelisted, "")
+	for tag, job in (("nomd", None), ("job", "Export in Background")):
+		u = _user("pg" + tag, ["CEO", "System Manager"] if tag == "nomd" else ["MD"], made)
+		frappe.set_user(u)
+		frappe.local.job = frappe._dict(job_name=job) if job else None
+		name = "B6 page data: a user without MD is refused" if tag == "nomd" else "B6 page data: refused inside a background job"
+		try:
+			ow.get_page_data(**span)
+			check(name, False, "not refused")
+		except frappe.PermissionError as e:
+			check(name, str(e) == REFUSAL, str(e)[:120])
+		finally:
+			frappe.local.job = None
+			frappe.clear_messages()
+			frappe.set_user("Administrator")
+	u = _user("pgmd", ["MD"], made)
+	frappe.set_user(u)
+	try:
+		page = ow.get_page_data(**span)
+		rows = ow.execute(span)[1]
+		found = page["findings"]
+		points = [r for r in rows if r.get("indent") == 0 and r.get("level") and r.get("checks") != "R32"]
+		check("B6 page data: one finding per point of the report", set(page) == PAGE_KEYS and len(found) == len(points),
+			f"page {len(found)}, report {len(points)}; keys {sorted(set(page) ^ PAGE_KEYS)}")
+		bad = [f for f in found if set(f) != FINDING_KEYS or f["kind"] not in set(ow.PAGE_KINDS.values())
+			or f["level"] not in ("Serious", "To check", "Note") or any(set(o) != ORDER_KEYS for o in f["orders"])]
+		check("B6 page data: every finding and order has the agreed fields, a known kind and level", not bad, f"{len(bad)} wrong")
+		known = set(ow.PAGE_KINDS.values())
+		odd = [f for f in found if not f["kinds"] or f["kinds"][0] != f["kind"] or set(f["kinds"]) - known
+			or len(set(f["kinds"])) != len(f["kinds"])]
+		two = ow._finding({"checks": ["R35", "R39"], "level": "Serious", "orders": []}, {}, {}, {})
+		check("B6 page data: a finding with two reasons carries both kinds, so neither drops out of a count",
+			not odd and two["kind"] == "near" and two["kinds"] == ["near", "self"], f"{len(odd)} wrong; merged {two['kinds']}")
+		names = set(frappe.get_all("Company", pluck="name"))
+		check("B6 page data: the company pick list is every company, and each standing-order row says what it is",
+			set(page["companies"]) == names and all(r.get("kind") in ("supplier", "item", "request") for r in page["ranked"]),
+			f"{len(page['companies'])} of {len(names)} companies")
+		texts = [t for f in found for t in [f["summary"], *f["facts"]]]
+		coded = [t for t in texts if re.search(r"\bR\d\d\b", t or "")]
+		check("B6 page data: no check code in any sentence, and the closing line is not repeated in the facts",
+			not coded and not any(t == page["last_line"] for f in found for t in f["facts"]), f"{coded[:2]}")
+		check("B6 page data: the same orders as the report, no account id anywhere",
+			{o["name"] for f in found for o in f["orders"]} == {r["po"] for r in rows if r.get("po")}
+			and "@" not in json.dumps(page, default=str), "")
+		worth = {o["name"]: o["value"] for f in found if f["level"] in ("Serious", "To check") for o in f["orders"]}
+		check("B6 page data: money in question counts each order once", abs(flt(page["money"]["both"]) - sum(worth.values())) < 1,
+			f"{page['money']['both']} against {sum(worth.values())}")
+		try:
+			ow.get_page_data(company='<img src=x onerror="alert(1)">', **span)
+			check("B6 page data: an HTML company name comes back escaped", False, "not refused")
+		except frappe.ValidationError as e:
+			check("B6 page data: an HTML company name comes back escaped", "<img" not in str(e), str(e)[:120])
+	except Exception as e:  # noqa: BLE001 — the scenario reports any failure
+		check("B6 page data: one finding per point of the report", False, f"{type(e).__name__}: {str(e)[:200]}")
+	finally:
+		frappe.clear_messages()
+		frappe.set_user("Administrator")
+	with open(os.path.join(PAGE_DIR, "order_watch.json"), encoding="utf-8") as f:
+		roles = [r["role"] for r in json.load(f)["roles"]]
+	with open(os.path.join(PAGE_DIR, "order_watch.js"), encoding="utf-8") as f:
+		js = f.read()
+	parts = re.findall(r'\{% include "trustbit_ethanol/ts_gate_entry/page/order_watch/([\w.]+)" %\}', js)
+	check("B6 the page is for the MD role only, and each of its 3 view files is there", roles == ["MD"] and len(parts) == 3
+		and all(os.path.exists(os.path.join(PAGE_DIR, p)) for p in parts), f"roles {roles}; views {parts}")
 
 
 def _confidential_po():

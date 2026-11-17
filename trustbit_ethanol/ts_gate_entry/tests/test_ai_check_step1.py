@@ -30,6 +30,8 @@ SITE = os.environ.get("FRAPPE_SITE") or "betulbiofuel.mkasystem.com"
 RESULTS = []
 SUB, REPORT, LINE = "TS AI Check Submission", "TS AI Check Report", "TS AI Check Line"
 SETTINGS = "TS AI Check Settings"
+USAGE = "TS AI Check Usage"
+AI_FIELDS = ("model_used", "input_tokens", "output_tokens", "cost_usd")  # kept in the usage record
 REFUSED = (frappe.ValidationError, frappe.PermissionError, frappe.DuplicateEntryError)
 DENIED = frappe.PermissionError
 MODEL = "claude-fable-5-2"
@@ -40,7 +42,8 @@ FILES_MADE = []
 COMPANY = None
 ai = reader = None  # the two modules under test, imported once the site is connected
 KEPT = {}  # what the stand-ins replaced in the job module, put back at the end
-SWAPPED = ("frappe", "background_jobs", "ai_call", "setup_problem", "_commit", "_rollback", "_finish", "READS_PER_HOUR")
+SWAPPED = ("frappe", "background_jobs", "ai_call", "setup_problem", "_commit", "_rollback", "_finish", "READS_PER_HOUR",
+	"match", "review")
 
 # the build contract's sentences, typed here on their own (never read from the code under test)
 M2 = "Attach the file as Private."
@@ -85,7 +88,7 @@ BAD_MODEL = "The model name is not valid."
 S1, S2, S3, S4 = "Sunrise Traders", "Hilltop Engineering", "Riverbend Supplies", "Lakeside Tools"
 HEAD = ["Supplier Name", "Bill No", "PO No", "Amount", "Remarks"]
 LINE_FIELDS = ("line_no", "page", "source_row", "kind", "supplier_text", "bill_no_text", "bill_date_text",
-	"po_text", "amount_text", "amount", "remarks_text", "unclear", "read_note")
+	"po_text", "amount_text", "amount", "remarks_text", "unclear", "read_note", "section_text", "details_text")
 # what a forged request sends in the control fields, and what a Draft must hold instead
 FORGED = {"status": "Report sent", "status_note": "forged", "submitted_at": "2001-01-01 10:00:00",
 	"started_at": "2001-01-01 10:00:00", "finished_at": "2001-01-01 10:00:00", "lines_read": 99,
@@ -216,8 +219,20 @@ def fake_rollback():
 	frappe.db.rollback(save_point=SP_JOB)
 
 
+def unchecked(doc, result):
+	"""Step 2 stands aside here: these tests are about the file check, the reading and the job's life.
+	`test_ai_check_step2.py` tests the checks, the review and the bell."""
+	return frappe._dict(lines=[{"docs": []} for _ in result.lines], findings=[], summary="", coverage="",
+		n_ok=len(result.lines), n_check=0, n_serious=0, amt_ok=result.list_total, amt_check=0, amt_serious=0)
+
+
+def no_review(doc, result, checked, call):
+	return frappe._dict(summary="", points=[], note="", meta={})
+
+
 def stand_in():
 	ai.frappe = AsSeen(enqueue=fake_enqueue, log_error=fake_log)
+	ai.match, ai.review = frappe._dict(check=unchecked), frappe._dict(run=no_review, bell=lambda name: 0)
 	ai.background_jobs = frappe._dict(is_job_enqueued=fake_alive)
 	ai.ai_call, ai.setup_problem, ai._finish = fake_ai, (lambda: ""), KEPT["_finish"]
 	ai._commit, ai._rollback = fake_commit, fake_rollback
@@ -384,7 +399,7 @@ def said(lines, **over):
 
 def row(supplier, amount, page=1, **over):
 	return {"page": page, "supplier": supplier, "bill_no": "", "bill_date": "", "po_no": "", "amount": amount,
-		"remarks": "", "unclear": [], **over}
+		"remarks": "", "section": "", "details": "", "unclear": [], **over}
 
 
 # ---- the site: users, files, submissions
@@ -475,11 +490,16 @@ def run_job(name):
 
 
 def state(name):
-	return frappe.db.get_value(SUB, name, ["docstatus", "owner", *FORGED], as_dict=True)
+	"""The submission's stored row, with the AI details as its usage record holds them (none: None and 0)."""
+	row = frappe.db.get_value(SUB, name, ["docstatus", "owner", *(f for f in FORGED if f not in AI_FIELDS)], as_dict=True)
+	used = frappe.db.get_value(USAGE, name, AI_FIELDS, as_dict=True) or {}
+	row.update({f: used.get(f) or (None if f == "model_used" else 0) for f in AI_FIELDS})
+	return row
 
 
 def control(name):
-	return dict(frappe.db.get_value(SUB, name, list(FORGED), as_dict=True))
+	row = state(name)
+	return {f: row[f] for f in FORGED}
 
 
 def age(name, fieldname, minutes):
@@ -551,7 +571,8 @@ def _run(u):
 	if live:
 		print(f"  note: {live} real check(s) are waiting on this site; a stale one stays locked until this run ends")
 	u.update(acc=user("acc", ["Accounts User"]), acc2=user("acc2", ["Accounts User"]),
-		mgr=user("mgr", ["Accounts Manager"]), md=user("md", ["MD"]), sm=user("sm", ["System Manager"]),
+		mgr=user("mgr", ["Accounts Manager"]), md=user("md", ["MD"]), ceo=user("ceo", ["CEO"]),
+		sm=user("sm", ["System Manager"]),
 		it=user("it", ["IT Head"]), pur=user("pur", ["Purchase User"]))
 	baseline()
 	for label, group in (("file", _file_check), ("read", _reading), ("job", _job_life), ("perm", _permissions)):
@@ -1030,7 +1051,7 @@ def _reading(u):
 		eq(lines_of(out, "line_no", "page", "source_row", "kind", "amount", "unclear"), [(1, 1, 0, "Bill", 125000.0, ""),
 			(2, 1, 0, "Advance", 800.5, ""), (3, 1, 0, "Advance", 300.25, "amount"), (4, 1, 0, "Other", 10.0, "amount")])
 		eq((out.file_kind, out.read_by, out.pages_in_file, out.pages_seen, out.meta),
-			("PDF", f"AI ({MODEL})", 1, 1, SPENT))
+			("PDF", "AI", 1, 1, SPENT))
 		eq(set(out.lines[0]), set(LINE_FIELDS), "fields of a line")
 	test("read: a PDF goes to the AI once, whole and first; the answer becomes lines with the cost", t_request)
 
@@ -1176,7 +1197,7 @@ def _job_life(u):
 		eq((s.docstatus, s.status, s.status_note, s.started_at, s.finished_at), (1, "Being checked", None, None, None))
 		check(s.submitted_at and abs((now() - s.submitted_at).total_seconds()) < 600, "submitted_at is not now")
 		eq(queued, [{"method": "trustbit_ethanol.ts_gate_entry.ts_ai_check.run_check", "queue": "long",
-			"timeout": 1200, "job_id": "ts-ai-check-" + one, "deduplicate": True, "enqueue_after_commit": True,
+			"timeout": 1450, "job_id": "ts-ai-check-" + one, "deduplicate": True, "enqueue_after_commit": True,
 			"submission": one}], "the queue call")
 	test("job: Submit sets Being checked and queues one job, after the commit, under the check's own id", t_submit)
 
@@ -1195,8 +1216,8 @@ def _job_life(u):
 			("Excel", "Code", 0, 0, 2, 2050.5, 2050.5))
 		eq(r.read_notes, "Sheet 'Payments' was read; its headings are on row 2.\nAmount column used: 'Amount'.")
 		eq([tuple(line.get(f) or (0 if f in ("page", "amount") else "") for f in LINE_FIELDS) for line in r.lines], [
-			(1, 0, 3, "Bill", S1, "ST/J/1", "", "", "1250.5", 1250.5, "", "", ""),
-			(2, 0, 4, "Advance", S2, "", "", "PO-TEST-J", "800", 800.0, "Advance", "", "")])
+			(1, 0, 3, "Bill", S1, "ST/J/1", "", "", "1250.5", 1250.5, "", "", "", "", ""),
+			(2, 0, 4, "Advance", S2, "", "", "PO-TEST-J", "800", 800.0, "Advance", "", "", "", "")])
 		eq(Fake.calls, [], "AI calls for a sheet")
 	test("job: a sheet ends as Report sent with one report, named like the submission, holding its lines", t_report)
 
@@ -1219,7 +1240,7 @@ def _job_life(u):
 		eq(base64.b64decode(Fake.calls[0].content[0]["source"]["data"]), on_disk(made), "the bytes sent to the AI")
 		r = frappe.get_doc(REPORT, name)
 		eq((r.file_kind, r.read_by, r.pages_in_file, r.pages_seen, r.lines_total, r.list_total, r.printed_total),
-			("PDF", f"AI ({MODEL})", 1, 1, 2, 125800.5, 125800.5))
+			("PDF", "AI", 1, 1, 2, 125800.5, 125800.5))
 		eq([(x.line_no, x.page, x.source_row, x.kind, x.amount, x.amount_text, x.unclear or "") for x in r.lines],
 			[(1, 1, 0, "Bill", 125000.0, "1,25,000.00", "bill_date"), (2, 1, 0, "Advance", 800.5, "800.50", "")])
 	test("job: a PDF is read by one AI call; the model, the tokens and the cost land on the submission", t_pdf)
@@ -1593,6 +1614,36 @@ def _permissions(u):
 		eq(frappe.db.get_value(SUB, a_draft, "docstatus"), 0)
 	test("perm: MD and System Manager read every submission and can create, change or submit none", t_readers)
 
+	def t_ai_details():
+		stored = dict(zip(AI_FIELDS, ("claude-test", 1200, 300, 0.0123)))
+		ai.save_usage(done, stored)  # this stage's list is read by code, so the job stored none
+		eq([c for c in AI_FIELDS if frappe.db.sql(f"SHOW COLUMNS FROM `tab{SUB}` LIKE %s", c)], [], "old columns on the submission")
+		for who, sees in ((u.md, True), ("Administrator", True), (acc, False), (u.mgr, False), (u.ceo, False), (u.sm, False)):
+			frappe.set_user(who)
+			if who != u.mgr:  # a manager reads only own submissions
+				opened = frappe.client.get(SUB, done)
+				eq({f: opened.get(f) for f in AI_FIELDS if opened.get(f)}, stored if sees else {}, f"{who} by opening it")
+				check(opened.get("lines_read"), f"{who} lost the lines read")
+			for fields in (list(AI_FIELDS), ["cost_usd", "cost_usd"], ["model_used", "model_used", "name"]):
+				try:  # there is no such column any more: the query fails or returns the name only
+					rows = frappe.get_list(SUB, filters={"name": done}, fields=["name", *fields])
+				except Exception:
+					rows = []
+				eq([f for row in rows for f in AI_FIELDS if row.get(f)], [], f"{who} through a list query for {fields}")
+			if sees:
+				eq(frappe.client.get(USAGE, done).get("cost_usd"), 0.0123, f"{who} reads the usage record")
+			else:
+				refused(lambda: frappe.get_list(USAGE), exc=DENIED)
+				refused(lambda: frappe.client.get(USAGE, done), exc=DENIED)
+			frappe.set_user(who)
+			refused(lambda: frappe.get_doc({"doctype": USAGE, "submission": a_sent, "model_used": "x", "cost_usd": 1}).insert(), exc=DENIED)
+		frappe.set_user("Administrator")
+		doc = frappe.get_doc(USAGE, done)
+		doc.cost_usd = 99
+		refused(doc.save, exc=DENIED)
+		eq(frappe.db.exists(USAGE, a_sent), None, "a usage record made by hand")
+	test("perm: the AI model, tokens and cost of a check reach the MD and Administrator only", t_ai_details)
+
 	def t_purchase():
 		from frappe import client
 
@@ -1655,7 +1706,7 @@ def _permissions(u):
 
 		row_name = frappe.db.get_value(LINE, {"parent": done, "line_no": 1})
 		eq(frappe.db.get_value(REPORT, done, "owner"), acc, "the report's owner")
-		for who in (acc, u.mgr, u.md):
+		for who in (acc, u.mgr, u.ceo):
 			check(not can(who, REPORT, "read") and not can(who, REPORT, "read", done), f"{who} may read the report")
 			check(not can(who, LINE, "read", parent_doctype=REPORT), f"{who} may read report lines")
 			frappe.set_user(who)
@@ -1663,18 +1714,20 @@ def _permissions(u):
 			refused(lambda: client.get(REPORT, done), exc=DENIED)
 			refused(lambda: frappe.get_list(LINE, filters={"parent": done}, parent_doctype=REPORT), exc=DENIED)
 			refused(lambda: client.get(LINE, row_name, parent=REPORT), exc=DENIED)
-	test("perm: Accounts users and the MD cannot read a report or its lines, not even the submitter", t_report_hidden)
+	test("perm: Accounts users and the CEO cannot read a report or its lines, not even the submitter", t_report_hidden)
 
 	def t_report_reader():
 		from frappe import client
 
-		check(can(u.sm, REPORT, "read", done) and not can(u.sm, REPORT, "write", done), "System Manager's rights")
-		frappe.set_user(u.sm)
-		eq(frappe.get_list(REPORT, filters={"name": done}, pluck="name"), [done])
-		eq([x["supplier_text"] for x in client.get(REPORT, done)["lines"]], [S1, S2])
-		eq(frappe.get_list(LINE, filters={"parent": done}, pluck="supplier_text", parent_doctype=REPORT,
-			order_by="idx"), [S1, S2])
-	test("perm: a System Manager reads a report and its lines", t_report_reader)
+		for who in (u.sm, u.md):
+			check(can(who, REPORT, "read", done) and not can(who, REPORT, "write", done), f"{who}'s rights")
+			check(not can(who, REPORT, "create") and not can(who, REPORT, "delete", done), f"{who} may make or delete")
+			frappe.set_user(who)
+			eq(frappe.get_list(REPORT, filters={"name": done}, pluck="name"), [done])
+			eq([x["supplier_text"] for x in client.get(REPORT, done)["lines"]], [S1, S2])
+			eq(frappe.get_list(LINE, filters={"parent": done}, pluck="supplier_text", parent_doctype=REPORT,
+				order_by="idx"), [S1, S2])
+	test("perm: a System Manager and the MD read a report and its lines, and can change nothing", t_report_reader)
 
 	def t_settings_roles():
 		from frappe import client

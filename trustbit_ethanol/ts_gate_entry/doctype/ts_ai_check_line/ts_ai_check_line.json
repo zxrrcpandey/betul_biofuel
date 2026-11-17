@@ -17,7 +17,19 @@
   "amount",
   "remarks_text",
   "unclear",
-  "read_note"
+  "read_note",
+  "section_text",
+  "details_text",
+  "sec_check",
+  "verdict",
+  "supplier",
+  "supplier_title",
+  "match_how",
+  "list_says",
+  "erp_says",
+  "chain",
+  "receipts_used",
+  "claims"
  ],
  "fields": [
   {
@@ -110,11 +122,88 @@
    "fieldtype": "Small Text",
    "label": "Reading note",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_text",
+   "fieldtype": "Data",
+   "label": "Section on the list",
+   "read_only": 1
+  },
+  {
+   "fieldname": "details_text",
+   "fieldtype": "Small Text",
+   "label": "Other details on the row",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_check",
+   "fieldtype": "Section Break",
+   "label": "Check",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "verdict",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Verdict",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Data",
+   "label": "Supplier in the ERP",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supplier_title",
+   "fieldtype": "Data",
+   "label": "Supplier name in the ERP",
+   "read_only": 1
+  },
+  {
+   "fieldname": "match_how",
+   "fieldtype": "Data",
+   "label": "Matched by",
+   "read_only": 1
+  },
+  {
+   "fieldname": "list_says",
+   "fieldtype": "Small Text",
+   "label": "The list says",
+   "read_only": 1
+  },
+  {
+   "fieldname": "erp_says",
+   "fieldtype": "Small Text",
+   "label": "The ERP says",
+   "read_only": 1
+  },
+  {
+   "fieldname": "chain",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Trail",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receipts_used",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Receipts Behind the Line",
+   "read_only": 1
+  },
+  {
+   "fieldname": "claims",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "What the Line Stands On",
+   "read_only": 1
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-14 06:00:00.000000",
+ "modified": "2026-11-16 23:35:00.000000",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS AI Check Line",

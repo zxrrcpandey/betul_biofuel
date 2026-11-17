@@ -27,3 +27,5 @@ trustbit_ethanol.patches.v2_9.po_deduction_backward_compat
 trustbit_ethanol.patches.v2_9_12.backfill_amended_mr_status
 # v2.10.0 — re-apply PROPERTY_SETTERS adding "Pending Budget Override" to ts_mr_status + ts_approval_status (Lesson 239)
 trustbit_ethanol.patches.v2_10_0.add_pending_budget_override_status
+# AI Checker — AI model/tokens/cost move from the submission's columns to TS AI Check Usage (MD-only); drops the 4 old columns
+trustbit_ethanol.patches.v2_83.move_ai_check_usage

@@ -123,30 +123,38 @@
   {
    "fieldname": "model_used",
    "fieldtype": "Data",
+   "is_virtual": 1,
    "label": "AI model used",
    "no_copy": 1,
+   "permlevel": 1,
    "read_only": 1
   },
   {
    "fieldname": "input_tokens",
    "fieldtype": "Int",
+   "is_virtual": 1,
    "label": "Input tokens",
    "no_copy": 1,
+   "permlevel": 1,
    "read_only": 1
   },
   {
    "fieldname": "output_tokens",
    "fieldtype": "Int",
+   "is_virtual": 1,
    "label": "Output tokens",
    "no_copy": 1,
+   "permlevel": 1,
    "read_only": 1
   },
   {
    "description": "What the AI service reported for the finished answer; a retried or unfinished attempt is not in it.",
    "fieldname": "cost_usd",
    "fieldtype": "Float",
+   "is_virtual": 1,
    "label": "Cost (US$)",
    "no_copy": 1,
+   "permlevel": 1,
    "precision": "4",
    "read_only": 1
   },
@@ -170,7 +178,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-14 06:00:00.000000",
+ "modified": "2026-11-17 02:34:00.000000",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS AI Check Submission",
@@ -206,6 +214,11 @@
   {
    "read": 1,
    "role": "System Manager"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "MD"
   }
  ],
  "search_fields": "company,list_date,status",

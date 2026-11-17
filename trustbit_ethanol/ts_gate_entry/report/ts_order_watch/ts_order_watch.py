@@ -17,6 +17,7 @@ reaching the MD, and other approval facts (plan 7D, build spec 14 Nov 2026).
 """
 
 import json
+import re
 from datetime import date
 
 import frappe
@@ -307,3 +308,60 @@ def _inert(v):
 		for s in (v, handle_html(v))):
 		return "'" + v
 	return v
+
+
+# -- the Order Watch page (page/order_watch): the same findings, one record per finding --
+# The kind of finding a check belongs to; the page shows a plain title for each and never the check code.
+PAGE_KINDS = {"R30": "split", "R29": "split", "R31": "split", "R38/R30": "split", "R38/R29": "split",
+	"R35": "near", "R38/R35": "near", "R36": "over", "R39": "self", "R41": "more", "R42": "allowance",
+	"R43": "early", "R44": "open"}
+CHECK_PREFIX = re.compile(r"^R\d+(?:/R\d+)?: ")  # a merged finding's extra line starts with its check code
+
+
+@frappe.whitelist()
+def get_page_data(from_date=None, to_date=None, company=None):
+	"""Read-only. Every text value is plain text as people typed it: the page escapes all of it."""
+	_check_role()  # FIRST STATEMENT: the MD only, and never inside a background job
+	data = load({"from_date": from_date, "to_date": to_date, "company": company})
+	out = rules.find_points(data)
+	orders, items = data["orders"], {}
+	for i in data["items"]:
+		items.setdefault(i.po, []).append(i)
+	points = out.get("points") or []
+
+	def worth(levels):  # each order counted once
+		names = {n for p in points if p.get("level") in levels for n in p.get("orders") or [] if n in orders}
+		return sum(flt(orders[n].base_grand_total) for n in names)
+
+	return {"from_date": str(data["from_date"]), "to_date": str(data["to_date"]), "company": company or "",
+		"md_lines": sorted({flt(v["md"]) for v in data["lines"].values() if v["md"] is not None}),
+		"last_line": _(rules.LAST_LINE),
+		# for the page's Company pick list: an MD-only login cannot read Company, so a Link box is no use to it
+		"companies": frappe.get_all("Company", pluck="name", order_by="name"),
+		"money": {"Serious": worth(("Serious",)), "To check": worth(("To check",)), "both": worth(("Serious", "To check"))},
+		"findings": [_finding(p, orders, items, data["receipts"]) for p in points],
+		"ranked": [{"kind": r["kind"], "label": r["label"], "d30": r["d30"], "d90": r["d90"], "fy": r["fy"],
+			"orders": cint(r["orders"]), "largest": r["largest"], "marks": list(r.get("marks") or [])}
+			for r in out.get("ranked") or []]}
+
+
+def _finding(p, orders, items, receipts):
+	checks = p.get("checks") or [""]
+	check = checks[0]
+	last = (rules.LAST_LINE, _(rules.LAST_LINE))
+	texts = [p.get("tie")] + list(p.get("facts_against") or []) + list(p.get("extra_rows") or [])
+	# a merged finding carries several checks: "kind" is the first, "kinds" is every one, so none drops out of a count
+	return {"level": p.get("level"), "kind": PAGE_KINDS.get(check, "other"),
+		"kinds": list(dict.fromkeys(PAGE_KINDS.get(c, "other") for c in checks)), "review_line": check.startswith("R38"),
+		"summary": p.get("summary"), "supplier": p.get("supplier"), "company": p.get("company"),
+		"line": p.get("line"), "total": p.get("total"), "over_by": p.get("over_by") if p.get("line") is not None else None,
+		"facts": [CHECK_PREFIX.sub("", t) for t in texts if t and t not in last],
+		"orders": [_order_card(orders[n], items.get(n, []), receipts.get(n, [])) for n in p.get("orders") or [] if n in orders]}
+
+
+def _order_card(o, its, recs):
+	row = _order_row(o, its, recs)
+	return {"name": o.name, "supplier": o.supplier, "entered_at": o.creation, "po_date": row["po_date"],
+		"value": flt(o.base_grand_total), "items": row["items"], "request": row["request"],
+		"entered_by": o.entered_role, "approved_by": o.final_approver_role, "approved_at": o.final_approved_at,
+		"status": o.approval_status, "received": row["received"]}

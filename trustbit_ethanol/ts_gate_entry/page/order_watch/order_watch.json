@@ -1,0 +1,21 @@
+{
+ "content": null,
+ "creation": "2026-11-14 16:45:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-11-14 18:23:00",
+ "modified_by": "Administrator",
+ "module": "TS Gate Entry",
+ "name": "order-watch",
+ "owner": "Administrator",
+ "page_name": "order-watch",
+ "roles": [
+  {"role": "MD"}
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Order Watch"
+}

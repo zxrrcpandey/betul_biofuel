@@ -1,9 +1,13 @@
-"""AI Checker, step 1: what happens to a TS AI Check Submission.
+"""AI Checker: what happens to a TS AI Check Submission.
 
 The form controller is thin on purpose: every rule lives here, so the form, the background job and the
 tests share one copy. After Submit the document is never saved again. The job runs as the submitter, who
 has no write right on a submitted document, so each later change is a direct database write made under a
-row lock."""
+row lock.
+
+The job has three steps: read the file into lines (`ts_ai_check_reader`), check each line against the
+ERP (`ts_ai_check_match` and `ts_ai_check_rules`), then the AI's review and the bell to the MD
+(`ts_ai_check_review`). The submitter sees the status only; the report is the MD's."""
 
 import hashlib
 import math
@@ -14,25 +18,33 @@ import frappe
 from frappe import _
 from frappe.utils import background_jobs, cint, cstr, get_datetime, now_datetime
 
+from trustbit_ethanol.ts_gate_entry import ts_ai_check_match as match
 from trustbit_ethanol.ts_gate_entry import ts_ai_check_reader as reader
+from trustbit_ethanol.ts_gate_entry import ts_ai_check_review as review
 
 SUBMISSION = "TS AI Check Submission"
 REPORT = "TS AI Check Report"
 SETTINGS = "TS AI Check Settings"
+USAGE = "TS AI Check Usage"
 DEFAULT_MODEL = "claude-fable-5-2"
 ST_DRAFT, ST_CHECKING, ST_SENT, ST_UNREADABLE, ST_FAILED = (
 	"Draft", "Being checked", "Report sent", "Could not be read", "Check failed")
-CONTROL_FIELDS = ("status", "status_note", "submitted_at", "started_at", "finished_at", "lines_read",
-	"model_used", "input_tokens", "output_tokens", "cost_usd", "file_hash")
-NUMBER_FIELDS = ("lines_read", "input_tokens", "output_tokens", "cost_usd")
-JOB_TIMEOUT = 1200  # seconds; the long queue allows 1500
-SUBMIT_WAIT, JOB_WAIT = 5, 180  # seconds to wait for the one reader slot; 180 + 60 + the AI's 900 < JOB_TIMEOUT
+CONTROL_FIELDS = ("status", "status_note", "submitted_at", "started_at", "finished_at", "lines_read", "file_hash")
+NUMBER_FIELDS = ("lines_read",)
+# what the AI used for a check; kept in the usage record, which only the MD role reads, never on the submission
+USAGE_FIELDS = ("model_used", "input_tokens", "output_tokens", "cost_usd")
+JOB_TIMEOUT = 1450  # seconds; the long queue allows 1500
+# seconds to wait for the one reader slot; 180 + 60 + the AI's 900 to read + its 240 to review < JOB_TIMEOUT
+SUBMIT_WAIT, JOB_WAIT = 5, 180
 READS_PER_HOUR = 20  # files one person may send for reading in an hour, refused ones included
 STALE_RUNNING_MIN = 30  # longer than the job can run
 STALE_QUEUED_MIN = 15
 SERVER_FLAG = "ai_check_server_write"
 LINE_FIELDS = ("line_no", "page", "source_row", "kind", "supplier_text", "bill_no_text", "bill_date_text",
-	"po_text", "amount_text", "amount", "remarks_text", "unclear", "read_note")
+	"po_text", "amount_text", "amount", "remarks_text", "unclear", "read_note", "section_text", "details_text")
+CHECK_FIELDS = ("verdict", "supplier", "supplier_title", "match_how", "list_says", "erp_says", "chain", "receipts_used", "claims")
+SUM_FIELDS = ("summary", "coverage", "n_ok", "n_check", "n_serious", "amt_ok", "amt_check", "amt_serious")
+FINDING_FIELDS = ("line_no", "level", "source", "rule", "title", "detail", "refs")
 
 
 def limits():
@@ -221,7 +233,8 @@ def sweep_stale(name=None) -> int:
 
 
 def run_check(submission):
-	"""The background job, run as the submitter: read the file into lines and store them on the report.
+	"""The background job, run as the submitter: read the file into lines, check them against the ERP,
+	add the AI's review, store the report and ring the MD's bell.
 	The start is stamped and committed before any work, so a second worker returns at the guard and a
 	crash leaves a start time for the sweep. A failure rolls the half-made report back first."""
 	row = frappe.db.get_value(SUBMISSION, submission, ["docstatus", "status", "started_at"],
@@ -230,6 +243,7 @@ def run_check(submission):
 		return
 	frappe.db.set_value(SUBMISSION, submission, "started_at", now_datetime(), update_modified=False)
 	_commit()
+	spent = {}  # what the AI calls used so far: a check that fails after a paid read still records it
 	try:
 		doc = frappe.get_doc(SUBMISSION, submission)
 		lim = limits()
@@ -245,8 +259,14 @@ def run_check(submission):
 		except (reader.Busy, reader.ServiceError) as e:  # our side, not the AI service's
 			raise RuntimeError(getattr(e, "detail", "the reader stayed busy")) from e
 		result = info.table or reader.read_document(data, info, lim, ai_call)
-		_save_report(doc, result)
-		if not _finish(submission, ST_SENT, None, lines_read=len(result.lines), **(result.meta or {})):
+		spent = _spent(result.meta, {})
+		checked = match.check(doc, result)  # code only: a failure here fails the check, it never sends half a report
+		reviewed = review.run(doc, result, checked, ai_call)  # never raises: the report does not wait on the AI
+		spent = _spent(result.meta, reviewed.meta)
+		_save_report(doc, result, checked, reviewed)
+		if _finish(submission, ST_SENT, None, lines_read=len(result.lines), **spent):
+			review.bell(submission)  # the report has the submission's name
+		else:
 			_rollback()  # a sweep closed it first: leave no report behind
 	except reader.Unreadable as e:
 		_rollback()
@@ -259,7 +279,7 @@ def run_check(submission):
 	except Exception:
 		_rollback()
 		_log(submission, frappe.get_traceback())
-		_finish(submission, ST_FAILED, _("Something went wrong on our side. Please submit the file again."))
+		_finish(submission, ST_FAILED, _("Something went wrong on our side. Please submit the file again."), **spent)
 	_commit()
 
 
@@ -268,12 +288,51 @@ def _finish(name, status, note, **vals) -> bool:
 	step. `notify` makes an open form show the result by itself."""
 	if frappe.db.get_value(SUBMISSION, name, "status", for_update=True) != ST_CHECKING:
 		return False
+	usage = {fieldname: vals.pop(fieldname) for fieldname in USAGE_FIELDS if fieldname in vals}
 	values = {**vals, "status": status, "status_note": note, "finished_at": now_datetime()}
 	frappe.get_doc(SUBMISSION, name).db_set(values, notify=True)
+	try:
+		save_usage(name, usage)
+	except Exception:  # the cost record must never stop the status change
+		_log(name, frappe.get_traceback())
 	return True
 
 
-def _save_report(doc, result):
+def save_usage(name, usage):
+	"""The AI model, tokens and cost of one check, in their own record. The submitter runs the job and
+	has no right on that record, so the write is the server's."""
+	usage = {fieldname: usage[fieldname] for fieldname in USAGE_FIELDS if usage.get(fieldname)}
+	if not usage:
+		return
+	if frappe.db.exists(USAGE, name):
+		frappe.db.set_value(USAGE, name, usage, update_modified=False)
+		return
+	doc = frappe.get_doc({"doctype": USAGE, "submission": name, **usage})
+	doc.flags[SERVER_FLAG] = True
+	doc.insert(ignore_permissions=True)
+
+
+def usage_value(name, fieldname):
+	"""One AI detail of a check for the form, and only for someone who may read the usage record."""
+	if not name or fieldname not in USAGE_FIELDS or not frappe.has_permission(USAGE, "read"):
+		return None
+	return frappe.db.get_value(USAGE, name, fieldname)
+
+
+def _spent(read, reviewed):
+	"""What the two AI calls used, added up. A table read by code uses none."""
+	read, reviewed = read or {}, reviewed or {}
+	if not read and not reviewed:
+		return {}
+	out = {"model_used": read.get("model_used") or limits().model}
+	for fieldname in ("input_tokens", "output_tokens", "cost_usd"):
+		out[fieldname] = (read.get(fieldname) or 0) + (reviewed.get(fieldname) or 0)
+	if not any(out[fieldname] for fieldname in ("input_tokens", "output_tokens", "cost_usd")):
+		return {}  # a call that failed with nothing used: no usage to record
+	return out
+
+
+def _save_report(doc, result, checked, reviewed):
 	"""One report per submission, made only here: the flag is what the report's controller lets
 	through, and the submitter has no right of their own on the report."""
 	report = frappe.new_doc(REPORT)
@@ -284,9 +343,14 @@ def _save_report(doc, result):
 		"pages_in_file": result.pages_in_file, "pages_seen": result.pages_seen,
 		"lines_total": len(result.lines), "list_total": result.list_total,
 		"printed_total": result.printed_total, "read_notes": "\n".join(result.notes),
+		"ai_summary": reviewed.summary, "ai_note": reviewed.note,
+		**{fieldname: checked.get(fieldname) for fieldname in SUM_FIELDS},
 	})
-	for line in result.lines:
-		report.append("lines", {fieldname: line.get(fieldname) for fieldname in LINE_FIELDS})
+	for line, extra in zip(result.lines, checked.lines):
+		row = {fieldname: line.get(fieldname) for fieldname in LINE_FIELDS}
+		report.append("lines", {**row, **{fieldname: extra.get(fieldname) for fieldname in CHECK_FIELDS}})
+	for finding in [*checked.findings, *reviewed.points]:
+		report.append("findings", {fieldname: finding.get(fieldname) for fieldname in FINDING_FIELDS})
 	report.flags[SERVER_FLAG] = True
 	report.insert(ignore_permissions=True)
 

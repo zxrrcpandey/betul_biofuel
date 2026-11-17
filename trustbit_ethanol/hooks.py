@@ -209,6 +209,12 @@ on_session_creation = [
 	"trustbit_ethanol.ts_gate_entry.ts_exec_login_alert.on_session_creation_login_alert",
 ]
 
+# Frappe lets a reader rename any record (validate_rename=false); same fix as upstream 79ae1a50a1.
+# Remove with rename_guard.py after a Frappe upgrade past that commit.
+before_request = ["trustbit_ethanol.rename_guard.apply"]
+# The same guards in background jobs (a queued PDF of one child row used Frappe's own single-row check).
+before_job = ["trustbit_ethanol.rename_guard.apply"]
+
 # Doc Events — PO lifecycle hooks for approval state management
 doc_events = {
 	# v2.42.0 — supplier-PORTAL quotes bypass the RFQ->SQ mapper (create_rfq_items
@@ -361,6 +367,14 @@ permission_query_conditions = {
 	"Purchase Receipt": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.get_pqc_purchase_receipt",
 	"Purchase Invoice": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.get_pqc_purchase_invoice",
 	"Material Request": "trustbit_ethanol.ts_gate_entry.ts_confidential_po.get_pqc_material_request",
+	# Child rows of those four follow their parent's rule in list queries (ts_confidential_children.py).
+	# A new child table on one of the four must be added here; test_confidential_children.py checks it.
+	**{child: "trustbit_ethanol.ts_gate_entry.ts_confidential_children.rows" for child in (
+		"Purchase Order Item", "Purchase Receipt Item", "Purchase Invoice Item", "Material Request Item",
+		"Purchase Taxes and Charges", "Payment Schedule", "Pricing Rule Detail", "Advance Tax",
+		"Purchase Invoice Advance", "Purchase Order Item Supplied", "Purchase Receipt Item Supplied",
+		"Tax Withheld Vouchers", "TS Approval Log", "TS Budget Override Log", "TS PO Deduction Override",
+	)},
 	# Restrict the User LIST to the caller's own record. Frappe's own condition
 	# only hides Administrator/Guest, so every desk user could list the whole
 	# staff roster. System Manager keeps the full view; IT Head deliberately does
@@ -382,6 +396,24 @@ has_permission = {
 # ts_read_via (fail-soft, self-scoped) then delegate to core unchanged. Also
 # tightens both to POST-only + adds the ownership check core lacks (L175/L224).
 override_whitelisted_methods = {
+	# Confidential PO/PR/PI/MR: keep hidden rows out of link search, named queries and global search (ts_confidential_search.py)
+	"frappe.desk.search.search_widget": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.search_widget",
+	"frappe.desk.search.search_link": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.search_link",
+	"frappe.utils.global_search.search": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.global_search",
+	# ...the other whitelisted paths that import the same core functions
+	"frappe.tests.test_search.search_widget": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.search_widget",
+	"frappe.tests.test_search.search_link": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.search_link",
+	"erpnext.templates.pages.search_help.search": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.global_search",
+	# ...and ERPNext queries that can name a confidential document or its rows when called directly
+	"erpnext.controllers.queries.get_filtered_child_rows": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.get_filtered_child_rows",
+	"erpnext.controllers.queries.get_purchase_receipts": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.get_purchase_receipts",
+	"erpnext.controllers.queries.get_purchase_invoices": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.get_purchase_invoices",
+	"erpnext.controllers.queries.get_payment_terms_for_references": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.get_payment_terms_for_references",
+	"erpnext.stock.doctype.quality_inspection.quality_inspection.item_query": "trustbit_ethanol.ts_gate_entry.ts_confidential_search.qi_item_query",
+	# ERPNext calls that answered any login: every receipt line, and ledger / party balances
+	"erpnext.assets.doctype.asset_capitalization.asset_capitalization.get_items_tagged_to_wip_composite_asset":
+		"trustbit_ethanol.ts_gate_entry.ts_confidential_children.wip_asset_items",
+	"erpnext.accounts.utils.get_balance_on": "trustbit_ethanol.chart_guard.balance_on",
 	"frappe.desk.doctype.notification_log.notification_log.mark_as_read":
 		"trustbit_ethanol.ts_gate_entry.ts_notification_trail.mark_as_read",
 	"frappe.desk.doctype.notification_log.notification_log.mark_all_as_read":

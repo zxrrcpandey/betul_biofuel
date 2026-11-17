@@ -8,7 +8,14 @@ from frappe.model.document import Document
 from trustbit_ethanol.ts_gate_entry import ts_ai_check as ai
 
 
+def _from_usage(fieldname):
+	return property(lambda self: ai.usage_value(self.name, fieldname))
+
+
 class TSAICheckSubmission(Document):
+	# computed fields: the values live in the MD-only usage record, this doctype has no column for them
+	model_used, input_tokens, output_tokens, cost_usd = (_from_usage(f) for f in ai.USAGE_FIELDS)
+
 	def before_insert(self):
 		self.flags.name_set = False  # a request may not pick the name
 
