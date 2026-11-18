@@ -28,6 +28,7 @@
   "ai_summary",
   "ai_note",
   "coverage",
+  "figures",
   "sec_findings",
   "findings",
   "sec_read",
@@ -56,6 +57,8 @@
   {
    "fieldname": "check_type",
    "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Check type",
    "read_only": 1
   },
@@ -192,6 +195,13 @@
    "hidden": 1
   },
   {
+   "fieldname": "figures",
+   "fieldtype": "Long Text",
+   "label": "Figures kept for the next month",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
    "collapsible": 1,
    "fieldname": "sec_findings",
    "fieldtype": "Section Break",
@@ -288,7 +298,7 @@
  ],
  "in_create": 1,
  "links": [],
- "modified": "2026-11-16 22:30:21",
+ "modified": "2026-11-18 18:12:00.000000",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS AI Check Report",

@@ -29,6 +29,7 @@ class TSAICheckSubmission(Document):
 			# "if owner" rights are judged on the owner the REQUEST sends: core tests Write before it reads
 			# the stored row. A request that changed the owner would take over another person's draft.
 			self.raise_no_permission_to("write")
+		ai.check_type_allowed(self)
 		ai.reset_control_fields(self)
 		ai.check_file_field(self)
 

@@ -17,9 +17,12 @@ from datetime import timedelta
 
 import frappe
 from frappe import _
-from frappe.utils import background_jobs, cint, cstr, get_datetime, now_datetime
+from frappe.utils import background_jobs, cint, cstr, formatdate, get_datetime, now_datetime
 
+from trustbit_ethanol.ts_gate_entry import ts_ai_check_issues as issues
 from trustbit_ethanol.ts_gate_entry import ts_ai_check_match as match
+from trustbit_ethanol.ts_gate_entry import ts_ai_check_months as months
+from trustbit_ethanol.ts_gate_entry import ts_ai_check_mst as mst
 from trustbit_ethanol.ts_gate_entry import ts_ai_check_reader as reader
 from trustbit_ethanol.ts_gate_entry import ts_ai_check_review as review
 from trustbit_ethanol.ts_gate_entry import ts_ai_check_rules as rules
@@ -29,6 +32,10 @@ REPORT = "TS AI Check Report"
 SETTINGS = "TS AI Check Settings"
 USAGE = "TS AI Check Usage"
 DEFAULT_MODEL = "claude-fable-5-2"
+# The two kinds of file. A payment list names suppliers and what each is to be paid, and its check reads
+# purchase records: it is sent by Accounts only. An MST report (the month's cost sheets) is also sent by Stores.
+PAYMENT, MST = "Payment List", "MST Report"
+PAYMENT_ROLES = ("Accounts User", "Accounts Manager")
 ST_DRAFT, ST_CHECKING, ST_SENT, ST_UNREADABLE, ST_FAILED = (
 	"Draft", "Being checked", "Report sent", "Could not be read", "Check failed")
 CONTROL_FIELDS = ("status", "status_note", "submitted_at", "started_at", "finished_at", "lines_read", "file_hash")
@@ -45,13 +52,17 @@ SERVER_FLAG = "ai_check_server_write"
 LINE_FIELDS = ("line_no", "page", "source_row", "kind", "supplier_text", "bill_no_text", "bill_date_text",
 	"po_text", "amount_text", "amount", "remarks_text", "unclear", "read_note", "section_text", "details_text")
 CHECK_FIELDS = ("verdict", "supplier", "supplier_title", "match_how", "list_says", "erp_says", "chain", "receipts_used", "claims")
-SUM_FIELDS = ("summary", "coverage", "n_ok", "n_check", "n_serious", "amt_ok", "amt_check", "amt_serious")
+SUM_FIELDS = ("summary", "coverage", "n_ok", "n_check", "n_serious", "amt_ok", "amt_check", "amt_serious", "figures")
 FINDING_FIELDS = ("line_no", "level", "source", "rule", "title", "detail", "refs")
 # What the submitter sees of their own checked list, on the form: the points they can fix themselves (a name
 # the ERP does not know, a repeated line, an amount or a total that does not fit, a bill the ERP shows as
 # paid). Every other rule (approval, gate, stock, on-account, many orders to one supplier, records outside
 # the submitter's access), every Note and the AI's review stay in the report.
-OWN_RULES = ("S1", "S2", "S3", "S4", "R1", "R2", "R3", "R4", "R5", "U1", "Y1", "Y2", "Y3", "Y4", "M1", "T1", "T3")
+OWN_RULES = ("S1", "S2", "S3", "S4", "R1", "R2", "R3", "R4", "R5", "U1", "Y1", "Y2", "Y3", "Y4", "M1", "T1", "T3",
+	# an MST report's own arithmetic: all of it is in the file the uploader made
+	"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9",
+	# an MST report against the ERP's issues, read in the uploader's own name: theirs to put right or to explain
+	"E1", "E2", "E3", "E4", "E5", "E7")
 # R2, R4, R5 and the last sentence of Y3 are worked out from every earlier checked list of the company,
 # other people's included (line numbers, what those lines asked, what stood behind them, totals over all
 # of them). The form never gives those stored words: it gives these, with only the submitter's own
@@ -148,6 +159,13 @@ def setup_problem():
 	return _("The checker is not set up on this site. Please tell IT.")
 
 
+def check_type_allowed(doc):
+	"""Who may send which kind of file. The form's rights let Stores make a submission; this keeps theirs to
+	the MST report."""
+	if doc.check_type != MST and not set(PAYMENT_ROLES) & set(frappe.get_roles()):
+		frappe.throw(_("A payment list is sent by Accounts. Choose 'MST Report' as the check type."))
+
+
 def before_submit(doc):
 	"""Everything that can refuse a Submit, so that no list waits for a check that cannot run. The
 	sweep comes first: a dead check must not block sending the same file again."""
@@ -162,8 +180,9 @@ def before_submit(doc):
 	problem = setup_problem()
 	if problem:
 		frappe.throw(problem)
-	# drafts do not count, and the day starts on the site's clock (the database's own clock is UTC)
-	sent_today = {"docstatus": 1, "submitted_at": (">=", now_datetime().strftime("%Y-%m-%d 00:00:00"))}
+	# drafts do not count, and the day starts on the site's clock (the database's own clock is UTC). Each kind
+	# of file has the day's limit to itself: MST sheets sent one by one must not use up the payment lists'
+	sent_today = {"docstatus": 1, "check_type": doc.check_type, "submitted_at": (">=", now_datetime().strftime("%Y-%m-%d 00:00:00"))}
 	if frappe.db.count(SUBMISSION, sent_today) >= lim.max_checks_per_day:
 		frappe.throw(
 			_("Today's limit of {0} checks is reached. Try again tomorrow.").format(lim.max_checks_per_day))
@@ -177,7 +196,8 @@ def before_submit(doc):
 	if frappe.cache.incr(reads) > READS_PER_HOUR:
 		frappe.throw(_("You have sent many files in the last hour. Please try again later."))
 	try:
-		reader.prepare(data, lim, wait=SUBMIT_WAIT)  # in its own process, with a memory and a time limit
+		# in its own process, with a memory and a time limit
+		reader.prepare(data, lim, wait=SUBMIT_WAIT, mst=doc.check_type == MST)
 	except reader.Busy:
 		frappe.throw(_("The checker is busy with another file. Please submit again in a minute."))
 	except reader.Unreadable as e:
@@ -204,7 +224,7 @@ def on_form_load(doc):
 	if doc.docstatus == 1 and doc.status == ST_CHECKING and sweep_stale(doc.name):
 		frappe.local.flags.commit = True
 		doc.reload()
-	doc.set_onload("eta_min", eta_minutes())
+	doc.set_onload("eta_min", eta_minutes(doc.check_type))
 	points = own_points(doc)
 	if points is not None:
 		doc.set_onload("own_points", points)
@@ -272,7 +292,8 @@ def own_bell(doc):
 		if doc.owner != frappe.session.user or doc.owner in role_recipients("MD"):
 			return 0
 		count = len(_own_points(doc.name, doc.owner) or [])
-		subject = _("Your payment list of {0} is checked.").format(rules.day(doc.list_date) or doc.name) + " " + (
+		subject = (_("Your MST report of {0} is checked.").format(month(doc.list_date) or doc.name) if doc.check_type == MST
+			else _("Your payment list of {0} is checked.").format(rules.day(doc.list_date) or doc.name)) + " " + (
 			_("{0} point(s) for you to look at.").format(count) if count else _("No point for you to correct."))
 		_notification_log(doc.owner, subject, subject, SUBMISSION, doc.name)
 		return 1
@@ -282,9 +303,15 @@ def own_bell(doc):
 		return 0
 
 
-def eta_minutes() -> int | None:
-	"""How long the last ten finished checks took on average, so the form can say when to look again."""
-	rows = frappe.get_all(SUBMISSION, filters={"docstatus": 1, "status": ST_SENT},
+def month(value):
+	"""The month an MST report is for, as words: 'September 2026'."""
+	return formatdate(value, "MMMM yyyy") if value else ""
+
+
+def eta_minutes(kind=PAYMENT) -> int | None:
+	"""How long the last ten finished checks of this kind took on average, so the form can say when to look
+	again. An MST report is checked in seconds and a payment list in minutes: each has its own figure."""
+	rows = frappe.get_all(SUBMISSION, filters={"docstatus": 1, "status": ST_SENT, "check_type": kind},
 		fields=["submitted_at", "finished_at"], order_by="finished_at desc", limit=10)
 	seconds = [(get_datetime(r.finished_at) - get_datetime(r.submitted_at)).total_seconds()
 		for r in rows if r.submitted_at and r.finished_at]
@@ -350,13 +377,18 @@ def run_check(submission):
 			frappe.clear_messages()  # not the bytes that were checked at Submit: deleted or changed since
 			raise reader.Unreadable(_("The file is no longer attached. Attach it and submit again."))
 		try:  # every local read, in its own process with limits
-			info = reader.prepare(data, lim, full=True, wait=JOB_WAIT)
+			info = reader.prepare(data, lim, full=True, wait=JOB_WAIT, mst=doc.check_type == MST)
 		except (reader.Busy, reader.ServiceError) as e:  # our side, not the AI service's
 			raise RuntimeError(getattr(e, "detail", "the reader stayed busy")) from e
-		result = info.table or reader.read_document(data, info, lim, ai_call)
-		spent = _spent(result.meta, {})
-		checked = match.check(doc, result)  # code only: a failure here fails the check, it never sends half a report
-		reviewed = review.run(doc, result, checked, ai_call)  # never raises: the report does not wait on the AI
+		if doc.check_type == MST:  # code: the workbook's own arithmetic, its lines against the month's ERP issues, last month's report
+			result, checked = mst.report(info.book, info.kind, erp=issues.fetch(doc.company, doc.list_date),
+				month={"day": doc.list_date, "before": months.before(doc.company, doc.list_date)})
+			reviewed = review.run(doc, result, checked, ai_call)  # never raises: the report does not wait on the AI
+		else:
+			result = info.table or reader.read_document(data, info, lim, ai_call)
+			spent = _spent(result.meta, {})
+			checked = match.check(doc, result)  # code only: a failure here fails the check, it never sends half a report
+			reviewed = review.run(doc, result, checked, ai_call)  # never raises: the report does not wait on the AI
 		spent = _spent(result.meta, reviewed.meta)
 		_save_report(doc, result, checked, reviewed)
 		if _finish(submission, ST_SENT, None, lines_read=len(result.lines), **spent):
@@ -420,7 +452,7 @@ def _spent(read, reviewed):
 	read, reviewed = read or {}, reviewed or {}
 	if not read and not reviewed:
 		return {}
-	out = {"model_used": read.get("model_used") or limits().model}
+	out = {"model_used": read.get("model_used") or reviewed.get("model_used") or limits().model}
 	for fieldname in ("input_tokens", "output_tokens", "cost_usd"):
 		out[fieldname] = (read.get(fieldname) or 0) + (reviewed.get(fieldname) or 0)
 	if not any(out[fieldname] for fieldname in ("input_tokens", "output_tokens", "cost_usd")):

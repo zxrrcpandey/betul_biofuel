@@ -190,13 +190,23 @@ def sniff(data):
 	return "csv" if text and any(d in text[:4096] for d in DELIMITERS) else None
 
 
-def basic_check(data, lim):
-	"""The Submit-time check: refuse in plain words a file the job could not read anyway."""
+def basic_check(data, lim, mst=False):
+	"""The Submit-time check: refuse in plain words a file the job could not read anyway. An MST report is
+	a workbook of many tables, read by `ts_ai_check_mst`; what it read comes back as `book`."""
 	if not data:
 		frappe.throw(_("The file is empty."))
 	kind = sniff(data)
 	if not kind:
 		frappe.throw(_("This file type cannot be checked. Use Excel, CSV, PDF or a JPG/PNG photo."))
+	if mst:
+		if kind not in ("xlsx", "xls", "csv"):
+			frappe.throw(_("An MST report is checked from its Excel file. Attach the Excel file."))
+		from trustbit_ethanol.ts_gate_entry import ts_ai_check_mst
+
+		try:
+			return frappe._dict(kind=kind, pages=0, book=ts_ai_check_mst.read_book(data, kind))
+		except Unreadable as e:
+			frappe.throw(str(e))
 	pages = 0
 	try:
 		if kind == "pdf":
@@ -248,12 +258,12 @@ def _open_image(data):
 	return image
 
 
-def _walk(rows, left):
+def _walk(rows, left, refusal=None):
 	"""The rows, counted against what is left for the whole file (`left` is a one-item list)."""
 	for row in rows:
 		left[0] -= 1
 		if left[0] < 0:
-			raise Unreadable(_("The file is too large to read. Save the payment list on its own and attach again."))
+			raise Unreadable(refusal or _("The file is too large to read. Save the payment list on its own and attach again."))
 		yield row
 
 
@@ -276,7 +286,7 @@ def map_columns(cells):
 	return found
 
 
-def parse_amount(value):
+def parse_amount(value, places=2):
 	"""A cell or a written amount as a number; None when it is not plainly one (never a guess)."""
 	if isinstance(value, bool) or not isinstance(value, (int, float, str)):
 		return None
@@ -294,10 +304,10 @@ def parse_amount(value):
 			return None
 		value = float(text.replace(",", ""))
 		value = -value if negative else value
-	return round(float(value), 2) if abs(value) < MAX_AMOUNT else None
+	return round(float(value), places) if abs(value) < MAX_AMOUNT else None
 
 
-def _xlsx_sheets(data, formulas=False):
+def _xlsx_sheets(data, formulas=False, cols=MAX_COLS):
 	from openpyxl import load_workbook
 
 	too_large = Unreadable(_("The Excel file is too large inside. Save a smaller copy and attach again."))
@@ -321,13 +331,13 @@ def _xlsx_sheets(data, formulas=False):
 		for sheet in book.worksheets:
 			sheet.reset_dimensions()  # a wrong <dimension> tag otherwise cuts rows silently
 			# bounded both ways: a 5 KB file can name row 100,000,000,000 or column XFD
-			rows = sheet.iter_rows(values_only=True, max_row=LAST_ROW, max_col=MAX_COLS + 1)
+			rows = sheet.iter_rows(values_only=True, max_row=LAST_ROW, max_col=cols + 1)
 			yield sheet.title, sheet.sheet_state == "visible", enumerate(rows, 1)
 	finally:
 		book.close()
 
 
-def _xls_sheets(data):
+def _xls_sheets(data, cols=MAX_COLS):
 	import xlrd
 
 	try:
@@ -355,7 +365,7 @@ def _xls_sheets(data):
 			raise Unreadable(_("The Excel file is too large inside. Save a smaller copy and attach again."))
 		for index in range(book.nsheets):
 			sheet = book.sheet_by_index(index)  # one sheet in memory at a time, rows not padded
-			rows = ([value(cell) for cell in sheet.row_slice(i, 0, MAX_COLS + 1)] for i in range(sheet.nrows))
+			rows = ([value(cell) for cell in sheet.row_slice(i, 0, cols + 1)] for i in range(sheet.nrows))
 			yield sheet.name, not sheet.visibility, enumerate(rows, 1)
 			book.unload_sheet(index)
 			sheet.put_cell = None  # xlrd keeps a bound method on the sheet: a cycle that holds every row
@@ -363,13 +373,13 @@ def _xls_sheets(data):
 		book.release_resources()
 
 
-def _csv_sheets(data):
+def _csv_sheets(data, cols=MAX_COLS):
 	text = _decode(data)
 	if text is None:
 		raise _unopenable()
 
 	def rows(delimiter, limit=None):
-		cut = (row[:MAX_COLS + 1] for row in csv.reader(io.StringIO(text, newline=""), delimiter=delimiter))
+		cut = (row[:cols + 1] for row in csv.reader(io.StringIO(text, newline=""), delimiter=delimiter))
 		return enumerate(islice(cut, limit), 1)  # cut as Excel rows are: 61 cells say "more than 60 columns"
 
 	def fits(delimiter):
@@ -734,12 +744,12 @@ try:
 		out.write("1000")  # if the server runs out of memory anyway, the kernel stops this reader, not the database
 except OSError:
 	pass
-import runpy
-runpy.run_module("trustbit_ethanol.ts_gate_entry.ts_ai_check_reader", run_name="__main__")
+from trustbit_ethanol.ts_gate_entry import ts_ai_check_reader
+ts_ai_check_reader._child()  # imported, not run as a script: the MST reader imports this module, and must get this copy
 """
 
 
-def prepare(data, lim, full=False, wait=0):
+def prepare(data, lim, full=False, wait=0, mst=False):
 	"""basic_check in its own Python process with a memory and a time limit, and with `full` also every other
 	local read the job needs (the table, the photo as JPEG, the PDF's text layers). The file libraries parse
 	all of a file's parts, so a few KB made for it could otherwise take the server's memory (security
@@ -754,7 +764,8 @@ def prepare(data, lim, full=False, wait=0):
 	from filelock import FileLock, Timeout
 	from frappe.utils import get_bench_path
 
-	too_large = Unreadable(_("The file is too large to read. Save the payment list on its own and attach again."))
+	too_large = Unreadable(_("The file is too large to read. Send one sheet at a time.") if mst else
+		_("The file is too large to read. Save the payment list on its own and attach again."))
 	slot = FileLock(os.path.join(get_bench_path(), "config", SLOT))
 	try:
 		slot.acquire(timeout=wait)
@@ -763,7 +774,7 @@ def prepare(data, lim, full=False, wait=0):
 	except OSError as e:  # the slot's file cannot be made: folder rights, a file left by another user
 		raise ServiceError(f"The reader slot could not be taken: {e}") from None
 	try:  # the copies made here count too, so they are made inside the slot
-		ask = json.dumps({"data": base64.b64encode(data).decode(), "lim": dict(lim), "full": full})
+		ask = json.dumps({"data": base64.b64encode(data).decode(), "lim": dict(lim), "full": full, "mst": bool(mst)})
 		with tempfile.TemporaryFile() as err:  # a file, not a pipe: only its last 4 KB come into this process
 			try:
 				done = subprocess.run([sys.executable, "-I", "-B", "-c", BOOT], input=ask.encode(),
@@ -806,9 +817,11 @@ def _child():
 	ask = json.loads(sys.stdin.buffer.read())
 	data = base64.b64decode(ask["data"])
 	try:
-		info = basic_check(data, frappe._dict(ask["lim"]))
+		info = basic_check(data, frappe._dict(ask["lim"]), ask.get("mst"))
 		answer = {"kind": info.kind, "pages": info.pages}
-		if ask["full"] and info.kind in ("xlsx", "xls", "csv"):
+		if ask.get("mst"):
+			answer["book"] = info.book if ask["full"] else None
+		elif ask["full"] and info.kind in ("xlsx", "xls", "csv"):
 			answer["table"] = read_table(data, info.kind)
 		elif ask["full"] and info.kind == "image":
 			answer["jpeg"] = base64.b64encode(_photo_jpeg(data)).decode()
@@ -821,6 +834,3 @@ def _child():
 		out = None
 	sys.stdout.write(out if out and len(out) <= MAX_ANSWER else '{"large": 1}')
 
-
-if __name__ == "__main__":
-	_child()

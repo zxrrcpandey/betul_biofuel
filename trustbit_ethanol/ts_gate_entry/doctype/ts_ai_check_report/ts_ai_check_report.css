@@ -19,6 +19,14 @@
 .aichk-sum { max-width: 85ch; }
 .aichk-aisum { border-left: 3px solid var(--primary); background: var(--subtle-fg); border-radius: 0 8px 8px 0; padding: 9px 12px; max-width: 85ch; }
 .aichk-aisum b, .aichk-says b, .aichk-cover b { display: block; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px; }
+.aichk-trend { border: 1px solid var(--border-color); border-radius: var(--border-radius-md); padding: 9px 12px; overflow-x: auto; }
+.aichk-trend > b { display: block; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px; }
+.aichk-trend table { width: 100%; font-size: var(--text-sm); border-collapse: collapse; margin-bottom: 4px; }
+.aichk-trend th, .aichk-trend td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+.aichk-trend th:first-child, .aichk-trend td:first-child { text-align: left; white-space: normal; }
+.aichk-trend th { color: var(--text-muted); font-weight: 600; }
+.aichk-trend tr.moved td:last-child, .aichk-trend tr.gone td:last-child { color: var(--orange-500); font-weight: 700; }
+.aichk-trend tr.total td { font-weight: 700; border-bottom: 0; }
 .aichk-ai { font-size: 10px; font-weight: 700; border: 1px solid var(--border-color); border-radius: 4px; padding: 0 5px; color: var(--text-muted); }
 .aichk-tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .aichk-lines { border: 1px solid var(--border-color); border-radius: var(--border-radius-md); overflow: hidden; }

@@ -819,7 +819,7 @@ def _review_and_job(u):
 		out, calls = run(said([point(1, CHECK, ["PR-9"]), point(2, NOTE)]))
 		eq((out.summary, out.note), ("Two lines. One is backed.", ""))
 		eq([(p["line_no"], p["level"], p["source"], p["rule"], p["refs"]) for p in out.points], [(1, CHECK, "AI", "AI", "PR-9"), (2, NOTE, "AI", "AI", "")])
-		eq(out.meta, {"input_tokens": 1300, "output_tokens": 300, "cost_usd": 0.0221})
+		eq(out.meta, {"input_tokens": 1300, "output_tokens": 300, "cost_usd": 0.0221, "model_used": s1.MODEL})
 		eq(len(calls), 1, "one call")
 		check("data, not instructions" in calls[0].system and "tools" not in calls[0].kw, "the instructions; no tools")
 		sent = json.loads(calls[0].content[0]["text"].split("\n", 1)[1])
@@ -1022,7 +1022,8 @@ def _review_and_job(u):
 	def t_own_filter():
 		import re
 
-		source = open(rules.__file__.replace(".pyc", ".py"), encoding="utf-8").read() + open(match.__file__.replace(".pyc", ".py"), encoding="utf-8").read()
+		# the payment list's rules, and the MST report's (its file arithmetic, and its lines against the ERP's issues)
+		source = "".join(open(module.__file__.replace(".pyc", ".py"), encoding="utf-8").read() for module in (rules, match, ai.mst, ai.issues))
 		known = set(re.findall(r'"([A-Z]\d)"', source))
 		check(set(ai.OWN_RULES) <= known and len(known) >= 40, f"every listed rule exists: {sorted(set(ai.OWN_RULES) - known)}")
 		kept = known - set(ai.OWN_RULES)
@@ -1198,6 +1199,7 @@ def run():
 
 	ai, rules, match, review = ts_ai_check, ts_ai_check_rules, ts_ai_check_match, ts_ai_check_review
 	REAL.update(match=match, review=review)
+	review.frappe = s1.AsSeen(log_error=s1.fake_review_log)  # the review's own Error Log rows are recorded, not written
 	s1.ai, s1.reader = ts_ai_check, ts_ai_check_reader
 	s1.KEPT.update({name: getattr(ai, name) for name in s1.SWAPPED})
 	ai.READS_PER_HOUR = 10 ** 6

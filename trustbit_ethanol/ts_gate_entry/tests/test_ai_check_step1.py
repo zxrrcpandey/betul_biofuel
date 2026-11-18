@@ -175,6 +175,7 @@ def unreadable(fn, sentence):
 
 class Fake:
 	queued, logged, calls, asked, commits = [], [], [], [], []
+	review_logged = []  # what the review module would have written to the Error Log, as (title, message)
 	job_alive = {}  # job id -> the queue's answer; an id no test names (a real check) counts as still queued
 	answer = None  # the AI's next answer: an outcome, or a function of the content that returns one
 	settings_changed = False
@@ -196,6 +197,11 @@ def fake_enqueue(method, **kwargs):
 
 def fake_log(title=None, message=None, *args, **kwargs):
 	Fake.logged.append(frappe._dict(title=title, message=message))
+
+
+def fake_review_log(title=None, message=None, *args, **kwargs):
+	"""For the review module, which writes its own Error Log rows: `review.frappe = AsSeen(log_error=fake_review_log)`."""
+	Fake.review_logged.append((title, message))
 
 
 def fake_alive(job):
@@ -242,7 +248,7 @@ def calm():
 	"""Back to the run's starting point after each test, whatever the test left behind."""
 	frappe.set_user("Administrator")
 	frappe.clear_messages()
-	for record in (Fake.queued, Fake.logged, Fake.calls, Fake.asked, Fake.job_alive):
+	for record in (Fake.queued, Fake.logged, Fake.review_logged, Fake.calls, Fake.asked, Fake.job_alive):
 		record.clear()
 	Fake.answer = None
 	if ai:
@@ -753,8 +759,8 @@ def _file_check(u):
 
 		saved = reader.BOOT
 		try:
-			reader.BOOT = saved.replace("import runpy", "import sys\nfor _ in range(200):\n"
-				"\tsys.stderr.write('x' * (1 << 20))\nimport runpy")
+			reader.BOOT = saved.replace("from trustbit_ethanol", "import sys\nfor _ in range(200):\n"
+				"\tsys.stderr.write('x' * (1 << 20))\nfrom trustbit_ethanol")
 			before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 			if sys.platform.startswith("linux"):  # the kernel stops a reader that writes more than 1 MB of it
 				turned_away(xlsx(listing()), "xlsx", M28)
@@ -767,7 +773,7 @@ def _file_check(u):
 			check(grew < 100, f"this process grew {grew:.0f} MB")
 		finally:
 			reader.BOOT = saved
-		prelude = saved.split("import runpy")[0] + (
+		prelude = saved.split("from trustbit_ethanol")[0] + (
 			"import resource, warnings, logging\n"
 			"warnings.warn('x' * 50)\nlogging.getLogger('t').warning('y' * 50)\n"
 			"print([resource.getrlimit(getattr(resource, n))[0] for n in ('RLIMIT_AS', 'RLIMIT_FSIZE', 'RLIMIT_CPU')])\n"
@@ -872,7 +878,7 @@ def _file_check(u):
 	def t_daily_cap():
 		doc = draft(acc, attach(acc, xlsx(listing()), "xlsx").url)
 		midnight = frappe.utils.now_datetime().strftime("%Y-%m-%d 00:00:00")
-		today = frappe.db.count(SUB, {"docstatus": 1, "submitted_at": (">=", midnight)})
+		today = frappe.db.count(SUB, {"docstatus": 1, "check_type": "Payment List", "submitted_at": (">=", midnight)})
 		check(today > 0, "the earlier tests left no submitted list")
 		setting(max_checks_per_day=today)
 		refused(lambda: submit(acc, doc.name), M17.format(today))

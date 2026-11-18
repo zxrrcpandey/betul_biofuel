@@ -541,7 +541,7 @@ def check(doc, result):
 	found = sum(1 for s in resolved if s)
 	read = [r for facts in cache.values() for r in facts["receipts"]]
 	raw = [r for r in read if r["rm"]]
-	earlier = frappe.db.count(REPORT, {"company": company, "name": ("!=", doc.name),
+	earlier = frappe.db.count(REPORT, {"company": company, "check_type": "Payment List", "name": ("!=", doc.name),
 		"creation": (">=", add_days(nowdate(), -rules.POSITION_DAYS))})
 	summary = (f"{n} lines, {rules.money(total)}. No issue found: {sums[rules.OK][0]}. To check: {sums[rules.CHECK][0]}. "
 		f"Serious: {sums[rules.SERIOUS][0]}. Each line sits in one group only, by its heaviest point.")

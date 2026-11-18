@@ -8,6 +8,7 @@
 // with other forms).
 function show_own_points(frm, points) {
 	if (!Array.isArray(points)) return;
+	const mst = frm.doc.check_type === "MST Report";
 	const $body = $(frm.dashboard.add_section("", __("Points for you to check"), "custom ts-own-points"));
 	const note = __("The MD gets the full report.");
 	if (!points.length) {
@@ -24,7 +25,7 @@ function show_own_points(frm, points) {
 		points.forEach((p) => {
 			const $row = $("<tr>").appendTo($rows);
 			$("<td style='white-space: nowrap;'>")
-				.text(cint(p.line_no) ? p.line_no : __("Whole list"))
+				.text(cint(p.line_no) ? p.line_no : mst ? __("Sheet or file") : __("Whole list"))
 				.appendTo($row);
 			const $point = $("<td>").appendTo($row);
 			const $title = $("<div>").appendTo($point);
@@ -40,15 +41,54 @@ function show_own_points(frm, points) {
 			$("<div class='text-muted' style='margin-top: 4px;'>").text(p.detail || "").appendTo($point);
 		});
 		$("<div class='text-muted small'>")
-			.text(__("Correct these and submit the list again if needed.") + " " + note)
+			.text(
+					(mst
+						? __("Correct these in the workbook and submit it again if needed.")
+						: __("Correct these and submit the list again if needed.")) +
+						" " +
+						note
+				)
 			.appendTo($body);
 	}
 	frm.dashboard.show();
 }
 
+// The form serves two kinds of file. The labels and help of the date and the file follow the kind chosen;
+// the payment list's own words are the ones in the DocType.
+function show_type_words(frm) {
+	const mst = frm.doc.check_type === "MST Report";
+	if (!frm._ts_words) {
+		frm._ts_words = ["list_date", "file"].map((f) => [f, frm.fields_dict[f].df.label, frm.fields_dict[f].df.description || ""]);
+	}
+	const words = mst
+		? [
+				["list_date", __("Month of the report"), __("Any date in that month.")],
+				["file", __("MST report file"), __("The MST workbook as Excel: all its sheets, or any one sheet. One file per submission.")],
+		  ]
+		: frm._ts_words;
+	words.forEach(([fieldname, label, description]) => {
+		frm.set_df_property(fieldname, "label", label);
+		frm.set_df_property(fieldname, "description", description);
+	});
+}
+
 frappe.ui.form.on("TS AI Check Submission", {
+	check_type(frm) {
+		frm.events.refresh(frm);
+	},
+
+	onload(frm) {
+		// a payment list is sent by Accounts only (the server refuses it from anyone else): a new form of
+		// another person starts as an MST report
+		if (frm.is_new() && !frappe.user.has_role(["Accounts User", "Accounts Manager"])) {
+			frm.set_value("check_type", "MST Report");
+		}
+	},
+
 	refresh(frm) {
 		const doc = frm.doc;
+		const mst = doc.check_type === "MST Report";
+		show_type_words(frm);
 		// values from the document go into HTML, so each one is escaped first
 		const esc = (value) => frappe.utils.escape_html(String(value));
 
@@ -57,11 +97,16 @@ frappe.ui.form.on("TS AI Check Submission", {
 
 		if (frm.is_new()) {
 			frm.set_intro(
-				__("Attach the payment list as Excel, CSV, PDF or a photo, then Save and Submit."),
+				mst
+					? __("Attach the MST report as Excel (all its sheets, or any one sheet), then Save and Submit.")
+					: __("Attach the payment list as Excel, CSV, PDF or a photo, then Save and Submit."),
 				"blue"
 			);
 		} else if (doc.docstatus === 0) {
-			frm.set_intro(__("Press Submit to send the list for checking."), "blue");
+			frm.set_intro(
+				mst ? __("Press Submit to send the report for checking.") : __("Press Submit to send the list for checking."),
+				"blue"
+			);
 		} else if (doc.status === "Being checked") {
 			const eta = cint((doc.__onload || {}).eta_min);
 			frm.set_intro(
