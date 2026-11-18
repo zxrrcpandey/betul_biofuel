@@ -302,11 +302,9 @@ class TSToken(Document):
 
 		# Get settings
 		settings = frappe.get_single("TS Settings")
-		warehouse = settings.default_warehouse
-		accepted_warehouse = settings.default_accepted_warehouse
-
-		if not warehouse:
-			frappe.throw("Please set Default Warehouse in TS Settings before creating GRN")
+		# v2.80.4 — warehouse of the PO's company (TS Settings default for BBPL)
+		from trustbit_ethanol.ts_gate_entry.stores_receiving_api import _grn_warehouses
+		warehouse, accepted_warehouse = _grn_warehouses(po)
 
 		# Build Purchase Receipt items from PO items
 		pr_items = []
