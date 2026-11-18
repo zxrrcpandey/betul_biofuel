@@ -1559,6 +1559,18 @@ def _job(u):
 		check(any(subject.endswith("1 point(s) to check on a sheet or the whole file.") for subject in bells(REPORT, name, md)),
 			"the bell counts code's point, not the AI's: " + str(bells(REPORT, name, md)))
 		printed = frappe.render_template(frappe.db.get_value("Print Format", "TS AI Check Report", "html"), {"doc": frappe.get_doc(REPORT, name)})
+		check(frappe.render_template("{{ first | e }} &middot; sent by {{ frappe.get_fullname(sto) | e }} on ", {"first": first, "sto": sto}) in printed,
+			"the print names who sent last month's report, and when")
+		# the print endpoint also renders a document made from the caller's own JSON: such a document gets no look-up at all
+		layout = frappe.db.get_value("Print Format", "TS AI Check Report", "html")
+		for asked in (first, {"name": first, "check_type": "MST Report"}, {"name": first, "check_type": "Payment List"}):
+			forged = frappe.get_doc({"doctype": "ToDo", "description": "x", "name": "X", "lines": [], "findings": [], "list_date": "2031-04-30",
+				"check_type": "MST Report", "submitted_on": "2031-04-30 10:00:00", "list_total": 0, "lines_total": 0, "n_ok": 0, "n_check": 0,
+				"n_serious": 0, "amt_ok": 0, "amt_check": 0, "amt_serious": 0, "figures": json.dumps({"trend": {"before": "x", "report": asked,
+				"rows": [{"head": "x", "was": None, "now": None, "flag": "", "change": None}]}})})
+			page = frappe.render_template(layout, {"doc": forged})
+			check("Against the MST report of x" in page and "sent by" not in page and "no longer in the system" not in page,
+				f"a document that is no report learns nothing of a report: {asked}")
 		limits = json.loads(r.figures)["limits"]
 		eq((len(limits), limits[0][:7], "not compared" in " ".join(limits)), (4, "A bill,", False), "the coal lines were set against the ERP: no limit says otherwise")
 		check("<b>Limits of this check.</b>" in printed and all(frappe.render_template("<b>{{ t | e }}</b>", {"t": text}) in printed for text in limits),

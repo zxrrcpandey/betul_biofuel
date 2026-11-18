@@ -158,6 +158,7 @@ function aichk_draw(frm) {
 	const trend_html =
 		trend && (trend.rows || []).length
 			? `<div class="aichk-trend"><b>${__("Against the MST report of {0}", [esc(trend.before)])} · ${esc(trend.report)}</b>` +
+			  `<p class="aichk-muted aichk-base">${esc(state.base || "")}</p>` +
 			  `<table><thead><tr><th>${trend.by === "head" ? __("Head") : __("Sheet")}</th><th>${esc(trend.before)}</th><th>${__("This report")}</th>` +
 			  (trend.litres ? `<th>${__("A litre, then")}</th><th>${__("A litre, now")}</th>` : "") +
 			  `<th>${__("Change")}</th></tr></thead><tbody>` +
@@ -219,6 +220,17 @@ function aichk_draw(frm) {
 	const $wrap = frm.fields_dict.view.$wrapper;
 	$wrap.html(html);
 	state.just = null;
+	// who sent last month's report, and when: any uploader's file for that month can be the one this report is set against
+	if (trend && trend.report && state.base === undefined) {
+		state.base = "";
+		frappe.db.get_value("TS AI Check Report", trend.report, ["submitted_by", "submitted_on"]).then((r) => {
+			const got = (r && r.message) || {};
+			state.base = got.submitted_by
+				? __("{0} was sent by {1} on {2}.", [trend.report, frappe.user.full_name(got.submitted_by), frappe.datetime.str_to_user(got.submitted_on)])
+				: __("{0} is no longer in the system.", [trend.report]);
+			if (frm._aichk === state) $wrap.find(".aichk-base").text(state.base);
+		});
+	}
 	if (first && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
 		// the four counts run up to their value; the value itself is already in the page
 		$wrap.find(".aichk-tile .v").each(function () {
