@@ -55,6 +55,11 @@ def on_account(line):
 	return bool(ON_ACCOUNT.search(line.get("remarks_text") or "")) or (amount >= 100000 and amount % ROUND_STEP == 0)
 
 
+# a line with nothing of its value behind it: how it was matched, and the M1 point's words
+NONE_HOW = "No receipt or order of this value"
+NONE_DETAIL = "It may be a part payment or a payment after a deduction. Nothing in the ERP equals it."
+
+
 def _found(code, how, receipts=(), order=None, **more):
 	return {"code": code, "how": how, "receipts": list(receipts), "order": order, **more}
 
@@ -186,7 +191,7 @@ def match_amount(line, facts, ctx=None):
 				return found
 	if on_account(line):
 		return _found("account", ACCOUNT_HOW)
-	return _found("none", "No receipt or order of this value")
+	return _found("none", NONE_HOW)
 
 
 def approved(order):
@@ -762,8 +767,7 @@ def judge(line, facts, ctx=None):
 			if found["code"] == "account":
 				figures = job.position()
 			elif found["code"] == "none":
-				job.add(CHECK, "M1", "No receipt or order of this value",
-					"It may be a part payment or a payment after a deduction. Nothing in the ERP equals it.")
+				job.add(CHECK, "M1", NONE_HOW, NONE_DETAIL)
 			elif job.order:
 				job.order_payment()
 			if found["code"] not in ("account", "none"):

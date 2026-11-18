@@ -7,7 +7,8 @@ row lock.
 
 The job has three steps: read the file into lines (`ts_ai_check_reader`), check each line against the
 ERP (`ts_ai_check_match` and `ts_ai_check_rules`), then the AI's review and the bell to the MD
-(`ts_ai_check_review`). The submitter sees the status only; the report is the MD's."""
+(`ts_ai_check_review`). The report is the MD's. The submitter sees the status and, on their own list,
+the points they can fix themselves (`own_points`)."""
 
 import hashlib
 import math
@@ -21,6 +22,7 @@ from frappe.utils import background_jobs, cint, cstr, get_datetime, now_datetime
 from trustbit_ethanol.ts_gate_entry import ts_ai_check_match as match
 from trustbit_ethanol.ts_gate_entry import ts_ai_check_reader as reader
 from trustbit_ethanol.ts_gate_entry import ts_ai_check_review as review
+from trustbit_ethanol.ts_gate_entry import ts_ai_check_rules as rules
 
 SUBMISSION = "TS AI Check Submission"
 REPORT = "TS AI Check Report"
@@ -45,6 +47,22 @@ LINE_FIELDS = ("line_no", "page", "source_row", "kind", "supplier_text", "bill_n
 CHECK_FIELDS = ("verdict", "supplier", "supplier_title", "match_how", "list_says", "erp_says", "chain", "receipts_used", "claims")
 SUM_FIELDS = ("summary", "coverage", "n_ok", "n_check", "n_serious", "amt_ok", "amt_check", "amt_serious")
 FINDING_FIELDS = ("line_no", "level", "source", "rule", "title", "detail", "refs")
+# What the submitter sees of their own checked list, on the form: the points they can fix themselves (a name
+# the ERP does not know, a repeated line, an amount or a total that does not fit, a bill the ERP shows as
+# paid). Every other rule (approval, gate, stock, on-account, many orders to one supplier, records outside
+# the submitter's access), every Note and the AI's review stay in the report.
+OWN_RULES = ("S1", "S2", "S3", "S4", "R1", "R2", "R3", "R4", "R5", "U1", "Y1", "Y2", "Y3", "Y4", "M1", "T1", "T3")
+# R2, R4, R5 and the last sentence of Y3 are worked out from every earlier checked list of the company,
+# other people's included (line numbers, what those lines asked, what stood behind them, totals over all
+# of them). The form never gives those stored words: it gives these, with only the submitter's own
+# receipt or order in them. The date in R2's title is kept when the earlier list is the submitter's own.
+OWN_WORDS = {
+	"R2": "The same amount for this supplier was on an earlier checked list. If that one was not paid, this is fine.",
+	"R4": "{0} stood behind a line of an earlier checked list. If that one was paid, part of this line is paid twice.",
+	"R5": "More is asked on {0} than its value, on this list or together with earlier checked lists. "
+		"If the earlier ones were paid, this pays the same goods again.",
+}
+OWN_R2_TITLE = "Asked before, on an earlier checked list"
 
 
 def limits():
@@ -135,6 +153,8 @@ def before_submit(doc):
 	sweep comes first: a dead check must not block sending the same file again."""
 	if doc.is_new():  # submitted while being created: the naming row would stay locked through the read
 		frappe.throw(_("Save the list first, then submit it."))
+	if doc.owner != frappe.session.user:  # the check reads the ERP as whoever submits, and its points go to the owner
+		frappe.throw(_("Only the person who made this list can submit it."))
 	sweep_stale()
 	lim = limits()
 	if not lim.enabled:
@@ -185,6 +205,81 @@ def on_form_load(doc):
 		frappe.local.flags.commit = True
 		doc.reload()
 	doc.set_onload("eta_min", eta_minutes())
+	points = own_points(doc)
+	if points is not None:
+		doc.set_onload("own_points", points)
+
+
+def own_points(doc):
+	"""For the form of a checked list, and only for the person who submitted it: the points of `OWN_RULES`
+	graded Serious or To check, each with its line as the file gave it. `None` means there is nothing to
+	show (not checked, or the reader is not the submitter); an empty list means no such point was found.
+	The counts of the report are not given: they would tell how many other points the MD has.
+	The check's own last write is in the submitter's name. A list that another account submitted (possible
+	before Submit was limited to the owner) was read with that account's access, so it gives no points."""
+	if doc.docstatus != 1 or doc.status != ST_SENT or doc.owner != frappe.session.user or doc.modified_by != doc.owner:
+		return None
+	return _own_points(doc.name, doc.owner)
+
+
+def _own_points(name, owner):
+	if not frappe.db.exists(REPORT, name):  # the report has the submission's name
+		return None
+	found = frappe.get_all("TS AI Check Finding", filters={"parent": name, "parenttype": REPORT, "source": "Rule",
+		"rule": ("in", (*OWN_RULES, "X1")), "level": ("in", (rules.SERIOUS, rules.CHECK))},
+		fields=["line_no", "level", "rule", "title", "detail", "refs"], order_by="line_no asc, idx asc", limit_page_length=0)
+	lines = {row.line_no: row for row in frappe.get_all("TS AI Check Line", filters={"parent": name, "parenttype": REPORT},
+		fields=["line_no", "supplier_text", "amount", "match_how"], limit_page_length=0)} if found else {}
+	points = []
+	for f in found:
+		line = lines.get(f.line_no) or {}
+		words = own_words(f.rule, f.title, f.detail, f.refs, line.get("match_how"), owner)
+		if words:
+			points.append({"line_no": cint(f.line_no), "level": f.level, "title": words[0], "detail": words[1],
+				"supplier": line.get("supplier_text"), "amount": rules.money(line.get("amount")) if line else ""})
+	return points
+
+
+def own_words(rule, title, detail, refs, match_how, owner):
+	"""A point's (title, detail) as the submitter reads them, or None when the point is not for them."""
+	refs = [ref.strip() for ref in cstr(refs).split(",") if ref.strip()]
+	if rule == "X1":
+		# Records the submitter cannot read stand behind this supplier. That is the MD's to know: the form
+		# says what it would say with no such records (M1, or nothing for an on-account line), so a
+		# missing point tells nothing either.
+		return (rules.NONE_HOW, rules.NONE_DETAIL) if match_how == rules.NONE_HOW else None
+	if rule == "R2":  # the first reference is the earlier report
+		own = bool(refs) and frappe.db.get_value(REPORT, refs[0], "submitted_by") == owner
+		return title if own else OWN_R2_TITLE, OWN_WORDS["R2"]
+	if rule == "R4":  # the earlier report, then the receipts of this line that it shares
+		return title, OWN_WORDS["R4"].format(refs[1] if len(refs) > 1 else "A receipt")
+	if rule == "R5":  # the order of this line
+		return title, OWN_WORDS["R5"].format(refs[0] if refs else "this order")
+	if rule == "Y3":  # what the ERP shows stays; the sum asked on the order's receipts over all lists does not
+		return title, cstr(detail).split(" With this line")[0]
+	return title, detail
+
+
+def own_bell(doc):
+	"""One bell to the submitter when their list is checked, next to the MD's. The subject is the list date
+	and a count only: no word from the file goes into it. A submitter the MD's bell already reaches gets no
+	second one, and a check that ran in another account's name rings nobody. A bell that fails never stops
+	the report; IT gets the trace."""
+	try:
+		from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients
+		from trustbit_ethanol.ts_gate_entry.ts_production_notify import _notification_log
+
+		if doc.owner != frappe.session.user or doc.owner in role_recipients("MD"):
+			return 0
+		count = len(_own_points(doc.name, doc.owner) or [])
+		subject = _("Your payment list of {0} is checked.").format(rules.day(doc.list_date) or doc.name) + " " + (
+			_("{0} point(s) for you to look at.").format(count) if count else _("No point for you to correct."))
+		_notification_log(doc.owner, subject, subject, SUBMISSION, doc.name)
+		return 1
+	except Exception:
+		_log(cstr(getattr(doc, "name", "")), frappe.get_traceback())
+		frappe.clear_messages()
+		return 0
 
 
 def eta_minutes() -> int | None:
@@ -266,6 +361,7 @@ def run_check(submission):
 		_save_report(doc, result, checked, reviewed)
 		if _finish(submission, ST_SENT, None, lines_read=len(result.lines), **spent):
 			review.bell(submission)  # the report has the submission's name
+			own_bell(doc)
 		else:
 			_rollback()  # a sweep closed it first: leave no report behind
 	except reader.Unreadable as e:

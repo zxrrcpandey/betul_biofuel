@@ -973,6 +973,208 @@ def _review_and_job(u):
 		check(subject.endswith("1 Serious point(s) on the whole list."), subject)
 	test("job: a point on the whole list is named in the bell", t_whole_list_bell)
 
+	# ---- what the submitter sees on the form: their own list, the points they can fix, nothing else
+	def own(who, docname):
+		"""The form load itself, as `who`: what reaches the browser under `__onload`."""
+		from frappe.desk.form.load import getdoc
+
+		frappe.set_user(who)
+		try:
+			frappe.response.docs = []
+			getdoc(s1.SUB, docname)
+			return frappe.response.docs[-1].get("__onload").get("own_points")
+		finally:
+			frappe.response.docs = []
+			frappe.set_user("Administrator")
+
+	def plant(parent, idx, rule, level=CHECK, source="Rule", line_no=1, refs="", detail=None):
+		frappe.get_doc({"doctype": "TS AI Check Finding", "parent": parent, "parenttype": REPORT, "parentfield": "findings", "idx": idx,
+			"line_no": line_no, "source": source, "level": level, "rule": rule, "title": f"title {rule} {source} {level}",
+			"detail": detail or f"detail {rule}", "refs": refs}).db_insert()
+
+	def t_own_form():
+		got = own(acc, name)
+		eq([(p["line_no"], p["title"]) for p in got if p["line_no"]], [(n, "No supplier of this name in the ERP") for n in (1, 2, 3)])
+		eq(sorted(got[0]), ["amount", "detail", "level", "line_no", "supplier", "title"], "no rule code, no reference, no source")
+		line2 = next(p for p in got if p["line_no"] == 2)
+		eq((line2["supplier"], line2["amount"], line2["level"]), ("‹script›alert(1)‹/script› Traders", "₹800", CHECK), "the line as the report keeps it")
+		check(not [p for p in got if "pattern" in p["title"].lower()], "the AI's point is not given")
+		eq([(p["line_no"], p["title"], p["level"]) for p in got if not p["line_no"]], [(0, "The list total does not add up", SERIOUS)],
+			"a point on the whole list is given")
+	test("own: the submitter's form carries the points of their list, each with its line", t_own_form)
+
+	def t_own_only_submitter():
+		for who in (u.md, u.sm, u.ceo):
+			eq(own(who, name), None, f"{who} reads the submission, and gets no points with it")
+		for who in (u.mgr, u.pur, u.blank):
+			try:
+				own(who, name)
+				raise AssertionError(f"{who} opened another person's submission")
+			except frappe.PermissionError:
+				frappe.clear_messages()
+		frappe.set_user(u.mgr)
+		try:
+			eq(ai.own_points(frappe.get_doc(s1.SUB, name)), None, "another Accounts person gets none, even with the document in hand")
+		finally:
+			frappe.set_user("Administrator")
+	test("own: only the person who submitted the list gets its points", t_own_only_submitter)
+
+	def t_own_filter():
+		import re
+
+		source = open(rules.__file__.replace(".pyc", ".py"), encoding="utf-8").read() + open(match.__file__.replace(".pyc", ".py"), encoding="utf-8").read()
+		known = set(re.findall(r'"([A-Z]\d)"', source))
+		check(set(ai.OWN_RULES) <= known and len(known) >= 40, f"every listed rule exists: {sorted(set(ai.OWN_RULES) - known)}")
+		kept = known - set(ai.OWN_RULES)
+		check({"O1", "X1", "X2", "A1", "A2", "A3", "Q1", "B1", "V1", "V2", "G1", "G7", "K1", "W1", "W2", "W3", "P1", "P2", "P3", "D1", "N1", "N2", "N3",
+			"T2"} <= kept, f"what stays with the MD: {sorted(kept)}")
+		fresh = s1.sent(acc, s1.xlsx([s1.HEAD, [NOBODY, "", "", 77, ""]]), "xlsx")
+		s1.run_job(fresh)
+		frappe.db.delete("TS AI Check Finding", {"parent": fresh})
+		eq(own(acc, fresh), [], "a checked list with no such point gives an empty list, not nothing")
+		idx = 0
+		for rule in sorted(known):
+			for level in (SERIOUS, CHECK, NOTE, OK):
+				idx += 1
+				plant(fresh, idx, rule, level)
+			idx += 1
+			plant(fresh, idx, rule, SERIOUS, source="AI")
+		plant(fresh, idx + 1, "AI", SERIOUS, source="AI")
+		plant(fresh, idx + 2, "ZZ", SERIOUS)
+		got = own(acc, fresh)
+		# a repeat with no earlier report behind it gets the plain title
+		eq(sorted(p["title"] for p in got), sorted(ai.OWN_R2_TITLE if rule == "R2" else f"title {rule} Rule {level}" for rule in ai.OWN_RULES for level in (SERIOUS, CHECK)),
+			"only the listed rules, only Serious and To check, only the rules' own points")
+	test("own: every other rule, every Note and every AI point stays with the MD", t_own_filter)
+
+	def t_own_states():
+		other = s1.sent(acc, s1.xlsx([s1.HEAD, [NOBODY, "", "", 71, ""]]), "xlsx")
+		s1.run_job(other)
+		check(own(acc, other) is not None, "the usual case gives points")
+		frappe.db.set_value(s1.SUB, other, "modified_by", u.sm, update_modified=False)  # as a list another account submitted before the limit
+		eq(own(acc, other), None, "a list whose check ran in another account's name gives no points")
+		waiting = s1.sent(acc, s1.xlsx([s1.HEAD, [NOBODY, "", "", 76, ""]]), "xlsx")
+		eq(own(acc, waiting), None, "nothing while the list is being checked")
+		eq(ai._own_points("AICHK-NO-SUCH", acc), None, "no report, no points")
+		draft = s1.draft(acc, s1.attach(acc, s1.xlsx([s1.HEAD, [NOBODY, "", "", 75, ""]]), "xlsx").url).name
+		eq(own(acc, draft), None, "nothing on a draft")
+	test("own: no points before the list is checked", t_own_states)
+
+	def t_own_other_list():
+		known = frappe.db.get_value("Supplier", {"disabled": 0, "on_hold": 0}, "supplier_name", order_by="creation desc")
+		theirs = s1.sent(u.mgr, s1.xlsx([s1.HEAD, [known, "", "", 6543.75, ""]]), "xlsx")
+		s1.run_job(theirs)
+		mine = s1.sent(acc, s1.xlsx([s1.HEAD, [known, "", "", 6543.75, ""], [known, "", "", 2345.25, ""]]), "xlsx")
+		s1.run_job(mine)
+		stored = frappe.db.get_value("TS AI Check Finding", {"parent": mine, "rule": "R2"}, ["detail", "refs"], as_dict=True)
+		check(stored and stored.refs.split(",")[0] == theirs and stored.detail.startswith("Line 1 of that list"), "the report keeps the full sentence")
+		r2 = [(p["title"], p["detail"]) for p in own(acc, mine) if p["title"].startswith("Asked before")]
+		eq(r2, [(ai.OWN_R2_TITLE, ai.OWN_WORDS["R2"])], "another person's earlier list: no date, no line number, nothing that stood behind their line")
+		again = s1.sent(acc, s1.xlsx([s1.HEAD, [known, "", "", 2345.25, ""], [NOBODY, "", "", 5, ""]]), "xlsx")
+		s1.run_job(again)
+		r2 = [(p["title"], p["detail"]) for p in own(acc, again) if p["title"].startswith("Asked before")]
+		date = rules.day(frappe.db.get_value(REPORT, mine, "list_date"))
+		eq(r2, [(f"Asked before, on the list of {date}", ai.OWN_WORDS["R2"])], "the submitter's own earlier list: its date, and the same plain sentence")
+		# R4 and R5 are worked out from every earlier list too: their stored words never reach the form
+		told = "PR-77 (then named PR-70) stood behind line 9 of the list of 01-11-2026, which asked ₹9,00,000. If that was paid, part of this line is paid twice."
+		plant(mine, 90, "R4", SERIOUS, refs=f"{theirs}, PR-77", detail=told)
+		plant(mine, 91, "R5", SERIOUS, refs="PO-1", detail="PO-1 is ₹1,00,000. This line and line 1, line 2, line 3 and others ask ₹1,50,000 on it and on its receipts.")
+		got = own(acc, mine)
+		eq([p["detail"] for p in got if p["title"].startswith("title R4 ")], [ai.OWN_WORDS["R4"].format("PR-77")], "R4 names the submitter's own receipt only")
+		eq([p["detail"] for p in got if p["title"].startswith("title R5 ")], [ai.OWN_WORDS["R5"].format("PO-1")], "R5 names the submitter's own order only")
+		check(not [p for p in got if "9,00,000" in p["detail"] or "1,50,000" in p["detail"] or "line 9" in p["detail"]], "no line or money of another list")
+
+	def t_own_words():
+		# the rules' own output, through the same words the form gets: nothing of the other lists may survive
+		old = {"report": "A", "list_date": "2026-11-01", "line_no": 9, "amount": 500000.0, "receipts": [], "claims": [["o", "", "PO-1", 500000.0]], "recent": True}
+		cases = {
+			"R5": rules.judge(ln(250000), facts(orders=[od(total=1000000.0, net=1000000.0)], asked_rows=[old, {**old, "report": "B", "list_date": "2026-11-08"}])),
+			"Y3": rules.judge(ln(50000), facts(receipts=[rc("PR-2", 50000.0)], orders=[od(total=100000.0, net=100000.0, advance_paid=40000.0)],
+				asked_rows=[{**old, "amount": 50000.0, "receipts": ["PR-1"], "claims": [["r", "PR-1", "PO-1", 50000.0]]}])),
+			"R2": rules.judge(ln(50000), facts(orders=[od(total=200000.0, net=200000.0)], asked_rows=[
+				{**old, "amount": 50000.0, "claims": [["o", "", "PO-1", 50000.0]]}, {**old, "report": "B", "amount": 100000.0, "claims": [["o", "", "PO-1", 100000.0]]}])),
+		}
+		for rule, judged in cases.items():
+			point = next((p for p in judged["points"] if p["rule"] == rule), None)
+			check(point, f"{rule} fires in its case: {fired(judged)}")
+			title, detail = ai.own_words(rule, point["title"], point["detail"], point["refs"], judged["how"], "nobody@example.com")
+			check("line 9" not in detail and "of the list of" not in detail and "With this line" not in detail and (rule == "Y3" or "₹" not in detail),
+				f"{rule}: {detail}")
+			check("01-11-2026" not in title, f"{rule}: {title}")
+		y3 = next(p for p in cases["Y3"]["points"] if p["rule"] == "Y3")
+		check(" With this line " in y3["detail"], f"the rule still ends Y3 the way the form cuts it: {y3['detail']}")
+		eq(ai.own_words("Y3", "t", y3["detail"], "", "", "x")[1], "PO-1 is ₹1,00,000. The ERP shows ₹40,000 paid in advance on it.")
+		eq(ai.own_words("S1", "t", "d", "", "", "x"), ("t", "d"), "a rule with nothing of other lists in it is given as stored")
+	test("own: words worked out from other lists never reach the form", t_own_words)
+	test("own: a repeat of another person's list is told without what stood behind that person's line", t_own_other_list)
+
+	def t_own_hidden():
+		quiet = s1.sent(acc, s1.xlsx([s1.HEAD, [NOBODY, "", "", 74, ""], [NOBODY, "", "", 73, ""]]), "xlsx")
+		s1.run_job(quiet)
+		frappe.db.delete("TS AI Check Finding", {"parent": quiet})
+		words = "Records exist for this supplier, but the person who submitted the list cannot read them."
+		plant(quiet, 1, "X1", CHECK, line_no=1, detail=words)
+		plant(quiet, 2, "X1", CHECK, line_no=2, detail=words)
+		plant(quiet, 3, "M1", CHECK, line_no=2, detail=rules.NONE_DETAIL)
+		frappe.db.set_value("TS AI Check Line", {"parent": quiet, "line_no": 1}, "match_how", rules.NONE_HOW)
+		frappe.db.set_value("TS AI Check Line", {"parent": quiet, "line_no": 2}, "match_how", "On-account payment")
+		got = own(acc, quiet)
+		eq([(p["line_no"], p["title"], p["detail"], p["level"]) for p in got if p["line_no"] == 1], [(1, rules.NONE_HOW, rules.NONE_DETAIL, CHECK)],
+			"hidden records behind a line of no matching value: the form says what it says with no records at all")
+		eq([p["title"] for p in got if p["line_no"] == 2], ["title M1 Rule To check"], "an on-account line gets no point of its own for them")
+		check(not [p for p in got if "cannot read" in p["detail"] or "access" in p["title"]], "the words about access are never given")
+		judged = rules.judge(ln(1234.5), facts(orders=[], hidden=True))
+		eq((fired(judged), judged["how"]), (["X1"], rules.NONE_HOW), "the rule: hidden records give X1 alone, matched as nothing of this value")
+		eq([(p["title"], p["detail"]) for p in rules.judge(ln(1234.5), facts(orders=[]))["points"]], [(rules.NONE_HOW, rules.NONE_DETAIL)],
+			"with no records at all the rule gives exactly those words")
+	test("own: records outside the submitter's access are not told, and their absence is not either", t_own_hidden)
+
+	def t_own_submit_by_owner():
+		draft = s1.draft(acc, s1.attach(acc, s1.xlsx([s1.HEAD, [NOBODY, "", "", 72, ""]]), "xlsx").url).name
+		try:
+			frappe.get_doc(s1.SUB, draft).submit()  # as Administrator, who reads everything
+			raise AssertionError("another account submitted the list")
+		except frappe.ValidationError as e:
+			check("Only the person who made this list" in str(e), str(e))
+			frappe.clear_messages()
+		eq(frappe.db.get_value(s1.SUB, draft, "docstatus"), 0)
+	test("own: a list is submitted by the person who made it, so the check reads the ERP as the person who gets its points", t_own_submit_by_owner)
+
+	def t_own_bell():
+		got = frappe.get_all("Notification Log", filters={"document_type": s1.SUB, "document_name": name}, fields=["for_user", "subject"])
+		eq([g.for_user for g in got], [acc], "one bell, to the submitter")
+		check(got[0].subject.startswith("Your payment list of ") and got[0].subject.endswith(" is checked. 3 point(s) for you to look at."), got[0].subject)
+		check("script" not in got[0].subject and NOBODY not in got[0].subject, "no word from the file is in the bell")
+		from trustbit_ethanol.ts_gate_entry.ts_notification_routing import role_recipients
+
+		def bell(owner, session=None):
+			frappe.set_user(session or owner)  # the job runs as the account that pressed Submit
+			try:
+				return ai.own_bell(frappe._dict(name=name, owner=owner, list_date="2026-11-12"))
+			finally:
+				frappe.set_user("Administrator")
+
+		eq(bell(role_recipients("MD")[0]), 0, "a submitter the MD's bell reaches gets no second bell")
+		eq(bell("Administrator"), 1, "one the MD's bell does not reach gets their own")
+		eq(bell(acc, session="Administrator"), 0, "a check that ran in another account's name rings nobody")
+		frappe.db.delete("TS AI Check Finding", {"parent": name})
+		eq(bell(acc), 1)
+		subjects = frappe.get_all("Notification Log", filters={"document_type": s1.SUB, "document_name": name, "for_user": acc}, pluck="subject")
+		check("Your payment list of 12-11-2026 is checked. No point for you to correct." in subjects and len(subjects) == 2, f"{subjects}")
+		before = len(s1.Fake.logged)
+		eq(ai.own_bell(None), 0, "a bell that fails is swallowed")
+		check(len(s1.Fake.logged) == before + 1 and "AttributeError" in s1.Fake.logged[-1].message, "and IT gets the trace")
+	test("own: the submitter gets one bell when the list is checked, with a count only", t_own_bell)
+
+	def t_own_form_script():
+		path = os.path.join(os.path.dirname(ai.__file__), "doctype", "ts_ai_check_submission", "ts_ai_check_submission.js")
+		js = open(path, encoding="utf-8").read()
+		body = js[js.index("function show_own_points"):js.index("frappe.ui.form.on(")]
+		check(".html(" not in body and "${" not in body and body.count(".text(") >= 8, "every value is set as text")
+		check('"custom ts-own-points"' in body, "the section keeps the class the form clears on refresh, and has its own open/closed memory")
+		check("frappe.call" not in js and "frm.call" not in js, "the form makes no server call of its own")
+	test("own: the form shows the points as text only", t_own_form_script)
+
 	def t_check_fails():
 		broken = s1.sent(acc, s1.xlsx([s1.HEAD, [NOBODY, "", "", 98, ""]]), "xlsx")
 		ai.match = frappe._dict(check=lambda doc, result: 1 / 0)
@@ -982,6 +1184,7 @@ def _review_and_job(u):
 		s1.no_report(broken)
 		check(s1.Fake.logged and "ZeroDivisionError" in s1.Fake.logged[-1].message, "IT gets the trace")
 		eq(frappe.db.count("Notification Log", {"document_type": REPORT, "document_name": broken}), 0, "no bell for a failed check")
+		eq(frappe.db.count("Notification Log", {"document_type": s1.SUB, "document_name": broken}), 0, "and none to the submitter")
 	test("job: a failure in the ERP check fails the check and leaves no report and no bell", t_check_fails)
 
 
@@ -1023,7 +1226,7 @@ def run():
 		frappe.db.rollback()
 		s1.tidy(users)
 	failed = [r for r in RESULTS if not r[1]]
-	for group in ("rule", "name", "erp", "review", "job"):
+	for group in ("rule", "name", "erp", "review", "job", "own"):
 		rows = [r for r in RESULTS if r[0].startswith(group + ":")]
 		print(f"  {group}: {sum(1 for r in rows if r[1])}/{len(rows)}")
 	print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} passed")
