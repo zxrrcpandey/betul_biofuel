@@ -29,6 +29,7 @@ def rename(self, name: str, merge=False, force=False, validate_rename=True):
 GUARDS = (
 	"trustbit_ethanol.chart_guard.apply",  # dashboard-chart, account-balance and get_balance_on calls
 	"trustbit_ethanol.ts_gate_entry.ts_confidential_children.apply",  # one child row of a confidential document
+	"trustbit_ethanol.print_guard.apply",  # a print format only on a document of its own DocType
 )
 _failed = set()
 
