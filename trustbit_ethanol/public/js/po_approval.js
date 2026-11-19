@@ -6,6 +6,9 @@ const TS_WO_SERIES = "BBPL-WO-OP-.YYYY.-.#####";
 const TS_NONWO_SERIES = "BBPL-PO-OT-.YYYY.-.#####";
 
 frappe.ui.form.on("Purchase Order", {
+	setup(frm) {
+		_ts_project_company_query(frm);
+	},
 	refresh(frm) {
 		_force_po_grid_columns(frm);
 		// v2.9.0 Day 3 — set_query on deduction template (active masters only).
@@ -80,6 +83,7 @@ frappe.ui.form.on("Purchase Order", {
 	// so user picks the right warehouse for the new company.
 	company(frm) {
 		if (!frm.doc.company) return;
+		_ts_clear_foreign_project(frm);
 		const old_set_warehouse = frm.doc.set_warehouse;
 		const items_with_wh = (frm.doc.items || []).filter(r => r.warehouse).length;
 
@@ -1592,4 +1596,22 @@ function _ts_replace_mr_mapper_button(frm) {
 		},
 		__("Get Items From")
 	);
+}
+
+// v2.84.4 — the Project box (ts_project) lists only projects of the form's
+// company (same filter ERPNext puts on the hidden native `project`); a project
+// of another company is cleared when the company changes.
+function _ts_project_company_query(frm) {
+	frm.set_query("ts_project", (doc) => ({ filters: { company: doc.company } }));
+}
+function _ts_clear_foreign_project(frm) {
+	const p = frm.doc.ts_project;
+	if (!p || !frm.doc.company) return;
+	frappe.db.get_value("Project", p, "company").then((r) => {
+		const c = r && r.message && r.message.company;
+		if (c && c !== frm.doc.company && frm.doc.ts_project === p) {
+			frm.set_value("ts_project", null);
+			frappe.show_alert({ message: __("Project {0} belongs to another company and was cleared.", [p]), indicator: "orange" });
+		}
+	});
 }

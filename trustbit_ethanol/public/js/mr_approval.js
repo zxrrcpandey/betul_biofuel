@@ -28,6 +28,12 @@ frappe.ui.form.on("Material Request Item", {
 });
 
 frappe.ui.form.on("Material Request", {
+	setup(frm) {
+		_ts_project_company_query(frm);
+	},
+	company(frm) {
+		_ts_clear_foreign_project(frm);
+	},
 	refresh(frm) {
 		// CC filter: show only CCs where user is Creator (if CC config exists)
 		_setup_cc_filter(frm);
@@ -1406,4 +1412,22 @@ function _call_transfer_endpoint(frm, action_key, extra_args) {
 		return;
 	}
 	_do_call();
+}
+
+// v2.84.4 — the Project box (ts_project) lists only projects of the form's
+// company (same filter ERPNext puts on the hidden native `project`); a project
+// of another company is cleared when the company changes.
+function _ts_project_company_query(frm) {
+	frm.set_query("ts_project", (doc) => ({ filters: { company: doc.company } }));
+}
+function _ts_clear_foreign_project(frm) {
+	const p = frm.doc.ts_project;
+	if (!p || !frm.doc.company) return;
+	frappe.db.get_value("Project", p, "company").then((r) => {
+		const c = r && r.message && r.message.company;
+		if (c && c !== frm.doc.company && frm.doc.ts_project === p) {
+			frm.set_value("ts_project", null);
+			frappe.show_alert({ message: __("Project {0} belongs to another company and was cleared.", [p]), indicator: "orange" });
+		}
+	});
 }

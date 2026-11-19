@@ -206,9 +206,36 @@ def po_inherit_project(doc, method=None):
 	ts_project -> project mirror (:2833) then finds the two equal and no-ops.
 
 	Fill-only — never overwrites a ts_project the user chose.
+
+	v2.84.4 — the hidden `project` (header + item rows) must follow the Project
+	box BEFORE ERPNext's validate_accounting_dimensions, or a saved draft whose
+	company and Project box were changed keeps the old company's project and is
+	refused ("Project: X does not belong to the Company: Y"). A hidden project of
+	another company is never pulled back into an empty Project box.
+	Same for Cost Center: ERPNext's form copies a new header cost centre only into
+	EMPTY item rows, so after a company change the rows (and tax rows) keep the
+	old company's one — any such row takes the header cost centre.
 	"""
+	def _foreign(project, doctype="Project"):
+		co = frappe.get_cached_value(doctype, project, "company")
+		return bool(co) and co != doc.company
+
+	cc = doc.get("cost_center")
+	if cc and not _foreign(cc, "Cost Center"):
+		for row in (doc.get("items") or []) + (doc.get("taxes") or []):
+			if row.get("cost_center") and _foreign(row.cost_center, "Cost Center"):
+				row.cost_center = cc
+
 	if not doc.get("ts_project") and doc.get("project"):
-		doc.ts_project = doc.project
+		if _foreign(doc.project):
+			doc.project = None
+		else:
+			doc.ts_project = doc.project
+	if doc.get("ts_project") and doc.get("project") != doc.ts_project:
+		doc.project = doc.ts_project
+	for row in doc.get("items") or []:
+		if row.get("project") and _foreign(row.project):
+			row.project = doc.get("ts_project") or None
 
 
 def _set_header_dimensions(doc):
