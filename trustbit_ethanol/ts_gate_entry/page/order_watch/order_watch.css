@@ -141,6 +141,23 @@
 .ow-tl-label { opacity: 0; }
 .ow-in .ow-tl-label { opacity: 1; transition: opacity .4s; transition-delay: calc(.3s + var(--i) * .16s); }
 .ow-tl-note { margin-top: 6px; color: var(--ow-muted); font-size: 12.5px; }
+/* a changed limit: the MD line as steps (ink, not the level colour), the wash between the two lines, the orders as marks */
+.ow-st { position: relative; }
+.ow-st-line { stroke: var(--ow-text); stroke-width: 2; }
+.ow-st-band { fill: color-mix(in srgb, var(--lv) 14%, transparent); }
+.ow-st-halo { paint-order: stroke; stroke: var(--ow-card); stroke-width: 3px; stroke-linejoin: round; }
+.ow-st-mark { outline: none; cursor: pointer; }
+.ow-st-hit { fill: transparent; }
+.ow-st-mark .ow-st-pt { fill: var(--ow-muted); stroke: var(--ow-card); stroke-width: 2; }
+.ow-st-mark.is-btw .ow-st-pt { fill: var(--ow-serious); }
+.ow-st-mark:focus-visible .ow-tl-ring, .ow-st-mark.is-tip .ow-tl-ring { stroke: var(--primary, #2490ef); opacity: 1; }
+.ow-st-legend { margin-top: 8px; }
+.ow-st-key { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ow-muted); }
+.ow-st-key.is-line { width: 18px; height: 2px; border-radius: 0; background: var(--ow-text); }
+.ow-st-key.is-btw { border-radius: 1px; transform: rotate(45deg); background: var(--ow-serious); }
+.ow-st-tip { position: absolute; z-index: 2; display: grid; gap: 1px; padding: 7px 10px; font-size: 12.5px; line-height: 1.4; white-space: nowrap; color: var(--ow-card); background: var(--ow-text); border-radius: 8px; pointer-events: none; }
+.ow-st-tip[hidden] { display: none; }
+.ow-st-tip b { font-size: 14px; }
 
 /* ---- orders and facts ---- */
 .ow-orders table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--ow-card); border: 1px solid var(--ow-border); border-radius: 12px; overflow: hidden; font-size: 13px; }
@@ -172,6 +189,15 @@
 .ow-ranked-list { list-style: none; margin: 0; padding: 4px 16px 12px; display: grid; gap: 8px; font-size: 13px; }
 .ow-ranked-list li { display: grid; gap: 2px; padding-top: 8px; border-top: 1px solid var(--ow-border); }
 .ow-ranked-list span { color: var(--ow-muted); }
+/* the limits card above the views (its notice shares the look of .ow-c-fact), and the line a finding was measured against */
+.ow-limits { margin: 0 0 18px; }
+.ow-limits .ow-orders { padding: 0 16px 14px; }
+.ow-limits .ow-pill { vertical-align: middle; }
+.ow-orders.is-lim .ow-r b { white-space: nowrap; }
+.ow-root .ow-limits-note { margin: 0 16px 12px; }
+.ow-limits-gap { margin-top: 8px; }
+.ow-used { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; color: var(--ow-muted); }
+.ow-used .ow-ic { margin-top: 2px; }
 .ow-foot { margin-top: 22px !important; color: var(--ow-muted); font-size: 12.5px; text-align: center; }
 .ow-state { display: grid; justify-items: center; gap: 8px; padding: 60px 20px; text-align: center; color: var(--ow-muted); }
 .ow-state h4 { color: var(--ow-text); font-size: 18px; }
@@ -201,6 +227,8 @@
 	.ow-orders td { border: 0; padding: 4px 12px; text-align: left; }
 	.ow-orders td::before { content: attr(data-l); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ow-muted); }
 	.ow-orders tfoot td:first-child { display: none; }
+	/* a period of the limits card takes two lines, not four: kind and line, then from and to */
+	.ow-limits .ow-orders tr { display: grid; grid-template-columns: 1fr 1fr; }
 	.ow-root .ow-rrow-head { grid-template-columns: 1fr auto auto; }
 	.ow-rrow-text { display: none; }
 	.ow-skel-row { grid-template-columns: 1fr; }
@@ -572,9 +600,9 @@
 .ow-c-kic { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--lv); background: var(--lv-bg); }
 .ow-c-card.ow-in .ow-c-kic { animation: ow-c-pop .65s var(--ow-spring) calc(var(--n, 0) * 70ms + .35s) backwards; }
 .ow-c-say { max-width: 72ch; font-size: 15.5px; line-height: 1.55; overflow-wrap: anywhere; }
-.ow-c-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ow-muted); font-size: 13px; overflow-wrap: anywhere; }
+.ow-c-meta, .ow-st-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ow-muted); font-size: 13px; overflow-wrap: anywhere; }
 .ow-c-meta b { color: var(--ow-text); font-weight: 600; }
-.ow-c-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.ow-c-meta span, .ow-st-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .ow-c-meta .ow-ic { width: 14px; height: 14px; }
 .ow-c-card.ow-in .ow-c-meta { animation: ow-c-rise .6s var(--ow-ease) calc(var(--n, 0) * 70ms + .4s) backwards; }
 .ow-c-fig { display: grid; gap: 3px; align-content: start; min-width: 0; }
@@ -590,10 +618,10 @@
 .ow-c-parts li::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--lv); }
 .ow-c-parts li:nth-child(even)::before { opacity: .78; }
 .ow-c-card.ow-in .ow-c-parts li { animation: ow-c-pop .5s var(--ow-spring) calc(var(--n, 0) * 70ms + .6s + var(--i, 0) * .22s) backwards; }
-.ow-c-fact { display: flex; align-items: flex-start; gap: 8px; margin-top: 6px; padding: 9px 12px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere;
+.ow-c-fact, .ow-limits-note { display: flex; align-items: flex-start; gap: 8px; margin-top: 6px; padding: 9px 12px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere;
 	background: var(--lv-bg); border: 1px dashed var(--lv-line); border-radius: 10px; }
 .ow-c-fact:first-child { margin-top: 0; }
-.ow-c-fact .ow-ic { margin-top: 2px; color: var(--lv); }
+.ow-c-fact .ow-ic, .ow-limits-note .ow-ic { margin-top: 2px; color: var(--lv); }
 .ow-c-card.ow-in .ow-c-fact { animation: ow-c-slide .65s var(--ow-ease) calc(var(--n, 0) * 70ms + .55s) backwards; }
 .ow-c-here { position: absolute; z-index: 2; top: -13px; left: 20px; display: inline-flex; align-items: center; gap: 5px; padding: 3px 11px 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700;
 	color: var(--ow-card); background: var(--ow-text); box-shadow: 0 5px 12px -5px rgba(0, 0, 0, .5); animation: ow-c-bob 2s ease-in-out infinite; }
@@ -803,6 +831,7 @@
 .ow-l-tags.ow-in > span:last-child .ow-ic { animation: ow-l-pick .6s var(--ow-spring) .25s backwards; }
 .ow-l-say { max-width: 62ch; font-size: 20px; line-height: 1.4; font-weight: 700; letter-spacing: -.005em; color: var(--ow-text); }
 .ow-l-meta { margin-top: -8px !important; font-size: 13px; color: var(--ow-muted); }
+.ow-l-d > .ow-used { margin-top: -10px !important; }
 .ow-l-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
 .ow-l-tile { position: relative; min-width: 0; padding: 10px 12px 11px; overflow: hidden; background: var(--ow-soft); border: 1px solid var(--ow-border); border-radius: 12px; }
 .ow-view-list .ow-l-tile.ow-in { transition: opacity .5s var(--ow-ease), transform .65s var(--ow-spring), box-shadow .3s; transition-delay: calc(.22s + var(--n, 0) * 90ms); }

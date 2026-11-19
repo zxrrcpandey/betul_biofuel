@@ -16,7 +16,8 @@
 //   data-ow-level, data-ow-kind  set a filter ("all" clears it)      data-ow-po="<order>"  open the order
 //   data-ow-jump="<i>"    scroll to [data-ow-item="<i>"] and open it  data-ow-more  show 20 more routine rows
 // Animation: give an element class "ow-anim" (it rises in when it scrolls into view, staggered among its
-// siblings), use OW.num() for numbers that count up, OW.bar() and OW.timeline() for the moving charts.
+// siblings), use OW.num() for numbers that count up, OW.bar(), OW.timeline() and OW.steps() for the moving charts.
+// The limits card (OW.limits) stands above the views; OW.used(f) names the limit a finding was measured against.
 
 (function () {
 	const OW = { views: {}, order: ["brief", "cards", "list"] };
@@ -31,6 +32,7 @@
 		split: { title: __("Possible split order"), icon: "split" },
 		near: { title: __("Just under the line"), icon: "near" },
 		over: { title: __("Over the line without the MD"), icon: "over" },
+		limit: { title: __("Approval limit changed"), icon: "limit" },
 		self: { title: __("Entered and approved by the same account"), icon: "user" },
 		more: { title: __("Received more than approved"), icon: "box" },
 		allowance: { title: __("Receipt allowance raised just before a receipt"), icon: "swap" },
@@ -38,7 +40,7 @@
 		open: { title: __("Approved long ago, nothing received"), icon: "clock" },
 		other: { title: __("Other finding"), icon: "info" },
 	};
-	OW.KIND_ORDER = ["split", "near", "over", "self", "more", "allowance", "early", "open", "other"];
+	OW.KIND_ORDER = ["split", "near", "over", "limit", "self", "more", "allowance", "early", "open", "other"];
 
 	const PATHS = {
 		serious: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.2v.3"/>',
@@ -51,6 +53,7 @@
 		split: '<path d="M4 20h16M7 20V9M12 20V5M17 20v-8"/>',
 		near: '<path d="M4 8h16M8 20v-8M16 20v-8"/>',
 		over: '<path d="M4 14h16M12 20V4M8 8l4-4 4 4"/>',
+		limit: '<path d="M3 16h6V8h6v8h6"/>',
 		user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.5-5.5 7-5.5s6.200 1.900 7 5.500"/>',
 		box: '<path d="M3.500 8 12 3.500 20.500 8v8L12 20.500 3.500 16V8Z"/><path d="M3.500 8 12 12.500 20.500 8M12 12.500v8"/>',
 		swap: '<path d="M7 4v16M3.500 7.500 7 4l3.500 3.500M17 20V4M13.500 16.500 17 20l3.500-3.500"/>',
@@ -96,16 +99,28 @@
 	OW.lineName = (f) => (f.kind === "more" ? __("approved amount") : f.review_line ? __("review line") : __("MD line"));
 	OW.supplier = (f) => {
 		if (f.supplier) return f.supplier;
+		// a changed limit belongs to a kind of purchase, not to a supplier: "Store limit"
+		if (f.kind === "limit" && f.limit) return __("{0} limit", [f.limit.category]);
 		const names = [...new Set((f.orders || []).map((o) => o.supplier).filter(Boolean))];
 		return names.length > 1 ? __("{0} suppliers: {1}", [names.length, names.join(", ")]) : names[0] || "";
 	};
 	// "₹8,85,000 over the MD line", "₹2,000 under the MD line", "₹1,25,000 more than approved"
 	OW.gap = (f) => {
+		if (f.kind === "limit") {
+			// a lowered or a new limit lets nothing past the MD: it has no orders "between the two lines"
+			const n = (f.orders || []).length, way = (f.limit || {}).direction;
+			if (way === "lowered" || way === "introduced") return way === "lowered" ? __("Limit lowered") : __("New MD limit");
+			return n === 1 ? __("1 order between the two lines, no MD") : n ? __("{0} orders between the two lines, no MD", [n]) : __("No order between the two lines without the MD");
+		}
 		if (f.line == null || f.total == null) return "";
 		if (f.kind === "more") return __("{0} more than approved", [OW.inr(f.total - f.line)]);
 		if (f.total < f.line) return __("{0} under the {1}", [OW.inr(f.line - f.total), OW.lineName(f)]);
 		return f.total > f.line ? __("{0} over the {1}", [OW.inr(f.total - f.line), OW.lineName(f)]) : __("at the {0}", [OW.lineName(f)]);
 	};
+	// the amount a row or card prints: a changed limit with no order between its two lines has none (never "₹0")
+	OW.total = (f) => (f.kind === "limit" && !(f.orders || []).length ? null : f.total);
+	// the limit a finding was measured against, as the server words it (the limit in force when the order was sent for approval)
+	OW.used = (f) => (f.line_used ? `<p class="ow-used ow-anim">${OW.icon("limit")}<span>${OW.esc(f.line_used)}</span></p>` : "");
 	// the amount against its line: one segment per order of a split group, the part past the line striped
 	OW.bar = (f, opts) => {
 		if (f.line == null || f.total == null || !(f.line > 0)) return "";
@@ -145,20 +160,101 @@
 			<text class="ow-tl-linename" x="${W - R - 2}" y="${(y(f.line) + 15).toFixed(1)}" text-anchor="end">${OW.esc(OW.lineName(f))} ${OW.esc(OW.short(f.line))}</text>
 			<path class="ow-tl-run" pathLength="1" d="${path}"/>${dots}${labels}</svg><p class="ow-tl-note">${OW.esc(note)}</p></div>`;
 	};
+	// a changed approval limit: the MD line of one kind of purchase as a stepped line over the days around the change,
+	// with every order of that kind sent for approval in those days (a diamond = an order between the two lines).
+	// A mark carries only its place in f.limit.marks: the tooltip (bound once, see marks()) reads the values from there.
+	OW.steps = (f) => {
+		const lim = f.limit || {}, rng = lim.range || {}, t0 = +moment(rng.from), t1 = +moment(rng.to), steps = lim.steps || [];
+		if (!(t1 > t0) || !steps.length) return "";
+		const W = 640, H = 240, L = 58, R = 14, T = 30, B = 34, at = (v, d) => (v ? +moment(v) : d), n1 = (v) => v.toFixed(1);
+		const pts = (lim.marks || []).map((m, k) => ({ m, k, t: +moment(m.at) })).sort((a, b) => a.t - b.t);
+		pts.forEach((p, i) => { p.i = i; });
+		const high = Math.max(0, ...steps.map((s) => s.line || 0)), most = Math.max(0, ...pts.map((p) => p.m.value || 0));
+		// the scale has room for orders up to 1.6 times the highest line; an order above that sits on the top edge
+		const top = high ? Math.max(high * 1.18, Math.min(most * 1.1, high * 1.6)) : most * 1.12 || 1;
+		const x = (t) => L + ((Math.min(t1, Math.max(t0, t)) - t0) / (t1 - t0)) * (W - L - R);
+		const y = (v) => (v == null ? T : H - B - (Math.min(v, top) / top) * (H - B - T));
+		const unit = Math.pow(10, Math.floor(Math.log10(top / 4))), gap = [1, 2, 2.5, 5, 10].map((k) => k * unit).find((s) => top / s <= 5);
+		let grid = "", d = "", pen = false, names = "", labels = "";
+		for (let v = 0; v <= top; v += gap) {
+			grid += `<line class="ow-tl-base" x1="${L}" x2="${W - R}" y1="${n1(y(v))}" y2="${n1(y(v))}"/><text class="ow-tl-time" x="${L - 8}" y="${n1(y(v) + 4)}" text-anchor="end">${OW.esc(OW.short(v))}</text>`;
+		}
+		const tight = t1 - t0 < 4 * 864e5, ticks = tight ? 2 : 4;
+		for (let i = 0; i <= ticks; i++) {
+			const t = t0 + ((t1 - t0) * i) / ticks;
+			grid += `<text class="ow-tl-time" x="${n1(x(t))}" y="${H - B + 18}" text-anchor="${i ? (i === ticks ? "end" : "middle") : "start"}">${OW.esc(moment(t).format(tight ? "D MMM, h a" : "D MMM"))}</text>`;
+		}
+		// every text in the plot keeps its box [left, right, top, bottom], so the next one is put where it covers no other
+		const boxes = [];
+		const box = (tx, ty, s, anchor) => { const w = s.length * 7.3, x0 = anchor === "end" ? tx - w : anchor === "middle" ? tx - w / 2 : tx; return [x0, x0 + w, ty - 11, ty + 3]; };
+		const free = (b) => b[0] >= L && b[1] <= W - R && b[2] >= T - 4 && b[3] <= H - B - 2 && !boxes.some((q) => b[0] < q[1] + 3 && b[1] > q[0] - 3 && b[2] < q[3] + 2 && b[3] > q[2] - 2);
+		const text = (cls, tx, ty, s, anchor) => {
+			boxes.push(box(tx, ty, s, anchor));
+			return `<text class="${cls} ow-st-halo" x="${n1(tx)}" y="${n1(ty)}" text-anchor="${anchor}">${OW.esc(s)}</text>`;
+		};
+		// the line itself; a period without an MD line is a gap in it, named at the top of the plot
+		const seen = [];
+		steps.forEach((s) => {
+			const a = x(at(s.from, t0)), b = x(at(s.to, t1));
+			if (s.line == null) {
+				pen = false;
+				names += text("ow-tl-time", Math.max(L + 36, Math.min(W - R - 36, (a + b) / 2)), T + 13, __("no MD line"), "middle");
+				return;
+			}
+			d +=(pen ? `V${n1(y(s.line))}` : `M${n1(a)} ${n1(y(s.line))}`) + `H${n1(b)}`;
+			pen = true;
+			if (b - a < 46 || seen.includes(s.line)) return;
+			names += text("ow-tl-linename", a + 5, y(s.line) - 7, seen.length || b - a < 92 ? OW.short(s.line) : __("MD line {0}", [OW.short(s.line)]), "start");
+			seen.push(s.line);
+		});
+		// a light wash between the line before and the changed line, for as long as the changed line stood
+		const ba = x(at(lim.at, t0)), bb = x(at(lim.back_at, t1)), yo = y(lim.old), yn = y(lim.new);
+		const band = bb > ba && yo !== yn ? `<rect class="ow-st-band" x="${n1(ba)}" y="${n1(Math.min(yo, yn))}" width="${n1(bb - ba)}" height="${n1(Math.abs(yo - yn))}"/>` : "";
+		const n = pts.length, hot = pts.filter((p) => p.m.between), first = hot[0] || pts[0];
+		const say = (m) => __("{0}, order {1}, sent for approval {2}", [OW.inr(m.value), m.name, OW.when(m.at)]) + (m.between ? ", " + __("between the two lines") : "");
+		hot.forEach((p) => boxes.push([x(p.t) - 8, x(p.t) + 8, y(p.m.value) - 8, y(p.m.value) + 8]));
+		const mark = (p) => {
+			const cx = x(p.t), cy = y(p.m.value), b = !!p.m.between;
+			// the amount is written only beside an order between the two lines, only while there are few of them, and only
+			// where there is room: to the right, else to the left, above or below (the tooltip has it in every case)
+			if (b && hot.length <= 6) {
+				const s = OW.short(p.m.value), spot = [["start", cx + 11, cy + 4], ["end", cx - 11, cy + 4], ["middle", cx, cy - 14], ["middle", cx, cy + 22]].find((c) => free(box(c[1], c[2], s, c[0])));
+				if (spot) labels += `<g class="ow-tl-label" style="--i:${((p.i / n) * 2).toFixed(2)}">${text("ow-tl-val", spot[1], spot[2], s, spot[0])}</g>`;
+			}
+			return `<g class="ow-tl-dot ow-st-mark ${b ? "is-btw" : ""}" style="--i:${((p.i / n) * 2).toFixed(2)}" data-ow-mark="${p.k}" data-ow-seq="${p.i}" tabindex="${p === first ? 0 : -1}" role="img" aria-label="${OW.esc(say(p.m))}">
+				${b || n <= 60 ? `<rect class="ow-st-hit" x="${n1(cx - 11)}" y="${n1(cy - 11)}" width="22" height="22"/>` : ""}<circle class="ow-tl-ring" cx="${n1(cx)}" cy="${n1(cy)}" r="9"/>
+				${b ? `<path class="ow-st-pt" d="M${n1(cx)} ${n1(cy - 6)}l6 6-6 6-6-6Z"/>` : `<circle class="ow-st-pt" cx="${n1(cx)}" cy="${n1(cy)}" r="${n > 120 ? 3 : 4}"/>`}</g>`;
+		};
+		// the orders between the two lines are drawn last, on top of the others
+		const dots = pts.filter((p) => !p.m.between).map(mark).join("") + hot.map(mark).join("");
+		const note = __("The stepped line is the MD line for {0} from {1} to {2}.", [lim.category, OW.day(rng.from), OW.day(rng.to)]) + " " +
+			(n ? __("Each mark is one order, placed at the time it was sent for approval and at its value.") : __("No order of this kind was sent for approval in these days.")) +
+			(lim.marks_cut > 0 ? " " + __("{0} more orders are not drawn.", [lim.marks_cut]) : "") + (most > top ? " " + __("An order above {0} sits on the top edge.", [OW.short(top)]) : "");
+		const key = (cls, text) => `<span><i class="ow-st-key ${cls}"></i>${OW.esc(text)}</span>`;
+		return `<div class="ow-tl ow-st ow-lv-${f._lv} ow-anim" data-ow-steps="${f._i}"><svg viewBox="0 0 ${W} ${H}" role="group" aria-label="${OW.esc(note)}">
+			${grid}${band}<path class="ow-tl-run ow-st-line" pathLength="1" d="${d}"/>${dots}${names}${labels}</svg>
+			<div class="ow-st-legend">${key("is-line", __("MD line"))}${n > hot.length ? key("", __("Order sent for approval")) : ""}${hot.length ? key("is-btw", __("Order between the two lines")) : ""}</div>
+			<p class="ow-tl-note">${OW.esc(note)}</p><div class="ow-st-tip" aria-hidden="true" hidden></div></div>`;
+	};
+	OW.chart = (f) => (f.kind === "split" ? OW.timeline(f) : f.kind === "limit" ? OW.steps(f) : "");
 	OW.orders = (f) => {
-		const os = f.orders || [];
+		const os = f.orders || [], lim = f.kind === "limit";
 		if (!os.length) return "";
+		// only under a changed limit: the MD line in force when each order was sent for approval
+		const line = (o) => `<td data-l="${__("MD line that day")}">${OW.esc(o.line == null ? __("No MD line") : OW.inr(o.line))}${o.routed_at ? `<small>${OW.esc(__("sent for approval {0}", [OW.when(o.routed_at)]))}</small>` : ""}</td>`;
+		const heading = lim ? (os.length > 1 ? __("The {0} orders between the two lines", [os.length]) : __("The order between the two lines")) : os.length > 1 ? __("The {0} orders", [os.length]) : __("The order");
 		const rows = os.map((o) => {
 			const approved = o.approved_at ? `${OW.esc(o.approved_by || "")}<small>${OW.esc(OW.when(o.approved_at))}</small>` : OW.esc(o.status || __("Not approved yet"));
 			return `<tr><td data-l="${__("Order")}"><button type="button" class="ow-link" data-ow-po="${OW.esc(o.name)}">${OW.esc(o.name)}</button><small>${__("PO date")} ${OW.esc(o.po_date)}</small></td>
 				<td data-l="${__("Entered")}">${OW.esc(OW.when(o.entered_at))}<small>${__("by")} ${OW.esc(o.entered_by || "")}</small></td>
 				<td data-l="${__("Approved")}">${approved}</td>
 				<td data-l="${__("Main items")}">${OW.esc(o.items)}${o.request ? `<small>${__("Request")} ${OW.esc(o.request)}</small>` : ""}</td>
-				<td data-l="${__("Received")}">${OW.esc(o.received)}</td><td data-l="${__("Value")}" class="ow-r"><b>${OW.esc(OW.inr(o.value))}</b></td></tr>`;
+				<td data-l="${__("Received")}">${OW.esc(o.received)}</td>${lim ? line(o) : ""}<td data-l="${__("Value")}" class="ow-r"><b>${OW.esc(OW.inr(o.value))}</b></td></tr>`;
 		}).join("");
-		const sum = os.length > 1 ? `<tfoot><tr><td colspan="5">${__("Together: {0} orders", [os.length])}</td><td class="ow-r"><b>${OW.esc(OW.inr(os.reduce((t, o) => t + o.value, 0)))}</b></td></tr></tfoot>` : "";
-		return `<div class="ow-orders ow-anim"><h5>${os.length > 1 ? __("The {0} orders", [os.length]) : __("The order")}</h5><table><thead><tr><th>${__("Order")}</th><th>${__("Entered")}</th><th>${__("Approved")}</th>
-			<th>${__("Main items")}</th><th>${__("Received")}</th><th class="ow-r">${__("Value")}</th></tr></thead><tbody>${rows}</tbody>${sum}</table></div>`;
+		// the orders of a changed limit are not one purchase: no "Together" line under them
+		const sum = os.length > 1 && !lim ? `<tfoot><tr><td colspan="5">${__("Together: {0} orders", [os.length])}</td><td class="ow-r"><b>${OW.esc(OW.inr(os.reduce((t, o) => t + o.value, 0)))}</b></td></tr></tfoot>` : "";
+		return `<div class="ow-orders ${lim ? "is-lim" : ""} ow-anim"><h5>${heading}</h5><table><thead><tr><th>${__("Order")}</th><th>${__("Entered")}</th><th>${__("Approved")}</th>
+			<th>${__("Main items")}</th><th>${__("Received")}</th>${lim ? `<th>${__("MD line that day")}</th>` : ""}<th class="ow-r">${__("Value")}</th></tr></thead><tbody>${rows}</tbody>${sum}</table></div>`;
 	};
 	OW.facts = (f) => {
 		const li = (f.facts || []).map((t, i) => `<li style="--i:${i}">${OW.esc(t)}</li>`).join("");
@@ -170,7 +266,7 @@
 		const more = (f.kinds || []).filter((k) => k !== f.kind && OW.KINDS[k]);
 		return more.length ? `<p class="ow-also ow-anim"><b>${__("Also")}</b>${more.map((k) => `<span>${OW.icon(OW.KINDS[k].icon)}${OW.esc(OW.KINDS[k].title)}</span>`).join("")}</p>` : "";
 	};
-	OW.detail = (f) => `<div class="ow-detail ow-lv-${f._lv}">${OW.also(f)}${f.kind === "split" ? OW.timeline(f) : ""}${OW.orders(f)}${OW.facts(f)}</div>`;
+	OW.detail = (f) => `<div class="ow-detail ow-lv-${f._lv}">${OW.also(f)}${OW.used(f)}${OW.chart(f)}${OW.orders(f)}${OW.facts(f)}</div>`;
 	OW.fold = (f) => `<div class="ow-fold" data-ow-fold="${f._i}"><div class="ow-fold-in"></div></div>`;
 	OW.toggle = (f, label) =>
 		`<button type="button" class="ow-toggle" data-ow-toggle="${f._i}" aria-expanded="false"><span>${OW.esc(label || __("Show the orders and facts"))}</span>${OW.icon("chevron")}</button>`;
@@ -203,9 +299,29 @@
 			<span><b>${__("Standing small orders")}</b><small>${__("Suppliers, then items, then requests with many small orders that never need the MD. Each group has its largest first; the same orders can show under a supplier and under an item.")}</small></span>${OW.icon("chevron")}</button>
 			<div class="ow-fold ow-routine-fold"><div class="ow-fold-in"><ul class="ow-ranked-list">${rows}</ul></div></div></section>`;
 	};
+	// the MD line of each kind of purchase over the selected dates, one table row per period; drawn once above the
+	// three views (a filter or a view switch does not draw it again). A server that sends no `limits` gets nothing.
+	OW.limits = (data) => {
+		const cats = (data.limits || []).filter((c) => (c.rows || []).length);
+		if (!cats.length) return "";
+		const moved = cats.filter((c) => c.changed > 0).length;
+		const pill = (c) => ` <span class="ow-pill ow-lv-check">${OW.icon("check")}<span>${OW.esc(c.changed === 1 ? __("Changed once") : __("Changed {0} times", [c.changed]))}</span></span>`;
+		const rows = cats.map((c) => c.rows.map((r, i) => `<tr><td data-l="${__("Kind of purchase")}">${i ? OW.esc(c.category) : `<b>${OW.esc(c.category)}</b>${c.changed > 0 ? pill(c) : ""}`}</td>
+			<td data-l="${__("MD line")}">${r.line == null ? OW.esc(__("No MD line")) : `<b>${OW.esc(OW.inr(r.line))}</b>`}${r.today ? `<small>${__("Today's limit")}</small>` : ""}</td>
+			<td data-l="${__("From")}">${OW.esc(r.from ? OW.when(r.from) : __("Since the start"))}</td>
+			<td data-l="${__("To")}">${OW.esc(r.to ? OW.when(r.to) : __("Still in force"))}</td></tr>`).join("")).join("");
+		const note = !moved ? "" : `<p class="ow-limits-note ow-lv-check">${OW.icon("check")}<span>${OW.esc(moved === 1 ? __("1 limit changed inside these dates.") : __("{0} limits changed inside these dates.", [moved]))}
+			${__("Every order is measured against the limit in force when it was sent for approval.")}</span></p>`;
+		const gaps = (data.gaps || []).map((g) => `<small class="ow-limits-gap">${OW.esc(g)}</small>`).join("");
+		return `<section class="ow-routine ow-limits ow-anim"><button type="button" class="ow-routine-head" data-ow-routine aria-expanded="true">${OW.icon("limit")}
+			<span><b>${__("Approval limits in these dates")}</b><small>${__("The MD line of each kind of purchase: an order of this amount or more needs the MD's approval.")}</small></span>${OW.icon("chevron")}</button>
+			<div class="ow-fold ow-routine-fold is-open"><div class="ow-fold-in">${note}<div class="ow-orders"><table><thead><tr><th>${__("Kind of purchase")}</th><th>${__("MD line")}</th><th>${__("From")}</th><th>${__("To")}</th></tr></thead>
+			<tbody>${rows}</tbody></table>${gaps}</div></div></div></section>`;
+	};
+	// the one-sentence line of a server that still sends `md_lines` (the limits card has replaced it)
 	OW.mdLine = (data) => {
 		const l = data.md_lines || [];
-		if (!l.length) return "";
+		if (data.limits || !l.length) return "";
 		return l.length === 1 ? __("Orders of {0} or more need the MD's approval.", [OW.inr(l[0])]) : __("Orders need the MD's approval from {0} to {1}, by kind of purchase.", [OW.inr(l[0]), OW.inr(l[l.length - 1])]);
 	};
 
@@ -285,7 +401,7 @@
 			// the filters changed: only the view is drawn again
 			root.find(".ow-view").attr("class", `ow-view ow-view-${st.view} ow-swap`).html(body(st));
 		} else {
-			root.html(head(st) + `<div class="ow-view ow-view-${st.view} ow-swap">${body(st)}</div>`);
+			root.html(head(st) + OW.limits(st.data) + `<div class="ow-view ow-view-${st.view} ow-swap">${body(st)}</div>`);
 		}
 		const view = OW.views[st.view];
 		if (view.after && st.data.findings.length) view.after(root.find(".ow-view"), context(st));
@@ -337,6 +453,64 @@
 		if (want) setTimeout(() => OW.animate(fold), 30);
 	}
 	OW.open = (root, i, open) => openFold(root.closest(".ow-root"), OW.page._ow, i, open);
+	// one tooltip for the marks of every steps chart, bound once on the page root: the List panel swaps its content on
+	// every selection and a fold is filled late, so nothing is bound to a chart itself. It opens on mouse hover, on
+	// keyboard focus and on a tap (a second tap closes it); the text is set as text, never as HTML.
+	function marks(root, st) {
+		let on = null, down = null;
+		const kind = (e) => (e.originalEvent || e).pointerType;
+		const hide = () => {
+			if (!on) return;
+			on.classList.remove("is-tip");
+			const tip = on.closest(".ow-st") && on.closest(".ow-st").querySelector(".ow-st-tip");
+			if (tip) tip.hidden = true;
+			on = null;
+		};
+		const show = (g) => {
+			const box = g.closest(".ow-st"), f = box && st.data && st.data.findings[+box.dataset.owSteps];
+			const m = f && f.limit && (f.limit.marks || [])[+g.dataset.owMark];
+			if (!m) return;
+			hide();
+			const tip = box.querySelector(".ow-st-tip"), row = (tag, text) => { const el = document.createElement(tag); el.textContent = text; return el; };
+			tip.replaceChildren(row("b", OW.inr(m.value)), row("span", m.name), row("span", __("Sent for approval {0}", [OW.when(m.at)])),
+				row("span", m.line == null ? __("Line that day: no MD line") : __("Line that day: {0}", [OW.inr(m.line)])));
+			tip.hidden = false;
+			// placed above the mark (below it when there is no room), kept inside the part of the chart that is on screen;
+			// on a phone the chart scrolls sideways inside its box, so the box's own scroll is added
+			const a = g.getBoundingClientRect(), b = box.getBoundingClientRect(), y = a.top - b.top + box.scrollTop;
+			const x = a.left + a.width / 2 - b.left + box.scrollLeft - tip.offsetWidth / 2;
+			tip.style.left = Math.max(box.scrollLeft + 4, Math.min(x, box.scrollLeft + box.clientWidth - tip.offsetWidth - 4)) + "px";
+			tip.style.top = (y - tip.offsetHeight - 6 < 0 ? y + a.height + 6 : y - tip.offsetHeight - 6) + "px";
+			g.classList.add("is-tip");
+			on = g;
+		};
+		root.on("pointerover", "[data-ow-mark]", (e) => { if (kind(e) === "mouse") show(e.currentTarget); })
+			.on("pointerout", "[data-ow-mark]", (e) => { if (kind(e) === "mouse" && e.currentTarget !== document.activeElement) hide(); })
+			.on("focusin", "[data-ow-mark]", (e) => show(e.currentTarget))
+			.on("focusout", "[data-ow-mark]", hide)
+			.on("pointerdown", "[data-ow-mark]", (e) => { down = { mouse: kind(e) === "mouse", was: on === e.currentTarget }; })
+			.on("click", ".ow-st", (e) => {
+				const g = e.target.closest("[data-ow-mark]");
+				if (!g) return hide();
+				if (!down || down.mouse) return;
+				if (down.was) hide(); else show(g);
+			});
+		// in the capture phase: the List panel closes its phone sheet on Escape, and must not when a tooltip is open
+		root[0].addEventListener("keydown", (e) => {
+			const g = e.target.closest && e.target.closest("[data-ow-mark]");
+			if (!g) return;
+			if (e.key === "Escape") { if (on) { hide(); e.stopPropagation(); } return; }
+			const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+			if (!d) return;
+			// one Tab stop for the whole chart: the arrows walk the orders in the order they were sent for approval
+			e.preventDefault();
+			const to = g.parentNode.querySelector(`[data-ow-seq="${+g.dataset.owSeq + d}"]`);
+			if (!to) return;
+			g.setAttribute("tabindex", -1);
+			to.setAttribute("tabindex", 0);
+			to.focus();
+		}, true);
+	}
 
 	frappe.pages["order-watch"].on_page_load = function (wrapper) {
 		const page = frappe.ui.make_app_page({ parent: wrapper, title: __("Order Watch"), single_column: true });
@@ -403,6 +577,7 @@
 			setTimeout(() => item.removeClass("ow-flash"), 1600);
 		});
 		root.on("click", "[data-ow-retry]", () => load(page));
+		marks(root, st);
 		st.ready = true;
 		load(page);
 	};

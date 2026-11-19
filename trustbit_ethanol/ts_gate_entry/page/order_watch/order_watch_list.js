@@ -25,7 +25,7 @@ const owListFlat = (groups) => [].concat(...groups.map((g) => g.rows));
 function owListRow(f, pinned) {
 	const gap = OW.gap(f);
 	return `<button type="button" class="ow-l-row ow-lv-${f._lv} ow-anim" data-ow-l-row="${f._i}" aria-current="false">
-		<span class="ow-l-row-top"><i class="ow-l-kind" title="${OW.esc(OW.title(f))}">${OW.kindIcon(f)}</i>${OW.pill(f.level)}<b>${OW.esc(OW.supplier(f))}</b><span class="ow-l-amt">${OW.esc(OW.short(f.total))}</span></span>
+		<span class="ow-l-row-top"><i class="ow-l-kind" title="${OW.esc(OW.title(f))}">${OW.kindIcon(f)}</i>${OW.pill(f.level)}<b>${OW.esc(OW.supplier(f))}</b><span class="ow-l-amt">${OW.esc(OW.short(OW.total(f)))}</span></span>
 		${pinned ? `<span class="ow-l-row-kind">${OW.esc(OW.title(f))}</span>` : ""}<span class="ow-l-row-text">${OW.esc(f.summary)}</span>
 		${gap ? `<span class="ow-l-row-gap">${OW.esc(gap)}</span>` : ""}</button>`;
 }
@@ -45,7 +45,21 @@ function owListSummary(ctx, flat) {
 }
 
 // up to four tiles: [label, value as HTML, small line, extra class]; only what this finding has
+const owListTile = ([label, value, sub, cls]) =>
+	`<div class="ow-l-tile ow-anim ${cls || ""}"><span>${OW.esc(label)}</span><b>${value}</b>${sub ? `<small>${OW.esc(sub)}</small>` : ""}</div>`;
+// a changed limit: the line before, the changed line and how long it stood, the orders between the two, who changed it (a role)
+function owListLimit(f) {
+	const l = f.limit, n = (f.orders || []).length, amt = (v) => (v == null ? OW.esc(__("No MD line")) : OW.num(v, "inr"));
+	const up = l.direction !== "lowered" && l.direction !== "introduced";
+	const stood = l.back_at ? __("{0} to {1}", [OW.day(l.at), OW.day(l.back_at)]) : __("from {0}", [OW.day(l.at)]);
+	const who = l.same_account && l.back_at ? __("both changes, the same account") : l.back_at && l.back_by_role ? __("set back by {0}", [l.back_by_role]) : "";
+	// only a raised or a removed limit can let an order past the MD: a lowered or a new one has no such tile
+	return [[__("Line before"), amt(l.old), l.old >= 1e5 ? OW.short(l.old) : ""], [__("Changed to"), amt(l.new), stood],
+		up && [__("Between the two lines, no MD"), OW.num(n), n ? __("together {0}", [OW.inr(f.total)]) : "", n ? "is-hi" : ""],
+		[__("Changed by"), OW.esc(l.by_role || ""), who]].filter(Boolean);
+}
 function owListTiles(f) {
+	if (f.kind === "limit" && f.limit) return owListLimit(f).map(owListTile).join("");
 	const os = f.orders || [], one = os[0], t = [], more = f.kind === "more", diff = f.total - f.line;
 	const lakh = (v) => (Math.abs(v) >= 1e5 ? OW.short(v) : "");
 	if (f.total != null) t.push([f.kind === "split" ? __("Together") : more ? __("Received") : __("Order value"), OW.num(f.total, "inr"), lakh(f.total)]);
@@ -61,20 +75,19 @@ function owListTiles(f) {
 		t.push([__("Entered"), OW.esc(OW.day(one.entered_at)), one.entered_by ? __("by {0}", [one.entered_by]) : ""]);
 		t.push([__("Approved"), OW.esc(one.approved_at ? OW.day(one.approved_at) : one.status || __("Not approved yet")), one.approved_at && one.approved_by ? __("by {0}", [one.approved_by]) : ""]);
 	}
-	return t.slice(0, 4).map(([label, value, sub, cls]) =>
-		`<div class="ow-l-tile ow-anim ${cls || ""}"><span>${OW.esc(label)}</span><b>${value}</b>${sub ? `<small>${OW.esc(sub)}</small>` : ""}</div>`).join("");
+	return t.slice(0, 4).map(owListTile).join("");
 }
 
 // the selected finding, drawn straight into the panel (the core's fold is for the rows of the routine block)
 function owListDetail(f) {
-	const chart = f.kind === "split" ? OW.timeline(f) : "", bar = chart ? "" : OW.bar(f);
+	const chart = OW.chart(f), bar = chart ? "" : OW.bar(f);
 	const what = chart ? `<h5 class="ow-l-h ow-anim">${__("What happened")}</h5>${chart}`
 		: bar ? `<h5 class="ow-l-h ow-anim">${__("How it compares")}</h5><div class="ow-l-cmp ow-anim">${bar}<p>${OW.esc(OW.gap(f))}</p></div>` : "";
 	return `<div class="ow-detail ow-l-d ow-lv-${f._lv}">
 		<p class="ow-l-tags ow-anim">${OW.pill(f.level)}<span>${OW.kindIcon(f)}${OW.esc(OW.title(f))}</span></p>
 		<h4 class="ow-l-say ow-anim">${OW.esc(f.summary)}</h4>
 		<p class="ow-l-meta ow-anim">${[OW.supplier(f), f.company].filter(Boolean).map((s) => OW.esc(s)).join(" · ")}</p>
-		${OW.also(f)}<div class="ow-l-tiles">${owListTiles(f)}</div>${what}${OW.orders(f)}${OW.facts(f)}</div>`;
+		${OW.used(f)}${OW.also(f)}<div class="ow-l-tiles">${owListTiles(f)}</div>${what}${OW.orders(f)}${OW.facts(f)}</div>`;
 }
 
 OW.views.list = {

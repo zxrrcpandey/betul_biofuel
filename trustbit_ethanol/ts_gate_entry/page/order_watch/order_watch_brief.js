@@ -4,9 +4,10 @@ const owBriefQs = [
 	{ kinds: ["split", "near"], word: __("Possibly"), q: __("Were orders split to stay under my line?"),
 		none: __("No group of small orders passes a line, and no order sits just under it."),
 		say: (c) => [c("split") && __("Groups of small orders that pass a line only when added together: {0}.", [c("split")]), c("near") && __("Single orders just under the line: {0}.", [c("near")])] },
-	{ kinds: ["over"], q: __("Did anything at or over my line go ahead without me?"),
-		none: __("Every order at or over the line has the MD's approval."),
-		say: (c) => [__("Orders at or over the line with no MD approval: {0}.", [c("over")])] },
+	// a changed approval limit answers this question too; alone it is a "Possibly" (or "No" when it is only a note), never a "Yes"
+	{ kinds: ["over", "limit"], soft: "limit", q: __("Did anything at or over my line go ahead without me?"),
+		none: __("Every order at or over the line has the MD's approval, and no approval limit changed."),
+		say: (c) => [c("over") && __("Orders at or over the line with no MD approval: {0}.", [c("over")]), c("limit") && __("Approval limits changed inside these dates: {0}.", [c("limit")])] },
 	{ kinds: ["self"], q: __("Did anyone approve their own order?"),
 		none: __("No order was entered and approved by the same account."),
 		say: (c) => [__("Orders where the account that entered the order also held an approval or review step: {0}.", [c("self")])] },
@@ -36,13 +37,17 @@ function owBriefStat(q, ctx) {
 	const s = { n: 0, Serious: 0, "To check": 0, Note: 0 };
 	ctx.all.filter((f) => owBriefHas(q, f)).forEach((f) => { s.n++; s[f.level]++; });
 	s.top = OW.LEVELS.find((l) => s[l]) || "";
+	// only findings of the question's soft kind: its answer is "Possibly"
+	s.soft = !!q.soft && q.kinds.every((k) => k === q.soft || !(ctx.counts.kinds[k] || {}).n);
 	return s;
 }
 function owBriefSay(q, ctx, s) {
 	return s.n ? q.say((kind) => (ctx.counts.kinds[kind] || { n: 0 }).n, s).filter(Boolean).join(" ") : q.none;
 }
 function owBriefAnswer(q, s) {
-	const word = !s.n ? (q.open ? __("None") : __("No")) : q.open ? __("{0} open", [s.n]) : q.extra ? __("{0} found", [s.n]) : q.word || __("Yes");
+	// only changed limits, all of them notes (no order passed the MD because of them): the answer stays "No"
+	const word = !s.n ? (q.open ? __("None") : __("No")) : q.open ? __("{0} open", [s.n]) : q.extra ? __("{0} found", [s.n])
+		: s.soft ? (s.top === "Note" ? __("No") : __("Possibly")) : q.word || __("Yes");
 	return `<span class="ow-b-ans ${s.top ? "ow-lv-" + OW.LV[s.top] : "is-none"}">${OW.icon(s.top ? OW.LV[s.top] : "done")}<span>${OW.esc(word)}</span></span>`;
 }
 function owBriefCounts(s, extra) {
@@ -58,7 +63,7 @@ function owBriefStart(ctx) {
 	const sum = ctx.counts.Serious ? __("{0} serious, {1} in question", [`<b>${OW.num(ctx.counts.Serious)}</b>`, `<b>${OW.num(money, "short")}</b>`])
 		: top.length ? __("No serious findings. These are the first items to check.") : __("Nothing serious and nothing to check: only notes for these dates.");
 	const items = top.map((f, n) => {
-		const clause = [(f.orders || []).length > 1 ? __("{0} orders", [f.orders.length]) : "", OW.gap(f)].filter(Boolean).join(" · ");
+		const clause = [(f.orders || []).length > 1 && f.kind !== "limit" ? __("{0} orders", [f.orders.length]) : "", OW.gap(f)].filter(Boolean).join(" · ");
 		return `<li class="ow-anim"><button type="button" class="ow-b-start-item ow-lv-${f._lv}" data-ow-jump="${f._i}">
 			<i class="ow-b-n">${n + 1}</i><span class="ow-b-start-lvl">${OW.pill(f.level)}</span>
 			<span class="ow-b-start-text"><small>${OW.esc(OW.title(f))}</small><span><b>${OW.esc(OW.supplier(f))}</b>${clause ? " · " + OW.esc(clause) : ""}</span></span>
@@ -118,7 +123,7 @@ function owBriefRow(f) {
 	return `<div class="ow-item ow-b-row ow-lv-${f._lv} ow-anim" data-ow-item="${f._i}"><button type="button" class="ow-b-row-head" data-ow-toggle="${f._i}" aria-expanded="false">
 		<span class="ow-b-row-lvl">${OW.pill(f.level)}</span>
 		<span class="ow-b-row-main"><span class="ow-b-kind">${OW.kindIcon(f)}${OW.esc(OW.title(f))}</span><b class="ow-b-sup">${OW.esc(OW.supplier(f))}</b><span class="ow-b-sent">${OW.esc(f.summary)}</span></span>
-		<span class="ow-b-row-amt">${f.total == null ? `<small>${__("No amount for this check")}</small>` : `<b>${OW.num(f.total, "inr")}</b>`}${gap ? `<small>${OW.esc(gap)}</small>` : ""}</span>
+		<span class="ow-b-row-amt">${OW.total(f) != null ? `<b>${OW.num(f.total, "inr")}</b>` : f.kind === "limit" ? "" : `<small>${__("No amount for this check")}</small>`}${gap ? `<small>${OW.esc(gap)}</small>` : ""}</span>
 		<span class="ow-b-row-bar">${OW.bar(f, { plain: true })}</span>${OW.icon("chevron")}</button>${OW.fold(f)}</div>`;
 }
 function owBriefSection(q, i, ctx, filtered) {

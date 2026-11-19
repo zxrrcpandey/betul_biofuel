@@ -13,6 +13,11 @@ reaching the MD, and other approval facts (plan 7D, build spec 14 Nov 2026).
   for visible orders (allowance edits: only items received on visible orders),
   and shown as plain text. A deliberate departure from ru.hop_readable; no
   Link to those doctypes is returned.
+- Limits by date (20 Nov 2026): the approval rule table's own change record
+  (Version) and its deleted rules (Deleted Document) are read the same way,
+  for the one doctype TS PO Approval Rule only, so each order is measured
+  against the limit in force when it was sent for approval. The accounts
+  that changed a limit stay in the data dict; the page gets a role.
 - All SQL lives here; the checks live in ts_order_watch_rules (no DB access).
 """
 
@@ -22,6 +27,7 @@ from datetime import date
 
 import frappe
 from frappe import _
+from frappe.permissions import get_doctype_roles
 from frappe.utils import add_days, cint, flt, fmt_money, get_datetime, getdate, today
 
 from trustbit_ethanol.ts_gate_entry import ts_order_watch_rules as rules
@@ -30,7 +36,7 @@ from trustbit_ethanol.ts_gate_entry.report import report_utils as ru
 ALLOWED_ROLES = ("MD",)  # user's decision 14 Nov 2026: MD only, no System Manager
 # Role label of an account: the first of these it holds, else "Other" (spec 3.6).
 ROLE_ORDER = ("MD", "CEO", "AVP", "Purchase Manager", "Grain Purchase Manager", "Purchase User")
-PM_ROLE = "Purchase Manager"  # role of the 1-lakh review step in TS PO Approval Step
+RULE_DT = "TS PO Approval Rule"  # the live approval limits (TS Approval Limit is the unread v1.0 table)
 NUMS = ("conversion_rate", "grand_total", "base_grand_total", "base_net_total", "per_received", "amount_at_submission")
 PO_COLS = """po.name, po.company, po.supplier, IFNULL(po.ts_purchase_category, '') AS category, po.currency,
 	po.conversion_rate, po.grand_total, po.base_grand_total, po.base_net_total, po.creation, po.transaction_date,
@@ -107,25 +113,53 @@ def _pos(conds, p):
 	return frappe.db.sql(f"SELECT {PO_COLS} FROM `tabPurchase Order` po WHERE {' AND '.join(conds)}", p, as_dict=True)
 
 
-def _lines():
-	"""The line per category from the active rule table (spec 3.1), and every rule's steps."""
-	rules = {}
-	for r in frappe.db.sql("""SELECT r.name, r.purchase_category, r.min_amount, r.is_active, s.step_order, s.role
+def _json(text):
+	try:
+		out = json.loads(text or "")
+	except (ValueError, TypeError):
+		return None
+	return out if isinstance(out, dict) else None
+
+
+def _history():
+	"""Today's rule table, its change record and its deleted rules; the rules rebuild the limits of any day from
+	them (rules.history). Version and Deleted Document: raw SQL, this one doctype only (see the module note)."""
+	now = {}
+	for r in frappe.db.sql("""SELECT r.name, r.purchase_category, r.min_amount, r.max_amount, r.is_active, r.creation,
+			r.owner, s.name AS step, s.step_order, s.role
 		FROM `tabTS PO Approval Rule` r LEFT JOIN `tabTS PO Approval Step` s
 			ON s.parent = r.name AND s.parenttype = 'TS PO Approval Rule'
 		ORDER BY r.name, s.step_order""", as_dict=True):
-		x = rules.setdefault(r.name, frappe._dict(cat=r.purchase_category, low=flt(r.min_amount), on=cint(r.is_active), steps=[]))
+		x = now.setdefault(r.name, {"cat": r.purchase_category, "low": flt(r.min_amount), "high": flt(r.max_amount),
+			"on": cint(r.is_active), "creation": get_datetime(r.creation), "owner": r.owner, "steps": []})
 		if r.step_order is not None:
-			x.steps.append({"step_order": cint(r.step_order), "role": r.role})
-	lines = {}
-	for cat in {x.cat for x in rules.values() if x.on}:
-		act = [(x.low, {s["role"] for s in x.steps}) for x in rules.values() if x.on and x.cat == cat]
-		md = min((low for low, roles in act if "MD" in roles), default=None)
-		pm = min((low for low, roles in act if PM_ROLE in roles), default=None)
-		if pm is not None and not any(low < pm and PM_ROLE not in roles for low, roles in act):
-			pm = None  # no CEO-alone band below the review step
-		lines[cat] = {"md": md, "pm": pm}
-	return lines, {name: x.steps for name, x in rules.items()}
+			x["steps"].append({"name": r.step, "step_order": cint(r.step_order), "role": r.role})
+	versions = [{"docname": v.docname, "at": get_datetime(v.creation), "by": v.owner, "data": _json(v.data)}
+		for v in frappe.db.sql("SELECT docname, data, creation, owner FROM `tabVersion` WHERE ref_doctype = %s ORDER BY creation",
+			RULE_DT, as_dict=True)]
+	deleted = [{"name": d.deleted_name, "at": get_datetime(d.creation), "by": d.owner, "doc": _json(d.data)}
+		for d in frappe.db.sql("""SELECT deleted_name, data, creation, owner FROM `tabDeleted Document`
+			WHERE deleted_doctype = %s ORDER BY creation""", RULE_DT, as_dict=True)]
+	return now, rules.history(now, versions, deleted)
+
+
+def _change_roles(accounts):
+	"""Account -> the roles to name it by: every role it holds that may edit the rule table (an account holding
+	several is said as such: "MD + CEO + IT Head" is an admin login, not the MD), else the usual label. The page
+	never gets the account."""
+	accounts = {a for a in accounts if a}
+	may, held = set(get_doctype_roles(RULE_DT, "write")), {}
+	for r in _in("SELECT parent, role FROM `tabHas Role` WHERE parenttype = 'User' AND parent IN %(n)s", accounts):
+		held.setdefault(r.parent, set()).add(r.role)
+	order = [r for r in ROLE_ORDER if r in may] + sorted(may - set(ROLE_ORDER))
+
+	def label(a):
+		if a == "Administrator":
+			return "Administrator"
+		mine = [r for r in order if r in held.get(a, ())]
+		return " + ".join(mine[:4]) or next((r for r in ROLE_ORDER if r in held.get(a, ())), "Other")
+
+	return {a: label(a) for a in accounts}
 
 
 def load(filters=None):
@@ -143,11 +177,13 @@ def load(filters=None):
 		from_date=from_date, to_date=to_date, end=add_days(to_date, 1),
 		# a group can start 7 days before from_date and its facts look 8 weeks further back; R32: 90 days and the FY
 		start=min(add_days(from_date, -63), add_days(to_date, -90), fy))
-	lines, rule_steps = _lines()
+	table, hist = _history()
+	lines = rules.lines_of(table.values())  # today's; each order is measured on hist["lines"], at its own time
+	rule_steps = {name: [{"step_order": s["step_order"], "role": s["role"]} for s in x["steps"]] for name, x in table.items()}
 	found = _pos([LIVE, "po.creation >= %(start)s", "po.creation < %(end)s"], p)
 	found += _pos(["po.docstatus = 1", RECEIVED_IN_WINDOW], p)
-	md_lines = [v["md"] for v in lines.values() if v["md"] is not None]
-	if md_lines:  # R44: open, nothing received, at or over the lowest line, approved over 60 days ago
+	md_lines = [e["line"] for h in hist["lines"].values() for e in h["md"] if e["line"] is not None]
+	if md_lines:  # R44: open, nothing received, at or over the lowest line there ever was, approved over 60 days ago
 		p.update(closed=("Closed", "Completed", "Cancelled", "Delivered"), min_md=min(md_lines), aged=add_days(now, -60))
 		old = _pos(["po.docstatus = 1", "po.status NOT IN %(closed)s", "IFNULL(po.per_received, 0) = 0",
 			"po.base_grand_total >= %(min_md)s", "IFNULL(po.ts_approved_date, po.creation) < %(aged)s"], p)
@@ -167,7 +203,13 @@ def load(filters=None):
 	default_cat = frappe.db.get_single_value("TS Settings", "default_po_category") or ""
 	currency = dict(frappe.db.sql("SELECT name, default_currency FROM `tabCompany`"))
 	for o in orders.values():
-		steps, lg = rule_steps.get(o.approval_rule), logs.get(o.name, [])
+		lg = logs.get(o.name, [])
+		o.creation, o.category = get_datetime(o.creation), o.category or default_cat
+		# the rule's steps and the MD line as they stood when the order was last sent for approval
+		o.routed_at, o.routed_amount = rules.routed(o, lg)
+		state = rules.state_at(hist["rules"], o.approval_rule, o.routed_at)
+		steps = o.steps = state["steps"] if state else None
+		o.md_line = rules.line_at(hist["lines"], o.category, "md", o.routed_at)
 		step_role = {s["step_order"]: s["role"] for s in steps or []}
 		ok = [x for x in lg if x.action in ("Approved", "Final Approved")]
 		# the step decides, not the person (some logins hold both CEO and MD); no rule: the logged role
@@ -180,9 +222,8 @@ def load(filters=None):
 			o.final_approved_at = get_datetime(o.approved_date) if o.approved_date else None
 			o.final_approver_role = steps[-1]["role"] if steps and o.approved_date else None
 		o.approved_date = get_datetime(o.approved_date) if o.approved_date else None
-		o.category = o.category or default_cat
 		o.company_currency = currency.get(o.company)
-		o.creation, o.transaction_date = get_datetime(o.creation), getdate(o.transaction_date)
+		o.transaction_date = getdate(o.transaction_date)
 		o.self_skip_impossible = cint(o.self_skip_impossible)
 		o.submitted_by_role = o.entered_role = next((r for r in ROLE_ORDER if r in held.get(o.submitted_by, ())), "Other")
 		for k in NUMS:
@@ -228,7 +269,9 @@ def load(filters=None):
 		"items": items, "mr_items": mr_items, "logs": logs, "rule_steps": rule_steps, "receipts": receipts,
 		"gate_first": gate_first, "allowance_edits": edits, "allowance_now": allowance_now,
 		"stock_allowance": flt(frappe.db.get_single_value("Stock Settings", "over_delivery_receipt_allowance")),
-		"item_receipts": item_receipts}
+		"item_receipts": item_receipts, "line_history": hist["lines"], "rule_history": hist["rules"],
+		"history_gaps": hist["gaps"],
+		"change_roles": _change_roles(e.get("by") for h in hist["lines"].values() for k in h.values() for e in k)}
 
 
 def _money(v):
@@ -270,8 +313,24 @@ def _order_row(o, its, recs):
 		"received": _("{0} receipt(s), {1}").format(len(got), _money(value)) if got else _("Nothing received yet")}
 
 
+def _limit_rows(out):
+	"""The top block of the Table / Export: the MD limit of each category in the selected dates."""
+	rows = []
+	for l in out.get("limits") or []:
+		parts = []
+		for r in l["rows"]:
+			line = _money(r["line"]) if r["line"] is not None else _("no MD step")
+			when = [w for w in (r["from"] and _("from {0}").format(get_datetime(r["from"]).strftime("%d-%m-%Y %H:%M")),
+				r["to"] and _("to {0}").format(get_datetime(r["to"]).strftime("%d-%m-%Y %H:%M"))) if w]
+			parts.append(line if len(l["rows"]) == 1 else "{0} {1}".format(line, " ".join(when)))
+		rows.append({"indent": 1, "found": "{0}: {1}{2}".format(l["category"], "; ".join(parts),
+			"" if l["changed"] else " " + _("(not changed in these dates)"))})
+	rows += [{"indent": 1, "found": g} for g in out.get("gaps") or []]
+	return [{"indent": 0, "found": _("Approval limits in these dates (the MD line of each category)")}] + rows if rows else []
+
+
 def _rows(out, data):
-	orders, items, rows = data["orders"], {}, []
+	orders, items, rows = data["orders"], {}, _limit_rows(out)
 	for i in data["items"]:
 		items.setdefault(i.po, []).append(i)
 	for p in out.get("points") or []:
@@ -280,7 +339,7 @@ def _rows(out, data):
 			"total": p.get("total"), "over_by": p.get("over_by") if p.get("line") is not None else None})
 		rows += [_order_row(orders[n], items.get(n, []), data["receipts"].get(n, []))
 			for n in p.get("orders") or [] if n in orders]
-		texts = [p.get("tie")] + list(p.get("facts_against") or []) + list(p.get("extra_rows") or [])
+		texts = [p.get("line_used"), p.get("tie")] + list(p.get("facts_against") or []) + list(p.get("extra_rows") or [])
 		rows += [{"indent": 1, "found": t} for t in texts if t and t != rules.LAST_LINE]
 		rows.append({"indent": 1, "found": rules.LAST_LINE})
 	ranked = out.get("ranked") or []
@@ -293,8 +352,10 @@ def _rows(out, data):
 			"supplier": r["key"] if r["kind"] == "supplier" else None,
 			"found": _("{0}: {1}{2} orders · largest {3}").format(r["label"], sums, cint(r["orders"]), _money(r["largest"]))
 				+ "".join(" · " + m for m in r.get("marks") or [])})
+	if not (out.get("points") or ranked):
+		rows.append({"indent": 0, "found": _("Nothing found for these dates.")})
 	blank = dict.fromkeys(("total", "over_by", "value"))  # the desk shows a MISSING money key as "₹ 0.00", None as blank
-	return [{k: _inert(v) for k, v in {**blank, **r}.items()} for r in rows] or [{"indent": 0, "found": _("Nothing found for these dates.")}]
+	return [{k: _inert(v) for k, v in {**blank, **r}.items()} for r in rows]
 
 
 def _inert(v):
@@ -314,7 +375,7 @@ def _inert(v):
 # The kind of finding a check belongs to; the page shows a plain title for each and never the check code.
 PAGE_KINDS = {"R30": "split", "R29": "split", "R31": "split", "R38/R30": "split", "R38/R29": "split",
 	"R35": "near", "R38/R35": "near", "R36": "over", "R39": "self", "R41": "more", "R42": "allowance",
-	"R43": "early", "R44": "open"}
+	"R43": "early", "R44": "open", "R45": "limit"}
 CHECK_PREFIX = re.compile(r"^R\d+(?:/R\d+)?: ")  # a merged finding's extra line starts with its check code
 
 
@@ -334,7 +395,8 @@ def get_page_data(from_date=None, to_date=None, company=None):
 		return sum(flt(orders[n].base_grand_total) for n in names)
 
 	return {"from_date": str(data["from_date"]), "to_date": str(data["to_date"]), "company": company or "",
-		"md_lines": sorted({flt(v["md"]) for v in data["lines"].values() if v["md"] is not None}),
+		# the MD limit of each category in these dates (one row per stretch), and where its record is not whole
+		"limits": out.get("limits") or [], "gaps": out.get("gaps") or [],
 		"last_line": _(rules.LAST_LINE),
 		# for the page's Company pick list: an MD-only login cannot read Company, so a Link box is no use to it
 		"companies": frappe.get_all("Company", pluck="name", order_by="name"),
@@ -356,6 +418,9 @@ def _finding(p, orders, items, receipts):
 		"summary": p.get("summary"), "supplier": p.get("supplier"), "company": p.get("company"),
 		"line": p.get("line"), "total": p.get("total"), "over_by": p.get("over_by") if p.get("line") is not None else None,
 		"facts": [CHECK_PREFIX.sub("", t) for t in texts if t and t not in last],
+		# line_used: the limit the orders were measured against, in words (only where it ever changed);
+		# limit: the change itself, for the "Approval limit changed" finding (roles, never accounts)
+		"line_used": p.get("line_used"), "limit": p.get("limit"),
 		"orders": [_order_card(orders[n], items.get(n, []), receipts.get(n, [])) for n in p.get("orders") or [] if n in orders]}
 
 
@@ -364,4 +429,5 @@ def _order_card(o, its, recs):
 	return {"name": o.name, "supplier": o.supplier, "entered_at": o.creation, "po_date": row["po_date"],
 		"value": flt(o.base_grand_total), "items": row["items"], "request": row["request"],
 		"entered_by": o.entered_role, "approved_by": o.final_approver_role, "approved_at": o.final_approved_at,
-		"status": o.approval_status, "received": row["received"]}
+		"status": o.approval_status, "received": row["received"],
+		"line": o.get("md_line"), "routed_at": o.get("routed_at")}

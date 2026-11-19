@@ -1,6 +1,8 @@
 // ---- Cards view: an inbox of findings. Four tiles, a "start here" strip, the kind chips, then one card per
 // finding under its level, the routine old orders folded at the end. Every data value goes through OW.esc(). ----
 const owCardsDates = (f) => {
+	// a changed limit is dated by the change, not by its orders
+	if (f.kind === "limit" && f.limit) return OW.day(f.limit.at);
 	const at = (f.orders || []).map((o) => o.entered_at).filter(Boolean).sort();
 	if (!at.length) return "";
 	const a = moment(at[0]), b = moment(at[at.length - 1]);
@@ -9,6 +11,7 @@ const owCardsDates = (f) => {
 };
 const owCardsLabel = (f, open) => {
 	const n = (f.orders || []).length, m = (f.facts || []).length;
+	if (f.kind === "limit") return open ? __("Hide the chart and facts") : n ? __("Show the chart, the orders and the facts") : __("Show the chart and the facts");
 	if (open) return n > 1 ? __("Hide the orders and facts") : __("Hide the order and facts");
 	if (n > 1) return m > 1 ? __("Show the {0} orders and {1} facts", [n, m]) : m ? __("Show the {0} orders and 1 fact", [n]) : __("Show the {0} orders", [n]);
 	return m > 1 ? __("Show the order and {0} facts", [m]) : m ? __("Show the order and 1 fact") : __("Show the order");
@@ -16,8 +19,9 @@ const owCardsLabel = (f, open) => {
 // right side of a card: the amount, how far it is from its line, the bar; without a line, one fact instead
 const owCardsFigure = (f) => {
 	const os = f.orders || [], split = f.kind === "split" && os.length > 1, bar = OW.bar(f), gap = OW.gap(f);
-	const name = split ? __("{0} orders together", [os.length]) : f.kind === "more" ? __("received") : ["near", "over", "self", "open"].includes(f.kind) ? __("order value") : __("amount");
-	const amt = f.total == null ? "" : `<div class="ow-c-amt"><b>${OW.num(f.total, "inr")}</b><span>${OW.esc(name)}</span></div>`;
+	const name = split ? __("{0} orders together", [os.length]) : f.kind === "more" ? __("received") : f.kind === "limit" ? __("in orders between the two lines")
+		: ["near", "over", "self", "open"].includes(f.kind) ? __("order value") : __("amount");
+	const amt = OW.total(f) == null ? "" : `<div class="ow-c-amt"><b>${OW.num(f.total, "inr")}</b><span>${OW.esc(name)}</span></div>`;
 	const fact = bar ? "" : (f.facts || [])[0] || (os[0] && os[0].received ? __("Received: {0}", [os[0].received]) : "");
 	let under = "";
 	if (bar && split) under = `<ul class="ow-c-parts" aria-label="${OW.esc(__("Value of each order"))}">${os.map((o, i) => `<li style="--i:${i}">${OW.esc(OW.short(o.value))}</li>`).join("")}</ul>`;
@@ -33,7 +37,7 @@ const owCardsCard = (f, here) => {
 			<div class="ow-c-top">${OW.pill(f.level)}<span class="ow-c-kic">${OW.kindIcon(f)}</span><h4>${OW.esc(OW.title(f))}</h4></div>
 			<div class="ow-c-say">${OW.esc(f.summary)}</div>
 			<div class="ow-c-meta">${sup ? `<b>${OW.esc(sup)}</b>` : ""}${f.company ? `<span>${OW.esc(f.company)}</span>` : ""}
-				<span>${OW.icon("table")}${OW.esc(n === 1 ? __("1 order") : __("{0} orders", [n]))}</span>${when ? `<span>${OW.icon("clock")}${OW.esc(when)}</span>` : ""}</div>
+				${n || f.kind !== "limit" ? `<span>${OW.icon("table")}${OW.esc(n === 1 ? __("1 order") : __("{0} orders", [n]))}</span>` : ""}${when ? `<span>${OW.icon("clock")}${OW.esc(when)}</span>` : ""}</div>
 		</div>${fig}</div>${OW.toggle(f, owCardsLabel(f))}${OW.fold(f)}</div></article>`;
 };
 const owCardsMoney = (money) => {

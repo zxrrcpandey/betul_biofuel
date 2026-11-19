@@ -50,7 +50,14 @@ STEPS = {"Store-Under 1L": [dict(CEO, step_order=1)], "Store-1L to 6L": [PM, CEO
 	"Grain-Under 6L": [dict(PM, role="Grain Purchase Manager"), CEO], "Grain-Above 6L": [dict(PM, role="Grain Purchase Manager"), CEO, MD],
 	"Coal-Under 30L": [dict(CEO, step_order=1)], "Coal-Above 30L": [dict(CEO, step_order=1), dict(MD, step_order=2)]}
 KEYS = {"checks", "level", "summary", "supplier", "company", "category", "line", "total", "over_by", "orders", "tie",
-	"facts_against", "extra_rows"}
+	"facts_against", "extra_rows", "line_used", "limit"}
+LIMIT_KEYS = {"category", "direction", "old", "new", "at", "back_at", "back_to", "by_role", "back_by_role", "same_account",
+	"range", "steps", "marks", "marks_cut"}
+# the rule table behind LINES and STEPS, as the loader reads it: every rule made on one day, never changed
+SETUP = datetime(2026, 4, 1, 12, 50)
+BANDS = {"Store-Under 1L": (0, 99999), "Store-1L to 6L": (100000, 599999), "Store-Above 6L": (600000, 0),
+	"Grain-Under 6L": (0, 599999), "Grain-Above 6L": (600000, 0), "Coal-Under 30L": (0, 2999999), "Coal-Above 30L": (3000000, 0)}
+PAIRS = []  # (points with today's lines only, points with the rebuilt one-stretch history) of every Part A world
 RANK_KEYS = {"kind", "key", "label", "d30", "d90", "fy", "orders", "largest", "marks"}
 WORDS = ("fraud", "bypass", "cheat", "suspicious", "violation")
 ALL = []  # every result of Part A, for the checks that hold on every point
@@ -118,9 +125,29 @@ def receipt(w, po, doc, at, qty, amount, item="ITM-A", doctype="Purchase Receipt
 		update_stock=0, item_code=item, qty=qty, base_net_amount=amount, token=None))
 
 
+def table():
+	"""Today's rule table: {rule: {...}} in the loader's shape; each step row has its own name."""
+	return {name: {"cat": name.split("-")[0], "low": float(low), "high": float(high), "on": 1, "creation": SETUP + timedelta(seconds=k),
+		"owner": "acct-admin", "steps": [dict(s, name=f"{name}#{s['step_order']}") for s in STEPS[name]]}
+		for k, (name, (low, high)) in enumerate(BANDS.items())}
+
+
+def version(rule, at, by="acct-admin", **diff):
+	return {"docname": rule, "at": at, "by": by, "data": diff}
+
+
+def with_history(w, hist, roles=None):
+	"""The world as the loader hands it over once the limits are rebuilt by date."""
+	return dict(w, line_history=hist["lines"], rule_history=hist["rules"], history_gaps=hist["gaps"],
+		change_roles=roles or {"acct-admin": "IT Head", "acct-other": "System Manager"})
+
+
 def find(w):
 	res = rules.find_points(w)
 	ALL.append(res)
+	if "line_history" not in w:  # acceptance 2: a never-changed rule table must give the same points
+		flat = rules.find_points(with_history(w, rules.history(table())))
+		PAIRS.append((res, flat))
 	return res
 
 
@@ -185,7 +212,8 @@ def part_a():
 		w["orders"]["PO-T-0031"]["final_approved_at"] = T0 + timedelta(hours=2)
 		p = one(find(w), "R30")
 		eq((p["level"], p["tie"]), ("Note", ""), "nothing ties them: a Note")
-		check("none came to the MD" in p["summary"] and "6,00,000" in p["summary"], p["summary"])
+		check(p["summary"].endswith(". Each is under the MD line of ₹6,00,000. Together they are ₹7,00,000, which is ₹1,00,000 above the line."
+			" None came to the MD."), p["summary"])
 	test("R30 (d) one approval sitting; approved days apart is a Note", t_r30_sitting)
 
 	def t_r30_typed():
@@ -393,6 +421,8 @@ def part_a():
 		order(w, "PO-T-0222", 60000, T0 + 3 * DAY, supplier=S3, item="ITM-B")
 		p = one(find(w), "R38/R30")
 		check(p["level"] == "Note" and p["line"] == 100000 and p["checks"] == ["R38/R30"], p)
+		check("Each is under the review line of ₹1,00,000." in p["summary"] and "MD line" not in p["summary"],
+			f"a group at the 1-lakh line names the review line, not the MD line: {p['summary']}")
 		for o in w["orders"].values():
 			o["category"] = "Grain"
 		eq([p for p in find(w)["points"] if any(c.startswith("R38") for c in p["checks"])], [], "Grain has no 1-lakh line")
@@ -589,6 +619,342 @@ def part_a():
 		check("2 orders dated the same day" in one(find(w), "R30")["summary"], "plain words for one typed date")
 	test("look-alike: two typed dates on one day read 'dated the same day'", t_x_same_day)
 
+	# -- limits by date (20 Nov 2026) --
+	CH = T0 + 2 * DAY  # a change of the Store MD limit, two days after T0
+	MD_ROW = "Store-Above 6L"
+
+	def lowered(at=CH, old="₹ 6,00,000.00", new="₹ 1,00,000.00", **kw):
+		"""Today the Store MD rule starts at 1 lakh; it was changed from 6 lakh at `at`."""
+		now = table()
+		now[MD_ROW]["low"] = rules._amount(new)
+		return now, [version(MD_ROW, at, changed=[["min_amount", old, new]], **kw)]
+
+	def raised_then_back(up=CH, back=CH + DAY, by_back="acct-admin"):
+		"""6 lakh -> 10 lakh at `up`, -> 6 lakh at `back` (None: never set back)."""
+		now = table()
+		vs = [version(MD_ROW, up, changed=[["min_amount", "₹ 6,00,000.00", "₹ 10,00,000.00"]])]
+		if back:
+			vs.append(version(MD_ROW, back, by=by_back, changed=[["min_amount", "₹ 10,00,000.00", "₹ 6,00,000.00"]]))
+		else:
+			now[MD_ROW]["low"] = 1000000.0
+		return rules.history(now, vs)
+
+	def md_run(hist, cat="Store"):
+		return [(e["from"], e["line"]) for e in hist["lines"][cat]["md"]]
+
+	def t_h_flat():
+		hist = rules.history(table())
+		eq({c: {k: [e["line"] for e in v] for k, v in h.items()} for c, h in hist["lines"].items()},
+			{c: {k: [v] for k, v in l.items()} for c, l in LINES.items()}, "one stretch per line, equal to today's lines")
+		check(all(e["from"] is None and e["since"].date() == SETUP.date() for h in hist["lines"].values() for v in h.values() for e in v),
+			"rules made one after another on the setup day are one starting stretch")
+		eq(hist["lines"]["Store"]["md"][0]["since"], SETUP, "it is dated from the category's first rule")
+		eq(hist["gaps"], [], "no gap")
+		eq(rules.lines_of(table().values()), LINES, "lines_of gives the loader's old answer")
+	test("history: a never-changed rule table is one stretch per category (setup day merged)", t_h_flat)
+
+	def t_h_currency():
+		hist = rules.history(*lowered())
+		eq(md_run(hist), [(None, 600000.0), (CH, 100000.0)], "the MD limit before and after the change")
+		eq(hist["lines"]["Store"]["md"][1]["by"], "acct-admin", "who changed it stays in the data")
+		eq(md_run(hist, "Grain"), [(None, 600000.0)], "another category is untouched")
+		eq(hist["gaps"], [], "the record adds up")
+		eq((rules._amount("₹ 6,00,000.00"), rules._amount(0), rules._amount(None), rules._amount("12,50,000")), (600000.0, 0.0, 0.0, 1250000.0), "amounts")
+	test("history: a Currency change is read back from its printed text", t_h_currency)
+
+	def t_h_open_band():
+		now = table()
+		now["Store-1L to 6L"]["high"] = 599999.0
+		hist = rules.history(now, [version("Store-1L to 6L", CH, changed=[["max_amount", 0, "₹ 5,99,999.00"]])])
+		eq([(s["from"], s["high"]) for s in hist["rules"]["Store-1L to 6L"]], [(SETUP + timedelta(seconds=1), 0.0), (CH, 599999.0)],
+			"a raw 0 is an open band")
+		eq(hist["gaps"], [], "no gap")
+	test("history: a raw 0 in the record is an open-ended band, not an unreadable value", t_h_open_band)
+
+	def t_h_steps():
+		# (1) the MD step was added to a rule; before it the rule had none
+		now = table()
+		now["Store-1L to 6L"]["steps"].append({"name": "row-md", "step_order": 3, "role": "MD"})
+		hist = rules.history(now, [version("Store-1L to 6L", CH, added=[["approval_steps", {"name": "row-md", "step_order": 3, "role": "MD"}]])])
+		eq(md_run(hist), [(None, 600000.0), (CH, 100000.0)], "added: the MD limit dropped to that rule's start")
+		# (2) the MD step was removed from the top rule: no MD limit after it
+		now = table()
+		gone = now[MD_ROW]["steps"].pop()
+		hist = rules.history(now, [version(MD_ROW, CH, removed=[["approval_steps", gone]])])
+		eq(md_run(hist), [(None, 600000.0), (CH, None)], "removed: no MD limit after the change")
+		# (3) a step's role was changed from MD to CEO
+		now = table()
+		now[MD_ROW]["steps"][2]["role"] = "CEO"
+		hist = rules.history(now, [version(MD_ROW, CH, row_changed=[["approval_steps", 2, f"{MD_ROW}#3", [["role", "MD", "CEO"]]]])])
+		eq(md_run(hist), [(None, 600000.0), (CH, None)], "row changed: the step was the MD's before")
+		eq(hist["gaps"], [], "all three add up")
+		# a bulk re-save (every row removed and added again under new names, same roles) is no change of the limit
+		now = table()
+		old = [dict(s) for s in now[MD_ROW]["steps"]]
+		for s in now[MD_ROW]["steps"]:
+			s["name"] = "new-" + s["name"]
+		hist = rules.history(now, [version(MD_ROW, CH, added=[["approval_steps", dict(s)] for s in now[MD_ROW]["steps"]],
+			removed=[["approval_steps", s] for s in old])])
+		eq((md_run(hist), hist["gaps"]), ([(None, 600000.0)], []), "re-saved rows: the limit did not change")
+	test("history: step rows added, removed and changed are undone; a re-save of the same roles is no change", t_h_steps)
+
+	def t_h_deleted():
+		now = table()
+		doc = {"name": "Store-Special", "creation": str(SETUP + 10 * DAY), "modified": str(SETUP + 10 * DAY), "owner": "acct-admin",
+			"purchase_category": "Store", "min_amount": 300000, "max_amount": 0, "is_active": 1,
+			"approval_steps": [{"name": "x1", "step_order": 1, "role": "MD"}]}
+		hist = rules.history(now, [], [{"name": "Store-Special", "at": SETUP + 20 * DAY, "by": "acct-other", "doc": doc}])
+		eq(md_run(hist), [(None, 600000.0), (SETUP + 10 * DAY, 300000.0), (SETUP + 20 * DAY, 600000.0)], "it counted while it lived")
+		eq(hist["lines"]["Store"]["md"][2]["by"], "acct-other", "its end is the deleter's change")
+		eq(hist["gaps"], [], "made and deleted unchanged: no gap")
+		doc["modified"] = str(SETUP + 15 * DAY)
+		gaps = rules.history(now, [], [{"name": "Store-Special", "at": SETUP + 20 * DAY, "by": "acct-other", "doc": doc}])["gaps"]
+		eq([(g["cat"], g["from"], g["to"], g["why"]) for g in gaps], [("Store", SETUP + 10 * DAY, SETUP + 15 * DAY, "deleted")],
+			"edited before it was deleted: its edits are gone with its record")
+	test("history: a deleted rule lived from its making to its deletion; its lost edits are a gap", t_h_deleted)
+
+	def t_h_chain():
+		now, vs = lowered(new="₹ 2,00,000.00")
+		now[MD_ROW]["low"] = 100000.0  # today 1 lakh, but the last record says it became 2 lakh
+		hist = rules.history(now, vs)
+		eq([(g["from"], g["to"], g["why"]) for g in hist["gaps"]], [(CH, None, "chain")], "a change after the last record has no record")
+		eq(md_run(hist)[0], (None, 600000.0), "before the record it is still read from the record")
+		now, vs = lowered(old="6.00.000,00")
+		hist = rules.history(now, vs)
+		eq([(g["from"], g["to"], g["why"]) for g in hist["gaps"]], [(None, CH, "unreadable")], "another number format: a gap, not a guess")
+		eq(md_run(hist), [(None, 100000.0)], "the value is left as it is")
+		hist = rules.history(table(), [{"docname": MD_ROW, "at": CH, "by": "acct-admin", "data": None}])
+		eq([g["why"] for g in hist["gaps"]], ["unreadable"], "a record that cannot be read at all")
+	test("history: a record that does not add up or cannot be read is a gap, never a crash or a guess", t_h_chain)
+
+	def t_h_same_time():
+		now = table()
+		now[MD_ROW]["low"], now["Store-1L to 6L"]["high"] = 100000.0, 99999.0
+		hist = rules.history(now, [version(MD_ROW, CH, changed=[["min_amount", "₹ 6,00,000.00", "₹ 1,00,000.00"]]),
+			version("Store-1L to 6L", CH, changed=[["max_amount", "₹ 5,99,999.00", "₹ 99,999.00"]]),
+			version("Store-1L to 6L", CH + timedelta(hours=1), changed=[["priority", 2, 3]])])
+		eq(md_run(hist), [(None, 600000.0), (CH, 100000.0)], "two records at one moment are one change; a later one that moves no limit is none")
+	test("history: two changes at the same moment are one; a change that moves no limit adds no stretch", t_h_same_time)
+
+	def t_flat_same():
+		check(len(PAIRS) > 60, f"only {len(PAIRS)} worlds compared")
+		bad = [k for k, (a, b) in enumerate(PAIRS) if a["points"] != b["points"] or a["ranked"] != b["ranked"]]
+		eq(bad, [], "worlds whose points differ once the limits are rebuilt by date")
+		check(all(not b["gaps"] and all(len(l["rows"]) == 1 and not l["changed"] for l in b["limits"]) for a, b in PAIRS),
+			"a never-changed table has one row per category and no gap sentence")
+		check(all(p["line_used"] is None and p["limit"] is None for a, b in PAIRS for p in b["points"]), "and no limit sentence")
+	test("acceptance: every world gives the same points with a never-changed rule table as with today's lines", t_flat_same)
+
+	def t_route_time():
+		hist = rules.history(*lowered())  # Store MD limit: 6 lakh until T0 + 2 days, 1 lakh after
+		w = world()
+		order(w, "PO-T-0501", 350000, T0)
+		order(w, "PO-T-0502", 350000, T0 + DAY, item="ITM-B")
+		p = one(find(with_history(w, hist)), "R30")
+		eq((p["line"], p["orders"]), (600000.0, ["PO-T-0501", "PO-T-0502"]), "both sent before the change: the 6 lakh limit")
+		eq(p["line_used"], "MD line used: ₹6,00,000, the Store limit in force from 01-04-2026 to 07-10-2026 10:00. Today's limit is ₹1,00,000.",
+			"the limit used is said in words")
+		today_only = copy.deepcopy(w)
+		today_only["lines"]["Store"] = {"md": 100000.0, "pm": None}  # what the report measured before: today's limit for every date
+		eq(pts(rules.find_points(today_only), "R30"), [], "control: against today's 1 lakh the same orders were not small orders at all")
+		# sent again after the change: measured against the limit of its last submission
+		w["logs"]["PO-T-0502"] = [log("Submitted", T0 + DAY, 350000), log("Revised", CH, 350000, 2, "acct-ceo"),
+			log("Resubmitted", CH + DAY, 350000)]
+		eq(pts(find(with_history(w, hist)), "R30"), [], "resubmitted after the change: over the new limit, so no small order")
+		w = world()
+		order(w, "PO-T-0503", 60000, CH + DAY)
+		order(w, "PO-T-0504", 60000, CH + 2 * DAY, item="ITM-B")
+		p = one(find(with_history(w, hist)), "R30")
+		eq((p["line"], p["line_used"]), (100000.0, "MD line used: ₹1,00,000, the Store limit in force since 07-10-2026 10:00."),
+			"sent after the change: today's limit, and no 'today's limit' tail")
+	test("an order is measured against the limit in force when it was last sent for approval", t_route_time)
+
+	def t_no_mix():
+		w = world()
+		order(w, "PO-T-0511", 350000, T0 + DAY)
+		order(w, "PO-T-0512", 350000, T0 + 4 * DAY, item="ITM-B")
+		eq(one(find(w), "R30")["orders"], ["PO-T-0511", "PO-T-0512"], "control: one group when the limit never changed")
+		now = table()
+		now[MD_ROW]["low"] = 1000000.0
+		up = rules.history(now, [version(MD_ROW, CH, changed=[["min_amount", "₹ 6,00,000.00", "₹ 10,00,000.00"]])])
+		eq(pts(find(with_history(w, up)), "R30"), [], "one order before a change and one after it are not one group")
+		eq(pts(find(with_history(w, raised_then_back())), "R30"), [], "nor across a raise that was set back to the same value")
+		order(w, "PO-T-0513", 350000, T0 + 5 * DAY, item="ITM-C")
+		eq(one(find(with_history(w, raised_then_back())), "R30")["orders"], ["PO-T-0512", "PO-T-0513"], "two after the set-back are a group")
+	test("a group never mixes orders measured against two stretches of the limit", t_no_mix)
+
+	def t_steps_then():
+		hist = rules.history(table())
+		w = world()
+		o = order(w, "PO-T-0521", 490000, T0, qty=1234, submitted_by_role="Purchase Manager",
+			logs=[log("Submitted", T0, 490000, 2), log("Final Approved", T0 + DAY, 490000, 2, "acct-ceo")])
+		check("R39" in one(find(with_history(w, hist)), "R35")["checks"], "control: the review step is skipped under today's steps")
+		o["steps"] = [dict(CEO, step_order=2)]  # as the rule stood when it was sent: the CEO alone, at step 2
+		res = find(with_history(w, hist))
+		eq(pts(res, "R39"), [], "no review step existed then, so none was skipped")
+	test("a skipped review is judged on the rule's steps as they stood then", t_steps_then)
+
+	def t_r32_then():
+		hist = raised_then_back(up=datetime(2026, 12, 1, 9), back=None)  # raised to 10 lakh after the selected dates end (14 Nov)
+		w = world()
+		for k in range(3):
+			order(w, f"PO-T-053{k}", 250000, T0 + k * 10 * DAY)
+		eq(ranked(find(with_history(w, hist)), "supplier", S1)["d90"], 750000, "7.5 lakh passes the 6 lakh limit of the dates' end")
+		w.update(to_date=date(2026, 12, 20), today=date(2026, 12, 20))
+		eq(ranked(find(with_history(w, hist)), "supplier", S1), None, "dates ending after the raise: 7.5 lakh is under 10 lakh")
+	test("the standing-order list uses the limits at the end of the selected dates", t_r32_then)
+
+	def t_limits_gaps():
+		hist = rules.history(*lowered())
+		w = world()
+		order(w, "PO-T-0541", 350000, T0)
+		res = find(with_history(w, hist))
+		store = next(l for l in res["limits"] if l["category"] == "Store")
+		eq((store["changed"], store["rows"]), (1, [{"line": 600000.0, "from": SETUP, "to": CH, "today": False},
+			{"line": 100000.0, "from": CH, "to": None, "today": True}]), "the Store rows")
+		eq([(l["category"], l["changed"], len(l["rows"])) for l in res["limits"] if l["category"] != "Store"],
+			[("Coal", 0, 1), ("Grain", 0, 1)], "the others are one row, not changed")
+		eq(res["gaps"], [], "the order fits the band of its rule")
+		w.update(from_date=date(2026, 10, 20))
+		eq(next(l for l in find(with_history(w, hist))["limits"] if l["category"] == "Store")["rows"],
+			[{"line": 100000.0, "from": CH, "to": None, "today": True}], "only the stretches that touch the dates")
+		w.update(from_date=date(2026, 8, 16))
+		w["logs"]["PO-T-0541"][0]["po_amount"] = 50000  # sent at 50,000 under a rule that starts at 1 lakh
+		g = find(with_history(w, hist))["gaps"]
+		check(len(g) == 1 and g[0].startswith("1 order(s) of these dates do not fit") and "PO-T-0541" in g[0], g)
+		now, vs = lowered(new="₹ 2,00,000.00")
+		now[MD_ROW]["low"] = 100000.0  # the record does not add up after the change (see the chain test)
+		w["logs"]["PO-T-0541"][0]["po_amount"] = 350000
+		eq(find(with_history(w, rules.history(now, vs)))["gaps"], [], "no order of the dates was sent in the uncovered time: nothing is said")
+		order(w, "PO-T-0542", 350000, CH + DAY)
+		g = find(with_history(w, rules.history(now, vs)))["gaps"]
+		check(any(x.startswith("The record of the Store limits is not complete: 1 order(s)") for x in g), g)
+	test("the limits rows cover the selected dates; a gap is said only when an order of the dates is touched", t_limits_gaps)
+
+	def t_r45_levels():
+		w = world()
+		order(w, "PO-T-0551", 800000, CH + timedelta(hours=3))  # between 6 and 10 lakh, sent while the limit was 10 lakh
+		order(w, "PO-T-0552", 800000, CH + timedelta(hours=4), item="ITM-B", md=True)  # the MD saw this one
+		order(w, "PO-T-0553", 300000, CH + timedelta(hours=5), item="ITM-C")  # under the old limit
+		p = one(find(with_history(w, raised_then_back())), "R45")
+		eq((p["level"], p["orders"], p["total"], p["line"], p["supplier"], p["category"]), ("Serious", ["PO-T-0551"], 800000, None, None, "Store"),
+			"raised, set back, one order between: Serious; the MD-approved and the small order are not counted")
+		eq(set(p["limit"]), LIMIT_KEYS, "limit keys")
+		lim = p["limit"]
+		eq((lim["direction"], lim["old"], lim["new"], lim["at"], lim["back_at"], lim["back_to"], lim["same_account"]),
+			("raised", 600000.0, 1000000.0, CH, CH + DAY, 600000.0, True), "the change")
+		eq((lim["by_role"], lim["back_by_role"]), ("IT Head", "IT Head"), "people by role")
+		eq([(m["name"], m["between"], m["line"]) for m in lim["marks"]], [("PO-T-0551", True, 1000000.0), ("PO-T-0552", False, 1000000.0),
+			("PO-T-0553", False, 1000000.0)], "every Store order of the chart's days is a mark; one is flagged")
+		eq([(x["line"]) for x in lim["steps"]], [600000.0, 1000000.0, 600000.0], "the chart's steps")
+		check(lim["range"]["from"] <= lim["steps"][0]["from"] and lim["steps"][-1]["to"] <= lim["range"]["to"] and lim["marks_cut"] == 0, lim["range"])
+		check("raised from ₹6,00,000 to ₹10,00,000 on 07-10-2026 10:00" in p["summary"] and "set back to ₹6,00,000 on 08-10-2026 10:00" in p["summary"]
+			and "1 order(s) at or over the old limit, ₹8,00,000 together, did not come to the MD" in p["summary"], p["summary"])
+		check("Set back after 24 hours, by the same account." in p["extra_rows"], p["extra_rows"])
+		p = one(find(with_history(w, raised_then_back(by_back="acct-other"))), "R45")
+		check(p["limit"]["same_account"] is False and "Set back after 24 hours, by an account with the role System Manager." in p["extra_rows"],
+			p["extra_rows"])
+		p = one(find(with_history(w, raised_then_back(back=None))), "R45")
+		eq((p["level"], p["orders"], p["limit"]["back_at"]), ("To check", ["PO-T-0551"], None), "raised and not set back: To check")
+		del w["orders"]["PO-T-0551"]
+		p = one(find(with_history(w, raised_then_back())), "R45")
+		eq((p["level"], p["orders"], p["total"]), ("Note", [], 0), "raised and set back with no order between: a Note")
+		check("no order at or over the old limit passed without the MD" in p["summary"], p["summary"])
+	test("R45 raised + set back + an order between is Serious; not set back To check; no order a Note", t_r45_levels)
+
+	def t_r45_other():
+		w = world()
+		order(w, "PO-T-0561", 800000, CH + timedelta(hours=3))
+		p = one(find(with_history(w, rules.history(*lowered()))), "R45")
+		eq((p["level"], p["limit"]["direction"], p["orders"]), ("Note", "lowered", []), "a lowered limit is a Note with no orders")
+		check("lowered from ₹6,00,000 to ₹1,00,000" in p["summary"], p["summary"])
+		# the MD step taken out, and put back a day later
+		now = table()
+		gone = dict(now[MD_ROW]["steps"][2])
+		hist = rules.history(now, [version(MD_ROW, CH, removed=[["approval_steps", gone]]),
+			version(MD_ROW, CH + DAY, added=[["approval_steps", gone]])])
+		p = one(find(with_history(w, hist)), "R45")
+		eq((p["level"], p["limit"]["direction"], p["limit"]["new"], p["limit"]["back_to"], p["orders"]),
+			("Serious", "removed", None, 600000.0, ["PO-T-0561"]), "the MD step taken out and put back, an order in between")
+		check("The MD step was taken out of the Store limits" in p["summary"], p["summary"])
+		# an MD limit where there was none
+		now = table()
+		row = {"name": "row-md", "step_order": 2, "role": "MD"}
+		now["Grain-Under 6L"]["steps"] = [s for s in now["Grain-Under 6L"]["steps"]]
+		del now["Grain-Above 6L"]
+		hist = rules.history(now, [])
+		now["Grain-Under 6L"]["steps"].append(row)
+		hist = rules.history(now, [version("Grain-Under 6L", CH, added=[["approval_steps", row]])])
+		p = one(find(with_history(w, hist)), "R45")
+		eq((p["level"], p["limit"]["direction"], p["limit"]["old"], p["limit"]["new"]), ("Note", "introduced", None, 0.0), "an MD limit set where none was")
+	test("R45 a lowered limit and a new MD limit are Notes; the MD step taken out counts as a raise", t_r45_other)
+
+	def t_fold():
+		# a script takes every step out of the MD rule and puts them back 41 seconds later (demo, 3 May 2026)
+		now = table()
+		rows = [dict(r) for r in now[MD_ROW]["steps"]]
+		hist = rules.history(now, [version(MD_ROW, CH, removed=[["approval_steps", r] for r in rows]),
+			version(MD_ROW, CH + timedelta(seconds=41), added=[["approval_steps", r] for r in rows])])
+		eq(md_run(hist), [(None, 600000.0), (CH, None), (CH + timedelta(seconds=41), 600000.0)], "the record itself keeps the 41 seconds")
+		w = world()
+		order(w, "PO-T-0581", 350000, CH - DAY)
+		order(w, "PO-T-0582", 350000, CH + DAY, item="ITM-B")
+		res = find(with_history(w, hist))
+		eq((pts(res, "R45"), [l for l in res["limits"] if l["category"] == "Store"][0]), ([], {"category": "Store", "changed": 0,
+			"rows": [{"line": 600000.0, "from": SETUP, "to": None, "today": True}]}), "no order was sent in them: not a limit, not a finding")
+		eq(one(res, "R30")["orders"], ["PO-T-0581", "PO-T-0582"], "and a group runs across them")
+		order(w, "PO-T-0583", 800000, CH + timedelta(seconds=20), item="ITM-C")  # an order sent inside the 41 seconds
+		res = find(with_history(w, hist))
+		p = one(res, "R45")
+		eq((p["level"], p["orders"], p["limit"]["direction"]), ("Serious", ["PO-T-0583"], "removed"), "an order was sent in them: it is shown")
+		check("Set back after 41 seconds, by the same account." in p["extra_rows"], p["extra_rows"])
+	test("a stretch of under 5 minutes with no order sent in it is not a limit; with an order it is shown", t_fold)
+
+	def t_restore():
+		def down_up(days):
+			return rules.history(table(), [version(MD_ROW, CH, changed=[["min_amount", "₹ 6,00,000.00", "₹ 1,00,000.00"]]),
+				version(MD_ROW, CH + days * DAY, changed=[["min_amount", "₹ 1,00,000.00", "₹ 6,00,000.00"]])])
+		w = world()
+		order(w, "PO-T-0591", 350000, CH + 12 * DAY)  # sent after the limit was back at 6 lakh
+		p = one(find(with_history(w, down_up(4))), "R45")
+		eq((p["level"], p["limit"]["direction"], p["limit"]["back_at"], p["limit"]["back_to"], p["orders"]),
+			("Note", "lowered", CH + 4 * DAY, 600000.0, []), "lowered and put back within a week: one Note, no orders")
+		check("lowered from ₹6,00,000 to ₹1,00,000 on 07-10-2026 10:00. It was put back to ₹6,00,000 on 11-10-2026 10:00." in p["summary"]
+			and "Set back after 4 days, by the same account." in p["extra_rows"], (p["summary"], p["extra_rows"]))
+		res = find(with_history(w, down_up(10)))
+		eq(sorted((p["level"], p["limit"]["direction"], tuple(p["orders"])) for p in pts(res, "R45")),
+			[("Note", "lowered", ()), ("To check", "raised", ("PO-T-0591",))], "a limit that stood 10 days and was then raised is a raise")
+		up = next(p for p in pts(res, "R45") if p["limit"]["direction"] == "raised")
+		check("Before 07-10-2026 10:00 the limit was ₹6,00,000; it stood at ₹1,00,000 for 10 days." in up["extra_rows"], up["extra_rows"])
+	test("R45 a lowering put back within a week is one Note; a later raise back is a raise and says what stood before", t_restore)
+
+	def t_r45_later():
+		now = table()
+		now[MD_ROW]["low"] = 800000.0
+		hist = rules.history(now, [version(MD_ROW, CH, changed=[["min_amount", "₹ 6,00,000.00", "₹ 10,00,000.00"]]),
+			version(MD_ROW, CH + 3 * DAY, changed=[["min_amount", "₹ 10,00,000.00", "₹ 8,00,000.00"]])])
+		w = world()
+		order(w, "PO-T-0601", 700000, CH + 4 * DAY)  # sent after the second change: between 6 lakh and the 8 lakh of its day
+		got = sorted((p["limit"]["direction"], p["limit"]["at"], p["level"], tuple(p["orders"])) for p in pts(find(with_history(w, hist)), "R45"))
+		eq(got, [("lowered", CH + 3 * DAY, "Note", ()), ("raised", CH, "To check", ("PO-T-0601",))],
+			"a raise that was never set back does not hide the change after it")
+		w.update(from_date=(CH + 2 * DAY).date())
+		got = [(p["limit"]["direction"], p["limit"]["at"]) for p in pts(find(with_history(w, hist)), "R45")]
+		eq(got, [("lowered", CH + 3 * DAY)], "dates that start after the raise still show the later change")
+	test("R45 a raise that stays does not swallow a later change of the limit", t_r45_later)
+
+	def t_r45_dates():
+		w = world()
+		order(w, "PO-T-0571", 800000, CH + timedelta(hours=3))
+		early = datetime(2026, 6, 1, 10)
+		eq(pts(find(with_history(w, raised_then_back(up=early, back=early + DAY))), "R45"), [], "a change and its set-back before the dates")
+		p = one(find(with_history(w, raised_then_back(up=early, back=CH + DAY))), "R45")
+		eq((p["level"], p["orders"]), ("Serious", ["PO-T-0571"]), "raised before the dates, set back inside them: shown")
+		eq(pts(find(with_history(w, raised_then_back(up=early, back=None))), "R45"), [], "raised long before and still in force: the limit, not a finding")
+		w.update(to_date=date(2026, 10, 6))
+		eq(pts(find(with_history(w, raised_then_back())), "R45"), [], "a change after the dates end")
+	test("R45 is shown only when the change or its set-back falls in the selected dates", t_r45_dates)
+
 	def t_shape():
 		points = [p for res in ALL for p in res["points"]]
 		check(len(points) > 40, f"only {len(points)} points seen")
@@ -596,6 +962,7 @@ def part_a():
 			eq(set(p), KEYS, "point keys")
 			eq(p["extra_rows"][-1], rules.LAST_LINE, f"last line of {p['checks']}")
 			check(p["level"] in rules.LEVELS and p["over_by"] >= 0, p)
+			check(p["limit"] is None or (p["checks"] == ["R45"] and set(p["limit"]) == LIMIT_KEYS), p["limit"])
 	test("every point has the spec's keys and ends with the fixed last line", t_shape)
 
 	def t_words():
@@ -667,6 +1034,7 @@ def part_b(check, writes=True):
 	frappe.db.savepoint(SP)
 	try:
 		_roles_and_lines(check, ow)
+		_limits_by_date(check, ow)
 		_inputs(check, ow)
 		if writes:
 			_refused(check, ow, made)
@@ -733,8 +1101,59 @@ def _roles_and_lines(check, ow):
 	check("B3 md_approved matches a hand query", got == hand,
 		f"{len(got)} of {len(orders)} loaded orders MD-approved; differ: {sorted(got ^ hand)[:5]}")
 	keys = {"today", "from_date", "to_date", "lines", "orders", "items", "mr_items", "logs", "rule_steps", "receipts",
-		"gate_first", "allowance_edits", "allowance_now", "stock_allowance", "item_receipts"}
+		"gate_first", "allowance_edits", "allowance_now", "stock_allowance", "item_receipts", "line_history", "rule_history",
+		"history_gaps", "change_roles"}
 	check("B3 the loader gives exactly the contract keys", set(data) == keys, str(sorted(set(data) ^ keys)))
+
+
+def _limits_by_date(check, ow):
+	"""B7 (limits by date, 20 Nov): the limits rebuilt from this site's own change record. Read-only."""
+	data = ow.load({"from_date": add_days(today(), -365), "to_date": today()})
+	hist, lines, orders = data["line_history"], data["lines"], data["orders"]
+	ends = {c: {k: v[-1]["line"] for k, v in h.items()} for c, h in hist.items()}
+	wrong = sorted(c for c in set(ends) | set(lines) if ends.get(c, {}) != (lines.get(c) or {"md": None, "pm": None}))
+	check("B7 the rebuilt limits of every category end at today's rule table", bool(ends) and not wrong,
+		f"{len(ends)} categories; differ: {wrong or 'none'}")
+	firsts = [v[0] for h in hist.values() for v in h.values()]
+	check("B7 every category starts with one stretch that also holds for older orders",
+		all(e["from"] is None and e.get("since") for e in firsts) and all(e["from"] for h in hist.values() for v in h.values() for e in v[1:]),
+		f"{len(firsts)} first stretches")
+	# an order sent for approval after its category's last change must carry today's limit; one sent before it must not
+	# be measured against a limit that was not yet in force
+	late = early = bad = 0
+	for o in orders.values():
+		run = (hist.get(o["category"]) or {}).get("md") or []
+		if not run:
+			continue
+		last = run[-1]["from"]
+		if last is None or o["routed_at"] >= last:
+			late += 1
+			bad += o["md_line"] != run[-1]["line"]
+		else:
+			early += 1
+			own = [e for e in run if e["from"] is None or e["from"] <= o["routed_at"]][-1]
+			bad += o["md_line"] != own["line"] or own is run[-1]
+	check("B7 each order carries the MD limit of the time it was sent for approval", late + early > 0 and not bad,
+		f"{late} sent after their category's last change, {early} before it; wrong: {bad}")
+	out = ow.rules.find_points(data)
+	mixed = [p["checks"] for p in out["points"] if p["checks"][0] in ("R30", "R29", "R31") and len(p["orders"]) > 1
+		and len({orders[n]["md_line"] for n in p["orders"] if n in orders}) != 1]
+	check("B7 no group mixes orders measured against two limits", not mixed, f"{len(mixed)} mixed groups")
+	rows = {l["category"]: l["rows"] for l in out["limits"]}
+	now = {c: r[-1]["line"] for c, r in rows.items() if r and r[-1]["today"]}
+	check("B7 the limits rows name every category, and the row marked today is today's limit",
+		set(rows) == set(hist) and all(rows.values()) and now == {c: e["md"] for c, e in ends.items()},
+		f"{len(rows)} categories, {sum(l['changed'] for l in out['limits'])} change(s) in the last 365 days")
+	shown = json.dumps([out["limits"], out["gaps"], [p for p in out["points"] if p["limit"]]], default=str)
+	accounts = {e.get("by") for h in hist.values() for v in h.values() for e in v} - {None, "Administrator"}
+	check("B7 who changed a limit is said by role: no account reaches the output",
+		not any(a in shown for a in accounts) and "@" not in shown and set(data["change_roles"]) >= accounts,
+		f"{len(accounts)} account(s) kept inside the data; limit findings: {sum(1 for p in out['points'] if p['limit'])}")
+	rr = ow._rows(out, data)
+	check("B7 the table starts with the limits block and says the limit used under a finding that has one",
+		rr[0]["found"].startswith("Approval limits in these dates") and sum(1 for r in rr if r.get("indent") == 1 and str(r.get("found") or "").startswith(
+			("MD line used:", "Review line used:"))) == sum(1 for p in out["points"] if p["line_used"]),
+		f"{sum(1 for p in out['points'] if p['line_used'])} finding(s) say the limit used")
 
 
 def _inputs(check, ow):
@@ -814,11 +1233,11 @@ def _md_only(check, made):
 
 
 PAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "page", "order_watch")
-PAGE_KEYS = {"from_date", "to_date", "company", "companies", "md_lines", "last_line", "money", "findings", "ranked"}
+PAGE_KEYS = {"from_date", "to_date", "company", "companies", "limits", "gaps", "last_line", "money", "findings", "ranked"}
 FINDING_KEYS = {"level", "kind", "kinds", "review_line", "summary", "supplier", "company", "line", "total", "over_by", "facts",
-	"orders"}
+	"orders", "line_used", "limit"}
 ORDER_KEYS = {"name", "supplier", "entered_at", "po_date", "value", "items", "request", "entered_by", "approved_by",
-	"approved_at", "status", "received"}
+	"approved_at", "status", "received", "line", "routed_at"}
 
 
 def _page(check, ow, made):
@@ -868,6 +1287,10 @@ def _page(check, ow, made):
 		coded = [t for t in texts if re.search(r"\bR\d\d\b", t or "")]
 		check("B6 page data: no check code in any sentence, and the closing line is not repeated in the facts",
 			not coded and not any(t == page["last_line"] for f in found for t in f["facts"]), f"{coded[:2]}")
+		check("B6 page data: the limits rows and each limit finding come through as the rules give them",
+			page["limits"] == ow.rules.find_points(ow.load(span))["limits"] and isinstance(page["gaps"], list)
+			and all((f["kind"] == "limit") == bool(f["limit"]) and (not f["limit"] or (f["line"] is None and f["over_by"] is None
+				and set(f["limit"]) == LIMIT_KEYS)) for f in found), f"{sum(1 for f in found if f['limit'])} limit finding(s)")
 		check("B6 page data: the same orders as the report, no account id anywhere",
 			{o["name"] for f in found for o in f["orders"]} == {r["po"] for r in rows if r.get("po")}
 			and "@" not in json.dumps(page, default=str), "")
