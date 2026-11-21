@@ -1,6 +1,8 @@
 # TS PR Wise Payment Approval — BBPL Report Updated 11 Aug 2026.xlsx, sheet
 # "PR Wise payment approval" (Wave 3 #10; plan: PLAN_bbpl_wave3_reports.md)
 #
+# 20 Nov 2026: rows also split per GRN of the item (Purchase Receipt ID / Date
+# / Amount after PO ID; PI paired to the GRN it billed) — see _grn_legs.
 # ONE ROW PER SUBMITTED PO ITEM x LINKED SUBMITTED PI (doc-level DISTINCT
 # pii.purchase_order -> parent PI pairs, LEFT-joined: PO items with no PI still
 # render, PI columns blank). Client-answered mappings (11 Aug):
@@ -23,16 +25,22 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate, strip_html
+from frappe.utils import flt, fmt_money, formatdate, getdate, strip_html
 
 from trustbit_ethanol.ts_gate_entry.report import report_utils as ru
 
 
-ROW_LIMIT = 5000
+ROW_LIMIT = 20000  # style C needs 5,257 rows on prod (21 Nov 2026)
 IN_CHUNK = 1000
 SEP = ", "
 
 HAS_OPTS = ("", "Yes", "No")
+# "GRN Style" filter (must match the .js options); blank = C
+GRN_STYLES = {
+	"C - One row per GRN": "C",
+	"A - GRNs in one cell, item amount": "A",
+	"B - GRNs in one cell, GRN total incl. GST": "B",
+}
 
 
 def execute(filters=None):
@@ -42,7 +50,11 @@ def execute(filters=None):
 	filters = filters or {}
 	_validate_filters(filters)
 	rows, truncated = get_data(filters)
-	return get_columns(rows), rows, None, None, _summary(rows, truncated)
+	return get_columns(rows, _style(filters)), rows, None, None, _summary(rows, truncated)
+
+
+def _style(filters):
+	return GRN_STYLES.get(filters.get("grn_style") or "", "C")
 
 
 def _parse_date(val, label):
@@ -60,14 +72,21 @@ def _validate_filters(filters):
 	for f in ("has_invoice", "has_advance"):
 		if filters.get(f) and filters[f] not in HAS_OPTS:
 			frappe.throw(_("Invalid {0} filter").format(f))
+	if filters.get("grn_style") and filters["grn_style"] not in GRN_STYLES:
+		frappe.throw(_("Invalid GRN Style filter"))
 
 
-def get_columns(rows=None):
+def get_columns(rows=None, style="C"):
 	currencies = {r.get("currency") for r in (rows or []) if r.get("currency")}
 	mixed = len(currencies) > 1
+	one = style == "C"  # A / B list several GRNs per cell -> text columns
 	return [
 		{"fieldname": "sr", "label": _("S.No."), "fieldtype": "Int", "width": 60, "disable_total": 1},
 		{"fieldname": "purchase_order", "label": _("PO ID"), "fieldtype": "Link", "options": "Purchase Order", "width": 170},
+		{"fieldname": "purchase_receipt", "label": _("Purchase Receipt ID"), "fieldtype": "Data", "width": 165 if one else 230},
+		{"fieldname": "pr_date", "label": _("Purchase Receipt Date"), "fieldtype": "Date" if one else "Data", "width": 120 if one else 190},
+		{"fieldname": "pr_amount", "label": _("Purchase Receipt Amount (GRN Total incl. GST)") if style == "B" else _("Purchase Receipt Amount"),
+		 "fieldtype": "Data" if style == "B" else "Currency", "options": "currency", "width": 200 if style == "B" else 160, "disable_total": 1 if mixed else 0},
 		{"fieldname": "purchase_invoice", "label": _("Purchase Invoice ID"), "fieldtype": "Data", "width": 165},
 		{"fieldname": "pi_date", "label": _("PI Date"), "fieldtype": "Date", "width": 100},
 		{"fieldname": "supplier_name", "label": _("Supplier Name"), "fieldtype": "Data", "width": 190},
@@ -116,7 +135,7 @@ def get_data(filters):
 			po.cost_center, po.currency, po.payment_terms_template,
 			CASE WHEN IFNULL(po.rounded_total, 0) != 0 THEN po.rounded_total ELSE po.grand_total END AS gross_total,
 			poi.item_name, poi.item_code, poi.description AS item_description,
-			poi.material_request, poi.idx AS item_idx
+			poi.material_request, poi.idx AS item_idx, poi.name AS po_item
 		FROM `tabPurchase Order Item` poi
 		JOIN `tabPurchase Order` po ON po.name = poi.parent
 		WHERE {" AND ".join(conds)}
@@ -128,11 +147,13 @@ def get_data(filters):
 
 	po_names = {x["purchase_order"] for x in items}
 	pi_of_po = _pi_legs(po_names)
+	grn_of_item = _grn_legs(po_names)
 	adv_of_po = _advance_legs(po_names)
 	sched_of_po = _schedule_summaries(
 		{x["purchase_order"] for x in items if not x.get("payment_terms_template")})
 	names = _fullname_map(_mr_owner_map({x.get("material_request") for x in items}))
 
+	style = _style(filters)
 	has_pi = filters.get("has_invoice") or ""
 	has_adv = filters.get("has_advance") or ""
 
@@ -140,13 +161,22 @@ def get_data(filters):
 	truncated = False
 	for it in items:
 		po = it["purchase_order"]
-		pis = pi_of_po.get(po) or [None]
+		pis = pi_of_po.get(po) or []
 		adv = adv_of_po.get(po)
 		if has_adv == "Yes" and not adv:
 			continue
 		if has_adv == "No" and adv:
 			continue
-		for pi in pis:
+		# one row per GRN of this item (option C, 20 Nov 2026); each GRN pairs
+		# with the PIs that billed it, else with PIs carrying no GRN link
+		grns = grn_of_item.get(it["po_item"])
+		if grns and style == "C":
+			pairs = [(g, p) for g in grns for p in (
+				[p for p in pis if g["name"] in p["receipts"]]
+				or [p for p in pis if not p["receipts"]] or [None])]
+		else:
+			pairs = [(None, p) for p in pis or [None]]
+		for grn, pi in pairs:
 			if has_pi == "Yes" and not pi:
 				continue
 			if has_pi == "No" and pi:
@@ -154,6 +184,7 @@ def get_data(filters):
 			mr = it.get("material_request")
 			rows.append({
 				"purchase_order": po,
+				**_grn_cells(grn, grns, style),
 				"purchase_invoice": (pi or {}).get("name", "") if pi else "",
 				"pi_date": (pi or {}).get("posting_date") if pi else None,
 				"supplier_name": it.get("supplier_name") or it.get("supplier") or "",
@@ -193,17 +224,61 @@ def _pi_legs(po_names):
 	out = {}
 	for chunk in ru.chunked(po_names):
 		for x in frappe.db.sql(
-			f"""SELECT DISTINCT pii.purchase_order AS po, pi.name, pi.posting_date,
-				pi.bill_no, pi.bill_date, pi.outstanding_amount
+			f"""SELECT pii.purchase_order AS po, pi.name, pi.posting_date,
+				pi.bill_no, pi.bill_date, pi.outstanding_amount,
+				GROUP_CONCAT(DISTINCT pii.purchase_receipt) AS receipts
 			FROM `tabPurchase Invoice Item` pii
 			JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
 			WHERE pii.purchase_order IN %(names)s AND {" AND ".join(conds)}
+			GROUP BY pii.purchase_order, pi.name, pi.posting_date, pi.bill_no,
+				pi.bill_date, pi.outstanding_amount
 			ORDER BY pi.posting_date, pi.name""",
 			{"names": chunk},
 			as_dict=True,
 		):
+			x["receipts"] = {r for r in (x["receipts"] or "").split(",") if r}
 			out.setdefault(x.pop("po"), []).append(x)
 	return out
+
+
+def _grn_legs(po_names):
+	"""po item -> [{name, posting_date, amount}] — this item's received value
+	(qty x rate, before GST) per submitted, non-return GRN the user may see."""
+	if not po_names or not ru.hop_readable("Purchase Receipt"):
+		return {}
+	conds = ["pr.docstatus = 1", "pr.is_return = 0"] + ru.conf_match_clauses("Purchase Receipt", "pr")
+	out = {}
+	for chunk in ru.chunked(po_names):
+		for x in frappe.db.sql(
+			f"""SELECT pri.purchase_order_item AS po_item, pr.name, pr.posting_date,
+				SUM(pri.amount) AS amount,
+				CASE WHEN IFNULL(pr.rounded_total, 0) != 0 THEN pr.rounded_total ELSE pr.grand_total END AS grn_total
+			FROM `tabPurchase Receipt Item` pri
+			JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent
+			WHERE pri.purchase_order IN %(names)s AND {" AND ".join(conds)}
+			GROUP BY pri.purchase_order_item, pr.name, pr.posting_date, pr.rounded_total, pr.grand_total
+			ORDER BY pr.posting_date, pr.name""",
+			{"names": chunk},
+			as_dict=True,
+		):
+			out.setdefault(x.pop("po_item"), []).append(x)
+	return out
+
+
+def _grn_cells(grn, grns, style):
+	"""The 3 GRN cells. C: the row's one GRN. A / B: every GRN of the item in
+	one cell; A adds up the item amounts, B lists each GRN's total incl. GST."""
+	if style == "C":
+		return {"purchase_receipt": grn["name"] if grn else "",
+		        "pr_date": grn["posting_date"] if grn else None,
+		        "pr_amount": flt(grn["amount"]) if grn else None}
+	grns = grns or []
+	return {
+		"purchase_receipt": SEP.join(g["name"] for g in grns),
+		"pr_date": SEP.join(formatdate(g["posting_date"]) for g in grns),
+		"pr_amount": (sum(flt(g["amount"]) for g in grns) if grns else None) if style == "A"
+		else SEP.join(fmt_money(g["grn_total"], precision=2) for g in grns),
+	}
 
 
 def _advance_legs(po_names):
