@@ -24,6 +24,15 @@ const AICHK_MARK = { ok: "✓", bad: "✕", warn: "!", na: "–" };
 function aichk_draw(frm) {
 	const doc = frm.doc;
 	const esc = (v) => frappe.utils.escape_html(String(v == null ? "" : v));
+	// the AI's summary by its labelled parts (asked for in ts_ai_check_review.py), each on its own line; a summary
+	// without the labels (an older report) stays one paragraph
+	const ai_parts = (text) => {
+		const bits = String(text || "").split(/(?:^|\s+)(In short:|Why:|Example:|What to do:)\s*/);
+		if (bits.length < 3) return esc(text);
+		let out = bits[0].trim() ? `<p>${esc(bits[0])}</p>` : "";
+		for (let i = 1; i < bits.length; i += 2) out += `<p><strong>${esc(bits[i])}</strong> ${esc(bits[i + 1])}</p>`;
+		return out;
+	};
 	const money = (v) => esc(format_currency(v || 0, frappe.defaults.get_default("currency"), 2));
 	// a report made before the checks existed has lines with no verdict: they are shown as not checked
 	const key = (verdict) => (AICHK_LEVELS.find((l) => l[0] === verdict) || [0, "none"])[1];
@@ -204,7 +213,7 @@ function aichk_draw(frm) {
 		`<p class="aichk-sum">${esc(doc.summary)}</p>` +
 		limits_html +
 		(doc.ai_summary
-			? `<div class="aichk-aisum"><b>${__("AI summary")}</b>${esc(doc.ai_summary)}` +
+			? `<div class="aichk-aisum"><b>${__("AI summary")}</b>${ai_parts(doc.ai_summary)}` +
 			  `<p class="aichk-muted">${__("Written by the AI. Code makes the verdicts and counts. Code also leaves out an AI point or sentence whose amount or document number is not in the checked facts; the wording is the AI's own.")}</p></div>`
 			: "") +
 		(doc.ai_note ? `<p class="aichk-muted">${esc(doc.ai_note)}</p>` : "") +
