@@ -54,8 +54,13 @@ def chunked(names):
 
 def hop_readable(doctype):
 	"""True when the session user may read `doctype` at all. Callers MUST skip
-	the hop (leg renders blank) when this is False — see module docstring."""
-	return frappe.has_permission(doctype, "read")
+	the hop (leg renders blank) when this is False — see module docstring.
+	Needs read through a ROLE: one shared document makes has_permission True,
+	but the hop's SQL is not limited to the documents shared with the user."""
+	from frappe.permissions import get_role_permissions
+
+	return bool(frappe.has_permission(doctype, "read")
+		and get_role_permissions(frappe.get_meta(doctype)).get("read"))
 
 
 def conf_match_clauses(doctype, alias):

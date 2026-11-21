@@ -62,26 +62,42 @@ frappe.query_reports["TS PR Wise Payment Approval"] = {
 		}
 	],
 	after_datatable_render(datatable) {
-		// each PO is one band, gray / white in turn (all rows of a PO share it);
-		// style scoped to this table instance, rebuilt on every refresh
-		if (datatable._ts_po_bands) datatable._ts_po_bands.remove();
-		const data = (frappe.query_report && frappe.query_report.data) || [];
-		const gray = [];
-		let band = 0;
-		data.forEach((r, i) => {
-			if (i && r.purchase_order !== data[i - 1].purchase_order) band ^= 1;
-			if (band) gray.push(`.${datatable.style.scopeClass} .dt-row-${i} .dt-cell`);
-		});
-		if (!gray.length) return;
-		const el = document.createElement("style");
-		// short rules: the browser drops part of one very long selector list
-		let css = "";
-		for (let i = 0; i < gray.length; i += 500) {
-			css += `${gray.slice(i, i + 500).join(",")}{background-color:var(--control-bg,#f3f3f3)}`;
+		// each PO is one band, gray / white in turn, following the order on
+		// screen; style scoped to this table instance
+		const body = datatable.bodyRenderer;
+		const paint = () => {
+			if (datatable._ts_po_bands) datatable._ts_po_bands.remove();
+			datatable._ts_po_bands = null;
+			const data = (frappe.query_report && frappe.query_report.data) || [];
+			const shown = new Set(body.visibleRowIndices || data.map((r, i) => i));
+			const order = datatable.datamanager.rowViewOrder.filter((i) => shown.has(i) && data[i]);
+			const gray = [];
+			let band = 0;
+			order.forEach((i, pos) => {
+				if (pos && data[i].purchase_order !== data[order[pos - 1]].purchase_order) band ^= 1;
+				if (band) gray.push(`.${datatable.style.scopeClass} .dt-row-${i} .dt-cell`);
+			});
+			if (!gray.length) return;
+			const el = document.createElement("style");
+			// short rules: the browser drops part of one very long selector list
+			let css = "";
+			for (let i = 0; i < gray.length; i += 500) {
+				css += `${gray.slice(i, i + 500).join(",")}{background-color:var(--control-bg,#f3f3f3)}`;
+			}
+			el.textContent = css;
+			datatable.wrapper.insertBefore(el, datatable.datatableWrapper);
+			datatable._ts_po_bands = el;
+		};
+		// sort and column filter both redraw through renderRows
+		if (!body._ts_po_paint) {
+			const render = body.renderRows.bind(body);
+			body.renderRows = (rows) => {
+				render(rows);
+				body._ts_po_paint();
+			};
 		}
-		el.textContent = css;
-		datatable.wrapper.insertBefore(el, datatable.datatableWrapper);
-		datatable._ts_po_bands = el;
+		body._ts_po_paint = paint;
+		paint();
 	},
 	formatter(value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);
