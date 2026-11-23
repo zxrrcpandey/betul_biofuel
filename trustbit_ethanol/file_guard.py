@@ -16,13 +16,15 @@ import frappe
 from frappe import _
 from frappe.core.doctype.file import utils as file_utils
 from frappe.core.doctype.file.file import File
-from frappe.utils import cint, cstr
+from frappe.utils import cint, cstr, file_manager
 
 SUBMISSION = "TS AI Check Submission"  # a checked list's file stays as it was checked
 PLAIN = re.compile(r"/(private/)?files/[^/\\]+")  # the only address shape a move or delete is allowed on
 _core = getattr(File, "_ts_core", None) or (File.before_insert, File.validate, File.optimize_file,
 	File._delete_file_on_disk, file_utils.attach_files_to_document, File.get_full_path)
 File._ts_core = _core
+_old_write = getattr(File, "_ts_old_write", None) or file_manager.save_file_on_filesystem
+File._ts_old_write = _old_write
 
 
 def _refuse(message=None):
@@ -60,8 +62,10 @@ def _check_new(doc):
 		_refuse(_("The file is empty or was not received."))
 	if ".." in url.replace("\\", "/").split("/"):  # an address stays inside its folder
 		_refuse()
-	# a private address, also inside a web address, must be a plain /private/files/<name> that the user can open
-	if "/private/files/" in url and not (PLAIN.fullmatch(url) and find_file_by_url(url)):
+	# a private address, also inside a web address, must be a plain /private/files/<name> that the user can open,
+	# or one that the old `file_manager.save_file` wrote in this very request or job
+	if "/private/files/" in url and not (PLAIN.fullmatch(url) and (
+			find_file_by_url(url) or url in (frappe.flags.get("ts_files_written") or ()))):
 		_refuse()
 
 
@@ -143,6 +147,15 @@ def get_full_path(self):
 	return _core[5](self)
 
 
+def save_file_on_filesystem(fname, content, content_type=None, is_private=0):
+	"""The old `frappe.utils.file_manager.save_file` (India Compliance attaches the e-waybill PDF with it) writes
+	the file itself and then makes its row by address. The address it wrote is remembered for this request or
+	job, so that row is accepted. Core looks this step up at each call, so a name bound at import is covered."""
+	data = _old_write(fname, content, content_type=content_type, is_private=is_private)
+	frappe.flags.setdefault("ts_files_written", set()).add(unquote(cstr(data.get("file_url"))))
+	return data
+
+
 def attach_files_to_document(doc, event):
 	"""A private address in an Attach field is linked to the saved document only when the user can open that
 	file and no other row's address differs from it only by letter case. Any other value is hidden from core for
@@ -169,3 +182,5 @@ def apply():
 	if file_utils.find_file_by_url is not find_file_by_url:
 		file_utils.attach_files_to_document = attach_files_to_document
 		file_utils.find_file_by_url = find_file_by_url  # the download route takes it from the module at each call
+	if file_manager.save_file_on_filesystem is not save_file_on_filesystem:
+		file_manager.save_file_on_filesystem = save_file_on_filesystem
