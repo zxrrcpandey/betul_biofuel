@@ -33,8 +33,8 @@ app_include_js = [
 	"/assets/trustbit_ethanol/js/ts_post_dated.js",
 	"/assets/trustbit_ethanol/js/item_list.js",
 	"/assets/trustbit_ethanol/js/ts_connections.js",
-	# v2 = v2.85.7 version tag in the top bar (?v bump mandatory, L318/319)
-	"/assets/trustbit_ethanol/js/ts_version_badge.js?v=2",
+	# v2 = v2.85.7 version tag in the top bar, v4 = v2.85.8 its popup + colour (?v bump mandatory, L318/319)
+	"/assets/trustbit_ethanol/js/ts_version_badge.js?v=4",
 	"/assets/trustbit_ethanol/js/vehicle_origin_autocomplete.js",
 	# v2.24.0 — Notification Center: navbar icon beside the native bell (fail-soft)
 	"/assets/trustbit_ethanol/js/ts_navbar_notification.js?v=3",

@@ -34,14 +34,25 @@ def _last_change():
 
 @frappe.whitelist()
 def get_version_info():
-	"""{version, label, updated, updated_full, commit, message, date, branch}, for a logged-in user only."""
+	"""{version, label, color, note, updated, updated_full, apps, commit, message, date, branch}, for a logged-in
+	user only. `apps` = the installed Trustbit apps as [{title, version}], listed in the tag's popup. `color` and
+	`note`: a test server whose site_config holds `ts_prod_version` (production's version, noted there at each
+	production deploy) is green while its own version number is the same, orange otherwise."""
 	from trustbit_ethanol import __version__
 
 	changed = _last_change()
+	label = cstr(frappe.conf.get("ts_server_label"))[:12]
+	prod = cstr(frappe.conf.get("ts_prod_version")).strip().lstrip("vV")[:20]  # "v2.85.7" and "2.85.7" both work
+	same = bool(prod) and __version__.split("+")[0] == prod
 	return dict(
 		_git_info(),
+		apps=[{"title": (frappe.get_hooks("app_title", app_name=app) or [app])[0],
+			"version": cstr(getattr(frappe.get_module(app), "__version__", ""))}
+			for app in frappe.get_installed_apps(_ensure_on_bench=True) if app.startswith("trustbit")],
 		version=__version__,
-		label=cstr(frappe.conf.get("ts_server_label"))[:12],
+		label=label,
+		color="green" if same else ("orange" if label else "gray"),
+		note=("Same version number as production" if same else f"Production is on v{prod}") if prod else "",
 		updated=f"{changed.day} {changed:%b}",
 		updated_full=f"{changed:%d %b %Y %H:%M}",
 	)
