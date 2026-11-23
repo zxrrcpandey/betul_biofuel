@@ -36,14 +36,16 @@ def _last_change():
 def get_version_info():
 	"""{version, label, color, note, updated, updated_full, apps, commit, message, date, branch}, for a logged-in
 	user only. `apps` = the installed Trustbit apps as [{title, version}], listed in the tag's popup. `color` and
-	`note`: a test server whose site_config holds `ts_prod_version` (production's version, noted there at each
-	production deploy) is green while its own version number is the same, orange otherwise."""
+	`note`: each server's site_config notes the other server's version (`ts_prod_version` on the test server,
+	`ts_demo_version` on production). The tag is green while the two numbers are the same; otherwise a test
+	server is orange and production gray."""
 	from trustbit_ethanol import __version__
 
 	changed = _last_change()
 	label = cstr(frappe.conf.get("ts_server_label"))[:12]
-	prod = cstr(frappe.conf.get("ts_prod_version")).strip().lstrip("vV")[:20]  # "v2.85.7" and "2.85.7" both work
-	same = bool(prod) and __version__.split("+")[0] == prod
+	key, other_name = ("ts_prod_version", "production") if label else ("ts_demo_version", "demo")
+	other = cstr(frappe.conf.get(key)).strip().lstrip("vV").split("+")[0][:20]  # "v2.85.7", "2.85.7+demo" both work
+	same = bool(other) and __version__.split("+")[0] == other
 	return dict(
 		_git_info(),
 		apps=[{"title": (frappe.get_hooks("app_title", app_name=app) or [app])[0],
@@ -52,7 +54,8 @@ def get_version_info():
 		version=__version__,
 		label=label,
 		color="green" if same else ("orange" if label else "gray"),
-		note=("Same version number as production" if same else f"Production is on v{prod}") if prod else "",
+		note=(f"Same version number as {other_name}" if same else f"{other_name.capitalize()} is on v{other}")
+			if other else "",
 		updated=f"{changed.day} {changed:%b}",
 		updated_full=f"{changed:%d %b %Y %H:%M}",
 	)
