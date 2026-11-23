@@ -5,7 +5,9 @@ sends `validate_rename=false` (run_doc_method or /api/v2/document/<doctype>/<nam
 too) skips the write-permission and "Allow Rename" checks. Frappe fixed this upstream on 7 Oct 2026
 (version-15 commit 79ae1a50a1) by ignoring that argument; this applies the same fix until our Frappe
 has it. Server code that needs to skip the checks calls `frappe.rename_doc(...)` and is unaffected.
-Registered as a before_request hook. Delete it (and the hook line) after a Frappe upgrade past that commit.
+The caller's `force` is ignored as well, so the DocType's "Allow Rename" setting always applies on this route.
+Keep this function after a Frappe upgrade for as long as upstream's whitelisted rename passes `force` on
+(it did on version-15, 23 Nov 2026). Registered as a before_request hook.
 """
 
 import frappe
@@ -20,7 +22,7 @@ def rename(self, name: str, merge=False, force=False, validate_rename=True):
 	# saved record, then check write permission on it, not on that copy
 	self.load_from_db()
 	frappe.has_permission(self.doctype, "write", doc=self, throw=True)
-	return self._rename(name=name, merge=merge, force=force)  # the caller's validate_rename is ignored
+	return self._rename(name=name, merge=merge)  # the caller's validate_rename and force are ignored
 
 
 # The same hook (before_request and before_job) also carries these guards. Each is applied on its own: a
@@ -30,6 +32,7 @@ GUARDS = (
 	"trustbit_ethanol.chart_guard.apply",  # dashboard-chart, account-balance and get_balance_on calls
 	"trustbit_ethanol.ts_gate_entry.ts_confidential_children.apply",  # one child row of a confidential document
 	"trustbit_ethanol.print_guard.apply",  # a print format only on a document of its own DocType
+	"trustbit_ethanol.file_guard.apply",  # a File row only at a file its user can read
 )
 _failed = set()
 

@@ -13,10 +13,12 @@ the points they can fix themselves (`own_points`)."""
 import hashlib
 import math
 import os
+import re
 from datetime import timedelta
 
 import frappe
 from frappe import _
+from frappe.core.doctype.access_log.access_log import make_access_log
 from frappe.utils import background_jobs, cint, cstr, formatdate, get_datetime, now_datetime
 
 from trustbit_ethanol.ts_gate_entry import ts_ai_check_issues as issues
@@ -49,7 +51,8 @@ READS_PER_HOUR = 20  # files one person may send for reading in an hour, refused
 STALE_RUNNING_MIN = 30  # longer than the job can run
 STALE_QUEUED_MIN = 15
 SERVER_FLAG = "ai_check_server_write"
-FILE_TYPES = (".xlsx", ".xls", ".csv", ".pdf", ".jpg", ".jpeg", ".png", ".webp")  # also in ts_ai_check_report.js
+FILE_TYPES = (".xlsx", ".xls", ".csv", ".pdf", ".jpg", ".jpeg", ".png", ".webp")
+SEALED_DIR = "ai_check_sealed"
 LINE_FIELDS = ("line_no", "page", "source_row", "kind", "supplier_text", "bill_no_text", "bill_date_text",
 	"po_text", "amount_text", "amount", "remarks_text", "unclear", "read_note", "section_text", "details_text")
 CHECK_FIELDS = ("verdict", "supplier", "supplier_title", "match_how", "list_says", "erp_says", "chain", "receipts_used", "claims")
@@ -105,8 +108,11 @@ def reset_control_fields(doc):
 
 
 def _own_file_name(doc):
-	filters = {"file_url": cstr(doc.get("file")), "owner": doc.owner, "is_private": 1}
-	return frappe.db.get_value("File", filters, "name", order_by="creation desc")
+	url = cstr(doc.get("file"))
+	filters = {"file_url": url, "owner": doc.owner, "is_private": 1}
+	for row in frappe.get_all("File", filters=filters, fields=["name", "file_url"], order_by="creation desc"):
+		if row.file_url == url:  # the column compares without case; the disk does not
+			return row.name
 
 
 def _file_gone():
@@ -213,6 +219,48 @@ def before_submit(doc):
 		frappe.throw(_("The file could not be checked. Please tell IT."))
 	doc.file_hash = file_hash
 	doc.submitted_at = now_datetime()
+	seal(doc, data)
+
+
+def _sealed_path(doc):
+	"""Named by the checked hash, never by the record's name: the owner of a sent list can rename it."""
+	ext = os.path.splitext(cstr(doc.file))[1].lower()
+	return frappe.get_site_path("private", SEALED_DIR, doc.file_hash + (ext if ext in FILE_TYPES else ".bin"))
+
+
+def seal(doc, data):
+	"""A copy of the list as it was checked, outside `private/files`: no File row and no file route reach it."""
+	path = _sealed_path(doc)
+	os.makedirs(os.path.dirname(path), exist_ok=True)
+	with open(path + ".tmp", "wb") as f:
+		f.write(data)
+	os.replace(path + ".tmp", path)
+
+
+@frappe.whitelist()
+def open_file(name):
+	"""The list exactly as it was checked, for whoever may read the submission. A list checked before sealed
+	copies existed is served from its File row only while it still matches the stored hash, then sealed."""
+	doc = frappe.get_doc(SUBMISSION, cstr(name))
+	doc.check_permission("read")
+	if doc.docstatus != 1 or not re.fullmatch("[0-9a-f]{64}", cstr(doc.file_hash)):
+		frappe.throw(_("This list has not been sent for checking."))
+	path = _sealed_path(doc)
+	sealed = os.path.isfile(path)
+	if sealed:
+		with open(path, "rb") as f:
+			data = f.read()
+	else:
+		data = file_bytes(doc)
+	if hashlib.sha256(data).hexdigest() != doc.file_hash:
+		frappe.throw(_("This file is not the one that was checked. Please tell IT."))
+	if not sealed:
+		seal(doc, data)
+	ext = os.path.splitext(path)[1]
+	make_access_log(doctype=SUBMISSION, document=doc.name, file_type=ext[1:])
+	frappe.response.update(type="download", filename=doc.name + ext, filecontent=data)
+	if ext in (".pdf", ".jpg", ".jpeg", ".png", ".webp") and reader.sniff(data) in ("pdf", "image"):
+		frappe.response["display_content_as"] = "inline"  # the name and the bytes agree: it opens in the browser
 
 
 def start(doc):

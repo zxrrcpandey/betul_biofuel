@@ -15,16 +15,15 @@ frappe.ui.form.on("TS AI Check Report", {
 	},
 });
 
-// The list as it was uploaded, one click from its report. The address is read with the reader's own rights and
-// the file route checks them again. Each part of the address is encoded, because a file name may hold # or ?.
+// The list exactly as it was checked, one click from its report. `open_file` checks the reader's rights and the
+// stored hash, and sends anything that is not a real PDF or photo as a download.
 function aichk_file_button(frm) {
 	const name = frm.doc.name;
 	frm.set_intro("");
 	frappe.db.get_value("TS AI Check Submission", frm.doc.submission, "file").then((r) => {
 		const url = String((r.message || {}).file || "");
-		// only the types the form accepts (FILE_TYPES in ts_ai_check.py): another type could open as a web page
-		if (frm.doc.name !== name || !/^\/private\/files\/[^/:;]+\.(xlsx|xls|csv|pdf|jpg|jpeg|png|webp)$/i.test(url)) return;
-		const href = url.split("/").map(encodeURIComponent).join("/");
+		if (frm.doc.name !== name || !url) return;
+		const href = `/api/method/trustbit_ethanol.ts_gate_entry.ts_ai_check.open_file?name=${encodeURIComponent(name)}`;
 		frm.add_custom_button(__("Open uploaded file"), () => window.open(href, "_blank", "noopener"));
 		// a phone folds the button into the "..." menu, so the file name is a link too
 		const esc = frappe.utils.escape_html;

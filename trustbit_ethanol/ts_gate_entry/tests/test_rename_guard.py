@@ -75,6 +75,10 @@ def run():
 		got = call("v1", "Administrator", "ToDo", todo, "POST", name=todo + "x", validate_rename=False)
 		frappe.db.rollback(save_point="rg")
 		checks.append(("writer: Allow Rename off is still enforced", got is not None and frappe.db.exists("ToDo", todo)))
+		got = call("v1", "Administrator", "ToDo", todo, "POST", name=todo + "x", force=True)
+		frappe.db.rollback(save_point="rg")
+		checks.append(("writer: Allow Rename off is enforced when the call says force too",
+			got is not None and frappe.db.exists("ToDo", todo)))
 		got = call("v1", "Administrator", "Supplier Group", sg, "POST", name=sg + " Y")
 		checks.append(("writer: normal rename still works", got is None and frappe.db.exists("Supplier Group", sg + " Y")))
 		kept, rename_guard.GUARDS = rename_guard.GUARDS, ("trustbit_ethanol.no_such_guard.apply", *rename_guard.GUARDS)
