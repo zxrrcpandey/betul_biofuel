@@ -1,111 +1,74 @@
 /**
- * Version badge — positioned BELOW the Trustbit logo in the sidebar.
- *
- * Calls trustbit_ethanol.ts_gate_entry.ts_version_api.get_version_info and
- * injects a small monospace label just under the sidebar Trustbit logo so
- * users can see what commit is deployed on the server they're using.
- *
- * Hover = full commit message. Click-to-select-all for easy copy.
+ * Version tag in the top bar, e.g. "v2.85.6 · 23 Nov"; with `ts_server_label` in site_config the label leads
+ * and the tag is orange, e.g. "DEMO · v2.85.7+demo · 23 Nov". A phone shows the version number only. A click
+ * opens Help > About. Values: ts_version_api.get_version_info (read from the running code). Fail-soft: if the
+ * top bar's markup changes with a Frappe upgrade, no tag shows. A change here needs a new ?v= in hooks.py.
  */
-
 (function () {
 	"use strict";
+	var TRIES = 20, info = null;
 
-	function injectBadge(info) {
-		if (!info || !info.commit || info.commit === "unknown") return;
+	function part(text, wide) {
+		var el = document.createElement("span");
+		el.textContent = text;
+		if (wide) el.className = "d-none d-md-inline"; // not on a phone
+		return el;
+	}
 
-		// Remove any existing badge first (idempotent across SPA route changes)
-		$(".ts-version-badge").remove();
-
-		const branch_part = (info.branch && info.branch !== "develop")
-			? `<div style="font-size:9px;color:#f59e0b;font-weight:bold;margin-top:2px;">${info.branch}</div>`
-			: "";
-
-		const tooltip = (info.message || "").replace(/"/g, "&quot;");
-
-		const $badge = $(`
-			<div class="ts-version-badge"
-			     title="${tooltip}\n${info.date}"
-			     style="
-			        display:block;
-			        margin:4px 14px 8px 14px;
-			        padding:4px 8px;
-			        background:rgba(241, 245, 249, 0.6);
-			        border:1px solid rgba(203, 213, 225, 0.5);
-			        border-radius:6px;
-			        font-family:monospace;
-			        font-size:10px;
-			        color:#64748b;
-			        cursor:help;
-			        user-select:all;
-			        text-align:center;
-			        line-height:1.3;
-			     ">
-			  <div>
-			    <span style="color:#64748b;font-weight:normal;">Build:</span>
-			    <span style="color:#1e40af;font-weight:bold;">${info.commit}</span>
-			  </div>
-			  <div style="font-size:9px;color:#94a3b8;">${info.date}</div>
-			  ${branch_part}
-			</div>
-		`);
-
-		// Try a few known selectors for the sidebar — place the badge after the
-		// first-of-its-kind logo block. Fall back through multiple candidates.
-		const candidates = [
-			".body-sidebar .app-logo",           // Frappe v15 sidebar app logo
-			".desk-sidebar .app-logo",
-			".body-sidebar-container .app-logo",
-			".body-sidebar .sidebar-item-container:first",
-			".desk-sidebar",
-			".standard-sidebar",
-		];
-
-		for (const sel of candidates) {
-			const $el = $(sel).first();
-			if ($el.length) {
-				$el.after($badge);
-				return;
-			}
-		}
-
-		// Final fallback: prepend to sidebar
-		const $sidebar = $(".body-sidebar, .desk-sidebar, .standard-sidebar").first();
-		if ($sidebar.length) {
-			$sidebar.prepend($badge);
+	function inject() {
+		try {
+			if (document.getElementById("ts-version-tag")) return true;
+			var bell = document.querySelector("header.navbar li.dropdown-notifications") ||
+				document.querySelector(".dropdown-notifications");
+			if (!bell || !bell.parentElement) return false;
+			var li = document.createElement("li");
+			li.id = "ts-version-tag";
+			li.className = "nav-item";
+			li.style.cssText = "display:flex;align-items:center;padding:0 6px;";
+			var tag = document.createElement("span");
+			tag.className = "indicator-pill no-indicator-dot " + (info.label ? "orange" : "gray");
+			tag.style.cssText = "cursor:pointer;white-space:nowrap;font-size:11px;";
+			tag.setAttribute("role", "button");
+			tag.title = (info.label ? info.label + " server. " : "") + "Version " + info.version +
+				". Code last changed " + info.updated_full + "." +
+				(!info.label && info.commit && info.commit !== "unknown" ? " Build " + info.commit + "." : "");
+			// "2.85.7+demo": a phone shows "v2.85.7" only. \u00a0 = a space the pill's side-by-side layout keeps
+			var ver = String(info.version).split("+");
+			if (info.label) tag.appendChild(part(info.label + "\u00a0·\u00a0", true));
+			tag.appendChild(part("v" + ver[0], false));
+			if (ver[1]) tag.appendChild(part("+" + ver[1], true));
+			if (info.updated) tag.appendChild(part("\u00a0·\u00a0" + info.updated, true));
+			tag.addEventListener("click", function () {
+				if (frappe.ui && frappe.ui.misc && frappe.ui.misc.about) frappe.ui.misc.about();
+			});
+			li.appendChild(tag);
+			bell.parentElement.insertBefore(li, bell.parentElement.firstChild);
+			return true;
+		} catch (e) {
+			console.error("[version tag]", e);
+			return true; // stop retrying on a hard error
 		}
 	}
 
-	function fetchAndInject() {
-		if (!window.frappe || !frappe.call) return;
-		// Skip on login / unauthenticated pages — badge is for logged-in desk users.
-		// (Decorator also has allow_guest=True for safety, but we still skip to avoid noise.)
-		if (!frappe.session || !frappe.session.user || frappe.session.user === "Guest") return;
-		// Skip on login, update-password, and other non-desk routes
-		if (window.location.pathname.indexOf("/app") !== 0) return;
-
+	function start() {
+		if (!window.frappe || !frappe.call || !frappe.session || frappe.session.user === "Guest") return;
+		if (window.location.pathname.indexOf("/app") !== 0) return; // desk only
 		frappe.call({
 			method: "trustbit_ethanol.ts_gate_entry.ts_version_api.get_version_info",
 			type: "GET",
 			freeze: false,
-			callback: (r) => {
-				if (r && r.message) {
-					injectBadge(r.message);
-				}
+			callback: function (r) {
+				if (!r || !r.message || !r.message.version) return;
+				info = r.message;
+				var timer = setInterval(function () {
+					if (inject() || --TRIES <= 0) clearInterval(timer);
+				}, 500);
 			},
-			error: () => { /* silent — badge is non-critical */ },
+			silent: true, // the tag is not critical: no message box if the call fails
 		});
 	}
 
-	// Inject on initial load — wait for sidebar to render
-	$(document).ready(() => {
-		setTimeout(fetchAndInject, 800);
+	$(document).ready(function () {
+		setTimeout(start, 800);
 	});
-
-	// Re-inject on route change (SPA nav sometimes rebuilds sidebar)
-	if (window.frappe && frappe.router && frappe.router.on) {
-		frappe.router.on("change", () => {
-			setTimeout(fetchAndInject, 500);
-		});
-	}
 })();

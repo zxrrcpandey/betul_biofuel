@@ -1,20 +1,54 @@
 """
-Version info API — returns current git commit of trustbit_ethanol app.
-
-Displayed in navbar via public/js/ts_version_badge.js so users can see at a
-glance what's deployed on the server they're using (demo vs prod vs stale).
-
-Cached for 5 minutes to avoid repeated subprocess git calls.
+Version info for the tag in the top bar (public/js/ts_version_badge.js): the app version of the running code,
+when the code on this server last changed, the server's label from site_config (`ts_server_label`, e.g. "DEMO")
+and the git commit. Version and date are read from the running code, so a server that gets its files by copy
+(no git pull) is shown correctly too. The git part is cached for 5 minutes.
 """
 
 import os
 import subprocess
+from datetime import datetime, timezone
+
 import frappe
+from frappe.utils import convert_utc_to_system_timezone, cstr
+
+_changed = None  # newest code-file time, read once per process (every deploy restarts the processes)
 
 
-@frappe.whitelist(allow_guest=True)
+def _last_change():
+	"""When the app's code on this server last changed, in the site's time zone."""
+	global _changed
+	if _changed is None:
+		newest = 0
+		for folder, dirs, files in os.walk(frappe.get_app_path("trustbit_ethanol")):
+			dirs[:] = [d for d in dirs if d not in ("__pycache__", "node_modules")]
+			for name in files:
+				if name.endswith((".py", ".js", ".json", ".html", ".css")):
+					try:
+						newest = max(newest, os.path.getmtime(os.path.join(folder, name)))
+					except OSError:
+						pass
+		_changed = newest
+	return convert_utc_to_system_timezone(datetime.fromtimestamp(_changed, tz=timezone.utc))
+
+
+@frappe.whitelist()
 def get_version_info():
-	"""Return current git commit info as {commit, message, date}. Cached 5 min."""
+	"""{version, label, updated, updated_full, commit, message, date, branch}, for a logged-in user only."""
+	from trustbit_ethanol import __version__
+
+	changed = _last_change()
+	return dict(
+		_git_info(),
+		version=__version__,
+		label=cstr(frappe.conf.get("ts_server_label"))[:12],
+		updated=f"{changed.day} {changed:%b}",
+		updated_full=f"{changed:%d %b %Y %H:%M}",
+	)
+
+
+def _git_info():
+	"""Current git commit as {commit, message, date, branch}. Cached 5 min."""
 	cache_key = "ts_version_info"
 	cached = frappe.cache().get_value(cache_key)
 	if cached:
