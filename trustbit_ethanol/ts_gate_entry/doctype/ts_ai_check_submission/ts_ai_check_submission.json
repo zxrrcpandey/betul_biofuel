@@ -178,12 +178,13 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-18 14:09:00.000000",
+ "modified": "2026-11-23 18:50:00.000000",
  "modified_by": "Administrator",
  "module": "TS Gate Entry",
  "name": "TS AI Check Submission",
  "naming_rule": "Expression (old style)",
  "owner": "Administrator",
+ "protect_attached_files": 1,
  "permissions": [
   {
    "create": 1,

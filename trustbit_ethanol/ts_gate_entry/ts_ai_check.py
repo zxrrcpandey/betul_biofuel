@@ -49,6 +49,7 @@ READS_PER_HOUR = 20  # files one person may send for reading in an hour, refused
 STALE_RUNNING_MIN = 30  # longer than the job can run
 STALE_QUEUED_MIN = 15
 SERVER_FLAG = "ai_check_server_write"
+FILE_TYPES = (".xlsx", ".xls", ".csv", ".pdf", ".jpg", ".jpeg", ".png", ".webp")  # also in ts_ai_check_report.js
 LINE_FIELDS = ("line_no", "page", "source_row", "kind", "supplier_text", "bill_no_text", "bill_date_text",
 	"po_text", "amount_text", "amount", "remarks_text", "unclear", "read_note", "section_text", "details_text")
 CHECK_FIELDS = ("verdict", "supplier", "supplier_title", "match_how", "list_says", "erp_says", "chain", "receipts_used", "claims")
@@ -122,6 +123,11 @@ def check_file_field(doc):
 		return  # the mandatory check reports it
 	if not url.startswith("/private/files/"):
 		frappe.throw(_("Attach the file as Private."))
+	# the reader judges the bytes, but the browser judges the name: a list named .htm would run as a web page
+	# for the MD who opens it. A : or ; is refused too: `mimetypes` reads "ftp:x.html;.csv" as an HTML page
+	name = os.path.basename(url)
+	if ":" in name or ";" in name or os.path.splitext(name)[1].lower() not in FILE_TYPES:
+		frappe.throw(_("This file type cannot be checked. Use Excel, CSV, PDF or a JPG/PNG photo."))
 	if not _own_file_name(doc):
 		frappe.throw(_("Attach the file with the Attach button on this form."))
 

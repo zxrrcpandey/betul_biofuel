@@ -632,9 +632,11 @@ def _file_check(u):
 		eq(frappe.db.get_value(SUB, doc.name, "docstatus"), 0)
 	test("file: an empty file is refused", t_empty)
 	test("file: bytes of no known type are refused",
-		lambda: turned_away(bytes(range(256)) * 4 + str(next(SEQ)).encode(), "dat", M5))
+		lambda: turned_away(bytes(range(256)) * 4 + str(next(SEQ)).encode(), "xlsx", M5))
 	test("file: a zip that is not an Excel file is refused",
-		lambda: turned_away(zipped({"list.txt": f"{S1},1250.50,{next(SEQ)}"}), "zip", M5))
+		lambda: turned_away(zipped({"list.txt": f"{S1},1250.50,{next(SEQ)}"}), "xlsx", M5))
+	test("file: a list named as a web page is refused at Save, even when its bytes read as a CSV",
+		lambda: refused(lambda: draft(u.acc, attach(u.acc, f"<script>1</script>\n{S1},1250.50,{next(SEQ)}".encode(), "htm").url), M5))
 
 	def t_oversize():
 		setting(max_file_mb=1)
@@ -798,7 +800,7 @@ def _file_check(u):
 	test("file: the reader's error output stays small and outside the server process", t_error_output)
 
 	def t_unopenable():
-		turned_away(ole2(), "doc", M8)
+		turned_away(ole2(), "xls", M8)
 		for broken in (b"%PDF-1.4\nnot a real PDF", picture(50, 50, "PNG")[:40], b"PK\x03\x04" + bytes(40)):
 			refused(lambda broken=broken: reader.basic_check(broken, ai.limits()), M5 if broken[:2] == b"PK" else M8)
 	test("file: a file that only looks like Office, PDF or a photo is refused", t_unopenable)
