@@ -20,7 +20,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime, cint, flt, escape_html
 
-GRAIN_MATERIAL_TYPES = {"Maize", "Rice", "DORB"}
+GRAIN_MATERIAL_TYPES = {"Maize", "Rice", "DORB", "Broken Rice", "Hullar", "Grade Rice Powder"}
 _KILL_SWITCH_FIELD = "ts_grain_defer_enabled"
 
 

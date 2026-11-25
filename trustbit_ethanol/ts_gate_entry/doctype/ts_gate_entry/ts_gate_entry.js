@@ -1,3 +1,5 @@
+// Grain material types — keep in step with GRAIN_MATERIAL_TYPES in ts_grain_defer.py.
+var TS_GRAIN_MATERIAL_TYPES = ["Maize", "Rice", "DORB", "Broken Rice", "Hullar", "Grade Rice Powder"];
 frappe.ui.form.on("TS Gate Entry", {
 	refresh(frm) {
 		// Post-dated entry check — drafts only (new + saved). Unlocks ONLY the
@@ -96,7 +98,7 @@ frappe.ui.form.on("TS Gate Entry", {
 		let is_grain_deferred = frm._grain_defer_enabled
 			&& !is_stock_out
 			&& frm.doc.material_flow === "Raw Material"
-			&& ["Maize", "Rice", "DORB"].includes(frm.doc.ts_material_type);
+			&& TS_GRAIN_MATERIAL_TYPES.includes(frm.doc.ts_material_type);
 		$(frm.wrapper).find(".grain-defer-banner").remove();
 		if (is_grain_deferred) {
 			frm.set_df_property("po_section", "hidden", 1);
@@ -370,7 +372,7 @@ frappe.ui.form.on("TS Gate Entry", {
 		// Grain (Maize/Rice/DORB) is always Raw Material — auto-set Material Flow so
 		// picking the grain type ALONE triggers the deferred-linking flow (hide PO
 		// section + banner). For any other material just re-evaluate the layout.
-		if (["Maize", "Rice", "DORB"].includes(frm.doc.ts_material_type)
+		if (TS_GRAIN_MATERIAL_TYPES.includes(frm.doc.ts_material_type)
 				&& frm.doc.stock_direction !== "Stock OUT"
 				&& frm.doc.material_flow !== "Raw Material") {
 			let _mt = frm.doc.ts_material_type;
@@ -401,7 +403,7 @@ frappe.ui.form.on("TS Gate Entry", {
 			// Grain (Maize/Rice/DORB) is Raw-Material only — clear a stale grain type
 			// when switching to Non-RM so the form doesn't keep an invalid combination,
 			// and tell the operator why (English + Hindi).
-			if (["Maize", "Rice", "DORB"].includes(frm.doc.ts_material_type)) {
+			if (TS_GRAIN_MATERIAL_TYPES.includes(frm.doc.ts_material_type)) {
 				let _mt = frm.doc.ts_material_type;
 				frm.set_value("ts_material_type", "");
 				frappe.show_alert({

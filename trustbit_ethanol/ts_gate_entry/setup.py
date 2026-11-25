@@ -1068,7 +1068,7 @@ def create_custom_fields():
 			"fieldname": "ts_material_type",
 			"fieldtype": "Select",
 			"label": "Material Type",
-			"options": "\nStore Material\nScrap\nBardana\nFly Ash\nDWGS\nMaize\nRice\nCoal\nDDGS\nEthanol\nLiquid Co2\nIron\nDORB\nFusel oil\nDry Ice",
+			"options": "\nStore Material\nScrap\nBardana\nFly Ash\nDWGS\nMaize\nRice\nCoal\nDDGS\nEthanol\nLiquid Co2\nIron\nDORB\nFusel oil\nDry Ice\nBroken Rice\nHullar\nGrade Rice Powder",
 			"insert_after": "material_flow",
 		},
 	]
